@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.ingest.handler;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import com.ospreydcs.dp.service.ingest.handler.model.ValidateIngestionRequestResult;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
@@ -45,7 +45,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         values);
         params.setRequestTime(false);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue("validation result msg not set to expected value", result.msg.equals("requestTime must be specified"));
     }
@@ -72,7 +72,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue("validation result msg not set to expected value", result.msg.equals("providerId must be specified"));
     }
@@ -99,7 +99,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue(
                 "validation result msg not set to expected value",
@@ -133,7 +133,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue(
                 "validation result message not set",
@@ -163,7 +163,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue(
                 "validation result message not set",
@@ -194,7 +194,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         null);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue(
                 "validation result msg not set",
@@ -228,7 +228,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue("validation result msg not set to expected value", result.msg.contains("mismatch numValues:"));
     }
@@ -259,7 +259,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         IngestionRequest request = buildIngestionRequest(params);
-        ValidateIngestionRequestResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue("validation result error flag not set", result.isError);
         assertTrue("validation result msg not set to expected value", result.msg.equals("name must be specified for all data columns"));
     }

@@ -6,8 +6,8 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.model.ValidateQueryRequestResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -84,7 +84,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 request.getEndTime().getEpochSeconds());
 
         // validate request
-        ValidateQueryRequestResult validationResult = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult validationResult = handler.validateQueryDataByTimeRequest(request);
         boolean validationError = false;
         String validationMsg = "";
 

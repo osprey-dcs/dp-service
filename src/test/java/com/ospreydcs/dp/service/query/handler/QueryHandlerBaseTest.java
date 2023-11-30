@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.query.handler;
 
 import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import com.ospreydcs.dp.service.query.handler.model.ValidateQueryRequestResult;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
@@ -30,7 +30,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds + 1,
                 0L);
         QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
-        ValidateQueryRequestResult result = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult result = handler.validateQueryDataByTimeRequest(request);
         assertTrue("isError not set", result.isError);
         assertTrue("msg not set", result.msg.equals("columnName must be specified"));
     }
@@ -46,7 +46,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds + 1,
                 0L);
         QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
-        ValidateQueryRequestResult result = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult result = handler.validateQueryDataByTimeRequest(request);
         assertTrue("isError not set", result.isError);
         assertTrue("msg not set", result.msg.equals("startTime must be specified"));
     }
@@ -62,7 +62,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 null,
                 0L);
         QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
-        ValidateQueryRequestResult result = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult result = handler.validateQueryDataByTimeRequest(request);
         assertTrue("isError not set", result.isError);
         assertTrue("msg not set", result.msg.equals("endTime must be specified"));
     }
@@ -78,7 +78,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds - 1,
                 0L);
         QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
-        ValidateQueryRequestResult result = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult result = handler.validateQueryDataByTimeRequest(request);
         assertTrue("isError not set", result.isError);
         assertTrue("msg not set", result.msg.equals("endTime seconds must be >= startTime seconds"));
     }
@@ -94,7 +94,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds,
                 100L);
         QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
-        ValidateQueryRequestResult result = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult result = handler.validateQueryDataByTimeRequest(request);
         assertTrue("isError not set", result.isError);
         assertTrue("msg not set", result.msg.equals("endTime nanos must be > startTime nanos when seconds match"));
     }

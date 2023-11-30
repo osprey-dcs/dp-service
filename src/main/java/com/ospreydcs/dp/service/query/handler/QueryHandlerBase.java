@@ -2,11 +2,11 @@ package com.ospreydcs.dp.service.query.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
-import com.ospreydcs.dp.service.query.handler.model.ValidateQueryRequestResult;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 
 public abstract class QueryHandlerBase {
 
-    public ValidateQueryRequestResult validateQueryDataByTimeRequest(QueryDataByTimeRequest request) {
+    public ValidationResult validateQueryDataByTimeRequest(QueryDataByTimeRequest request) {
 
         boolean isError = false;
         String statusMsg = "";
@@ -52,7 +52,7 @@ public abstract class QueryHandlerBase {
             // TODO: check that time range doesn't exceed configured maximum
         }
 
-        return new ValidateQueryRequestResult(isError, statusMsg);
+        return new ValidationResult(isError, statusMsg);
 
     }
 
