@@ -1,6 +1,3 @@
-GrpcServer:
-  port: 50051
-
 MongoHandler:
   numWorkers: 7
   dbHost: localhost
@@ -8,6 +5,16 @@ MongoHandler:
   dbUser: admin
   dbPassword: admin
 
-Benchmark:
+IngestionGrpcServer:
+  port: 50051
+
+IngestionPerformanceBenchmark:
   grpcConnectString: "localhost:50051"
+  startSeconds: 1698767462
+
+QueryGrpcServer:
+  port: 50052
+
+QueryPerformanceBenchmark:
+  grpcConnectString: "localhost:50052"
   startSeconds: 1698767462
