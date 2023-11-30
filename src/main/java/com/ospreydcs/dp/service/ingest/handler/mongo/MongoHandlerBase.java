@@ -6,6 +6,7 @@ import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
@@ -173,11 +174,11 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
         final Timestamp firstTimestamp = timeSpecModel.getFirstTimestamp();
         final long firstTimestampSeconds = firstTimestamp.getEpochSeconds();
         final long firstTimestampNanos = firstTimestamp.getNanoseconds();
-        final Date firstTimestampDate = IngestionServiceImpl.dateFromTimestamp(firstTimestamp);
+        final Date firstTimestampDate = GrpcUtility.dateFromTimestamp(firstTimestamp);
         final Timestamp lastTimestamp = timeSpecModel.getLastTimestamp();
         final long lastTimestampSeconds = lastTimestamp.getEpochSeconds();
         final long lastTimestampNanos = lastTimestamp.getNanoseconds();
-        final Date lastTimestampDate = IngestionServiceImpl.dateFromTimestamp(lastTimestamp);
+        final Date lastTimestampDate = GrpcUtility.dateFromTimestamp(lastTimestamp);
 
         // create BSON document for each column
         final List<DataColumn> columns = request.getDataTable().getDataColumnsList();

@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
@@ -31,7 +32,7 @@ public class QueryServiceImplTest extends QueryTestBase {
         timestampBuilder.setEpochSeconds(epochSeconds);
         timestampBuilder.setNanoseconds(nanos);
         Timestamp timestamp = timestampBuilder.build();
-        Date dateFromTimestamp = serviceImpl.dateFromTimestamp(timestamp);
+        Date dateFromTimestamp = GrpcUtility.dateFromTimestamp(timestamp);
 
         // create a java instant, and use to create java date
         Instant instant = Instant.ofEpochSecond(epochSeconds, nanos);

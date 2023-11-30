@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.ingest.model;
 import com.ospreydcs.dp.grpc.v1.common.DataTimeSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.FixedIntervalTimestampSpec;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 
 import java.time.Instant;
@@ -43,7 +44,7 @@ public class DataTimeSpecModel {
             Instant startInstant = Instant.ofEpochSecond(startSeconds, startNanos);
             Instant lastInstant =
                     startInstant.plusNanos(fixedIntervalSpec.getSampleIntervalNanos() * (fixedIntervalSpec.getNumSamples()-1));
-            return IngestionServiceImpl.getTimestampFromInstant(lastInstant);
+            return GrpcUtility.getTimestampFromInstant(lastInstant);
         }
         return null;
     }

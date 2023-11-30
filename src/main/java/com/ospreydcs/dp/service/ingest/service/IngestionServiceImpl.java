@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
@@ -26,26 +27,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     private static final int TIMEOUT_STREAM_FINISH_MINUTES = 1;
 
     private IngestionHandlerInterface handler;
-
-    public static Date dateFromTimestamp(Timestamp timestamp) {
-        final Instant timestampInstant = Instant.ofEpochSecond(
-                timestamp.getEpochSeconds(), timestamp.getNanoseconds());
-        return Date.from(timestampInstant);
-    }
-
-    public static Timestamp getTimestampNow() {
-        Instant instantNow = Instant.now();
-        return getTimestampFromInstant(instantNow);
-    }
-
-    public static Timestamp getTimestampFromInstant(Instant instant) {
-        Timestamp timestamp =
-                Timestamp.newBuilder()
-                        .setEpochSeconds(instant.getEpochSecond())
-                        .setNanoseconds(instant.getNano())
-                        .build();
-        return timestamp;
-    }
 
     public static int getNumRequestRows(IngestionRequest request) {
         int numRequestValues = 0;
@@ -74,7 +55,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseType(ResponseType.REJECT_RESPONSE)
-                .setResponseTime(getTimestampNow())
+                .setResponseTime(GrpcUtility.getTimestampNow())
                 .setRejectDetails(rejectDetails)
                 .build();
         return response;
@@ -91,7 +72,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseType(ResponseType.ACK_RESPONSE)
-                .setResponseTime(getTimestampNow())
+                .setResponseTime(GrpcUtility.getTimestampNow())
                 .setAckDetails(details)
                 .build();
         return response;

@@ -2,8 +2,10 @@ package com.ospreydcs.dp.service.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.Status;
+import io.grpc.internal.GrpcUtil;
 import io.grpc.stub.StreamObserver;
 
 import java.util.ArrayList;
@@ -150,7 +152,7 @@ public class IngestionTestBase {
             requestBuilder.setClientRequestId(params.requestId);
         }
         if (params.setRequestTime) {
-            requestBuilder.setRequestTime(IngestionServiceImpl.getTimestampNow());
+            requestBuilder.setRequestTime(GrpcUtility.getTimestampNow());
         }
 
         // set event description if snapshotTimestamp specified

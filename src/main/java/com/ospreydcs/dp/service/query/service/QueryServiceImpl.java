@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
@@ -43,26 +44,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
     }
 
-    public static Date dateFromTimestamp(Timestamp timestamp) {
-        final Instant timestampInstant = Instant.ofEpochSecond(
-                timestamp.getEpochSeconds(), timestamp.getNanoseconds());
-        return Date.from(timestampInstant);
-    }
-
-    public static Timestamp getTimestampFromInstant(Instant instant) {
-        Timestamp timestamp =
-                Timestamp.newBuilder()
-                        .setEpochSeconds(instant.getEpochSecond())
-                        .setNanoseconds(instant.getNano())
-                        .build();
-        return timestamp;
-    }
-
-    public static Timestamp getTimestampNow() {
-        Instant instantNow = Instant.now();
-        return getTimestampFromInstant(instantNow);
-    }
-
     public static QueryDataResponse queryResponseReject(QueryDataByTimeRequest request, String msg, RejectDetails.RejectReason reason) {
         RejectDetails rejectDetails = RejectDetails.newBuilder()
                 .setRejectReason(reason)
@@ -70,7 +51,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
         QueryDataResponse response = QueryDataResponse.newBuilder()
                 .setResponseType(ResponseType.REJECT_RESPONSE)
-                .setResponseTime(getTimestampNow())
+                .setResponseTime(GrpcUtility.getTimestampNow())
                 .setRejectDetails(rejectDetails)
                 .build();
         return response;
