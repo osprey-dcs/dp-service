@@ -1,0 +1,13 @@
+GrpcServer:
+  port: 50051
+
+MongoHandler:
+  numWorkers: 7
+  dbHost: localhost
+  dbPort: 27017
+  dbUser: admin
+  dbPassword: admin
+
+Benchmark:
+  grpcConnectString: "localhost:50051"
+  startSeconds: 1698767462
