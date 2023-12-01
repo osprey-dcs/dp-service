@@ -6,8 +6,8 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
-import com.ospreydcs.dp.service.ingest.model.bson.BucketDocument;
-import com.ospreydcs.dp.service.ingest.model.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 
 import java.time.Instant;
 import java.util.ArrayList;

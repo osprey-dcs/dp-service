@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.ingest.model.bson;
+package com.ospreydcs.dp.service.common.bson;
 
 import java.time.Instant;
 import java.util.List;

@@ -6,6 +6,7 @@ import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.service.common.bson.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
@@ -13,8 +14,6 @@ import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.model.DataTimeSpecModel;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
-import com.ospreydcs.dp.service.ingest.model.bson.*;
-import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.codecs.configuration.CodecProvider;
@@ -147,9 +146,9 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
         // set up mongo codec registry for handling pojos automatically
         // create mongo codecs for model classes
 //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(TsDataBucket.class, DatumModel.class).build();
-        CodecProvider pojoCodecProvider =
-                PojoCodecProvider.builder().register("com.ospreydcs.dp.service.ingest.model.bson").build();
-//        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+        String packageName = BucketDocument.class.getPackageName();
+        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(packageName).build();
+        //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
         CodecRegistry pojoCodecRegistry =
                 fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
         return pojoCodecRegistry;
