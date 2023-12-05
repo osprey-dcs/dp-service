@@ -3,6 +3,8 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
@@ -18,14 +20,14 @@ import java.util.Map;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-public class MongoHandlerTestBase extends IngestionTestBase {
+public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
-    protected static MongoHandlerBase handler = null;
-    protected static TestHandlerInterface handlerTestInterface = null;
+    protected static MongoIngestionHandler handler = null;
+    protected static TestClientInterface clientTestInterface = null;
     private static IngestionRequestParams duplicateRequestParams = null;
     private static String collectionNamePrefix = null;
 
-    protected interface TestHandlerInterface {
+    protected interface TestClientInterface {
         public BucketDocument findBucketWithId(String id);
         public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId);
     }
@@ -35,12 +37,12 @@ public class MongoHandlerTestBase extends IngestionTestBase {
      *
      * @throws Exception
      */
-    public static void setUp(MongoHandlerBase handler) throws Exception {
+    public static void setUp(MongoIngestionHandler handler, TestClientInterface clientInterface) throws Exception {
         System.out.println("setUp");
-        MongoHandlerTestBase.handler = handler;
-        handlerTestInterface = (TestHandlerInterface) handler;
-        assertTrue("dbHandler init failed", MongoHandlerTestBase.handler.init());
-        assertTrue("dbHandler start failed", MongoHandlerTestBase.handler.start());
+        MongoIngestionHandlerTestBase.handler = handler;
+        clientTestInterface = clientInterface;
+        assertTrue("dbHandler init failed", MongoIngestionHandlerTestBase.handler.init());
+        assertTrue("dbHandler start failed", MongoIngestionHandlerTestBase.handler.start());
     }
 
     /**
@@ -52,7 +54,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
         assertTrue("dbHandler stop failed", handler.stop());
         assertTrue("dbHandler fini failed", handler.fini());
         handler = null;
-        handlerTestInterface = null;
+        clientTestInterface = null;
         collectionNamePrefix = null;
     }
 
@@ -64,16 +66,16 @@ public class MongoHandlerTestBase extends IngestionTestBase {
     }
 
     protected static String getTestCollectionNameBuckets() {
-        return getTestCollectionNamePrefix() + MongoHandlerBase.COLLECTION_NAME_BUCKETS;
+        return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
     }
 
     protected static String getTestCollectionNameRequestStatus() {
-        return getTestCollectionNamePrefix() + MongoHandlerBase.COLLECTION_NAME_REQUEST_STATUS;
+        return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
     }
 
     private RequestStatusDocument findRequestStatus(Integer providerId, String requestId, String status) {
         List<RequestStatusDocument> matchingDocuments =
-                handlerTestInterface.findRequestStatusList(providerId, requestId);
+                clientTestInterface.findRequestStatusList(providerId, requestId);
         RequestStatusDocument statusDocument = null;
         for (RequestStatusDocument document : matchingDocuments) {
             if (document.getStatus().equals(status)) {
@@ -93,7 +95,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
             long firstNanos = params.timeSpecIteratorStartNanos;
             for (String columnName : params.columnNames) {
                 String id = columnName + "-" + firstSeconds + "-" + firstNanos;
-                BucketDocument bucket = handlerTestInterface.findBucketWithId(id);
+                BucketDocument bucket = clientTestInterface.findBucketWithId(id);
                 assertTrue("unexpected bucket found with id: " + id,
                         bucket == null);
 
@@ -119,7 +121,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
         // get status document
         RequestStatusDocument statusDocument =
                 findRequestStatus(
-                        params.providerId, params.requestId, MongoHandlerBase.BSON_VALUE_STATUS_SUCCESS);
+                        params.providerId, params.requestId, BsonConstants.BSON_VALUE_STATUS_SUCCESS);
 
         // check bucket in database for each column in request
         long firstSeconds = params.timeSpecIteratorStartSeconds;
@@ -135,7 +137,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
                     startInstant.plusNanos(sampleIntervalNanos * (numSamples - 1));
             long lastSeconds = lastInstant.getEpochSecond();
             long lastNanos = lastInstant.getNano();
-            BucketDocument bucket = handlerTestInterface.findBucketWithId(id);
+            BucketDocument bucket = clientTestInterface.findBucketWithId(id);
             assertTrue("no bucket found with id: " + id,
                     bucket != null);
             assertTrue("bucket id missing from idsCreated list in status document: " + id,
@@ -240,7 +242,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
                 result.isError);
         assertTrue("message not set", result.message.contains("duplicate key error"));
         verifyFailedRequest(
-                params, MongoHandlerBase.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
+                params, BsonConstants.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
     }
 
     public void test03HandleIngestionRequestReject() {
@@ -293,7 +295,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
                         rejectMsg); // force request to be marked as reject
         HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
         assertTrue("error flag not set", result.isError);
-        verifyFailedRequest(params, MongoHandlerBase.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
+        verifyFailedRequest(params, BsonConstants.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
     }
 
     public void test04HandleIngestionRequestSuccessString() {
@@ -483,7 +485,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
         assertTrue("error flag is not set", result.isError);
         verifyFailedRequest(
                 params,
-                MongoHandlerBase.BSON_VALUE_STATUS_ERROR,
+                BsonConstants.BSON_VALUE_STATUS_ERROR,
                 "unhandled data type: ARRAYVALUE",
                 true);
     }
@@ -543,7 +545,7 @@ public class MongoHandlerTestBase extends IngestionTestBase {
         assertTrue("error flag is not set", result.isError);
         verifyFailedRequest(
                 params,
-                MongoHandlerBase.BSON_VALUE_STATUS_ERROR,
+                BsonConstants.BSON_VALUE_STATUS_ERROR,
                 "data type mismatch: FLOATVALUE expected: STRINGVALUE",
                 true);
     }

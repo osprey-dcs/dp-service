@@ -1,46 +1,30 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
-import com.mongodb.client.model.Indexes;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.grpc.v1.common.Attribute;
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.service.common.bson.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
-import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
+import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.model.DataTimeSpecModel;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.codecs.configuration.CodecProvider;
-import org.bson.codecs.configuration.CodecRegistry;
-import org.bson.codecs.pojo.PojoCodecProvider;
-import org.bson.conversions.Bson;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
-import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
-import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
-
-public abstract class MongoHandlerBase extends IngestionHandlerBase implements IngestionHandlerInterface {
-
-    // abstract methods
-    protected abstract boolean initMongoClient(String connectString);
-    protected abstract boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry);
-    protected abstract boolean initMongoCollectionBuckets(String collectionName);
-    protected abstract boolean createMongoIndexBuckets(Bson fieldNamesBson);
-    protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
-    protected abstract boolean createMongoIndexRequestStatus(Bson fieldNamesBson);
-    protected abstract IngestionTaskResult insertBatch(
-            IngestionRequest request, List<BucketDocument> dataDocumentBatch);
-    protected abstract InsertOneResult insertRequestStatus(RequestStatusDocument requestStatusDocument);
+public class MongoIngestionHandler extends IngestionHandlerBase implements IngestionHandlerInterface {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -48,43 +32,35 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
     private static final int TIMEOUT_SECONDS = 60;
     protected static final int MAX_INGESTION_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
-    public static final String MONGO_DATABASE_NAME = "dp";
-    protected static final String COLLECTION_NAME_BUCKETS = "buckets";
-    protected static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
 
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "MongoHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
-    public static final String CFG_KEY_DB_HOST = "MongoHandler.dbHost";
-    public static final String DEFAULT_DB_HOST = "localhost";
-    public static final String CFG_KEY_DB_PORT = "MongoHandler.dbPort";
-    public static final int DEFAULT_DB_PORT = 27017;
-    public static final String CFG_KEY_DB_USER = "MongoHandler.dbUser";
-    public static final String DEFAULT_DB_USER = "admin";
-    public static final String CFG_KEY_DB_PASSWORD = "MongoHandler.dbPassword";
-    public static final String DEFAULT_DB_PASSWORD = "admin";
 
-    // BSON field name constants
-    protected static final String BSON_KEY_BUCKET_NAME = "columnName";
-    protected static final String BSON_KEY_BUCKET_FIRST_TIME = "firstDate";
-    protected static final String BSON_KEY_BUCKET_FIRST_TIME_SECS = "firstSeconds";
-    protected static final String BSON_KEY_BUCKET_FIRST_TIME_NANOS = "firstNanos";
-    protected static final String BSON_KEY_BUCKET_LAST_TIME = "lastDate";
-    protected static final String BSON_KEY_BUCKET_LAST_TIME_SECS = "lastSeconds";
-    protected static final String BSON_KEY_BUCKET_LAST_TIME_NANOS = "lastNanos";
-    protected static final String BSON_KEY_REQ_STATUS_PROVIDER_ID = "providerId";
-    protected static final String BSON_KEY_REQ_STATUS_REQUEST_ID = "requestId";
-    protected static final String BSON_KEY_REQ_STATUS_TIME = "updateTime";
-    public static final String BSON_VALUE_STATUS_SUCCESS = "success";
-    public static final String BSON_VALUE_STATUS_REJECTED = "rejected";
-    public static final String BSON_VALUE_STATUS_ERROR = "error";
+    final private MongoIngestionClientInterface mongoIngestionClientInterface;
 
     protected ExecutorService executorService = null;
     protected BlockingQueue<HandlerIngestionRequest> ingestionQueue =
             new LinkedBlockingQueue<>(MAX_INGESTION_QUEUE_SIZE);
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
-    protected class IngestionTaskResult {
+    public MongoIngestionHandler(MongoIngestionClientInterface clientInterface) {
+        this.mongoIngestionClientInterface = clientInterface;
+    }
+
+    public static MongoIngestionHandler newMongoSyncIngestionHandler() {
+        return new MongoIngestionHandler(new MongoSyncIngestionClient());
+    }
+
+    public static MongoIngestionHandler newMongoAsyncIngestionHandler() {
+        return new MongoIngestionHandler(new MongoAsyncIngestionClient());
+    }
+
+    private static ConfigurationManager configMgr() {
+        return ConfigurationManager.getInstance();
+    }
+
+    public static class IngestionTaskResult {
 
         private boolean isError = false;
         private String msg = null;
@@ -96,7 +72,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
             this.insertManyResult = insertManyResult;
         }
 
-     }
+    }
 
     private class IngestionWorker implements Runnable {
 
@@ -114,7 +90,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
 //                    // block while waiting for a queue element
 //                    HandlerIngestionRequest handlerIngestionRequest = (HandlerIngestionRequest) queue.take();
 
-                    // pool for next queue item with a timeout
+                    // poll for next queue item with a timeout
                     HandlerIngestionRequest handlerIngestionRequest =
                             (HandlerIngestionRequest) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
@@ -136,22 +112,6 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
             }
         }
 
-    }
-
-    private static ConfigurationManager configMgr() {
-        return ConfigurationManager.getInstance();
-    }
-
-    protected CodecRegistry getPojoCodecRegistry() {
-        // set up mongo codec registry for handling pojos automatically
-        // create mongo codecs for model classes
-//        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(TsDataBucket.class, DatumModel.class).build();
-        String packageName = BucketDocument.class.getPackageName();
-        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(packageName).build();
-        //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
-        CodecRegistry pojoCodecRegistry =
-                fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
-        return pojoCodecRegistry;
     }
 
     /**
@@ -314,54 +274,6 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
         return bucketList;
     }
 
-    private boolean createMongoIndexesBuckets() {
-        createMongoIndexBuckets(Indexes.ascending(
-                BSON_KEY_BUCKET_NAME));
-        createMongoIndexBuckets(Indexes.ascending(
-                BSON_KEY_BUCKET_NAME, BSON_KEY_BUCKET_FIRST_TIME));
-        createMongoIndexBuckets(Indexes.ascending(
-                BSON_KEY_BUCKET_NAME, BSON_KEY_BUCKET_FIRST_TIME_SECS, BSON_KEY_BUCKET_FIRST_TIME_NANOS));
-        createMongoIndexBuckets(Indexes.ascending(
-                BSON_KEY_BUCKET_NAME, BSON_KEY_BUCKET_LAST_TIME));
-        createMongoIndexBuckets(Indexes.ascending(
-                BSON_KEY_BUCKET_NAME, BSON_KEY_BUCKET_LAST_TIME_SECS, BSON_KEY_BUCKET_LAST_TIME_NANOS));
-        return true;
-    }
-
-    private boolean createMongoIndexesRequestStatus() {
-        createMongoIndexRequestStatus(Indexes.ascending(
-                BSON_KEY_REQ_STATUS_PROVIDER_ID, BSON_KEY_REQ_STATUS_REQUEST_ID));
-        createMongoIndexRequestStatus(Indexes.ascending(
-                BSON_KEY_REQ_STATUS_PROVIDER_ID, BSON_KEY_REQ_STATUS_TIME));
-        return true;
-    }
-
-    public static String getMongoConnectString() {
-
-        // mongodb://admin:admin@localhost:27017/
-
-        String dbHost = configMgr().getConfigString(CFG_KEY_DB_HOST, DEFAULT_DB_HOST);
-        Integer dbPort = configMgr().getConfigInteger(CFG_KEY_DB_PORT, DEFAULT_DB_PORT);
-        String dbUser = configMgr().getConfigString(CFG_KEY_DB_USER, DEFAULT_DB_USER);
-        String dbPassword = configMgr().getConfigString(CFG_KEY_DB_PASSWORD, DEFAULT_DB_PASSWORD);
-
-        String connectString = "mongodb://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/";
-
-        return connectString;
-    }
-
-    protected String getMongoDatabaseName() {
-        return MONGO_DATABASE_NAME;
-    }
-
-    protected String getCollectionNameBuckets() {
-        return COLLECTION_NAME_BUCKETS;
-    }
-
-    protected String getCollectionNameRequestStatus() {
-        return COLLECTION_NAME_REQUEST_STATUS;
-    }
-
     /**
      * Initializes handler. Creates ExecutorService with fixed thread pool.
      *
@@ -370,6 +282,11 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
     public boolean init() {
 
         LOGGER.debug("init");
+
+        if (!mongoIngestionClientInterface.init()) {
+            LOGGER.error("error in mongoIngestionClientInterface.init()");
+            return false;
+        }
 
         int numWorkers = configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
         LOGGER.info("init numWorkers: {}", numWorkers);
@@ -387,28 +304,6 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
                 new Thread(() -> this.fini());
         Runtime.getRuntime().addShutdownHook(shutdownHook);
 
-        String connectString = getMongoConnectString();
-        String databaseName = getMongoDatabaseName();
-        String collectionNameBuckets = getCollectionNameBuckets();
-        String collectionNameRequestStatus = getCollectionNameRequestStatus();
-        LOGGER.info("init connectString: {} databaseName: {}", connectString, databaseName);
-        LOGGER.info("init collection names buckets: {} requestStatus: {}", collectionNameBuckets, collectionNameRequestStatus);
-
-        // connect mongo client
-        initMongoClient(connectString);
-
-        // connect to database
-        initMongoDatabase(databaseName, getPojoCodecRegistry());
-
-
-        // initialize buckets collection
-        initMongoCollectionBuckets(collectionNameBuckets);
-        createMongoIndexesBuckets();
-
-        // initialize request status collection
-        initMongoCollectionRequestStatus(collectionNameRequestStatus);
-        createMongoIndexesRequestStatus();
-
         return true;
     }
 
@@ -425,8 +320,8 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
 
         shutdownRequested.set(true);
 
-        LOGGER.info("MongoHandlerBase.fini");
-        System.err.println("MongoHandlerBase.fini");
+        LOGGER.info("fini");
+        System.err.println("fini");
 
         // shut down executor service
         try {
@@ -443,8 +338,13 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
             Thread.currentThread().interrupt();
         }
 
-        LOGGER.info("MongoHandlerBase.fini shutdown completed");
-        System.err.println("MongoHandlerBase.fini shutdown completed");
+        MongoClientBase mongoClient = (MongoClientBase) mongoIngestionClientInterface;
+        if (!mongoClient.fini()) {
+            LOGGER.error("error in mongoIngestionClientInterface.init()");
+        }
+
+        LOGGER.info("fini shutdown completed");
+        System.err.println("fini shutdown completed");
 
         return true;
     }
@@ -465,7 +365,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
         LOGGER.debug("IngestionWorker.run handling request providerId: {} requestId: {}",
                 request.getProviderId(), request.getClientRequestId());
 
-        String status = BSON_VALUE_STATUS_SUCCESS;
+        String status = BsonConstants.BSON_VALUE_STATUS_SUCCESS;
         boolean isError = false;
         String errorMsg = "";
         List<String> idsCreated = new ArrayList<>();
@@ -474,7 +374,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
             // request already rejected, but we want to add details in request status
             isError = true;
             errorMsg = handlerIngestionRequest.rejectMsg;
-            status = BSON_VALUE_STATUS_REJECTED;
+            status = BsonConstants.BSON_VALUE_STATUS_REJECTED;
 
         } else {
 
@@ -485,12 +385,13 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
             } catch (DpIngestionException e) {
                 isError = true;
                 errorMsg = e.getMessage();
-                status = BSON_VALUE_STATUS_ERROR;
+                status = BsonConstants.BSON_VALUE_STATUS_ERROR;
             }
 
             if (dataDocumentBatch != null) {
                 // add the batch to mongo and handle result
-                IngestionTaskResult ingestionTaskResult = insertBatch(request, dataDocumentBatch);
+                IngestionTaskResult ingestionTaskResult =
+                        mongoIngestionClientInterface.insertBatch(request, dataDocumentBatch);
 
                 if (ingestionTaskResult.isError) {
                     isError = true;
@@ -528,7 +429,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
                 }
 
                 if (isError) {
-                    status = BSON_VALUE_STATUS_ERROR;
+                    status = BsonConstants.BSON_VALUE_STATUS_ERROR;
                 }
             }
         }
@@ -540,7 +441,7 @@ public abstract class MongoHandlerBase extends IngestionHandlerBase implements I
                 status,
                 errorMsg,
                 idsCreated);
-        InsertOneResult insertRequestStatusResult = insertRequestStatus(statusDocument);
+        InsertOneResult insertRequestStatusResult = mongoIngestionClientInterface.insertRequestStatus(statusDocument);
         if (insertRequestStatusResult == null) {
             LOGGER.error("error inserting request status");
         } else {

@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.server;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoSyncHandler;
+import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.Grpc;
 import io.grpc.InsecureServerCredentials;
@@ -75,7 +75,7 @@ public class QueryGrpcServer {
     private void initService() {
 
         // create and initialize handler
-        QueryHandlerInterface handler = new MongoSyncHandler();
+        QueryHandlerInterface handler = MongoQueryHandler.newMongoSyncQueryHandler();
         LOGGER.info("initService using handler: " + handler.getClass().getName());
 
         // create and initialize ingestion service implementation

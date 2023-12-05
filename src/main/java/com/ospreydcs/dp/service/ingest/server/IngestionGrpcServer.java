@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.server;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
-import com.ospreydcs.dp.service.ingest.handler.mongo.MongoSyncHandler;
+import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.Grpc;
 import io.grpc.InsecureServerCredentials;
@@ -75,8 +75,8 @@ public class IngestionGrpcServer {
     private void initService() {
 
         // create and initialize db handler
-        IngestionHandlerInterface handler = new MongoSyncHandler();
-//        IngestionHandlerInterface handler = new MongoAsyncDbHandler();
+        IngestionHandlerInterface handler = MongoIngestionHandler.newMongoSyncIngestionHandler();
+//        IngestionHandlerInterface handler = MongoIngestionHandler.newMongoAsyncIngestionHandler();
         LOGGER.info("initService using handler: " + handler.getClass().getName());
 
         // create and initialize ingestion service implementation

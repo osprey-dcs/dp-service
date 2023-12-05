@@ -6,7 +6,7 @@ import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.mongodb.reactivestreams.client.MongoCollection;
-import com.ospreydcs.dp.service.ingest.handler.mongo.MongoHandlerBase;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
 import org.bson.Document;
 import org.junit.AfterClass;
@@ -28,8 +28,8 @@ public class MongoAsyncDriverTest {
     @BeforeClass
     public static void setUp() throws Exception {
         System.out.println("setUp");
-        mongoClient = MongoClients.create(MongoHandlerBase.getMongoConnectString());
-        mongoDatabase = mongoClient.getDatabase(MongoHandlerBase.MONGO_DATABASE_NAME);
+        mongoClient = MongoClients.create(MongoClientBase.getMongoConnectString());
+        mongoDatabase = mongoClient.getDatabase(MongoClientBase.MONGO_DATABASE_NAME);
     }
 
     @AfterClass

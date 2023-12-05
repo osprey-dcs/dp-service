@@ -1,12 +1,12 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
-import com.mongodb.reactivestreams.client.FindPublisher;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import org.bson.conversions.Bson;
 import org.junit.*;
 import org.junit.runners.MethodSorters;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.and;
@@ -14,12 +14,12 @@ import static com.mongodb.client.model.Filters.eq;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Provides jUnit test coverage for the MongoAsyncDbHandler class.
+ * Provides jUnit test coverage for the MongoSyncDbHandler class.
  */
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-public class MongoAsyncHandlerTest extends MongoHandlerTestBase {
+public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase {
 
-    protected static class TestAsyncHandler extends MongoAsyncHandler implements TestHandlerInterface {
+    protected static class TestSyncClient extends MongoSyncIngestionClient implements TestClientInterface {
 
         @Override
         protected String getCollectionNameBuckets() {
@@ -32,11 +32,8 @@ public class MongoAsyncHandlerTest extends MongoHandlerTestBase {
         }
 
         public BucketDocument findBucketWithId(String id) {
-            FindPublisher<BucketDocument> publisher = mongoCollectionBuckets.find(eq("_id", id));
-            ObservableSubscriber<BucketDocument> subscriber = new ObservableSubscriber<>();
-            publisher.subscribe(subscriber);
-            subscriber.await(); // wait for async query results
-            List<BucketDocument> matchingBuckets = subscriber.getReceived(); // get the list of received documents
+            List<BucketDocument> matchingBuckets = new ArrayList<>();
+            mongoCollectionBuckets.find(eq("_id", id)).into(matchingBuckets);
             if (matchingBuckets.size() > 0) {
                 return matchingBuckets.get(0);
             } else {
@@ -45,12 +42,10 @@ public class MongoAsyncHandlerTest extends MongoHandlerTestBase {
         }
 
         public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId) {
+            List<RequestStatusDocument> matchingDocuments = new ArrayList<>();
             Bson filter = and(eq("providerId", providerId), eq("requestId", requestId));
-            FindPublisher<RequestStatusDocument> publisher = mongoCollectionRequestStatus.find(filter);
-            ObservableSubscriber<RequestStatusDocument> subscriber = new ObservableSubscriber<>();
-            publisher.subscribe(subscriber);
-            subscriber.await(); // wait for async query results
-            return subscriber.getReceived(); // return the list of received documents
+            mongoCollectionRequestStatus.find(filter).into(matchingDocuments);
+            return matchingDocuments;
         }
 
     }
@@ -62,17 +57,18 @@ public class MongoAsyncHandlerTest extends MongoHandlerTestBase {
      */
     @BeforeClass
     public static void setUp() throws Exception {
-        setUp(new TestAsyncHandler());
+        TestSyncClient testClient = new TestSyncClient();
+        MongoIngestionHandler handler = new MongoIngestionHandler(testClient);
+        setUp(handler, testClient);
     }
 
     /**
      * Cleans up after jUnit test execution.
-     *
      * @throws Exception
      */
     @AfterClass
     public static void tearDown() throws Exception {
-        MongoHandlerTestBase.tearDown();
+        MongoIngestionHandlerTestBase.tearDown();
     }
 
     @Test

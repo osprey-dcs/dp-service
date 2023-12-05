@@ -6,7 +6,7 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.result.InsertManyResult;
-import com.ospreydcs.dp.service.ingest.handler.mongo.MongoHandlerBase;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import org.bson.Document;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -26,8 +26,8 @@ public class MongoSyncDriverTest {
     @BeforeClass
     public static void setUp() throws Exception {
         System.out.println("setUp");
-        mongoClient = MongoClients.create(MongoHandlerBase.getMongoConnectString());
-        mongoDatabase = mongoClient.getDatabase(MongoHandlerBase.MONGO_DATABASE_NAME);
+        mongoClient = MongoClients.create(MongoClientBase.getMongoConnectString());
+        mongoDatabase = mongoClient.getDatabase(MongoClientBase.MONGO_DATABASE_NAME);
     }
 
     @AfterClass
