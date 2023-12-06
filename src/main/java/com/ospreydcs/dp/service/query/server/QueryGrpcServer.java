@@ -21,7 +21,7 @@ public class QueryGrpcServer {
     private static final int TIMEOUT_TERMINATION_SECS = 30;
 
     // configuration
-    public static final String CFG_KEY_PORT = "QueryGrpcServer.port";
+    public static final String CFG_KEY_PORT = "QueryServer.port";
     public static final int DEFAULT_PORT = 50052;
 
     private Server server;

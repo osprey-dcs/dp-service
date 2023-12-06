@@ -28,9 +28,9 @@ public class QueryPerformanceBenchmark {
     private static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
 
     // configuration
-    public static final String CFG_KEY_GRPC_CONNECT_STRING = "QueryPerformanceBenchmark.grpcConnectString";
+    public static final String CFG_KEY_GRPC_CONNECT_STRING = "QueryBenchmark.grpcConnectString";
     public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50052";
-    public static final String CFG_KEY_START_SECONDS = "QueryPerformanceBenchmark.startSeconds";
+    public static final String CFG_KEY_START_SECONDS = "QueryBenchmark.startSeconds";
     public static final Integer DEFAULT_START_SECONDS = 1698767462;
 
     static class QueryDataByTimeTaskParams {

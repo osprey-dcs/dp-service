@@ -30,18 +30,18 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
     // constants
     private static final int TIMEOUT_SECONDS = 60;
-    protected static final int MAX_INGESTION_QUEUE_SIZE = 1;
+    protected static final int MAX_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
 
     // configuration
-    public static final String CFG_KEY_NUM_WORKERS = "MongoHandler.numWorkers";
+    public static final String CFG_KEY_NUM_WORKERS = "IngestionHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
     final private MongoIngestionClientInterface mongoIngestionClientInterface;
 
     protected ExecutorService executorService = null;
     protected BlockingQueue<HandlerIngestionRequest> ingestionQueue =
-            new LinkedBlockingQueue<>(MAX_INGESTION_QUEUE_SIZE);
+            new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
     public MongoIngestionHandler(MongoIngestionClientInterface clientInterface) {

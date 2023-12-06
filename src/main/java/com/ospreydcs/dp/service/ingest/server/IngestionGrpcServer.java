@@ -21,7 +21,7 @@ public class IngestionGrpcServer {
     private static final int TIMEOUT_TERMINATION_SECS = 30;
 
     // configuration
-    public static final String CFG_KEY_PORT = "IngestionGrpcServer.port";
+    public static final String CFG_KEY_PORT = "IngestionServer.port";
     public static final int DEFAULT_PORT = 50051;
 
     private Server server;
