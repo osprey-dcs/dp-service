@@ -1,20 +1,25 @@
-MongoHandler:
-  numWorkers: 7
+MongoClient:
   dbHost: localhost
   dbPort: 27017
   dbUser: admin
   dbPassword: admin
 
-IngestionGrpcServer:
+IngestionServer:
   port: 50051
 
-IngestionPerformanceBenchmark:
+IngestionHandler:
+  numWorkers: 7
+
+IngestionBenchmark:
   grpcConnectString: "localhost:50051"
   startSeconds: 1698767462
 
-QueryGrpcServer:
+QueryServer:
   port: 50052
 
-QueryPerformanceBenchmark:
+QueryHandler:
+  numWorkers: 7
+
+QueryBenchmark:
   grpcConnectString: "localhost:50052"
   startSeconds: 1698767462

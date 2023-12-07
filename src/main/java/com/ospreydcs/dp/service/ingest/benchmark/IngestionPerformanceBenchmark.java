@@ -29,9 +29,9 @@ public class IngestionPerformanceBenchmark {
     private static final String NAME_COLUMN_BASE = "pv_";
 
     // configuration
-    public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionPerformanceBenchmark.grpcConnectString";
+    public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionBenchmark.grpcConnectString";
     public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50051";
-    public static final String CFG_KEY_START_SECONDS = "IngestionPerformanceBenchmark.startSeconds";
+    public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
     /**

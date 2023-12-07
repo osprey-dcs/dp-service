@@ -34,13 +34,13 @@ public abstract class MongoClientBase {
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
-    public static final String CFG_KEY_DB_HOST = "MongoHandler.dbHost";
+    public static final String CFG_KEY_DB_HOST = "MongoClient.dbHost";
     public static final String DEFAULT_DB_HOST = "localhost";
-    public static final String CFG_KEY_DB_PORT = "MongoHandler.dbPort";
+    public static final String CFG_KEY_DB_PORT = "MongoClient.dbPort";
     public static final int DEFAULT_DB_PORT = 27017;
-    public static final String CFG_KEY_DB_USER = "MongoHandler.dbUser";
+    public static final String CFG_KEY_DB_USER = "MongoClient.dbUser";
     public static final String DEFAULT_DB_USER = "admin";
-    public static final String CFG_KEY_DB_PASSWORD = "MongoHandler.dbPassword";
+    public static final String CFG_KEY_DB_PASSWORD = "MongoClient.dbPassword";
     public static final String DEFAULT_DB_PASSWORD = "admin";
 
     protected static ConfigurationManager configMgr() {
