@@ -40,7 +40,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
     final private MongoIngestionClientInterface mongoIngestionClientInterface;
 
     protected ExecutorService executorService = null;
-    protected BlockingQueue<HandlerIngestionRequest> ingestionQueue =
+    protected BlockingQueue<HandlerIngestionRequest> requestQueue =
             new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
@@ -279,6 +279,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
      *
      * @return
      */
+    @Override
     public boolean init() {
 
         LOGGER.debug("init");
@@ -295,13 +296,12 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
         executorService = Executors.newFixedThreadPool(numWorkers);
 
         for (int i = 1 ; i <= numWorkers ; i++) {
-            IngestionWorker worker = new IngestionWorker(ingestionQueue);
+            IngestionWorker worker = new IngestionWorker(requestQueue);
             executorService.execute(worker);
         }
 
         // add a JVM shutdown hook just in case
-        final Thread shutdownHook =
-                new Thread(() -> this.fini());
+        final Thread shutdownHook = new Thread(() -> this.fini());
         Runtime.getRuntime().addShutdownHook(shutdownHook);
 
         return true;
@@ -312,6 +312,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
      *
      * @return
      */
+    @Override
     public boolean fini() {
 
         if (shutdownRequested.get()) {
@@ -340,7 +341,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
         MongoClientBase mongoClient = (MongoClientBase) mongoIngestionClientInterface;
         if (!mongoClient.fini()) {
-            LOGGER.error("error in mongoIngestionClientInterface.init()");
+            LOGGER.error("error in mongoIngestionClientInterface.fini()");
         }
 
         LOGGER.info("fini shutdown completed");
@@ -457,12 +458,12 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
     public void onNext(HandlerIngestionRequest handlerIngestionRequest) {
 
-        LOGGER.debug("MongoDbHandlerBase.handleIngestionRequest");
+        LOGGER.debug("handleIngestionRequest");
 
         try {
-            ingestionQueue.put(handlerIngestionRequest);
+            requestQueue.put(handlerIngestionRequest);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException waiting for ingestionQueue.put");
+            LOGGER.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
     }

@@ -2,8 +2,7 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.codecs.configuration.CodecProvider;
@@ -48,12 +47,33 @@ public abstract class MongoClientBase {
     }
 
     protected CodecRegistry getPojoCodecRegistry() {
+
         // set up mongo codec registry for handling pojos automatically
         // create mongo codecs for model classes
+
 //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(TsDataBucket.class, DatumModel.class).build();
-        String packageName = BucketDocument.class.getPackageName();
-        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(packageName).build();
+
+        // Registration by packageName led to an exception in the query service when iterating result cursor,
+        // see details below about registrering classes explicitly.
+//        String packageName = BucketDocument.class.getPackageName();
+//        LOGGER.debug("CodecProvider registering packageName: " + packageName);
+//        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(packageName).build();
+
+        // Was registering POJO classes with CodecProvider by packageName as shown above, but this doesn't work
+        // when using find with a cursor.  I got an exception "Decoding errored with: A class could not be found for the discriminator: DOUBLE"
+        // "A custom Codec or PojoCodec may need to be explicitly configured and registered to handle this type."
+        // Indeed, registering the classes explicitly solved that problem but sort of a bummer because any new ones must
+        // be explicitly registered here.
+        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(
+                BucketDocument.class,
+                DoubleBucketDocument.class,
+                BooleanBucketDocument.class,
+                LongBucketDocument.class,
+                StringBucketDocument.class,
+                RequestStatusDocument.class).build();
+
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+
         CodecRegistry pojoCodecRegistry =
                 fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
         return pojoCodecRegistry;

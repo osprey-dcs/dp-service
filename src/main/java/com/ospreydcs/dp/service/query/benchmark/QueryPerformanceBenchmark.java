@@ -166,7 +166,7 @@ public class QueryPerformanceBenchmark {
         List<QueryDataByTimeTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numPvs ; i++) {
-            String columnName = "pv" + i;
+            String columnName = "pv_" + i;
             QueryDataByTimeTaskParams params = new QueryDataByTimeTaskParams(i, columnName);
             QueryDataByTimeTask task = new QueryDataByTimeTask(channel, params);
             taskList.add(task);

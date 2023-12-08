@@ -9,6 +9,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -78,16 +79,10 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             responseObserver.onNext(rejectResponse);
 
         } else {
-            // TODO: otherwise handle request
-//            IngestionResponse ackResponse = ingestionResponseAck(request);
-//            responseObserver.onNext(ackResponse);
+            // otherwise handle request
+            HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request, responseObserver);
+            handler.handleQueryRequest(handlerQueryRequest);
         }
-
-//         TODO: handle query request e.g.
-//        for (int n = 0; n < requestValue; n++) {
-//            Int64Msg response = Int64Msg.newBuilder().setValue(n).build();
-//            responseObserver.onNext(response);
-//        }
 
         // close response stream
         responseObserver.onCompleted();
