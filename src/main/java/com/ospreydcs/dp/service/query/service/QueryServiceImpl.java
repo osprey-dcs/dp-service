@@ -2,10 +2,9 @@ package com.ospreydcs.dp.service.query.service;
 
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
@@ -13,9 +12,6 @@ import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.time.Instant;
-import java.util.Date;
 
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
@@ -45,12 +41,13 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
     }
 
-    public static QueryDataResponse queryResponseReject(QueryDataByTimeRequest request, String msg, RejectDetails.RejectReason reason) {
+    public static QueryResponse queryResponseReject(
+            QueryRequest request, String msg, RejectDetails.RejectReason reason) {
         RejectDetails rejectDetails = RejectDetails.newBuilder()
                 .setRejectReason(reason)
                 .setMessage(msg)
                 .build();
-        QueryDataResponse response = QueryDataResponse.newBuilder()
+        QueryResponse response = QueryResponse.newBuilder()
                 .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
                 .setRejectDetails(rejectDetails)
@@ -58,15 +55,15 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public void queryDataByTime(QueryDataByTimeRequest request, StreamObserver<QueryDataResponse> responseObserver) {
+    public void query(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.info("queryDataByTime columnName: {} startSeconds: {} endSeconds: {}",
-                request.getColumnName(),
+        LOGGER.info("query columnNames: {} startSeconds: {} endSeconds: {}",
+                request.getColumnNamesList(),
                 request.getStartTime().getEpochSeconds(),
                 request.getEndTime().getEpochSeconds());
 
         // validate request
-        ValidationResult validationResult = handler.validateQueryDataByTimeRequest(request);
+        ValidationResult validationResult = handler.validateQueryRequest(request);
         boolean validationError = false;
         String validationMsg = "";
 
@@ -74,7 +71,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             // send reject if request is invalid
             validationError = true;
             validationMsg = validationResult.msg;
-            QueryDataResponse rejectResponse = queryResponseReject(
+            QueryResponse rejectResponse = queryResponseReject(
                     request, validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
             responseObserver.onNext(rejectResponse);
 

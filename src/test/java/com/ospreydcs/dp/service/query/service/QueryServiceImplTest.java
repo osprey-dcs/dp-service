@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.query.service;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.FixMethodOrder;
@@ -46,18 +46,17 @@ public class QueryServiceImplTest extends QueryTestBase {
     public void test02QueryResponseReject() {
 
         // create request
-        String columnName = null;
         Long nowSeconds = Instant.now().getEpochSecond();
-        QueryDataByTimeRequestParams params = new QueryDataByTimeRequestParams(
+        QueryRequestParams params = new QueryRequestParams(
                 null,
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
                 0L);
-        QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
+        QueryRequest request = buildQueryRequest(params);
 
         final String msg = "test";
-        QueryDataResponse response =
+        QueryResponse response =
                 serviceImpl.queryResponseReject(request, msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
 
         // check response contains message and reason

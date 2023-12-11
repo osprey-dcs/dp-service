@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.query.server;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
@@ -64,7 +64,7 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         public void handleQueryRequest(HandlerQueryRequest request) {
-            System.out.println("handleQueryRequest: " + request.request.getColumnName());
+            System.out.println("handleQueryRequest: " + request.request.getColumnNamesList());
         }
     }
 
@@ -77,19 +77,19 @@ public class QueryGrpcTest extends QueryTestBase {
             asyncStub = DpQueryServiceGrpc.newStub(channel);
         }
 
-        protected List<QueryDataResponse> sendQueryDataByTimeRequest(
-                QueryDataByTimeRequest request, int numResponsesExpected) {
+        protected List<QueryResponse> sendQueryRequest(
+                QueryRequest request, int numResponsesExpected) {
 
-            System.out.println("sendQueryDataByTimeRequest responses expected: " + numResponsesExpected);
+            System.out.println("sendQueryRequest responses expected: " + numResponsesExpected);
 
-            List<QueryDataResponse> responseList = new ArrayList<>();
+            List<QueryResponse> responseList = new ArrayList<>();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             // create observer for api response stream
-            StreamObserver<QueryDataResponse> responseObserver = new StreamObserver<QueryDataResponse>() {
+            StreamObserver<QueryResponse> responseObserver = new StreamObserver<QueryResponse>() {
 
                 @Override
-                public void onNext(QueryDataResponse queryDataResponse) {
+                public void onNext(QueryResponse queryDataResponse) {
                     System.out.println("sendQueryDataByTimeRequest.responseObserver.onNext");
                     responseList.add(queryDataResponse);
                 }
@@ -109,7 +109,7 @@ public class QueryGrpcTest extends QueryTestBase {
             };
 
             // send api request
-            asyncStub.queryDataByTime(request, responseObserver);
+            asyncStub.query(request, responseObserver);
 
             // wait for completion of api response stream via finishLatch notification
             try {
@@ -171,21 +171,21 @@ public class QueryGrpcTest extends QueryTestBase {
         // create request with unspecified column name
         String columnName = null;
         Long nowSeconds = Instant.now().getEpochSecond();
-        QueryDataByTimeRequestParams params = new QueryDataByTimeRequestParams(
+        QueryRequestParams params = new QueryRequestParams(
                 null,
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
                 0L);
-        QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
+        QueryRequest request = buildQueryRequest(params);
 
         // send request
-        List<QueryDataResponse> responseList = client.sendQueryDataByTimeRequest(request, 1);
+        List<QueryResponse> responseList = client.sendQueryRequest(request, 1);
 
         // examine response
         assertTrue("size mismatch between lists of requests and responses",
                 responseList.size() == 1);
-        QueryDataResponse response = responseList.get(0);
+        QueryResponse response = responseList.get(0);
         assertTrue("responseType not set",
                 response.getResponseType() == ResponseType.REJECT_RESPONSE);
         assertTrue("response time not set",

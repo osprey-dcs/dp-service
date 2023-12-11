@@ -1,22 +1,24 @@
 package com.ospreydcs.dp.service.query.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
+
+import java.util.List;
 
 public abstract class QueryHandlerBase {
 
-    public ValidationResult validateQueryDataByTimeRequest(QueryDataByTimeRequest request) {
+    public ValidationResult validateQueryRequest(QueryRequest request) {
 
         boolean isError = false;
         String statusMsg = "";
 
-        String columnName = request.getColumnName();
+        List<String> columnNames = request.getColumnNamesList();
         Timestamp startTime = request.getStartTime();
         Timestamp endTime = request.getEndTime();
 
-        if (columnName == null || columnName.isEmpty()) {
-            // check that columnName is specified
+        if (columnNames == null || columnNames.isEmpty()) {
+            // check that columnNames list is specified
             isError = true;
             statusMsg = "columnName must be specified";
 

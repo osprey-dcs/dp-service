@@ -91,12 +91,22 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         //            IngestionResponse ackResponse = ingestionResponseAck(request);
         //            responseObserver.onNext(ackResponse);
 
-        var cursor = mongoQueryClient.executeQuery(request.request);
+        var cursor = mongoQueryClient.executeQuery(request);
+
+        if (cursor == null) {
+            final String msg = "executeQuery returned null cursor";
+            LOGGER.error(msg);
+            return new HandlerQueryResult(true, msg);
+        }
+
+        // get summary details and send summary message in response stream
+        int numResults = cursor.available();
 
         try {
             while (cursor.hasNext()){
                 var document = cursor.next();
-                LOGGER.debug("cursor: " + document.getColumnName() + " " + document.getFirstTime() + document.getLastTime());
+                LOGGER.debug("cursor: "
+                        + document.getColumnName() + " " + document.getFirstTime() + document.getLastTime());
             }
         } finally {
             cursor.close();

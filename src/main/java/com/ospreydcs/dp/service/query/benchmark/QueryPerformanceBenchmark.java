@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.query.benchmark;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -33,16 +33,16 @@ public class QueryPerformanceBenchmark {
     public static final String CFG_KEY_START_SECONDS = "QueryBenchmark.startSeconds";
     public static final Integer DEFAULT_START_SECONDS = 1698767462;
 
-    static class QueryDataByTimeTaskParams {
+    static class QueryParams {
         private int streamNumber;
-        private String columnName;
+        private List<String> columnNames;
 
-        public QueryDataByTimeTaskParams(
+        public QueryParams(
                 int streamNumber,
-                String columnName) {
+                List<String> columnNames) {
 
             this.streamNumber = streamNumber;
-            this.columnName = columnName;
+            this.columnNames = columnNames;
         }
     }
 
@@ -59,11 +59,11 @@ public class QueryPerformanceBenchmark {
     static class QueryDataByTimeTask implements Callable<QueryDataTaskResult> {
 
         private ManagedChannel channel = null;
-        private QueryDataByTimeTaskParams params = null;
+        private QueryParams params = null;
 
         public QueryDataByTimeTask (
                 ManagedChannel channel,
-                QueryDataByTimeTaskParams params) {
+                QueryParams params) {
 
             this.channel = channel;
             this.params = params;
@@ -80,7 +80,7 @@ public class QueryPerformanceBenchmark {
         return ConfigurationManager.getInstance();
     }
 
-    private static QueryDataByTimeRequest buildQueryDataByTimeRequest(QueryDataByTimeTaskParams params) {
+    private static QueryRequest buildQueryDataByTimeRequest(QueryParams params) {
 
         Integer startSeconds = configMgr().getConfigInteger(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
@@ -94,18 +94,18 @@ public class QueryPerformanceBenchmark {
         endTimeBuilder.setNanoseconds(0);
         endTimeBuilder.build();
 
-        QueryDataByTimeRequest.Builder requestBuilder = QueryDataByTimeRequest.newBuilder();
+        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
         requestBuilder.setStartTime(startTimeBuilder);
         requestBuilder.setEndTime(endTimeBuilder);
 
-        requestBuilder.setColumnName(params.columnName);
+        requestBuilder.addAllColumnNames(params.columnNames);
 
         return requestBuilder.build();
     }
 
     private static QueryDataTaskResult sendQueryDataByTimeRequestBlocking(
             ManagedChannel channel,
-            QueryDataByTimeTaskParams params) {
+            QueryParams params) {
 
         final int streamNumber = params.streamNumber;
 
@@ -135,11 +135,11 @@ public class QueryPerformanceBenchmark {
 //            }
 //        }
 
-        QueryDataByTimeRequest request = buildQueryDataByTimeRequest(params);
+        QueryRequest request = buildQueryDataByTimeRequest(params);
         DpQueryServiceGrpc.DpQueryServiceBlockingStub blockingStub = DpQueryServiceGrpc.newBlockingStub(channel);
-        Iterator<QueryDataResponse> responseStream = blockingStub.queryDataByTime(request);
+        Iterator<QueryResponse> responseStream = blockingStub.query(request);
         while (responseStream.hasNext()) {
-            QueryDataResponse response = responseStream.next();
+            QueryResponse response = responseStream.next();
             final String responseType = response.getResponseType().name();
 //            long firstSeconds = response.getFirstTime().getEpochSeconds();
 //            long lastSeconds = response.getLastTime().getEpochSeconds();
@@ -167,7 +167,7 @@ public class QueryPerformanceBenchmark {
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numPvs ; i++) {
             String columnName = "pv_" + i;
-            QueryDataByTimeTaskParams params = new QueryDataByTimeTaskParams(i, columnName);
+            QueryParams params = new QueryParams(i, List.of(columnName));
             QueryDataByTimeTask task = new QueryDataByTimeTask(channel, params);
             taskList.add(task);
         }
