@@ -1,26 +1,28 @@
 package com.ospreydcs.dp.service.query;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataByTimeRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+
+import java.util.List;
 
 public class QueryTestBase {
 
-    public class QueryDataByTimeRequestParams {
+    public class QueryRequestParams {
 
-        public String columnName = null;
+        public List<String> columnNames = null;
         public Long startTimeSeconds = null;
         public Long startTimeNanos = null;
         public Long endTimeSeconds = null;
         public Long endTimeNanos = null;
 
-        public QueryDataByTimeRequestParams(
-                String columnName,
+        public QueryRequestParams(
+                List<String> columnNames,
                 Long startTimeSeconds,
                 Long startTimeNanos,
                 Long endTimeSeconds,
                 Long endTimeNanos) {
 
-            this.columnName = columnName;
+            this.columnNames = columnNames;
             this.startTimeSeconds = startTimeSeconds;
             this.startTimeNanos = startTimeNanos;
             this.endTimeSeconds = endTimeSeconds;
@@ -28,13 +30,13 @@ public class QueryTestBase {
         }
     }
     
-    public QueryDataByTimeRequest buildQueryDataByTimeRequest(QueryDataByTimeRequestParams params) {
+    public QueryRequest buildQueryRequest(QueryRequestParams params) {
         
         // build API query request from params
-        QueryDataByTimeRequest.Builder requestBuilder = QueryDataByTimeRequest.newBuilder();
+        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
         
-        if (params.columnName != null) {
-            requestBuilder.setColumnName(params.columnName);
+        if (params.columnNames != null && !params.columnNames.isEmpty()) {
+            requestBuilder.addAllColumnNames(params.columnNames);
         }
         
         if (params.startTimeSeconds != null) {
