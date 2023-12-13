@@ -1,10 +1,12 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -144,6 +146,39 @@ public class QueryPerformanceBenchmark {
 //            long firstSeconds = response.getFirstTime().getEpochSeconds();
 //            long lastSeconds = response.getLastTime().getEpochSeconds();
             LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
+            if (response.hasRejectDetails()) {
+                LOGGER.debug("stream: {} received reject with message: {}",
+                        streamNumber, response.getRejectDetails().getMessage());
+
+            } else if (response.hasQueryResult()) {
+                QueryResponse.QueryResult result = response.getQueryResult();
+
+                switch (response.getResponseType()) {
+
+                    case SUMMARY_RESPONSE -> {
+                        QueryResponse.QueryResult.ResultSummary summary = result.getResultSummary();
+                        if (summary.getIsError()) {
+                            LOGGER.debug("stream: {} received error summary msg: {}", summary.getMessage());
+                        } else {
+                            LOGGER.debug("stream: {} received result summary numResults: {}",
+                                    streamNumber, summary.getNumBuckets());
+                        }
+                    }
+
+                    case DETAIL_RESPONSE -> {
+                        QueryResponse.QueryResult.ResultData resultData = result.getResultData();
+                        int numResultBuckets = resultData.getDataBucketsCount();
+                        LOGGER.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
+                        for (QueryResponse.QueryResult.DataBucket bucket : resultData.getDataBucketsList()) {
+                            LOGGER.debug("stream: {} bucket column: {} startTime: {} numValues: {}",
+                                    streamNumber,
+                                    bucket.getDataColumn().getName(),
+                                    GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
+                                    bucket.getDataColumn().getDataValuesCount());
+                        }
+                    }
+                }
+            }
         }
 
         return new QueryDataTaskResult(success);

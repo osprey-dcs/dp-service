@@ -1,15 +1,18 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.FixedIntervalTimestampSpec;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
-import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
-import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
+import com.ospreydcs.dp.service.common.bson.DoubleBucketDocument;
+import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryResult;
+import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,6 +27,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     private static final int TIMEOUT_SECONDS = 60;
     protected static final int MAX_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
+    protected static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
 
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
@@ -83,7 +87,45 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         }
     }
 
-    private HandlerQueryResult processQueryRequest(HandlerQueryRequest request) {
+    private FixedIntervalTimestampSpec bucketSamplingInterval(BucketDocument document) {
+        Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
+        FixedIntervalTimestampSpec.Builder samplingIntervalBuilder = FixedIntervalTimestampSpec.newBuilder();
+        samplingIntervalBuilder.setStartTime(startTime);
+        samplingIntervalBuilder.setSampleIntervalNanos(document.getSampleFrequency());
+        samplingIntervalBuilder.setNumSamples(document.getNumSamples());
+        return samplingIntervalBuilder.build();
+    }
+
+//    private void addBucketDataToColumn(BucketDocument<? extends Double> document, DataColumn.Builder columnBuilder) {
+//        for (Double doubleValue : document.getColumnDataList()) {
+//            DataValue.Builder valueBuilder = DataValue.newBuilder();
+//            valueBuilder.setFloatValue(doubleValue);
+//            valueBuilder.build();
+//            columnBuilder.addDataValues(valueBuilder);
+//        }
+//    }
+
+    private <T> QueryResponse.QueryResult.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
+
+        QueryResponse.QueryResult.DataBucket.Builder bucketBuilder = QueryResponse.QueryResult.DataBucket.newBuilder();
+        bucketBuilder.setSamplingInterval(bucketSamplingInterval(document));
+
+        DataColumn.Builder columnBuilder = DataColumn.newBuilder();
+        columnBuilder.setName(document.getColumnName());
+//        addBucketDataToColumn(document, columnBuilder);
+        for (T dataValue: document.getColumnDataList()) {
+            DataValue.Builder valueBuilder = DataValue.newBuilder();
+            document.addColumnDataValue(dataValue, valueBuilder);
+            valueBuilder.build();
+            columnBuilder.addDataValues(valueBuilder);
+        }
+        columnBuilder.build();
+        bucketBuilder.setDataColumn(columnBuilder);
+
+        return bucketBuilder.build();
+    }
+
+    private void processQueryRequest(HandlerQueryRequest request) {
 
         LOGGER.debug("processQueryRequest");
 
@@ -91,28 +133,54 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         //            IngestionResponse ackResponse = ingestionResponseAck(request);
         //            responseObserver.onNext(ackResponse);
 
-        var cursor = mongoQueryClient.executeQuery(request);
+        final var cursor = mongoQueryClient.executeQuery(request);
 
         if (cursor == null) {
+            // send error response and close response stream
             final String msg = "executeQuery returned null cursor";
             LOGGER.error(msg);
-            return new HandlerQueryResult(true, msg);
+            QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
+            return;
         }
 
-        // get summary details and send summary message in response stream
-        int numResults = cursor.available();
+        // send summary message with number of results returned by query
+        final int numResults = cursor.available();
+        LOGGER.debug("buckets returned by query: " + numResults);
+        QueryServiceImpl.sendQueryResponseSummary(numResults, request.responseObserver);
 
+        QueryResponse.QueryResult.ResultData.Builder resultDataBuilder =
+                QueryResponse.QueryResult.ResultData.newBuilder();
+        int messageSize = 0;
         try {
             while (cursor.hasNext()){
-                var document = cursor.next();
+                final BucketDocument document = cursor.next();
                 LOGGER.debug("cursor: "
                         + document.getColumnName() + " " + document.getFirstTime() + document.getLastTime());
+                final QueryResponse.QueryResult.DataBucket bucket = dataBucketFromDocument(document);
+                int bucketSerializedSize = bucket.getSerializedSize();
+                if (messageSize + bucketSerializedSize > MAX_GRPC_MESSAGE_SIZE) {
+                    // hit size limit for message so send current data response and create a new one
+                    QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
+                    resultDataBuilder = QueryResponse.QueryResult.ResultData.newBuilder();
+                }
+                resultDataBuilder.addDataBuckets(bucket);
+                messageSize = messageSize + bucketSerializedSize;
             }
+            // send final data response
+            QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
+
+        } catch (Exception ex) {
+            // send error response and close response stream
+            final String msg = ex.getMessage();
+            LOGGER.error("exception accessing result via cursor: " + msg);
+            QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
+            return;
+
         } finally {
             cursor.close();
         }
 
-        return new HandlerQueryResult(false, "");
+        QueryServiceImpl.closeResponseStream(request.responseObserver);
     }
 
     /**
