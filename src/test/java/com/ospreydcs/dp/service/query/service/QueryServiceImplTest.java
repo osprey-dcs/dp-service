@@ -57,7 +57,7 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         final String msg = "test";
         QueryResponse response =
-                serviceImpl.queryResponseReject(request, msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                serviceImpl.queryResponseReject(msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
 
         // check response contains message and reason
         assertTrue("responseType not set",
