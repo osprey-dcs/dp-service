@@ -18,7 +18,6 @@ import io.grpc.testing.GrpcCleanupRule;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.junit.runners.MethodSorters;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,7 +33,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 @RunWith(JUnit4.class)
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class IngestionGrpcTest extends IngestionTestBase {
 
     protected static class TestIngestionHandler extends IngestionHandlerBase implements IngestionHandlerInterface {
@@ -202,7 +200,7 @@ public class IngestionGrpcTest extends IngestionTestBase {
      * Test a validation failure, that column name is not specified.
      */
     @Test
-    public void test01ValidateRequestEmptyTimestampsList() {
+    public void testValidateRequestEmptyTimestampsList() {
 
         System.out.println("test01ValidateRequestEmptyTimestampsList");
 
@@ -250,7 +248,7 @@ public class IngestionGrpcTest extends IngestionTestBase {
      * Provides test coverage for a valid ingestion request stream.
      */
     @Test
-    public void test02SendValidIngestionRequestStream() {
+    public void testSendValidIngestionRequestStream() {
 
         System.out.println("test02SendValidIngestionRequestStream");
 

@@ -158,6 +158,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             validationError = true;
             validationMsg = validationResult.msg;
             sendQueryResponseReject(validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+            return;
         }
 
         // otherwise handle request
