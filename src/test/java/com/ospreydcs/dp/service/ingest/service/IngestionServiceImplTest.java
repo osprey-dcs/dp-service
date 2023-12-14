@@ -7,9 +7,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import org.junit.FixMethodOrder;
 import org.junit.Test;
-import org.junit.runners.MethodSorters;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -18,7 +16,6 @@ import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class IngestionServiceImplTest extends IngestionTestBase {
 
     private static final IngestionServiceImpl serviceImpl = new IngestionServiceImpl();
@@ -27,7 +24,7 @@ public class IngestionServiceImplTest extends IngestionTestBase {
      * Provides test coverage for MongoDbserviceImpl.dateFromTimestamp().
      */
     @Test
-    public void test01DateFromTimestamp() {
+    public void testDateFromTimestamp() {
 
         long epochSeconds = 1691438936L;
         long nanos = 999000000L;
@@ -51,7 +48,7 @@ public class IngestionServiceImplTest extends IngestionTestBase {
      * Provides test coverage for MongoDbserviceImpl.ingestionResponseSuccess().
      */
     @Test
-    public void test02IngestionResponseAck() {
+    public void testIngestionResponseAck() {
 
         // create IngestionRequest
         int providerId = 1;
@@ -91,7 +88,7 @@ public class IngestionServiceImplTest extends IngestionTestBase {
     }
 
     @Test
-    public void test03IngestionResponseReject() {
+    public void testIngestionResponseReject() {
 
         // create IngestionRequest
         int providerId = 1;

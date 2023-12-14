@@ -57,7 +57,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public static QueryResponse responseWithResult(QueryResponse.QueryResult result, ResponseType responseType) {
+    private static QueryResponse responseWithResult(QueryResponse.QueryResult result, ResponseType responseType) {
         return QueryResponse.newBuilder()
                 .setResponseType(responseType)
                 .setResponseTime(GrpcUtility.getTimestampNow())
@@ -65,7 +65,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
-    public static QueryResponse.QueryResult queryResultWithSummary(QueryResponse.QueryResult.ResultSummary summary) {
+    private static QueryResponse.QueryResult queryResultWithSummary(QueryResponse.QueryResult.ResultSummary summary) {
         return QueryResponse.QueryResult.newBuilder()
                 .setResultSummary(summary)
                 .build();
