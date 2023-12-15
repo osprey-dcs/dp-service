@@ -96,9 +96,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return samplingIntervalBuilder.build();
     }
 
-    private <T> QueryResponse.QueryResult.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
+    private <T> QueryResponse.QueryReport.QueryData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
 
-        QueryResponse.QueryResult.DataBucket.Builder bucketBuilder = QueryResponse.QueryResult.DataBucket.newBuilder();
+        QueryResponse.QueryReport.QueryData.DataBucket.Builder bucketBuilder =
+                QueryResponse.QueryReport.QueryData.DataBucket.newBuilder();
+
         bucketBuilder.setSamplingInterval(bucketSamplingInterval(document));
 
         DataColumn.Builder columnBuilder = DataColumn.newBuilder();
@@ -139,20 +141,21 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         LOGGER.debug("buckets returned by query: " + numResults);
         QueryServiceImpl.sendQueryResponseSummary(numResults, request.responseObserver);
 
-        QueryResponse.QueryResult.ResultData.Builder resultDataBuilder =
-                QueryResponse.QueryResult.ResultData.newBuilder();
+        QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
+                QueryResponse.QueryReport.QueryData.newBuilder();
+
         int messageSize = 0;
         try {
             while (cursor.hasNext()){
                 final BucketDocument document = cursor.next();
                 LOGGER.debug("cursor: "
                         + document.getColumnName() + " " + document.getFirstTime() + document.getLastTime());
-                final QueryResponse.QueryResult.DataBucket bucket = dataBucketFromDocument(document);
+                final QueryResponse.QueryReport.QueryData.DataBucket bucket = dataBucketFromDocument(document);
                 int bucketSerializedSize = bucket.getSerializedSize();
                 if (messageSize + bucketSerializedSize > MAX_GRPC_MESSAGE_SIZE) {
                     // hit size limit for message so send current data response and create a new one
                     QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
-                    resultDataBuilder = QueryResponse.QueryResult.ResultData.newBuilder();
+                    resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();
                 }
                 resultDataBuilder.addDataBuckets(bucket);
                 messageSize = messageSize + bucketSerializedSize;

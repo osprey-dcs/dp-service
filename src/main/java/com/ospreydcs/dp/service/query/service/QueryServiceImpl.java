@@ -51,60 +51,54 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         final QueryResponse response = QueryResponse.newBuilder()
                 .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectDetails(rejectDetails)
+                .setQueryReject(rejectDetails)
                 .build();
 
         return response;
     }
 
-    private static QueryResponse responseWithResult(QueryResponse.QueryResult result, ResponseType responseType) {
+    private static QueryResponse responseWithReport(QueryResponse.QueryReport report, ResponseType responseType) {
         return QueryResponse.newBuilder()
                 .setResponseType(responseType)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setQueryResult(result)
-                .build();
-    }
-
-    private static QueryResponse.QueryResult queryResultWithSummary(QueryResponse.QueryResult.ResultSummary summary) {
-        return QueryResponse.QueryResult.newBuilder()
-                .setResultSummary(summary)
+                .setQueryReport(report)
                 .build();
     }
 
     public static QueryResponse queryResponseError(String msg) {
 
-        final QueryResponse.QueryResult.ResultSummary errorSummary = QueryResponse.QueryResult.ResultSummary.newBuilder()
-                .setIsError(true)
+        final QueryResponse.QueryReport.QueryError queryError = QueryResponse.QueryReport.QueryError.newBuilder()
                 .setMessage(msg)
-                .setNumBuckets(0)
                 .build();
 
-        final QueryResponse.QueryResult errorResult = queryResultWithSummary(errorSummary);
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryError(queryError)
+                .build();
 
-        return responseWithResult(errorResult, ResponseType.SUMMARY_RESPONSE);
+        return responseWithReport(queryReport, ResponseType.ERROR_RESPONSE);
     }
 
     public static QueryResponse queryResponseSummary(int numResults) {
 
-        final QueryResponse.QueryResult.ResultSummary querySummary =
-                QueryResponse.QueryResult.ResultSummary.newBuilder()
-                .setIsError(false)
-                .setMessage("")
+        final QueryResponse.QueryReport.QuerySummary querySummary =
+                QueryResponse.QueryReport.QuerySummary.newBuilder()
                 .setNumBuckets(numResults)
                 .build();
 
-        final QueryResponse.QueryResult summaryResult = queryResultWithSummary(querySummary);
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQuerySummary(querySummary)
+                .build();
 
-        return responseWithResult(summaryResult, ResponseType.SUMMARY_RESPONSE);
+        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
     }
 
-    public static QueryResponse queryResponseData(QueryResponse.QueryResult.ResultData.Builder resultDataBuilder) {
+    public static QueryResponse queryResponseData(QueryResponse.QueryReport.QueryData.Builder resultDataBuilder) {
 
         resultDataBuilder.build();
-        final QueryResponse.QueryResult dataResult = QueryResponse.QueryResult.newBuilder()
-                .setResultData(resultDataBuilder)
+        final QueryResponse.QueryReport dataReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryData(resultDataBuilder)
                 .build();
-        return responseWithResult(dataResult, ResponseType.DETAIL_RESPONSE);
+        return responseWithReport(dataReport, ResponseType.DETAIL_RESPONSE);
     }
 
     public static void sendQueryResponseReject(
@@ -130,7 +124,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
      * Wraps the supplied ResultData.Builder in a QueryResponse and sends it in the specified response stream.
      */
     public static void sendQueryResponseData(
-            QueryResponse.QueryResult.ResultData.Builder resultDataBuilder,
+            QueryResponse.QueryReport.QueryData.Builder resultDataBuilder,
             StreamObserver<QueryResponse> responseObserver) {
 
         final QueryResponse dataResponse = queryResponseData(resultDataBuilder);

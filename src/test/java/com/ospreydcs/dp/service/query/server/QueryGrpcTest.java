@@ -190,12 +190,12 @@ public class QueryGrpcTest extends QueryTestBase {
         assertTrue("response time not set",
                 response.getResponseTime().getEpochSeconds() > 0);
         assertTrue("response details not set",
-                response.hasRejectDetails());
+                response.hasQueryReject());
         assertTrue("reject reason not set",
-                response.getRejectDetails().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
         assertTrue(
                 "reject message not set",
-                response.getRejectDetails().getMessage().equals("columnName must be specified"));
+                response.getQueryReject().getMessage().equals("columnName must be specified"));
     }
 
     /**
