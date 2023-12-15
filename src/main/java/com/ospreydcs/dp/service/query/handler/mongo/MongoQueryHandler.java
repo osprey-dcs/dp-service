@@ -118,13 +118,9 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return bucketBuilder.build();
     }
 
-    private void processQueryRequest(HandlerQueryRequest request) {
+    protected void processQueryRequest(HandlerQueryRequest request) {
 
         LOGGER.debug("processQueryRequest");
-
-        // TODO: do stuff
-        //            IngestionResponse ackResponse = ingestionResponseAck(request);
-        //            responseObserver.onNext(ackResponse);
 
         final var cursor = mongoQueryClient.executeQuery(request);
 
@@ -154,26 +150,30 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
                 int bucketSerializedSize = bucket.getSerializedSize();
                 if (messageSize + bucketSerializedSize > MAX_GRPC_MESSAGE_SIZE) {
                     // hit size limit for message so send current data response and create a new one
+                    LOGGER.debug("message exceeds size limit, sending multiple responses for result");
                     QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
+                    messageSize = 0;
                     resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();
                 }
                 resultDataBuilder.addDataBuckets(bucket);
                 messageSize = messageSize + bucketSerializedSize;
             }
-            // send final data response
-            QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
+
+            if (messageSize > 0) {
+                // send final data response
+                QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
+            }
 
         } catch (Exception ex) {
             // send error response and close response stream
             final String msg = ex.getMessage();
             LOGGER.error("exception accessing result via cursor: " + msg);
             QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
-            return;
-
-        } finally {
             cursor.close();
+            return;
         }
 
+        cursor.close();
         QueryServiceImpl.closeResponseStream(request.responseObserver);
     }
 
