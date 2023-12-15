@@ -96,15 +96,6 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return samplingIntervalBuilder.build();
     }
 
-//    private void addBucketDataToColumn(BucketDocument<? extends Double> document, DataColumn.Builder columnBuilder) {
-//        for (Double doubleValue : document.getColumnDataList()) {
-//            DataValue.Builder valueBuilder = DataValue.newBuilder();
-//            valueBuilder.setFloatValue(doubleValue);
-//            valueBuilder.build();
-//            columnBuilder.addDataValues(valueBuilder);
-//        }
-//    }
-
     private <T> QueryResponse.QueryResult.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
 
         QueryResponse.QueryResult.DataBucket.Builder bucketBuilder = QueryResponse.QueryResult.DataBucket.newBuilder();
