@@ -17,6 +17,11 @@ public class MongoSyncQueryHandlerTest extends MongoQueryHandlerTestBase {
             return getTestCollectionNameBuckets();
         }
 
+        @Override
+        protected String getCollectionNameRequestStatus() {
+            return getTestCollectionNameRequestStatus();
+        }
+
         public int insertBucketDocuments(List<BucketDocument> documentList) {
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
             return result.getInsertedIds().size();
@@ -44,5 +49,4 @@ public class MongoSyncQueryHandlerTest extends MongoQueryHandlerTestBase {
     public void testProcessQueryRequestSuccess() {
         super.testProcessQueryRequestSuccess();
     }
-
 }

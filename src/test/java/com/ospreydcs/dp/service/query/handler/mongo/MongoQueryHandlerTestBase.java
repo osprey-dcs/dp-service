@@ -24,8 +24,8 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
     protected static MongoQueryHandler handler = null;
     protected static TestClientInterface clientTestInterface = null;
     private static String collectionNamePrefix = null;
-    private static final long startSeconds = Instant.now().getEpochSecond();
-    private static final String columnNameBase = "testpv_";
+    protected static final long startSeconds = Instant.now().getEpochSecond();
+    protected static final String columnNameBase = "testpv_";
 
 
     protected interface TestClientInterface extends MongoQueryClientInterface {
@@ -41,6 +41,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
     protected static String getTestCollectionNameBuckets() {
         return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
+    }
+
+    protected static String getTestCollectionNameRequestStatus() {
+        return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
     }
 
     public static void setUp(MongoQueryHandler handler, TestClientInterface clientInterface) throws Exception {
