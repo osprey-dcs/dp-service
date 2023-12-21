@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Date;
 
 import static com.mongodb.client.model.Filters.*;
+import static com.mongodb.client.model.Indexes.ascending;
 
 public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryClientInterface {
 
@@ -41,7 +42,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final Bson endTimeFilter =
                 or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
                 and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                        lte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
+                        lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
         final Bson startTimeFilter =
                 or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
                         and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
@@ -52,6 +53,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 + " startSeconds: " + startTimeSeconds
                 + " endSeconds: " + endTimeSeconds);
 
-        return mongoCollectionBuckets.find(filter).cursor();
+        return mongoCollectionBuckets
+                .find(filter)
+                .sort(ascending(
+                        BsonConstants.BSON_KEY_BUCKET_NAME,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS))
+                .cursor();
     }
 }
