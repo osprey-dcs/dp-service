@@ -4,19 +4,16 @@ import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import org.bson.conversions.Bson;
 import org.junit.*;
-import org.junit.runners.MethodSorters;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
-import static org.junit.Assert.assertTrue;
 
 /**
  * Provides jUnit test coverage for the MongoSyncDbHandler class.
  */
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase {
 
     protected static class TestSyncClient extends MongoSyncIngestionClient implements TestClientInterface {
@@ -72,43 +69,38 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
     }
 
     @Test
-    public void test01HandleIngestionRequestSuccessFloat() {
-        super.test01HandleIngestionRequestSuccessFloat();
+    public void testHandleIngestionRequestSuccessFloat() {
+        super.testHandleIngestionRequestSuccessFloat();
     }
 
     @Test
-    public void test02HandleIngestionRequestErrorDuplicateId() {
-        super.test02HandleIngestionRequestErrorDuplicateId();
+    public void testHandleIngestionRequestReject() {
+        super.testHandleIngestionRequestReject();
     }
 
     @Test
-    public void test03HandleIngestionRequestReject() {
-        super.test03HandleIngestionRequestReject();
+    public void testHandleIngestionRequestSuccessString() {
+        super.testHandleIngestionRequestSuccessString();
     }
 
     @Test
-    public void test04HandleIngestionRequestSuccessString() {
-        super.test04HandleIngestionRequestSuccessString();
+    public void testHandleIngestionRequestSuccessInt() {
+        super.testHandleIngestionRequestSuccessInt();
     }
 
     @Test
-    public void test05HandleIngestionRequestSuccessInt() {
-        super.test05HandleIngestionRequestSuccessInt();
+    public void testHandleIngestionRequestSuccessBoolean() {
+        super.testHandleIngestionRequestSuccessBoolean();
     }
 
     @Test
-    public void test06HandleIngestionRequestSuccessBoolean() {
-        super.test06HandleIngestionRequestSuccessBoolean();
+    public void testHandleIngestionRequestErrorDataTypeArray() {
+        super.testHandleIngestionRequestErrorDataTypeArray();
     }
 
     @Test
-    public void test07HandleIngestionRequestErrorDataTypeArray() {
-        super.test07HandleIngestionRequestErrorDataTypeArray();
-    }
-
-    @Test
-    public void test08HandleIngestionRequestErrorDataTypeArray() {
-        super.test08HandleIngestionRequestErrorDataTypeArray();
+    public void testHandleIngestionRequestErrorDataTypeMismatch() {
+        super.testHandleIngestionRequestErrorDataTypeMismatch();
     }
 
 }

@@ -41,18 +41,98 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
     }
 
-    public static QueryResponse queryResponseReject(
-            QueryRequest request, String msg, RejectDetails.RejectReason reason) {
-        RejectDetails rejectDetails = RejectDetails.newBuilder()
+    public static QueryResponse queryResponseReject(String msg, RejectDetails.RejectReason reason) {
+
+        final RejectDetails rejectDetails = RejectDetails.newBuilder()
                 .setRejectReason(reason)
                 .setMessage(msg)
                 .build();
-        QueryResponse response = QueryResponse.newBuilder()
+
+        final QueryResponse response = QueryResponse.newBuilder()
                 .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectDetails(rejectDetails)
+                .setQueryReject(rejectDetails)
                 .build();
+
         return response;
+    }
+
+    private static QueryResponse responseWithReport(QueryResponse.QueryReport report, ResponseType responseType) {
+        return QueryResponse.newBuilder()
+                .setResponseType(responseType)
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setQueryReport(report)
+                .build();
+    }
+
+    public static QueryResponse queryResponseError(String msg) {
+
+        final QueryResponse.QueryReport.QueryError queryError = QueryResponse.QueryReport.QueryError.newBuilder()
+                .setMessage(msg)
+                .build();
+
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryError(queryError)
+                .build();
+
+        return responseWithReport(queryReport, ResponseType.ERROR_RESPONSE);
+    }
+
+    public static QueryResponse queryResponseSummary(int numResults) {
+
+        final QueryResponse.QueryReport.QuerySummary querySummary =
+                QueryResponse.QueryReport.QuerySummary.newBuilder()
+                .setNumBuckets(numResults)
+                .build();
+
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQuerySummary(querySummary)
+                .build();
+
+        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
+    }
+
+    public static QueryResponse queryResponseData(QueryResponse.QueryReport.QueryData.Builder resultDataBuilder) {
+
+        resultDataBuilder.build();
+        final QueryResponse.QueryReport dataReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryData(resultDataBuilder)
+                .build();
+        return responseWithReport(dataReport, ResponseType.DETAIL_RESPONSE);
+    }
+
+    public static void sendQueryResponseReject(
+            String msg, RejectDetails.RejectReason reason, StreamObserver<QueryResponse> responseObserver) {
+
+        final QueryResponse rejectResponse = queryResponseReject(msg, reason);
+        responseObserver.onNext(rejectResponse);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryResponseError(String msg, StreamObserver<QueryResponse> responseObserver) {
+        final QueryResponse errorResponse = queryResponseError(msg);
+        responseObserver.onNext(errorResponse);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryResponseSummary(int numResults, StreamObserver<QueryResponse> responseObserver) {
+        final QueryResponse summaryResponse = queryResponseSummary(numResults);
+        responseObserver.onNext(summaryResponse);
+    }
+
+    /*
+     * Wraps the supplied ResultData.Builder in a QueryResponse and sends it in the specified response stream.
+     */
+    public static void sendQueryResponseData(
+            QueryResponse.QueryReport.QueryData.Builder resultDataBuilder,
+            StreamObserver<QueryResponse> responseObserver) {
+
+        final QueryResponse dataResponse = queryResponseData(resultDataBuilder);
+        responseObserver.onNext(dataResponse);
+    }
+
+    public static void closeResponseStream(StreamObserver<QueryResponse> responseObserver) {
+        responseObserver.onCompleted();
     }
 
     public void query(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
@@ -67,22 +147,17 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         boolean validationError = false;
         String validationMsg = "";
 
+        // send reject if request is invalid
         if (validationResult.isError) {
-            // send reject if request is invalid
             validationError = true;
             validationMsg = validationResult.msg;
-            QueryResponse rejectResponse = queryResponseReject(
-                    request, validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
-            responseObserver.onNext(rejectResponse);
-
-        } else {
-            // otherwise handle request
-            HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request, responseObserver);
-            handler.handleQueryRequest(handlerQueryRequest);
+            sendQueryResponseReject(validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+            return;
         }
 
-        // close response stream
-        responseObserver.onCompleted();
+        // otherwise handle request
+        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request, responseObserver);
+        handler.handleQueryRequest(handlerQueryRequest);
     }
 
 }

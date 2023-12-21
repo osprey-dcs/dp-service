@@ -78,43 +78,38 @@ public class MongoAsyncIngestionHandlerTest extends MongoIngestionHandlerTestBas
     }
 
     @Test
-    public void test01HandleIngestionRequestSuccessFloat() {
-        super.test01HandleIngestionRequestSuccessFloat();
+    public void testHandleIngestionRequestSuccessFloat() {
+        super.testHandleIngestionRequestSuccessFloat();
     }
 
     @Test
-    public void test02HandleIngestionRequestErrorDuplicateId() {
-        super.test02HandleIngestionRequestErrorDuplicateId();
+    public void testHandleIngestionRequestReject() {
+        super.testHandleIngestionRequestReject();
     }
 
     @Test
-    public void test03HandleIngestionRequestReject() {
-        super.test03HandleIngestionRequestReject();
+    public void testHandleIngestionRequestSuccessString() {
+        super.testHandleIngestionRequestSuccessString();
     }
 
     @Test
-    public void test04HandleIngestionRequestSuccessString() {
-        super.test04HandleIngestionRequestSuccessString();
+    public void testHandleIngestionRequestSuccessInt() {
+        super.testHandleIngestionRequestSuccessInt();
     }
 
     @Test
-    public void test05HandleIngestionRequestSuccessInt() {
-        super.test05HandleIngestionRequestSuccessInt();
+    public void testHandleIngestionRequestSuccessBoolean() {
+        super.testHandleIngestionRequestSuccessBoolean();
     }
 
     @Test
-    public void test06HandleIngestionRequestSuccessBoolean() {
-        super.test06HandleIngestionRequestSuccessBoolean();
+    public void testHandleIngestionRequestErrorDataTypeArray() {
+        super.testHandleIngestionRequestErrorDataTypeArray();
     }
 
     @Test
-    public void test07HandleIngestionRequestErrorDataTypeArray() {
-        super.test07HandleIngestionRequestErrorDataTypeArray();
-    }
-
-    @Test
-    public void test08HandleIngestionRequestErrorDataTypeArray() {
-        super.test08HandleIngestionRequestErrorDataTypeArray();
+    public void testHandleIngestionRequestErrorDataTypeMismatch() {
+        super.testHandleIngestionRequestErrorDataTypeMismatch();
     }
 
 }

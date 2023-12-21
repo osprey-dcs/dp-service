@@ -24,10 +24,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
     protected static MongoIngestionHandler handler = null;
     protected static TestClientInterface clientTestInterface = null;
-    private static IngestionRequestParams duplicateRequestParams = null;
     private static String collectionNamePrefix = null;
 
-    protected interface TestClientInterface {
+    protected interface TestClientInterface extends MongoIngestionClientInterface {
         public BucketDocument findBucketWithId(String id);
         public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId);
     }
@@ -41,8 +40,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         System.out.println("setUp");
         MongoIngestionHandlerTestBase.handler = handler;
         clientTestInterface = clientInterface;
-        assertTrue("dbHandler init failed", MongoIngestionHandlerTestBase.handler.init());
-        assertTrue("dbHandler start failed", MongoIngestionHandlerTestBase.handler.start());
+        assertTrue("dbHandler init failed", clientTestInterface.init());
     }
 
     /**
@@ -51,8 +49,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
      */
     public static void tearDown() throws Exception {
         System.out.println("tearDown");
-        assertTrue("dbHandler stop failed", handler.stop());
-        assertTrue("dbHandler fini failed", handler.fini());
+        assertTrue("dbHandler fini failed", clientTestInterface.fini());
         handler = null;
         clientTestInterface = null;
         collectionNamePrefix = null;
@@ -179,7 +176,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 statusDocument.getMsg().isEmpty());
     }
 
-    public void test01HandleIngestionRequestSuccessFloat() {
+    public void testHandleIngestionRequestSuccessFloat() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -216,7 +213,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos);
         IngestionRequest request = buildIngestionRequest(params);
-        duplicateRequestParams = params;
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -225,27 +221,18 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         assertFalse("error flag is set", result.isError);
         verifySuccessfulRequest(params);
 
-    }
-
-    public void test02HandleIngestionRequestErrorDuplicateId() {
-
-        // resend request from previous test
-        IngestionRequestParams params = duplicateRequestParams;
-        IngestionRequest request = buildIngestionRequest(params);
-
-        // send request
-        HandlerIngestionRequest handlerIngestionRequest =
-                new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        // now test sending duplicate request
+        result = handler.handleIngestionRequest(handlerIngestionRequest);
         assertTrue(
                 "isError not set",
                 result.isError);
         assertTrue("message not set", result.message.contains("duplicate key error"));
         verifyFailedRequest(
                 params, BsonConstants.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
+
     }
 
-    public void test03HandleIngestionRequestReject() {
+    public void testHandleIngestionRequestReject() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -298,7 +285,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         verifyFailedRequest(params, BsonConstants.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
     }
 
-    public void test04HandleIngestionRequestSuccessString() {
+    public void testHandleIngestionRequestSuccessString() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -344,7 +331,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         verifySuccessfulRequest(params);
     }
 
-    public void test05HandleIngestionRequestSuccessInt() {
+    public void testHandleIngestionRequestSuccessInt() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -390,7 +377,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         verifySuccessfulRequest(params);
     }
 
-    public void test06HandleIngestionRequestSuccessBoolean() {
+    public void testHandleIngestionRequestSuccessBoolean() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -439,7 +426,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     /**
      * Tests that array data is not handled and leads to error status in mongo.
      */
-    public void test07HandleIngestionRequestErrorDataTypeArray() {
+    public void testHandleIngestionRequestErrorDataTypeArray() {
 
         // assemble IngestionRequest
         int providerId = 1;
@@ -493,7 +480,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     /**
      * Tests data type mismatch for column values.
      */
-    public void test08HandleIngestionRequestErrorDataTypeArray() {
+    public void testHandleIngestionRequestErrorDataTypeMismatch() {
 
         // assemble IngestionRequest
         int providerId = 1;

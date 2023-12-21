@@ -32,32 +32,26 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 //        List<String> keys = Arrays.asList("queryPlanner", "winningPlan");
 //        System.out.println(explanation.getEmbedded(keys, Document.class).toJson());
 
-//        Bson filter = and(
-//                eq(BsonConstants.BSON_KEY_BUCKET_NAME, request.getColumnName()));
-
         final long startTimeSeconds = request.getStartTime().getEpochSeconds();
         final long startTimeNanos = request.getStartTime().getNanoseconds();
         final long endTimeSeconds = request.getEndTime().getEpochSeconds();
         final long endTimeNanos = request.getEndTime().getNanoseconds();
 
-        // TODO: change query to use list of columnNames
-//        final Bson columnNameFilter = eq(BsonConstants.BSON_KEY_BUCKET_NAME, request.getColumnName());
-//        final Bson endTimeFilter =
-//                or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-//                and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-//                        lte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
-//        final Bson startTimeFilter =
-//                or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-//                        and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-//                                gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
-//        final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
-//
-//        LOGGER.debug("query column: " + request.getColumnName()
-//                + " startSeconds: " + startTimeSeconds
-//                + " endSeconds: " + endTimeSeconds);
-//
-//        return mongoCollectionBuckets.find(filter).cursor();
+        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, request.getColumnNamesList());
+        final Bson endTimeFilter =
+                or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
+                and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
+                        lte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
+        final Bson startTimeFilter =
+                or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
+                        and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
+                                gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
+        final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
 
-        return null;
+        LOGGER.debug("query column: " + request.getColumnNamesList()
+                + " startSeconds: " + startTimeSeconds
+                + " endSeconds: " + endTimeSeconds);
+
+        return mongoCollectionBuckets.find(filter).cursor();
     }
 }

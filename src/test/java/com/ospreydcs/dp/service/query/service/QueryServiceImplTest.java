@@ -3,26 +3,24 @@ package com.ospreydcs.dp.service.query.service;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import org.junit.FixMethodOrder;
 import org.junit.Test;
-import org.junit.runners.MethodSorters;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class QueryServiceImplTest extends QueryTestBase {
 
     private static final QueryServiceImpl serviceImpl = new QueryServiceImpl();
 
     @Test
-    public void test01DateFromTimestamp() {
+    public void testDateFromTimestamp() {
 
         long epochSeconds = 1691438936L;
         long nanos = 999000000L;
@@ -43,21 +41,11 @@ public class QueryServiceImplTest extends QueryTestBase {
     }
 
     @Test
-    public void test02QueryResponseReject() {
-
-        // create request
-        Long nowSeconds = Instant.now().getEpochSecond();
-        QueryRequestParams params = new QueryRequestParams(
-                null,
-                nowSeconds,
-                0L,
-                nowSeconds + 1,
-                0L);
-        QueryRequest request = buildQueryRequest(params);
+    public void testQueryResponseReject() {
 
         final String msg = "test";
         QueryResponse response =
-                serviceImpl.queryResponseReject(request, msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                serviceImpl.queryResponseReject(msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
 
         // check response contains message and reason
         assertTrue("responseType not set",
@@ -65,11 +53,48 @@ public class QueryServiceImplTest extends QueryTestBase {
         assertTrue("response time not set",
                 response.getResponseTime().getEpochSeconds() > 0);
         assertTrue("response details not set",
-                response.hasRejectDetails());
+                response.hasQueryReject());
         assertTrue("reject reason not set",
-                response.getRejectDetails().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
         assertTrue("reject message not set",
-                response.getRejectDetails().getMessage().equals(msg));
+                response.getQueryReject().getMessage().equals(msg));
+    }
+
+    @Test
+    public void testQueryResponseError() {
+
+        final String msg = "error message";
+        QueryResponse response = serviceImpl.queryResponseError(msg);
+
+        assertTrue("responseType not set",
+                response.getResponseType() == ResponseType.ERROR_RESPONSE);
+        assertTrue("response time not set",
+                response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue("QueryReport not set",
+                response.hasQueryReport());
+        assertTrue("QueryError not set",
+                response.getQueryReport().hasQueryError());
+        assertTrue("msg not set",
+                response.getQueryReport().getQueryError().getMessage().equals(msg));
+    }
+
+    @Test
+    public void testQueryResponseSummary() {
+
+        final int numBuckets = 42;
+        final String msg = "";
+        QueryResponse response = serviceImpl.queryResponseSummary(numBuckets);
+
+        assertTrue("responseType not set",
+                response.getResponseType() == ResponseType.SUMMARY_RESPONSE);
+        assertTrue("response time not set",
+                response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue("QueryReport not set",
+                response.hasQueryReport());
+        assertTrue("QuerySummary not set",
+                response.getQueryReport().hasQuerySummary());
+        assertTrue("numBuckets not set",
+                response.getQueryReport().getQuerySummary().getNumBuckets() == numBuckets);
     }
 
 }

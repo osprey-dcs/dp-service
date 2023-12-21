@@ -20,7 +20,6 @@ import io.grpc.testing.GrpcCleanupRule;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.junit.runners.MethodSorters;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,7 +33,6 @@ import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
 @RunWith(JUnit4.class)
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class QueryGrpcTest extends QueryTestBase {
 
     protected static class TestQueryHandler extends QueryHandlerBase implements QueryHandlerInterface {
@@ -65,6 +63,7 @@ public class QueryGrpcTest extends QueryTestBase {
 
         public void handleQueryRequest(HandlerQueryRequest request) {
             System.out.println("handleQueryRequest: " + request.request.getColumnNamesList());
+            request.responseObserver.onCompleted(); // close response stream so that client stream is closed
         }
     }
 
@@ -166,10 +165,9 @@ public class QueryGrpcTest extends QueryTestBase {
      * Test validation failure, that columnName not specified.
      */
     @Test
-    public void test01ValidateRequestUnspecifiedColumnName() {
+    public void testValidateRequestUnspecifiedColumnName() {
 
-        // create request with unspecified column name
-        String columnName = null;
+        // create request with unspecified column name list
         Long nowSeconds = Instant.now().getEpochSecond();
         QueryRequestParams params = new QueryRequestParams(
                 null,
@@ -180,7 +178,8 @@ public class QueryGrpcTest extends QueryTestBase {
         QueryRequest request = buildQueryRequest(params);
 
         // send request
-        List<QueryResponse> responseList = client.sendQueryRequest(request, 1);
+        final int numResponesesExpected = 1;
+        List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
 
         // examine response
         assertTrue("size mismatch between lists of requests and responses",
@@ -191,12 +190,38 @@ public class QueryGrpcTest extends QueryTestBase {
         assertTrue("response time not set",
                 response.getResponseTime().getEpochSeconds() > 0);
         assertTrue("response details not set",
-                response.hasRejectDetails());
+                response.hasQueryReject());
         assertTrue("reject reason not set",
-                response.getRejectDetails().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
         assertTrue(
                 "reject message not set",
-                response.getRejectDetails().getMessage().equals("columnName must be specified"));
+                response.getQueryReject().getMessage().equals("columnName must be specified"));
+    }
+
+    /**
+     * Test validation failure, that columnName not specified.
+     */
+    @Test
+    public void testSendValidQueryRequest() {
+
+        // create request with unspecified column name
+        List<String> columnNames = List.of("pv_1", "pv_2");
+        Long nowSeconds = Instant.now().getEpochSecond();
+        QueryRequestParams params = new QueryRequestParams(
+                columnNames,
+                nowSeconds,
+                0L,
+                nowSeconds + 1,
+                0L);
+        QueryRequest request = buildQueryRequest(params);
+
+        // send request
+        final int numResponesesExpected = 0;
+        List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
+
+        // examine response
+        assertTrue("unexpected responseList.size",
+                responseList.size() == 0);
     }
 
 }

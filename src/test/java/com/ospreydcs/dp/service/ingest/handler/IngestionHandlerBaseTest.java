@@ -3,9 +3,7 @@ package com.ospreydcs.dp.service.ingest.handler;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import org.junit.FixMethodOrder;
 import org.junit.Test;
-import org.junit.runners.MethodSorters;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -13,7 +11,6 @@ import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class IngestionHandlerBaseTest extends IngestionTestBase {
 
     private TestIngestionHandler handler = new TestIngestionHandler();
@@ -22,7 +19,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
     }
 
     @Test
-    public void test01ValidateRequestUnspecifiedRequestTime() {
+    public void testValidateRequestUnspecifiedRequestTime() {
         int providerId = 1;
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
@@ -51,7 +48,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
     }
 
     @Test
-    public void test02ValidateRequestUnspecifiedProvider() {
+    public void testValidateRequestUnspecifiedProvider() {
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -78,7 +75,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
     }
 
     @Test
-    public void test03ValidateRequestUnspecifiedRequestId() {
+    public void testValidateRequestUnspecifiedRequestId() {
         int providerId = 1;
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -110,7 +107,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
      * Provides test coverage of validation check for invalid time spec using timestamp list instead of iterator.
      */
     @Test
-    public void test04ValidateRequestInvalidTimeSpec() {
+    public void testValidateRequestInvalidTimeSpec() {
         int providerId = 1;
         String requestId = "request-1";
         List<Long> timestampsSecondsList = Arrays.asList(12345L);
@@ -141,7 +138,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
     }
 
     @Test
-    public void test05ValidateRequestInvalidTimeIterator() {
+    public void testValidateRequestInvalidTimeIterator() {
         int providerId = 1;
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
@@ -174,7 +171,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
      * Provides test coverage of validation check for empty columns list.
      */
     @Test
-    public void test06ValidateRequestEmptyColumnsList() {
+    public void testValidateRequestEmptyColumnsList() {
         int providerId = 1;
         String requestId = "request-1";
         Instant instantNow = Instant.now();
@@ -206,7 +203,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
      * the timestamps list.
      */
     @Test
-    public void test07ValidateRequestColumnSizeMismatch() {
+    public void testValidateRequestColumnSizeMismatch() {
         int providerId = 1;
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
@@ -237,7 +234,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
      * Provides test coverage of validation check that a name is provided for each column.
      */
     @Test
-    public void test08ValidateRequestColumnNameMissing() {
+    public void testValidateRequestColumnNameMissing() {
         int providerId = 1;
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("");

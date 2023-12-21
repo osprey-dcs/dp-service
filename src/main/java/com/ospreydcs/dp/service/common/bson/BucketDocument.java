@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 import java.util.ArrayList;
@@ -13,7 +14,7 @@ import java.util.Map;
  * NOTE: DATABASE CODE LIKE insertMany SILENTLY FAILS IF AN INSTANCE VARIABLE IS ADDED WITHOUT ACCESSOR METHODS!!!
  */
 @BsonDiscriminator(key="dataType")
-public class BucketDocument<T> {
+public abstract class BucketDocument<T> {
     private String id;
     private String columnName;
     private Date firstTime;
@@ -30,6 +31,8 @@ public class BucketDocument<T> {
     private long eventSeconds;
     private long eventNanos;
     private String eventDescription;
+
+    public abstract void addColumnDataValue(T dataValue, DataValue.Builder valueBuilder);
 
     public String getId() {
         return id;

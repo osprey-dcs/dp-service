@@ -38,7 +38,7 @@ public class MongoAsyncDriverTest {
     }
 
     @Test
-    public void test01InsertDuplicateId() {
+    public void testInsertDuplicateId() {
 
         System.out.println("test01InsertDuplicateId");
 
