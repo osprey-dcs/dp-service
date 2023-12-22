@@ -98,7 +98,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // send api request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request, responseObserver);
+        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request.getQuerySpec(), responseObserver);
         handler.processQueryRequest(handlerQueryRequest);
 
         return responseList;

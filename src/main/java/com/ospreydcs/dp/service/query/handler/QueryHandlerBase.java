@@ -9,11 +9,11 @@ import java.util.stream.Collectors;
 
 public abstract class QueryHandlerBase {
 
-    public ValidationResult validateQueryRequest(QueryRequest request) {
+    public ValidationResult validateQuerySpec(QueryRequest.QuerySpec querySpec) {
 
-        final List<String> columnNames = request.getColumnNamesList();
-        final Timestamp startTime = request.getStartTime();
-        final Timestamp endTime = request.getEndTime();
+        final List<String> columnNames = querySpec.getColumnNamesList();
+        final Timestamp startTime = querySpec.getStartTime();
+        final Timestamp endTime = querySpec.getEndTime();
         final long startSeconds = startTime.getEpochSeconds();
         final long startNanos = startTime.getNanoseconds();
         final long endSeconds = endTime.getEpochSeconds();

@@ -34,9 +34,11 @@ public class QueryTestBase {
         
         // build API query request from params
         QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+
+        QueryRequest.QuerySpec.Builder querySpecBuilder = QueryRequest.QuerySpec.newBuilder();
         
         if (params.columnNames != null && !params.columnNames.isEmpty()) {
-            requestBuilder.addAllColumnNames(params.columnNames);
+            querySpecBuilder.addAllColumnNames(params.columnNames);
         }
         
         if (params.startTimeSeconds != null) {
@@ -44,7 +46,7 @@ public class QueryTestBase {
             startTimeBuilder.setEpochSeconds(params.startTimeSeconds);
             if (params.startTimeNanos != null) startTimeBuilder.setNanoseconds(params.startTimeNanos);
             startTimeBuilder.build();
-            requestBuilder.setStartTime(startTimeBuilder);
+            querySpecBuilder.setStartTime(startTimeBuilder);
         }
         
         if (params.endTimeSeconds != null) {
@@ -52,8 +54,11 @@ public class QueryTestBase {
             endTimeBuilder.setEpochSeconds(params.endTimeSeconds);
             if (params.endTimeNanos != null) endTimeBuilder.setNanoseconds(params.endTimeNanos);
             endTimeBuilder.build();
-            requestBuilder.setEndTime(endTimeBuilder);
+            querySpecBuilder.setEndTime(endTimeBuilder);
         }
+
+        querySpecBuilder.build();
+        requestBuilder.setQuerySpec(querySpecBuilder);
 
         return requestBuilder.build();
     }

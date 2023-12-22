@@ -97,10 +97,13 @@ public class QueryPerformanceBenchmark {
         endTimeBuilder.build();
 
         QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
-        requestBuilder.setStartTime(startTimeBuilder);
-        requestBuilder.setEndTime(endTimeBuilder);
 
-        requestBuilder.addAllColumnNames(params.columnNames);
+        QueryRequest.QuerySpec.Builder querySpecBuilder = QueryRequest.QuerySpec.newBuilder();
+        querySpecBuilder.setStartTime(startTimeBuilder);
+        querySpecBuilder.setEndTime(endTimeBuilder);
+        querySpecBuilder.addAllColumnNames(params.columnNames);
+        querySpecBuilder.build();
+        requestBuilder.setQuerySpec(querySpecBuilder);
 
         return requestBuilder.build();
     }
@@ -139,45 +142,52 @@ public class QueryPerformanceBenchmark {
 
         QueryRequest request = buildQueryDataByTimeRequest(params);
         DpQueryServiceGrpc.DpQueryServiceBlockingStub blockingStub = DpQueryServiceGrpc.newBlockingStub(channel);
-        Iterator<QueryResponse> responseStream = blockingStub.query(request);
+        Iterator<QueryResponse> responseStream = blockingStub.queryResponseStream(request);
         while (responseStream.hasNext()) {
             QueryResponse response = responseStream.next();
             final String responseType = response.getResponseType().name();
 //            long firstSeconds = response.getFirstTime().getEpochSeconds();
 //            long lastSeconds = response.getLastTime().getEpochSeconds();
             LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
-            if (response.hasRejectDetails()) {
+            if (response.hasQueryReject()) {
                 LOGGER.debug("stream: {} received reject with message: {}",
-                        streamNumber, response.getRejectDetails().getMessage());
+                        streamNumber, response.getQueryReject().getMessage());
 
-            } else if (response.hasQueryResult()) {
-                QueryResponse.QueryResult result = response.getQueryResult();
+            } else if (response.hasQueryReport()) {
 
-                switch (response.getResponseType()) {
+                QueryResponse.QueryReport report = response.getQueryReport();
 
-                    case SUMMARY_RESPONSE -> {
-                        QueryResponse.QueryResult.ResultSummary summary = result.getResultSummary();
-                        if (summary.getIsError()) {
-                            LOGGER.debug("stream: {} received error summary msg: {}", summary.getMessage());
-                        } else {
-                            LOGGER.debug("stream: {} received result summary numResults: {}",
-                                    streamNumber, summary.getNumBuckets());
-                        }
+                if (report.hasQuerySummary()) {
+                    QueryResponse.QueryReport.QuerySummary summary = report.getQuerySummary();
+                    LOGGER.debug(
+                            "stream: {} received result summary numResults: {}",
+                            streamNumber, summary.getNumBuckets());
+
+                } else if (report.hasQueryData()) {
+                    QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
+                    int numResultBuckets = queryData.getDataBucketsCount();
+                    LOGGER.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
+                    for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                        LOGGER.debug(
+                                "stream: {} bucket column: {} startTime: {} numValues: {}",
+                                streamNumber,
+                                bucket.getDataColumn().getName(),
+                                GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
+                                bucket.getDataColumn().getDataValuesCount());
                     }
 
-                    case DETAIL_RESPONSE -> {
-                        QueryResponse.QueryResult.ResultData resultData = result.getResultData();
-                        int numResultBuckets = resultData.getDataBucketsCount();
-                        LOGGER.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
-                        for (QueryResponse.QueryResult.DataBucket bucket : resultData.getDataBucketsList()) {
-                            LOGGER.debug("stream: {} bucket column: {} startTime: {} numValues: {}",
-                                    streamNumber,
-                                    bucket.getDataColumn().getName(),
-                                    GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
-                                    bucket.getDataColumn().getDataValuesCount());
-                        }
-                    }
+                } else if (report.hasQueryError()) {
+                    QueryResponse.QueryReport.QueryError queryError = report.getQueryError();
+                    LOGGER.error(
+                            "stream: {} received error response: {}",
+                            streamNumber, queryError.getMessage());
+
+                } else {
+                    LOGGER.error("stream: {} received QueryReport with unexpected content", streamNumber);
                 }
+
+            } else {
+                LOGGER.error("stream: {} received unexpected response", streamNumber);
             }
         }
 

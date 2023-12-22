@@ -6,11 +6,11 @@ import io.grpc.stub.StreamObserver;
 
 public class HandlerQueryRequest {
 
-    public QueryRequest request = null;
+    public QueryRequest.QuerySpec querySpec = null;
     public StreamObserver<QueryResponse> responseObserver = null;
 
-    public HandlerQueryRequest(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
-        this.request = request;
+    public HandlerQueryRequest(QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+        this.querySpec = querySpec;
         this.responseObserver = responseObserver;
     }
 
