@@ -1,12 +1,16 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
+import com.mongodb.client.result.InsertManyResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
+import com.ospreydcs.dp.service.query.handler.mongo.MongoSyncQueryClient;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -25,7 +29,11 @@ public class QueryPerformanceBenchmark {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
+    // static variables
+    private static BenchmarkDbClient DB_CLIENT = new BenchmarkDbClient();
+
     // constants
+    protected static final String COLUMN_NAME_BASE = "queryBenchmark_";
     private static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     private static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
 
@@ -34,6 +42,41 @@ public class QueryPerformanceBenchmark {
     public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50052";
     public static final String CFG_KEY_START_SECONDS = "QueryBenchmark.startSeconds";
     public static final Integer DEFAULT_START_SECONDS = 1698767462;
+
+    protected static class BenchmarkDbClient extends MongoSyncQueryClient {
+
+        private static String collectionNamePrefix = null;
+
+        private static String getTestCollectionNamePrefix() {
+            if (collectionNamePrefix == null) {
+                collectionNamePrefix = "test-" + System.currentTimeMillis() + "-";
+            }
+            return collectionNamePrefix;
+        }
+
+        protected static String getTestCollectionNameBuckets() {
+            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
+        }
+
+        protected static String getTestCollectionNameRequestStatus() {
+            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
+        }
+
+        @Override
+        protected String getCollectionNameBuckets() {
+            return getTestCollectionNameBuckets();
+        }
+
+        @Override
+        protected String getCollectionNameRequestStatus() {
+            return getTestCollectionNameRequestStatus();
+        }
+
+        public int insertBucketDocuments(List<BucketDocument> documentList) {
+            InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
+            return result.getInsertedIds().size();
+        }
+    }
 
     static class QueryParams {
         private int streamNumber;
@@ -195,7 +238,7 @@ public class QueryPerformanceBenchmark {
     }
 
 
-    public static double queryDataByTimeScenario(
+    public static double queryScenario(
             ManagedChannel channel,
             int numPvs,
             int numThreads) {
@@ -266,9 +309,26 @@ public class QueryPerformanceBenchmark {
         return 0.0;
     }
 
-    public static void queryDataByTimeExperiment(ManagedChannel channel) {
+    public static void queryExperiment(ManagedChannel channel) {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
+
+        // load database with data for query
+        LOGGER.info("loading database");
+        DB_CLIENT.init();
+        final int numSamplesPerSecond = 1000;
+        final int numSecondsPerBucket = 1;
+        final int numColumns = 4000;
+        final int numBucketsPerColumn = 60;
+        final long startSeconds = Instant.now().getEpochSecond();
+        List<BucketDocument> bucketList = BucketUtility.createBucketDocuments(
+                startSeconds, numSamplesPerSecond, numSecondsPerBucket, COLUMN_NAME_BASE, numColumns, numBucketsPerColumn);
+        DB_CLIENT.insertBucketDocuments(bucketList);
+        DB_CLIENT.fini();
+        LOGGER.info("finished loading database");
+
+        // TODO: don't exit!
+        System.exit(0);
 
         final int[] numPvsArray = {/*1,*/ 10/*, 25, 50, 100, 250*/};
         final int[] numThreadsArray = {1/*, 3, 5, 7*/};
@@ -278,7 +338,7 @@ public class QueryPerformanceBenchmark {
             for (int numThreads : numThreadsArray) {
                 String mapKey = "numPvs: " + numPvs + " numThreads: " + numThreads;
                 LOGGER.info("running queryDataByTimeScenario, numPvs: {}", numPvs);
-                double writeRate = queryDataByTimeScenario(channel, numPvs, numThreads);
+                double writeRate = queryScenario(channel, numPvs, numThreads);
                 writeRateMap.put(mapKey, writeRate);
             }
         }
@@ -319,7 +379,7 @@ public class QueryPerformanceBenchmark {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        queryDataByTimeExperiment(channel);
+        queryExperiment(channel);
 
         // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
         // resources the channel should be shut down when it will no longer be used. If it may be used
