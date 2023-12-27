@@ -313,7 +313,10 @@ public class QueryPerformanceBenchmark {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
+
         // load database with data for query
+        Instant t0 = Instant.now();
         LOGGER.info("loading database");
         DB_CLIENT.init();
         final int numSamplesPerSecond = 1000;
@@ -321,11 +324,23 @@ public class QueryPerformanceBenchmark {
         final int numColumns = 4000;
         final int numBucketsPerColumn = 60;
         final long startSeconds = Instant.now().getEpochSecond();
-        List<BucketDocument> bucketList = BucketUtility.createBucketDocuments(
-                startSeconds, numSamplesPerSecond, numSecondsPerBucket, COLUMN_NAME_BASE, numColumns, numBucketsPerColumn);
-        DB_CLIENT.insertBucketDocuments(bucketList);
+        for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
+            List<BucketDocument> bucketList = BucketUtility.createBucketDocuments(
+                    startSeconds+bucketIndex,
+                    numSamplesPerSecond,
+                    numSecondsPerBucket,
+                    COLUMN_NAME_BASE,
+                    numColumns,
+                    1);
+            DB_CLIENT.insertBucketDocuments(bucketList);
+        }
         DB_CLIENT.fini();
         LOGGER.info("finished loading database");
+        Instant t1 = Instant.now();
+        long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+        double secondsElapsed = dtMillis / 1_000.0;
+        String dtSecondsString = formatter.format(secondsElapsed);
+        LOGGER.debug("loading time: {} seconds", dtSecondsString);
 
         // TODO: don't exit!
         System.exit(0);
@@ -349,7 +364,6 @@ public class QueryPerformanceBenchmark {
         System.out.println("======================================");
         System.out.println("queryDataByTimeExperiment results");
         System.out.println("======================================");
-        final DecimalFormat formatter = new DecimalFormat("#,###.00");
         for (var mapEntry : writeRateMap.entrySet()) {
             final String mapKey = mapEntry.getKey();
             final double writeRate = mapEntry.getValue();
