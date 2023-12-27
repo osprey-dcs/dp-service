@@ -78,6 +78,59 @@ public class QueryPerformanceBenchmark {
         }
     }
 
+    static class InsertTaskParams {
+
+        final public long bucketStartSeconds;
+        final public int numSamplesPerSecond;
+        final public int numSecondsPerBucket;
+        final public int numColumns;
+
+        public InsertTaskParams(
+                long bucketStartSeconds,
+                int numSamplesPerSecond,
+                int numSecondsPerBucket,
+                int numColumns
+        ) {
+            this.bucketStartSeconds = bucketStartSeconds;
+            this.numSamplesPerSecond = numSamplesPerSecond;
+            this.numSecondsPerBucket = numSecondsPerBucket;
+            this.numColumns = numColumns;
+        }
+    }
+
+    static class InsertTaskResult {
+        public final int bucketsInserted;
+        public InsertTaskResult(int bucketsInserted) {
+            this.bucketsInserted = bucketsInserted;
+        }
+    }
+
+    static class InsertTask implements Callable<InsertTaskResult> {
+
+        final public InsertTaskParams params;
+
+        public InsertTask (InsertTaskParams params) {
+            this.params = params;
+        }
+
+        public InsertTaskResult call() {
+            return createAndInsertBucket(params);
+        }
+
+    }
+
+    private static InsertTaskResult createAndInsertBucket(InsertTaskParams params) {
+        List<BucketDocument> bucketList = BucketUtility.createBucketDocuments(
+                params.bucketStartSeconds,
+                params.numSamplesPerSecond,
+                params.numSecondsPerBucket,
+                COLUMN_NAME_BASE,
+                params.numColumns,
+                1);
+        int bucketsInserted = DB_CLIENT.insertBucketDocuments(bucketList);
+        return new InsertTaskResult(bucketsInserted);
+    }
+
     static class QueryParams {
         private int streamNumber;
         private List<String> columnNames;
@@ -118,7 +171,6 @@ public class QueryPerformanceBenchmark {
             QueryDataTaskResult result = sendQueryDataByTimeRequestBlocking(this.channel, this.params);
             return result;
         }
-
     }
 
     private static ConfigurationManager configMgr() {
@@ -324,16 +376,51 @@ public class QueryPerformanceBenchmark {
         final int numColumns = 4000;
         final int numBucketsPerColumn = 60;
         final long startSeconds = Instant.now().getEpochSecond();
+
+        // set up executorService with tasks to create and insert a batch of bucket documents
+        // with a task for each second's data
+        var executorService = Executors.newFixedThreadPool(7);
+        List<InsertTask> insertTaskList = new ArrayList<>();
         for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
-            List<BucketDocument> bucketList = BucketUtility.createBucketDocuments(
-                    startSeconds+bucketIndex,
-                    numSamplesPerSecond,
-                    numSecondsPerBucket,
-                    COLUMN_NAME_BASE,
-                    numColumns,
-                    1);
-            DB_CLIENT.insertBucketDocuments(bucketList);
+            InsertTaskParams taskParams = new InsertTaskParams(
+                startSeconds+bucketIndex,
+                numSamplesPerSecond,
+                numSecondsPerBucket,
+                numColumns);
+            InsertTask task = new InsertTask(taskParams);
+            insertTaskList.add(task);
         }
+
+        // invoke tasks to create and insert bucket documents via executorService
+        List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
+        try {
+            insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
+            executorService.shutdown();
+            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                for (int i = 0 ; i < insertTaskResultFutureList.size() ; i++) {
+                    Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
+                    InsertTaskResult result = future.get();
+                    if (result.bucketsInserted != numColumns) {
+                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
+                        DB_CLIENT.fini();
+                        System.exit(1);
+                    }
+                }
+            } else {
+                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
+                executorService.shutdownNow();
+                DB_CLIENT.fini();
+                System.exit(1);
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
+            executorService.shutdownNow();
+            DB_CLIENT.fini();
+            Thread.currentThread().interrupt();
+            System.exit(1);
+        }
+
+        // clean up after loading and calculate stats
         DB_CLIENT.fini();
         LOGGER.info("finished loading database");
         Instant t1 = Instant.now();
