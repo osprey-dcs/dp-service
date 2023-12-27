@@ -31,6 +31,7 @@ public class QueryPerformanceBenchmark {
 
     // static variables
     private static BenchmarkDbClient DB_CLIENT = new BenchmarkDbClient();
+    private static long START_SECONDS = 0L;
 
     // constants
     protected static final String COLUMN_NAME_BASE = "queryBenchmark_";
@@ -40,37 +41,35 @@ public class QueryPerformanceBenchmark {
     // configuration
     public static final String CFG_KEY_GRPC_CONNECT_STRING = "QueryBenchmark.grpcConnectString";
     public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50052";
-    public static final String CFG_KEY_START_SECONDS = "QueryBenchmark.startSeconds";
-    public static final Integer DEFAULT_START_SECONDS = 1698767462;
 
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
 
-        private static String collectionNamePrefix = null;
-
-        private static String getTestCollectionNamePrefix() {
-            if (collectionNamePrefix == null) {
-                collectionNamePrefix = "test-" + System.currentTimeMillis() + "-";
-            }
-            return collectionNamePrefix;
-        }
-
-        protected static String getTestCollectionNameBuckets() {
-            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
-        }
-
-        protected static String getTestCollectionNameRequestStatus() {
-            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
-        }
-
-        @Override
-        protected String getCollectionNameBuckets() {
-            return getTestCollectionNameBuckets();
-        }
-
-        @Override
-        protected String getCollectionNameRequestStatus() {
-            return getTestCollectionNameRequestStatus();
-        }
+//        private static String collectionNamePrefix = null;
+//
+//        private static String getTestCollectionNamePrefix() {
+//            if (collectionNamePrefix == null) {
+//                collectionNamePrefix = "test-" + System.currentTimeMillis() + "-";
+//            }
+//            return collectionNamePrefix;
+//        }
+//
+//        protected static String getTestCollectionNameBuckets() {
+//            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
+//        }
+//
+//        protected static String getTestCollectionNameRequestStatus() {
+//            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
+//        }
+//
+//        @Override
+//        protected String getCollectionNameBuckets() {
+//            return getTestCollectionNameBuckets();
+//        }
+//
+//        @Override
+//        protected String getCollectionNameRequestStatus() {
+//            return getTestCollectionNameRequestStatus();
+//        }
 
         public int insertBucketDocuments(List<BucketDocument> documentList) {
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
@@ -179,13 +178,13 @@ public class QueryPerformanceBenchmark {
 
     private static QueryRequest buildQueryDataByTimeRequest(QueryParams params) {
 
-        Integer startSeconds = configMgr().getConfigInteger(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        final long startSeconds = START_SECONDS;
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
         startTimeBuilder.setEpochSeconds(startSeconds);
         startTimeBuilder.setNanoseconds(0);
         startTimeBuilder.build();
         
-        Integer endSeconds = startSeconds + 60;
+        final long endSeconds = startSeconds + 60;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
         endTimeBuilder.setEpochSeconds(endSeconds);
         endTimeBuilder.setNanoseconds(0);
@@ -306,7 +305,7 @@ public class QueryPerformanceBenchmark {
         List<QueryDataByTimeTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numPvs ; i++) {
-            String columnName = "pv_" + i;
+            String columnName = COLUMN_NAME_BASE + i;
             QueryParams params = new QueryParams(i, List.of(columnName));
             QueryDataByTimeTask task = new QueryDataByTimeTask(channel, params);
             taskList.add(task);
@@ -429,8 +428,8 @@ public class QueryPerformanceBenchmark {
         String dtSecondsString = formatter.format(secondsElapsed);
         LOGGER.debug("loading time: {} seconds", dtSecondsString);
 
-        // TODO: don't exit!
-        System.exit(0);
+        // save start time for use in queries
+        START_SECONDS = startSeconds;
 
         final int[] numPvsArray = {/*1,*/ 10/*, 25, 50, 100, 250*/};
         final int[] numThreadsArray = {1/*, 3, 5, 7*/};

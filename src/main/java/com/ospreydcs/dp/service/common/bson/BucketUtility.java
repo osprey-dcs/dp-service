@@ -15,8 +15,8 @@ public class BucketUtility {
             int numSecondsPerBucket,
             String columnNameBase,
             int numColumns,
-            int numBucketsPerColumn) {
-
+            int numBucketsPerColumn
+    ) {
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         final double sampleRate = 1.0 / numSamplesPerSecond;
@@ -37,7 +37,7 @@ public class BucketUtility {
                     GrpcUtility.dateFromTimestamp(GrpcUtility.timestampFromSeconds(lastTimeSeconds, lastTimeNanos));
 
             // create a bucket document for each column in the batch
-            for (int columnIndex = 0 ; columnIndex < numColumns ; columnIndex++) {
+            for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
                 String columnName = columnNameBase + columnIndex;
                 String documentId = columnName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
                 DoubleBucketDocument bucket = new DoubleBucketDocument();
