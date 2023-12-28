@@ -304,6 +304,74 @@ public class QueryPerformanceBenchmark {
     }
 
 
+    private static void loadBucketData() {
+        // load database with data for query
+        Instant t0 = Instant.now();
+        LOGGER.info("loading database");
+        DB_CLIENT.init();
+        final int numSamplesPerSecond = 1000;
+        final int numSecondsPerBucket = 1;
+        final int numColumns = 4000;
+        final int numBucketsPerColumn = 60;
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        // set up executorService with tasks to create and insert a batch of bucket documents
+        // with a task for each second's data
+        var executorService = Executors.newFixedThreadPool(7);
+        List<InsertTask> insertTaskList = new ArrayList<>();
+        for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
+            InsertTaskParams taskParams = new InsertTaskParams(
+                    startSeconds+bucketIndex,
+                    numSamplesPerSecond,
+                    numSecondsPerBucket,
+                    numColumns);
+            InsertTask task = new InsertTask(taskParams);
+            insertTaskList.add(task);
+        }
+
+        // invoke tasks to create and insert bucket documents via executorService
+        List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
+        try {
+            insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
+            executorService.shutdown();
+            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                for (int i = 0 ; i < insertTaskResultFutureList.size() ; i++) {
+                    Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
+                    InsertTaskResult result = future.get();
+                    if (result.bucketsInserted != numColumns) {
+                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
+                        DB_CLIENT.fini();
+                        System.exit(1);
+                    }
+                }
+            } else {
+                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
+                executorService.shutdownNow();
+                DB_CLIENT.fini();
+                System.exit(1);
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
+            executorService.shutdownNow();
+            DB_CLIENT.fini();
+            Thread.currentThread().interrupt();
+            System.exit(1);
+        }
+
+        // clean up after loading and calculate stats
+        DB_CLIENT.fini();
+        LOGGER.info("finished loading database");
+        Instant t1 = Instant.now();
+        long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+        double secondsElapsed = dtMillis / 1_000.0;
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
+        String dtSecondsString = formatter.format(secondsElapsed);
+        LOGGER.info("loading time: {} seconds", dtSecondsString);
+
+        // save start time for use in queries
+        START_SECONDS = startSeconds;
+    }
+
     public static double queryScenario(
             ManagedChannel channel,
             int numPvs,
@@ -403,73 +471,6 @@ public class QueryPerformanceBenchmark {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final DecimalFormat formatter = new DecimalFormat("#,###.00");
-
-        // load database with data for query
-        Instant t0 = Instant.now();
-        LOGGER.info("loading database");
-        DB_CLIENT.init();
-        final int numSamplesPerSecond = 1000;
-        final int numSecondsPerBucket = 1;
-        final int numColumns = 4000;
-        final int numBucketsPerColumn = 60;
-        final long startSeconds = Instant.now().getEpochSecond();
-
-        // set up executorService with tasks to create and insert a batch of bucket documents
-        // with a task for each second's data
-        var executorService = Executors.newFixedThreadPool(7);
-        List<InsertTask> insertTaskList = new ArrayList<>();
-        for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
-            InsertTaskParams taskParams = new InsertTaskParams(
-                startSeconds+bucketIndex,
-                numSamplesPerSecond,
-                numSecondsPerBucket,
-                numColumns);
-            InsertTask task = new InsertTask(taskParams);
-            insertTaskList.add(task);
-        }
-
-        // invoke tasks to create and insert bucket documents via executorService
-        List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
-        try {
-            insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
-            executorService.shutdown();
-            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                for (int i = 0 ; i < insertTaskResultFutureList.size() ; i++) {
-                    Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
-                    InsertTaskResult result = future.get();
-                    if (result.bucketsInserted != numColumns) {
-                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
-                        DB_CLIENT.fini();
-                        System.exit(1);
-                    }
-                }
-            } else {
-                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
-                executorService.shutdownNow();
-                DB_CLIENT.fini();
-                System.exit(1);
-            }
-        } catch (InterruptedException | ExecutionException ex) {
-            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
-            executorService.shutdownNow();
-            DB_CLIENT.fini();
-            Thread.currentThread().interrupt();
-            System.exit(1);
-        }
-
-        // clean up after loading and calculate stats
-        DB_CLIENT.fini();
-        LOGGER.info("finished loading database");
-        Instant t1 = Instant.now();
-        long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
-        double secondsElapsed = dtMillis / 1_000.0;
-        String dtSecondsString = formatter.format(secondsElapsed);
-        LOGGER.info("loading time: {} seconds", dtSecondsString);
-
-        // save start time for use in queries
-        START_SECONDS = startSeconds;
-
         final int[] numPvsArray = {/*1,*/ 10/*, 25, 50, 100, 250*/};
         final int[] numThreadsArray = {1/*, 3, 5, 7*/};
 
@@ -489,6 +490,7 @@ public class QueryPerformanceBenchmark {
         System.out.println("======================================");
         System.out.println("queryDataByTimeExperiment results");
         System.out.println("======================================");
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
         for (var mapEntry : writeRateMap.entrySet()) {
             final String mapKey = mapEntry.getKey();
             final double writeRate = mapEntry.getValue();
@@ -506,6 +508,9 @@ public class QueryPerformanceBenchmark {
     }
 
     public static void main(final String[] args) {
+
+        // load data for use by the query benchmark
+        loadBucketData();
 
         // Create a communication channel to the server, known as a Channel. Channels are thread-safe
         // and reusable. It is common to create channels at the beginning of your application and reuse
