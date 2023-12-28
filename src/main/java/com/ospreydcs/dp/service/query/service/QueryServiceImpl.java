@@ -135,28 +135,35 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public void query(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+    @Override
+    public void queryResponseStream(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+
+        // check that query request contains a QuerySpec
+        if (!request.hasQuerySpec()) {
+            String errorMsg = "QueryRequest does not contain a QuerySpec";
+            sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+            return;
+        }
+
+        QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
         LOGGER.info("query columnNames: {} startSeconds: {} endSeconds: {}",
-                request.getColumnNamesList(),
-                request.getStartTime().getEpochSeconds(),
-                request.getEndTime().getEpochSeconds());
+                querySpec.getColumnNamesList(),
+                querySpec.getStartTime().getEpochSeconds(),
+                querySpec.getEndTime().getEpochSeconds());
 
         // validate request
-        ValidationResult validationResult = handler.validateQueryRequest(request);
-        boolean validationError = false;
-        String validationMsg = "";
+        ValidationResult validationResult = handler.validateQuerySpec(querySpec);
 
         // send reject if request is invalid
         if (validationResult.isError) {
-            validationError = true;
-            validationMsg = validationResult.msg;
+            String validationMsg = validationResult.msg;
             sendQueryResponseReject(validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
             return;
         }
 
         // otherwise handle request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request, responseObserver);
+        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(querySpec, responseObserver);
         handler.handleQueryRequest(handlerQueryRequest);
     }
 

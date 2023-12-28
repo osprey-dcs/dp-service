@@ -9,6 +9,6 @@ public interface QueryHandlerInterface {
     boolean fini();
     boolean start();
     boolean stop();
-    ValidationResult validateQueryRequest(QueryRequest request);
+    ValidationResult validateQuerySpec(QueryRequest.QuerySpec querySpec);
     void handleQueryRequest(HandlerQueryRequest request);
 }

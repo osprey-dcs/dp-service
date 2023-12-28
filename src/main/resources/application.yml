@@ -22,4 +22,3 @@ QueryHandler:
 
 QueryBenchmark:
   grpcConnectString: "localhost:50052"
-  startSeconds: 1698767462

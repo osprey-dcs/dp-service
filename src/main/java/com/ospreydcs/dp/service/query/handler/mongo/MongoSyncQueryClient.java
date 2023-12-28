@@ -11,10 +11,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
 import java.util.Date;
 
 import static com.mongodb.client.model.Filters.*;
+import static com.mongodb.client.model.Indexes.ascending;
 
 public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryClientInterface {
 
@@ -22,36 +22,42 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     public MongoCursor<BucketDocument> executeQuery(HandlerQueryRequest handlerQueryRequest) {
 
-        final QueryRequest request = handlerQueryRequest.request;
+        final QueryRequest.QuerySpec querySpec = handlerQueryRequest.querySpec;
 
-        final Date startTimeDate = GrpcUtility.dateFromTimestamp(request.getStartTime());
-        final Date endTimeDate = GrpcUtility.dateFromTimestamp(request.getEndTime());
+        final Date startTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getStartTime());
+        final Date endTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getEndTime());
 
         // snippet to get query plan
 //        Document explanation = collection.find().explain(ExplainVerbosity.EXECUTION_STATS);
 //        List<String> keys = Arrays.asList("queryPlanner", "winningPlan");
 //        System.out.println(explanation.getEmbedded(keys, Document.class).toJson());
 
-        final long startTimeSeconds = request.getStartTime().getEpochSeconds();
-        final long startTimeNanos = request.getStartTime().getNanoseconds();
-        final long endTimeSeconds = request.getEndTime().getEpochSeconds();
-        final long endTimeNanos = request.getEndTime().getNanoseconds();
+        final long startTimeSeconds = querySpec.getStartTime().getEpochSeconds();
+        final long startTimeNanos = querySpec.getStartTime().getNanoseconds();
+        final long endTimeSeconds = querySpec.getEndTime().getEpochSeconds();
+        final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
-        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, request.getColumnNamesList());
+        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, querySpec.getColumnNamesList());
         final Bson endTimeFilter =
                 or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
                 and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                        lte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
+                        lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
         final Bson startTimeFilter =
                 or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
                         and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
                                 gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
         final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
 
-        LOGGER.debug("query column: " + request.getColumnNamesList()
+        LOGGER.debug("query column: " + querySpec.getColumnNamesList()
                 + " startSeconds: " + startTimeSeconds
                 + " endSeconds: " + endTimeSeconds);
 
-        return mongoCollectionBuckets.find(filter).cursor();
+        return mongoCollectionBuckets
+                .find(filter)
+                .sort(ascending(
+                        BsonConstants.BSON_KEY_BUCKET_NAME,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS))
+                .cursor();
     }
 }

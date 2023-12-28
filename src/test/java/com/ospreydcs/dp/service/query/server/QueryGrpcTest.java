@@ -62,7 +62,7 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         public void handleQueryRequest(HandlerQueryRequest request) {
-            System.out.println("handleQueryRequest: " + request.request.getColumnNamesList());
+            System.out.println("handleQueryRequest: " + request.querySpec.getColumnNamesList());
             request.responseObserver.onCompleted(); // close response stream so that client stream is closed
         }
     }
@@ -108,7 +108,7 @@ public class QueryGrpcTest extends QueryTestBase {
             };
 
             // send api request
-            asyncStub.query(request, responseObserver);
+            asyncStub.queryResponseStream(request, responseObserver);
 
             // wait for completion of api response stream via finishLatch notification
             try {
@@ -182,20 +182,13 @@ public class QueryGrpcTest extends QueryTestBase {
         List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
 
         // examine response
-        assertTrue("size mismatch between lists of requests and responses",
-                responseList.size() == 1);
+        assertTrue(responseList.size() == 1);
         QueryResponse response = responseList.get(0);
-        assertTrue("responseType not set",
-                response.getResponseType() == ResponseType.REJECT_RESPONSE);
-        assertTrue("response time not set",
-                response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set",
-                response.hasQueryReject());
-        assertTrue("reject reason not set",
-                response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
-        assertTrue(
-                "reject message not set",
-                response.getQueryReject().getMessage().equals("columnName must be specified"));
+        assertTrue(response.getResponseType() == ResponseType.REJECT_RESPONSE);
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReject());
+        assertTrue(response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+        assertTrue(response.getQueryReject().getMessage().equals("columnName must be specified"));
     }
 
     /**
@@ -220,8 +213,7 @@ public class QueryGrpcTest extends QueryTestBase {
         List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
 
         // examine response
-        assertTrue("unexpected responseList.size",
-                responseList.size() == 0);
+        assertTrue(responseList.size() == 0);
     }
 
 }
