@@ -144,10 +144,19 @@ public class QueryPerformanceBenchmark {
 
     static class QueryTaskResult {
         final public boolean status;
-        final public int numDataValuesReceived;
-        public QueryTaskResult(boolean status, int numDataValuesReceived) {
+        final public long dataValuesReceived;
+        final public long dataBytesReceived;
+        final public long grpcBytesReceived;
+        public QueryTaskResult(
+                boolean status,
+                long dataValuesReceived,
+                long dataBytesReceived,
+                long grpcBytesReceived
+        ) {
             this.status = status;
-            this.numDataValuesReceived = numDataValuesReceived;
+            this.dataValuesReceived = dataValuesReceived;
+            this.dataBytesReceived = dataBytesReceived;
+            this.grpcBytesReceived = grpcBytesReceived;
         }
     }
 
@@ -207,7 +216,9 @@ public class QueryPerformanceBenchmark {
         final int streamNumber = params.streamNumber;
 
         boolean success = true;
-        int numDataValuesReceived = 0;
+        long dataValuesReceived = 0;
+        long dataBytesReceived = 0;
+        long grpcBytesReceived = 0;
         final CountDownLatch finishLatch = new CountDownLatch(1);
         final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
 
@@ -242,6 +253,8 @@ public class QueryPerformanceBenchmark {
 //            long firstSeconds = response.getFirstTime().getEpochSeconds();
 //            long lastSeconds = response.getLastTime().getEpochSeconds();
             LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
+            grpcBytesReceived = grpcBytesReceived + response.getSerializedSize();
+
             if (response.hasQueryReject()) {
                 LOGGER.debug("stream: {} received reject with message: {}",
                         streamNumber, response.getQueryReject().getMessage());
@@ -268,7 +281,8 @@ public class QueryPerformanceBenchmark {
                                 bucket.getDataColumn().getName(),
                                 GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
                                 dataValuesCount);
-                        numDataValuesReceived = numDataValuesReceived + dataValuesCount;
+                        dataValuesReceived = dataValuesReceived + dataValuesCount;
+                        dataBytesReceived = dataBytesReceived + (dataValuesCount * Double.BYTES);
                     }
 
                 } else if (report.hasQueryError()) {
@@ -286,97 +300,11 @@ public class QueryPerformanceBenchmark {
             }
         }
 
-        return new QueryTaskResult(success, numDataValuesReceived);
+        return new QueryTaskResult(success, dataValuesReceived, dataBytesReceived, grpcBytesReceived);
     }
 
 
-    public static double queryScenario(
-            ManagedChannel channel,
-            int numPvs,
-            int numThreads) {
-
-        boolean success = true;
-        long numDataValuesReceived = 0;
-
-        // create thread pool of specified size
-        LOGGER.debug("creating thread pool of size: {}", numThreads);
-        var executorService = Executors.newFixedThreadPool(numThreads);
-
-        // create list of thread pool tasks, each to submit a stream of IngestionRequests
-        final long startSeconds = Instant.now().getEpochSecond();
-        List<QueryTask> taskList = new ArrayList<>();
-        int lastColumnIndex = 0;
-        for (int i = 1 ; i <= numPvs ; i++) {
-            String columnName = COLUMN_NAME_BASE + i;
-            QueryTaskParams params = new QueryTaskParams(i, List.of(columnName));
-            QueryTask task = new QueryTask(channel, params);
-            taskList.add(task);
-        }
-
-        // start performance measurment timer
-        Instant t0 = Instant.now();
-
-        // submit tasks to executor service
-        List<Future<QueryTaskResult>> resultList = null;
-        try {
-            resultList = executorService.invokeAll(taskList);
-            executorService.shutdown();
-            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                for (int i = 0 ; i < resultList.size() ; i++) {
-                    Future<QueryTaskResult> future = resultList.get(i);
-                    QueryTaskResult result = future.get();
-                    if (!result.status) {
-                        success = false;
-                    }
-                    numDataValuesReceived = numDataValuesReceived + result.numDataValuesReceived;
-                }
-                if (!success) {
-                    LOGGER.error("thread pool future returned false");
-                }
-            } else {
-                LOGGER.error("timeout reached in executorService.awaitTermination");
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException | ExecutionException ex) {
-            executorService.shutdownNow();
-            LOGGER.warn("Data transmission interrupted by exception: {}", ex.getMessage());
-            Thread.currentThread().interrupt();
-        }
-
-        if (success) {
-
-            // stop performance measurement timer, measure elapsed time and subtract time spent building requests
-            Instant t1 = Instant.now();
-            long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
-            double secondsElapsed = dtMillis / 1_000.0;
-
-            DecimalFormat formatter = new DecimalFormat("#,###.00");
-
-            String dtSecondsString = formatter.format(secondsElapsed);
-            LOGGER.debug("execution time: {} seconds", dtSecondsString);
-
-            String dataValuesReceivedString = String.format("%,8d", numDataValuesReceived);
-            LOGGER.debug("data values received: {}", dataValuesReceivedString);
-
-            double dataValueRate = numDataValuesReceived / secondsElapsed;
-            String dataValueRateString = formatter.format(dataValueRate);
-            LOGGER.debug("data value rate: {} values/sec", dataValueRateString);
-
-            return dataValueRate;
-
-        } else {
-            LOGGER.error("streaming ingestion scenario failed, performance data invalid");
-        }
-
-        return 0.0;
-    }
-
-    public static void queryExperiment(ManagedChannel channel) {
-
-//        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
-
-        final DecimalFormat formatter = new DecimalFormat("#,###.00");
-
+    private static void loadBucketData() {
         // load database with data for query
         Instant t0 = Instant.now();
         LOGGER.info("loading database");
@@ -393,10 +321,10 @@ public class QueryPerformanceBenchmark {
         List<InsertTask> insertTaskList = new ArrayList<>();
         for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
             InsertTaskParams taskParams = new InsertTaskParams(
-                startSeconds+bucketIndex,
-                numSamplesPerSecond,
-                numSecondsPerBucket,
-                numColumns);
+                    startSeconds+bucketIndex,
+                    numSamplesPerSecond,
+                    numSecondsPerBucket,
+                    numColumns);
             InsertTask task = new InsertTask(taskParams);
             insertTaskList.add(task);
         }
@@ -436,11 +364,112 @@ public class QueryPerformanceBenchmark {
         Instant t1 = Instant.now();
         long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
         double secondsElapsed = dtMillis / 1_000.0;
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
         String dtSecondsString = formatter.format(secondsElapsed);
         LOGGER.info("loading time: {} seconds", dtSecondsString);
 
         // save start time for use in queries
         START_SECONDS = startSeconds;
+    }
+
+    public static double queryScenario(
+            ManagedChannel channel,
+            int numPvs,
+            int numThreads) {
+
+        boolean success = true;
+        long dataValuesReceived = 0;
+        long dataBytesReceived = 0;
+        long grpcBytesReceived = 0;
+
+        // create thread pool of specified size
+        LOGGER.info("creating thread pool of size: {}", numThreads);
+        var executorService = Executors.newFixedThreadPool(numThreads);
+
+        // create list of thread pool tasks, each to submit a stream of IngestionRequests
+        final long startSeconds = Instant.now().getEpochSecond();
+        List<QueryTask> taskList = new ArrayList<>();
+        int lastColumnIndex = 0;
+        for (int i = 1 ; i <= numPvs ; i++) {
+            String columnName = COLUMN_NAME_BASE + i;
+            QueryTaskParams params = new QueryTaskParams(i, List.of(columnName));
+            QueryTask task = new QueryTask(channel, params);
+            taskList.add(task);
+        }
+
+        // start performance measurment timer
+        Instant t0 = Instant.now();
+
+        // submit tasks to executor service
+        List<Future<QueryTaskResult>> resultList = null;
+        try {
+            resultList = executorService.invokeAll(taskList);
+            executorService.shutdown();
+            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                for (int i = 0 ; i < resultList.size() ; i++) {
+                    Future<QueryTaskResult> future = resultList.get(i);
+                    QueryTaskResult result = future.get();
+                    if (!result.status) {
+                        success = false;
+                    }
+                    dataValuesReceived = dataValuesReceived + result.dataValuesReceived;
+                    dataBytesReceived = dataBytesReceived + result.dataBytesReceived;
+                    grpcBytesReceived = grpcBytesReceived + result.grpcBytesReceived;
+                }
+                if (!success) {
+                    LOGGER.error("thread pool future returned false");
+                }
+            } else {
+                LOGGER.error("timeout reached in executorService.awaitTermination");
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            executorService.shutdownNow();
+            LOGGER.warn("Data transmission interrupted by exception: {}", ex.getMessage());
+            Thread.currentThread().interrupt();
+        }
+
+        if (success) {
+
+            // stop performance measurement timer, measure elapsed time and subtract time spent building requests
+            Instant t1 = Instant.now();
+            long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+            double secondsElapsed = dtMillis / 1_000.0;
+
+            String dataValuesReceivedString = String.format("%,8d", dataValuesReceived);
+            String dataBytesReceivedString = String.format("%,8d", dataBytesReceived);
+            String grpcBytesReceivedString = String.format("%,8d", grpcBytesReceived);
+            String grpcOverheadBytesString = String.format("%,8d", grpcBytesReceived - dataBytesReceived);
+            LOGGER.info("data values received: {}", dataValuesReceivedString);
+            LOGGER.info("data bytes received: {}", dataBytesReceivedString);
+            LOGGER.info("grpc bytes received: {}", grpcBytesReceivedString);
+            LOGGER.info("grpc overhead bytes: {}", grpcOverheadBytesString);
+
+            double dataValueRate = dataValuesReceived / secondsElapsed;
+            double dataMByteRate = (dataBytesReceived / 1_000_000.0) / secondsElapsed;
+            double grpcMByteRate = (grpcBytesReceived / 1_000_000.0) / secondsElapsed;
+            DecimalFormat formatter = new DecimalFormat("#,###.00");
+            String dtSecondsString = formatter.format(secondsElapsed);
+            String dataValueRateString = formatter.format(dataValueRate);
+            String dataMbyteRateString = formatter.format(dataMByteRate);
+            String grpcMbyteRateString = formatter.format(grpcMByteRate);
+            LOGGER.info("execution time: {} seconds", dtSecondsString);
+            LOGGER.info("data value rate: {} values/sec", dataValueRateString);
+            LOGGER.info("data byte rate: {} MB/sec", dataMbyteRateString);
+            LOGGER.info("grpc byte rate: {} MB/sec", grpcMbyteRateString);
+
+            return dataValueRate;
+
+        } else {
+            LOGGER.error("streaming ingestion scenario failed, performance data invalid");
+        }
+
+        return 0.0;
+    }
+
+    public static void queryExperiment(ManagedChannel channel) {
+
+//        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final int[] numPvsArray = {/*1,*/ 10/*, 25, 50, 100, 250*/};
         final int[] numThreadsArray = {1/*, 3, 5, 7*/};
@@ -461,6 +490,7 @@ public class QueryPerformanceBenchmark {
         System.out.println("======================================");
         System.out.println("queryDataByTimeExperiment results");
         System.out.println("======================================");
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
         for (var mapEntry : writeRateMap.entrySet()) {
             final String mapKey = mapEntry.getKey();
             final double writeRate = mapEntry.getValue();
@@ -478,6 +508,9 @@ public class QueryPerformanceBenchmark {
     }
 
     public static void main(final String[] args) {
+
+        // load data for use by the query benchmark
+        loadBucketData();
 
         // Create a communication channel to the server, known as a Channel. Channels are thread-safe
         // and reusable. It is common to create channels at the beginning of your application and reuse
