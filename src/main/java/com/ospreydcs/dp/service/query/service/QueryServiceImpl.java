@@ -67,26 +67,26 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     public static QueryResponse queryResponseError(String msg) {
 
-        final QueryResponse.QueryReport.QueryError queryError = QueryResponse.QueryReport.QueryError.newBuilder()
-                .setMessage(msg)
+        final QueryResponse.QueryReport.QueryStatus errorStatus = QueryResponse.QueryReport.QueryStatus.newBuilder()
+                .setQueryStatusType(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR)
+                .setStatusMessage(msg)
                 .build();
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
-                .setQueryError(queryError)
+                .setQueryStatus(errorStatus)
                 .build();
 
         return responseWithReport(queryReport, ResponseType.ERROR_RESPONSE);
     }
 
-    public static QueryResponse queryResponseSummary(int numResults) {
+    public static QueryResponse queryResponseEmpty() {
 
-        final QueryResponse.QueryReport.QuerySummary querySummary =
-                QueryResponse.QueryReport.QuerySummary.newBuilder()
-                .setNumBuckets(numResults)
+        final QueryResponse.QueryReport.QueryStatus emptyStatus = QueryResponse.QueryReport.QueryStatus.newBuilder()
+                .setQueryStatusType(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY)
                 .build();
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
-                .setQuerySummary(querySummary)
+                .setQueryStatus(emptyStatus)
                 .build();
 
         return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
@@ -115,9 +115,10 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseSummary(int numResults, StreamObserver<QueryResponse> responseObserver) {
-        final QueryResponse summaryResponse = queryResponseSummary(numResults);
+    public static void sendQueryResponseEmpty(StreamObserver<QueryResponse> responseObserver) {
+        final QueryResponse summaryResponse = queryResponseEmpty();
         responseObserver.onNext(summaryResponse);
+        responseObserver.onCompleted();
     }
 
     /*

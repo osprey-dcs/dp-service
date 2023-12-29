@@ -7,7 +7,6 @@ import com.ospreydcs.dp.grpc.v1.common.FixedIntervalTimestampSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.DoubleBucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
@@ -132,11 +131,14 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
             return;
         }
 
-        // send summary message with number of results returned by query
-        final int numResults = cursor.available();
-        LOGGER.debug("buckets returned by query: " + numResults);
-        QueryServiceImpl.sendQueryResponseSummary(numResults, request.responseObserver);
+        // send empty QueryStatus if query matched no data
+        if (!cursor.hasNext()) {
+            LOGGER.debug("processQueryRequest: query matched no data, cursor is empty");
+            QueryServiceImpl.sendQueryResponseEmpty(request.responseObserver);
+            return;
+        }
 
+        // build response from query result cursor
         QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
                 QueryResponse.QueryReport.QueryData.newBuilder();
 
@@ -144,13 +146,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         try {
             while (cursor.hasNext()){
                 final BucketDocument document = cursor.next();
-                LOGGER.debug("cursor: "
-                        + document.getColumnName() + " " + document.getFirstTime() + document.getLastTime());
                 final QueryResponse.QueryReport.QueryData.DataBucket bucket = dataBucketFromDocument(document);
                 int bucketSerializedSize = bucket.getSerializedSize();
                 if (messageSize + bucketSerializedSize > MAX_GRPC_MESSAGE_SIZE) {
                     // hit size limit for message so send current data response and create a new one
-                    LOGGER.debug("message exceeds size limit, sending multiple responses for result");
+                    LOGGER.debug("processQueryRequest: sending multiple responses for result");
                     QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
                     messageSize = 0;
                     resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();
@@ -167,7 +167,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         } catch (Exception ex) {
             // send error response and close response stream
             final String msg = ex.getMessage();
-            LOGGER.error("exception accessing result via cursor: " + msg);
+            LOGGER.error("processQueryRequest: exception accessing result via cursor: " + msg);
             QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
             cursor.close();
             return;

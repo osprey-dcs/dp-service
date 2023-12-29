@@ -82,10 +82,10 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
         QueryResponse summaryResponse = responseList.get(0);
         assertEquals(ResponseType.ERROR_RESPONSE, summaryResponse.getResponseType());
         assertTrue(summaryResponse.hasQueryReport());
-        assertTrue(summaryResponse.getQueryReport().hasQueryError());
-        assertEquals(
-                "executeQuery returned null cursor",
-                summaryResponse.getQueryReport().getQueryError().getMessage());
+        assertTrue(summaryResponse.getQueryReport().hasQueryStatus());
+        QueryResponse.QueryReport.QueryStatus status = summaryResponse.getQueryReport().getQueryStatus();
+        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
+        assertEquals("executeQuery returned null cursor", status.getStatusMessage());
     }
 
 }

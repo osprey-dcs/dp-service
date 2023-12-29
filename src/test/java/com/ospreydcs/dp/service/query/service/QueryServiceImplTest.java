@@ -10,10 +10,8 @@ import org.junit.Test;
 
 import java.time.Instant;
 import java.util.Date;
-import java.util.List;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class QueryServiceImplTest extends QueryTestBase {
 
@@ -66,35 +64,26 @@ public class QueryServiceImplTest extends QueryTestBase {
         final String msg = "error message";
         QueryResponse response = serviceImpl.queryResponseError(msg);
 
-        assertTrue("responseType not set",
-                response.getResponseType() == ResponseType.ERROR_RESPONSE);
-        assertTrue("response time not set",
-                response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("QueryReport not set",
-                response.hasQueryReport());
-        assertTrue("QueryError not set",
-                response.getQueryReport().hasQueryError());
-        assertTrue("msg not set",
-                response.getQueryReport().getQueryError().getMessage().equals(msg));
+        assertEquals(ResponseType.ERROR_RESPONSE, response.getResponseType());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReport());
+        assertTrue(response.getQueryReport().hasQueryStatus());
+        QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
+        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
+        assertTrue(status.getStatusMessage().equals(msg));
     }
 
     @Test
-    public void testQueryResponseSummary() {
+    public void testQueryResponseEmpty() {
 
-        final int numBuckets = 42;
-        final String msg = "";
-        QueryResponse response = serviceImpl.queryResponseSummary(numBuckets);
+        QueryResponse response = serviceImpl.queryResponseEmpty();
 
-        assertTrue("responseType not set",
-                response.getResponseType() == ResponseType.SUMMARY_RESPONSE);
-        assertTrue("response time not set",
-                response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("QueryReport not set",
-                response.hasQueryReport());
-        assertTrue("QuerySummary not set",
-                response.getQueryReport().hasQuerySummary());
-        assertTrue("numBuckets not set",
-                response.getQueryReport().getQuerySummary().getNumBuckets() == numBuckets);
+        assertEquals(ResponseType.SUMMARY_RESPONSE, response.getResponseType());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReport());
+        assertTrue(response.getQueryReport().hasQueryStatus());
+        QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
+        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
     }
 
 }
