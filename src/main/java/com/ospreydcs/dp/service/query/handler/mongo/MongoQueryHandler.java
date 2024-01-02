@@ -5,13 +5,19 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.FixedIntervalTimestampSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
-import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseSingleDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,7 +32,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     private static final int TIMEOUT_SECONDS = 60;
     protected static final int MAX_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
-    protected static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
+    public static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
 
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
@@ -34,7 +40,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
     private MongoQueryClientInterface mongoQueryClient = null;
     protected ExecutorService executorService = null;
-    protected BlockingQueue<HandlerQueryRequest> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
+    protected BlockingQueue<QueryJob> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
@@ -64,12 +70,12 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 //                    HandlerQueryRequest request = (HandlerQueryRequest) queue.take();
 
                     // poll for next queue item with a timeout
-                    HandlerQueryRequest request =
-                            (HandlerQueryRequest) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    QueryJob job =
+                            (QueryJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-                    if (request != null) {
+                    if (job != null) {
                         try {
-                            processQueryRequest(request);
+                            executeQueryAndDispatchResults(job);
                         } catch (Exception ex) {
                             LOGGER.error("QueryWorker.run encountered exception: {}", ex.getMessage());
                         }
@@ -86,7 +92,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         }
     }
 
-    private FixedIntervalTimestampSpec bucketSamplingInterval(BucketDocument document) {
+    public static FixedIntervalTimestampSpec bucketSamplingInterval(BucketDocument document) {
         Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
         FixedIntervalTimestampSpec.Builder samplingIntervalBuilder = FixedIntervalTimestampSpec.newBuilder();
         samplingIntervalBuilder.setStartTime(startTime);
@@ -95,7 +101,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return samplingIntervalBuilder.build();
     }
 
-    private <T> QueryResponse.QueryReport.QueryData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
+    public static <T> QueryResponse.QueryReport.QueryData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
 
         QueryResponse.QueryReport.QueryData.DataBucket.Builder bucketBuilder =
                 QueryResponse.QueryReport.QueryData.DataBucket.newBuilder();
@@ -117,64 +123,10 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return bucketBuilder.build();
     }
 
-    protected void processQueryRequest(HandlerQueryRequest request) {
-
-        LOGGER.debug("processQueryRequest");
-
-        final var cursor = mongoQueryClient.executeQuery(request);
-
-        if (cursor == null) {
-            // send error response and close response stream
-            final String msg = "executeQuery returned null cursor";
-            LOGGER.error(msg);
-            QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
-            return;
-        }
-
-        // send empty QueryStatus if query matched no data
-        if (!cursor.hasNext()) {
-            LOGGER.debug("processQueryRequest: query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryResponseEmpty(request.responseObserver);
-            return;
-        }
-
-        // build response from query result cursor
-        QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
-                QueryResponse.QueryReport.QueryData.newBuilder();
-
-        int messageSize = 0;
-        try {
-            while (cursor.hasNext()){
-                final BucketDocument document = cursor.next();
-                final QueryResponse.QueryReport.QueryData.DataBucket bucket = dataBucketFromDocument(document);
-                int bucketSerializedSize = bucket.getSerializedSize();
-                if (messageSize + bucketSerializedSize > MAX_GRPC_MESSAGE_SIZE) {
-                    // hit size limit for message so send current data response and create a new one
-                    LOGGER.debug("processQueryRequest: sending multiple responses for result");
-                    QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
-                    messageSize = 0;
-                    resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();
-                }
-                resultDataBuilder.addDataBuckets(bucket);
-                messageSize = messageSize + bucketSerializedSize;
-            }
-
-            if (messageSize > 0) {
-                // send final data response
-                QueryServiceImpl.sendQueryResponseData(resultDataBuilder, request.responseObserver);
-            }
-
-        } catch (Exception ex) {
-            // send error response and close response stream
-            final String msg = ex.getMessage();
-            LOGGER.error("processQueryRequest: exception accessing result via cursor: " + msg);
-            QueryServiceImpl.sendQueryResponseError(msg, request.responseObserver);
-            cursor.close();
-            return;
-        }
-
-        cursor.close();
-        QueryServiceImpl.closeResponseStream(request.responseObserver);
+    protected void executeQueryAndDispatchResults(QueryJob job) {
+        LOGGER.debug("executeQueryAndDispatchResults");
+        final var cursor = mongoQueryClient.executeQuery(job.getQuerySpec());
+        job.getDispatcher().handleResult(cursor);
     }
 
     /**
@@ -262,15 +214,58 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return true;
     }
 
-    public void handleQueryRequest(HandlerQueryRequest request) {
+    @Override
+    public void handleQueryResponseStream(
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.debug("handleQueryRequest");
+        LOGGER.debug("handleQueryResponseStream");
+
+        final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(querySpec, dispatcher);
 
         try {
-            requestQueue.put(request);
+            requestQueue.put(job);
         } catch (InterruptedException e) {
             LOGGER.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
     }
+
+    @Override
+    public QueryResultCursor handleQueryResponseCursor(
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+
+        LOGGER.debug("handleQueryResponseCursor");
+
+        final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(querySpec, dispatcher);
+        final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+
+        return resultCursor;
+    }
+
+    @Override
+    public void handleQueryResponseSingle(
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+
+        LOGGER.debug("handleQueryResponseSingle");
+
+        final ResponseSingleDispatcher dispatcher = new ResponseSingleDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(querySpec, dispatcher);
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

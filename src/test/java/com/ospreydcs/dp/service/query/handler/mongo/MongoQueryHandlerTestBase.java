@@ -9,7 +9,9 @@ import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
 import io.grpc.stub.StreamObserver;
 
 import java.time.Instant;
@@ -70,7 +72,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         clientTestInterface = null;
     }
 
-    protected List<QueryResponse> processQueryRequest(
+    protected List<QueryResponse> executeAndDispatchResponseStream(
             QueryRequest request, int numResponsesExpected) {
 
         System.out.println("handleQueryRequest responses expected: " + numResponsesExpected);
@@ -97,9 +99,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             }
         };
 
-        // send api request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request.getQuerySpec(), responseObserver);
-        handler.processQueryRequest(handlerQueryRequest);
+        // create QueryJob and execute it
+        final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher);
+        handler.executeQueryAndDispatchResults(job);
 
         return responseList;
     }
@@ -120,7 +123,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = processQueryRequest(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
@@ -171,7 +174,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = processQueryRequest(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);

@@ -9,7 +9,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoSyncQueryClient;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -521,9 +521,9 @@ public class QueryPerformanceBenchmark {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final int[] totalNumPvsArray = {100, 500, 1000};
-        final int[] numPvsPerRequestArray = {1, 10, 25, 50};
-        final int[] numThreadsArray = {1, 3, 5, 7};
+        final int[] totalNumPvsArray = {/*100, 500,*/ 1000};
+        final int[] numPvsPerRequestArray = {/*1, 10,*/ 25/*, 50*/};
+        final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
 
         Map<String, Double> rateMap = new TreeMap<>();
         for (int numPvs : totalNumPvsArray) {

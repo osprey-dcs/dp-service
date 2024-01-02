@@ -7,8 +7,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -164,8 +163,13 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
 
         // otherwise handle request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(querySpec, responseObserver);
-        handler.handleQueryRequest(handlerQueryRequest);
+        handler.handleQueryResponseStream(querySpec, responseObserver);
+    }
+
+    @Override
+    public StreamObserver<QueryRequest> queryResponseCursor(StreamObserver<QueryResponse> responseObserver) {
+        LOGGER.debug("queryResponseCursor");
+        return new QueryResponseCursorRequestStreamObserver(responseObserver, handler);
     }
 
 }

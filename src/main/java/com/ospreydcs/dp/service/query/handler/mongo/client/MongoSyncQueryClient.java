@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.query.handler.mongo;
+package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
@@ -6,7 +6,6 @@ import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
@@ -20,9 +19,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    public MongoCursor<BucketDocument> executeQuery(HandlerQueryRequest handlerQueryRequest) {
-
-        final QueryRequest.QuerySpec querySpec = handlerQueryRequest.querySpec;
+    public MongoCursor<BucketDocument> executeQuery(QueryRequest.QuerySpec querySpec) {
 
         final Date startTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getStartTime());
         final Date endTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getEndTime());

@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -36,7 +36,7 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
         }
 
         @Override
-        public MongoCursor<BucketDocument> executeQuery(HandlerQueryRequest handlerQueryRequest) {
+        public MongoCursor<BucketDocument> executeQuery(QueryRequest.QuerySpec querySpec) {
             // THIS IS KEY FOR THE TEST CASE.
             // THE NULL CURSOR returned by this method triggers the error response condition from the handler!
             return null;
@@ -75,7 +75,7 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
 
         // WE EXPECT processQueryRequest to trigger an error response from the handler since
         // ErrorTestClient.executeQuery RETURNS A NULL CURSOR.
-        List<QueryResponse> responseList = processQueryRequest(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
 
         // examine response
         assertEquals(numResponesesExpected, responseList.size());

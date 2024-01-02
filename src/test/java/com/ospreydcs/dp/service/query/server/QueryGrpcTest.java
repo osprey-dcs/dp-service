@@ -7,8 +7,8 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.interfaces.ResultCursorInterface;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
@@ -61,9 +61,23 @@ public class QueryGrpcTest extends QueryTestBase {
             return true;
         }
 
-        public void handleQueryRequest(HandlerQueryRequest request) {
-            System.out.println("handleQueryRequest: " + request.querySpec.getColumnNamesList());
-            request.responseObserver.onCompleted(); // close response stream so that client stream is closed
+        @Override
+        public void handleQueryResponseStream(
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
+            System.out.println("handleQueryRequest: " + querySpec.getColumnNamesList());
+            responseObserver.onCompleted(); // close response stream so that client stream is closed
+        }
+
+        @Override
+        public ResultCursorInterface handleQueryResponseCursor(
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+            return null;
+        }
+
+        @Override
+        public void handleQueryResponseSingle(
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
         }
     }
 

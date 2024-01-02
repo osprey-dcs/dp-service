@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.server;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.Grpc;
