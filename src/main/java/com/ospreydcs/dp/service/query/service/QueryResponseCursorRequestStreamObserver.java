@@ -28,6 +28,12 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
         this.handler = handler;
     }
 
+    private void closeCursor() {
+        if (this.cursor != null) {
+            this.cursor.close();
+        }
+    }
+
     @Override
     public void onNext(QueryRequest request) {
 
@@ -69,19 +75,47 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
             }
 
             case CURSOROP -> {
+                // handle cursor operation on query result
+
+                switch (request.getCursorOp()) {
+
+                    case CURSOR_OP_NEXT -> {
+                        LOGGER.debug("handling cursor operation: CURSOR_OP_NEXT");
+
+                        if (this.cursor != null) {
+                            this.cursor.next();
+                        }
+                    }
+
+                    case UNRECOGNIZED -> {
+                        LOGGER.error("unrecognized cursor operation requested");
+                        responseObserver.onCompleted();
+                        closeCursor();
+                    }
+                }
+
             }
 
             case REQUEST_NOT_SET -> {
+                LOGGER.error("unrecognized request case");
+                responseObserver.onCompleted();
+                closeCursor();
             }
         }
     }
 
     @Override
     public void onError(Throwable throwable) {
+        LOGGER.error("onError called with: {}", throwable.getMessage());
+        responseObserver.onCompleted();
+        closeCursor();
     }
 
     @Override
     public void onCompleted() {
+        LOGGER.debug("onCompleted");
+        responseObserver.onCompleted();
+        closeCursor();
     }
 
 }

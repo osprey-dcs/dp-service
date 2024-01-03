@@ -8,12 +8,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class ResponseSingleDispatcher extends ResultDispatcher {
+
     private static final Logger LOGGER = LogManager.getLogger();
+
     public ResponseSingleDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
     }
+
     @Override
-    public void handleResult(MongoCursor<BucketDocument> cursor) {
+    public void handleResult_(MongoCursor<BucketDocument> cursor) {
         throw new UnsupportedOperationException("ResponseCursorDispatcher.handleResult() not yet implemented");
     }
 }

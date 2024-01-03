@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.service;
 
+import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
@@ -64,12 +65,21 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
+    public static QueryResponse.QueryReport.QueryStatus queryStatus(
+            String msg, QueryResponse.QueryReport.QueryStatus.QueryStatusType statusType
+    ) {
+        QueryResponse.QueryReport.QueryStatus.Builder statusBuilder = QueryResponse.QueryReport.QueryStatus.newBuilder();
+        statusBuilder.setQueryStatusType(statusType);
+        if (msg != null) {
+            statusBuilder.setStatusMessage(msg);
+        }
+        return statusBuilder.build();
+    }
+
     public static QueryResponse queryResponseError(String msg) {
 
-        final QueryResponse.QueryReport.QueryStatus errorStatus = QueryResponse.QueryReport.QueryStatus.newBuilder()
-                .setQueryStatusType(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR)
-                .setStatusMessage(msg)
-                .build();
+        final QueryResponse.QueryReport.QueryStatus errorStatus =
+                queryStatus(msg, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR);
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
                 .setQueryStatus(errorStatus)
@@ -80,9 +90,20 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     public static QueryResponse queryResponseEmpty() {
 
-        final QueryResponse.QueryReport.QueryStatus emptyStatus = QueryResponse.QueryReport.QueryStatus.newBuilder()
-                .setQueryStatusType(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY)
+        final QueryResponse.QueryReport.QueryStatus emptyStatus =
+                queryStatus(null, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY);
+
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryStatus(emptyStatus)
                 .build();
+
+        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
+    }
+
+    public static QueryResponse queryResponseNotReady() {
+
+        final QueryResponse.QueryReport.QueryStatus emptyStatus =
+                queryStatus(null, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_NOT_READY);
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
                 .setQueryStatus(emptyStatus)

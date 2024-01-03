@@ -10,4 +10,10 @@ public class QueryResultCursor implements ResultCursorInterface {
         this.handler = handler;
         this.dispatcher = dispatcher;
     }
+    public void close() {
+        this.dispatcher.close();
+    }
+    public void next() {
+        this.dispatcher.next();
+    }
 }
