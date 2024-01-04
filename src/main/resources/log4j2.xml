@@ -9,7 +9,7 @@
     <Loggers>
         <Logger name="io.grpc.netty" level="off"/>
         <Logger name="io.netty.util" level="off"/>
-        <Root level="debug">
+        <Root level="info">
             <AppenderRef ref="console" />
         </Root>
     </Loggers>

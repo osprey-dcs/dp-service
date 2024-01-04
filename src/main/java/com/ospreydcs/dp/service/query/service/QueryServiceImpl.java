@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.service;
 
+import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
@@ -7,8 +8,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerInterface;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -65,28 +65,48 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
+    public static QueryResponse.QueryReport.QueryStatus queryStatus(
+            String msg, QueryResponse.QueryReport.QueryStatus.QueryStatusType statusType
+    ) {
+        QueryResponse.QueryReport.QueryStatus.Builder statusBuilder = QueryResponse.QueryReport.QueryStatus.newBuilder();
+        statusBuilder.setQueryStatusType(statusType);
+        if (msg != null) {
+            statusBuilder.setStatusMessage(msg);
+        }
+        return statusBuilder.build();
+    }
+
     public static QueryResponse queryResponseError(String msg) {
 
-        final QueryResponse.QueryReport.QueryError queryError = QueryResponse.QueryReport.QueryError.newBuilder()
-                .setMessage(msg)
-                .build();
+        final QueryResponse.QueryReport.QueryStatus errorStatus =
+                queryStatus(msg, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR);
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
-                .setQueryError(queryError)
+                .setQueryStatus(errorStatus)
                 .build();
 
         return responseWithReport(queryReport, ResponseType.ERROR_RESPONSE);
     }
 
-    public static QueryResponse queryResponseSummary(int numResults) {
+    public static QueryResponse queryResponseEmpty() {
 
-        final QueryResponse.QueryReport.QuerySummary querySummary =
-                QueryResponse.QueryReport.QuerySummary.newBuilder()
-                .setNumBuckets(numResults)
-                .build();
+        final QueryResponse.QueryReport.QueryStatus emptyStatus =
+                queryStatus(null, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY);
 
         final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
-                .setQuerySummary(querySummary)
+                .setQueryStatus(emptyStatus)
+                .build();
+
+        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
+    }
+
+    public static QueryResponse queryResponseNotReady() {
+
+        final QueryResponse.QueryReport.QueryStatus emptyStatus =
+                queryStatus(null, QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_NOT_READY);
+
+        final QueryResponse.QueryReport queryReport = QueryResponse.QueryReport.newBuilder()
+                .setQueryStatus(emptyStatus)
                 .build();
 
         return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
@@ -115,9 +135,10 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseSummary(int numResults, StreamObserver<QueryResponse> responseObserver) {
-        final QueryResponse summaryResponse = queryResponseSummary(numResults);
+    public static void sendQueryResponseEmpty(StreamObserver<QueryResponse> responseObserver) {
+        final QueryResponse summaryResponse = queryResponseEmpty();
         responseObserver.onNext(summaryResponse);
+        responseObserver.onCompleted();
     }
 
     /*
@@ -163,8 +184,13 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
 
         // otherwise handle request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(querySpec, responseObserver);
-        handler.handleQueryRequest(handlerQueryRequest);
+        handler.handleQueryResponseStream(querySpec, responseObserver);
+    }
+
+    @Override
+    public StreamObserver<QueryRequest> queryResponseCursor(StreamObserver<QueryResponse> responseObserver) {
+        LOGGER.debug("queryResponseCursor");
+        return new QueryResponseCursorRequestStreamObserver(responseObserver, handler);
     }
 
 }

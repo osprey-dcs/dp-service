@@ -9,7 +9,9 @@ import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import com.ospreydcs.dp.service.query.handler.model.HandlerQueryRequest;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
 import io.grpc.stub.StreamObserver;
 
 import java.time.Instant;
@@ -70,7 +72,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         clientTestInterface = null;
     }
 
-    protected List<QueryResponse> processQueryRequest(
+    protected List<QueryResponse> executeAndDispatchResponseStream(
             QueryRequest request, int numResponsesExpected) {
 
         System.out.println("handleQueryRequest responses expected: " + numResponsesExpected);
@@ -97,9 +99,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             }
         };
 
-        // send api request
-        HandlerQueryRequest handlerQueryRequest = new HandlerQueryRequest(request.getQuerySpec(), responseObserver);
-        handler.processQueryRequest(handlerQueryRequest);
+        // create QueryJob and execute it
+        final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher);
+        handler.executeQueryAndDispatchResults(job);
 
         return responseList;
     }
@@ -120,16 +123,16 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = processQueryRequest(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
-        QueryResponse summaryResponse = responseList.get(0);
-        assertTrue(summaryResponse.getResponseType() == ResponseType.SUMMARY_RESPONSE);
-        assertTrue(summaryResponse.hasQueryReport());
-        assertTrue(summaryResponse.getQueryReport().hasQuerySummary());
-        assertTrue(summaryResponse.getQueryReport().getQuerySummary().getNumBuckets() == 0);
-
+        QueryResponse response = responseList.get(0);
+        assertTrue(response.getResponseType() == ResponseType.SUMMARY_RESPONSE);
+        assertTrue(response.hasQueryReport());
+        assertTrue(response.getQueryReport().hasQueryStatus());
+        QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
+        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
     }
 
     private static void verifyDataBucket(
@@ -170,24 +173,16 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         QueryRequest request = buildQueryRequest(params);
 
         // send request
-        final int numResponesesExpected = 2; // expect summary and data messages
-        List<QueryResponse> responseList = processQueryRequest(request, numResponesesExpected);
+        final int numResponesesExpected = 1;
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
 
-        // check summary message
-        final int numBuckets = 10;
+        // check data message
         final int numSamplesPerBucket = 10;
         final long bucketSampleIntervalNanos = 100_000_000L;
-        QueryResponse summaryResponse = responseList.get(0);
-        assertTrue(summaryResponse.getResponseType() == ResponseType.SUMMARY_RESPONSE);
-        assertTrue(summaryResponse.hasQueryReport());
-        assertTrue(summaryResponse.getQueryReport().hasQuerySummary());
-        assertTrue(summaryResponse.getQueryReport().getQuerySummary().getNumBuckets() == numBuckets); // should contain 10 buckets
-
-        // check data message
-        QueryResponse dataResponse = responseList.get(1);
+        QueryResponse dataResponse = responseList.get(0);
         assertTrue(dataResponse.getResponseType() == ResponseType.DETAIL_RESPONSE);
         assertTrue(dataResponse.hasQueryReport());
         assertTrue(dataResponse.getQueryReport().hasQueryData());
