@@ -3,15 +3,10 @@ package com.ospreydcs.dp.service.query.benchmark;
 import com.mongodb.client.result.InsertManyResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
-import io.grpc.Grpc;
-import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,27 +14,33 @@ import org.apache.logging.log4j.Logger;
 import java.text.DecimalFormat;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.*;
 
-public class QueryPerformanceBenchmark {
-
-    private static final Logger LOGGER = LogManager.getLogger();
+public abstract class BenchmarkApiBase {
 
     // static variables
-    private static BenchmarkDbClient DB_CLIENT = new BenchmarkDbClient();
-    private static long START_SECONDS = 0L;
+    private static final Logger LOGGER = LogManager.getLogger();
 
     // constants
     protected static final String COLUMN_NAME_BASE = "queryBenchmark_";
-    private static final Integer AWAIT_TIMEOUT_MINUTES = 1;
-    private static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
+    protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
+    protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
 
     // configuration
     public static final String CFG_KEY_GRPC_CONNECT_STRING = "QueryBenchmark.grpcConnectString";
     public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50052";
+
+    protected static ConfigurationManager configMgr() {
+        return ConfigurationManager.getInstance();
+    }
+
+    protected static String getConnectString() {
+        return configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
+    }
 
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
 
@@ -78,17 +79,20 @@ public class QueryPerformanceBenchmark {
 
     static class InsertTaskParams {
 
+        final public BenchmarkDbClient dbClient;
         final public long bucketStartSeconds;
         final public int numSamplesPerSecond;
         final public int numSecondsPerBucket;
         final public int numColumns;
 
         public InsertTaskParams(
+                BenchmarkDbClient dbClient,
                 long bucketStartSeconds,
                 int numSamplesPerSecond,
                 int numSecondsPerBucket,
                 int numColumns
         ) {
+            this.dbClient = dbClient;
             this.bucketStartSeconds = bucketStartSeconds;
             this.numSamplesPerSecond = numSamplesPerSecond;
             this.numSecondsPerBucket = numSecondsPerBucket;
@@ -125,13 +129,81 @@ public class QueryPerformanceBenchmark {
                 COLUMN_NAME_BASE,
                 params.numColumns,
                 1);
-        int bucketsInserted = DB_CLIENT.insertBucketDocuments(bucketList);
+        int bucketsInserted = params.dbClient.insertBucketDocuments(bucketList);
         return new InsertTaskResult(bucketsInserted);
     }
 
-    static class QueryTaskParams {
-        private int streamNumber;
-        private List<String> columnNames;
+    protected static void loadBucketData(long startSeconds) {
+
+        BenchmarkDbClient dbClient = new BenchmarkDbClient();
+
+        // load database with data for query
+        Instant t0 = Instant.now();
+        dbClient.init();
+        final int numSamplesPerSecond = 1000;
+        final int numSecondsPerBucket = 1;
+        final int numColumns = 4000;
+        final int numBucketsPerColumn = 60;
+
+        // set up executorService with tasks to create and insert a batch of bucket documents
+        // with a task for each second's data
+        var executorService = Executors.newFixedThreadPool(7);
+        List<InsertTask> insertTaskList = new ArrayList<>();
+        for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
+            InsertTaskParams taskParams = new InsertTaskParams(
+                    dbClient,
+                    startSeconds+bucketIndex,
+                    numSamplesPerSecond,
+                    numSecondsPerBucket,
+                    numColumns);
+            InsertTask task = new InsertTask(taskParams);
+            insertTaskList.add(task);
+        }
+
+        // invoke tasks to create and insert bucket documents via executorService
+        LOGGER.info("loading database");
+        List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
+        try {
+            insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
+            executorService.shutdown();
+            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                for (int i = 0 ; i < insertTaskResultFutureList.size() ; i++) {
+                    Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
+                    InsertTaskResult result = future.get();
+                    if (result.bucketsInserted != numColumns) {
+                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
+                        dbClient.fini();
+                        System.exit(1);
+                    }
+                }
+            } else {
+                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
+                executorService.shutdownNow();
+                dbClient.fini();
+                System.exit(1);
+            }
+        } catch (InterruptedException | ExecutionException ex) {
+            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
+            executorService.shutdownNow();
+            dbClient.fini();
+            Thread.currentThread().interrupt();
+            System.exit(1);
+        }
+
+        // clean up after loading and calculate stats
+        dbClient.fini();
+        LOGGER.info("finished loading database");
+        Instant t1 = Instant.now();
+        long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+        double secondsElapsed = dtMillis / 1_000.0;
+        final DecimalFormat formatter = new DecimalFormat("#,###.00");
+        String dtSecondsString = formatter.format(secondsElapsed);
+        LOGGER.info("loading time: {} seconds", dtSecondsString);
+    }
+
+    protected static class QueryTaskParams {
+        public int streamNumber;
+        public List<String> columnNames;
 
         public QueryTaskParams(
                 int streamNumber,
@@ -142,7 +214,7 @@ public class QueryPerformanceBenchmark {
         }
     }
 
-    static class QueryTaskResult {
+    protected static class QueryTaskResult {
         final public boolean status;
         final public long dataValuesReceived;
         final public long dataBytesReceived;
@@ -160,10 +232,10 @@ public class QueryPerformanceBenchmark {
         }
     }
 
-    static class QueryTask implements Callable<QueryTaskResult> {
+    protected static abstract class QueryTask implements Callable<QueryTaskResult> {
 
-        private ManagedChannel channel = null;
-        private QueryTaskParams params = null;
+        protected ManagedChannel channel = null;
+        protected QueryTaskParams params = null;
 
         public QueryTask(
                 ManagedChannel channel,
@@ -173,92 +245,16 @@ public class QueryPerformanceBenchmark {
             this.params = params;
         }
 
-        public QueryTaskResult call() {
-            QueryTaskResult result = sendQueryDataByTimeRequestBlocking(this.channel, this.params);
-            return result;
-        }
+        public abstract QueryTaskResult call();
     }
 
-    private static ConfigurationManager configMgr() {
-        return ConfigurationManager.getInstance();
-    }
+    protected static QueryRequest buildQueryRequest(QueryTaskParams params, long startSeconds) {
 
-    private static void loadBucketData() {
-        // load database with data for query
-        Instant t0 = Instant.now();
-        LOGGER.info("loading database");
-        DB_CLIENT.init();
-        final int numSamplesPerSecond = 1000;
-        final int numSecondsPerBucket = 1;
-        final int numColumns = 4000;
-        final int numBucketsPerColumn = 60;
-        final long startSeconds = Instant.now().getEpochSecond();
-
-        // set up executorService with tasks to create and insert a batch of bucket documents
-        // with a task for each second's data
-        var executorService = Executors.newFixedThreadPool(7);
-        List<InsertTask> insertTaskList = new ArrayList<>();
-        for (int bucketIndex = 0 ; bucketIndex < numBucketsPerColumn ; ++bucketIndex) {
-            InsertTaskParams taskParams = new InsertTaskParams(
-                    startSeconds+bucketIndex,
-                    numSamplesPerSecond,
-                    numSecondsPerBucket,
-                    numColumns);
-            InsertTask task = new InsertTask(taskParams);
-            insertTaskList.add(task);
-        }
-
-        // invoke tasks to create and insert bucket documents via executorService
-        List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
-        try {
-            insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
-            executorService.shutdown();
-            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
-                for (int i = 0 ; i < insertTaskResultFutureList.size() ; i++) {
-                    Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
-                    InsertTaskResult result = future.get();
-                    if (result.bucketsInserted != numColumns) {
-                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
-                        DB_CLIENT.fini();
-                        System.exit(1);
-                    }
-                }
-            } else {
-                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
-                executorService.shutdownNow();
-                DB_CLIENT.fini();
-                System.exit(1);
-            }
-        } catch (InterruptedException | ExecutionException ex) {
-            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
-            executorService.shutdownNow();
-            DB_CLIENT.fini();
-            Thread.currentThread().interrupt();
-            System.exit(1);
-        }
-
-        // clean up after loading and calculate stats
-        DB_CLIENT.fini();
-        LOGGER.info("finished loading database");
-        Instant t1 = Instant.now();
-        long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
-        double secondsElapsed = dtMillis / 1_000.0;
-        final DecimalFormat formatter = new DecimalFormat("#,###.00");
-        String dtSecondsString = formatter.format(secondsElapsed);
-        LOGGER.info("loading time: {} seconds", dtSecondsString);
-
-        // save start time for use in queries
-        START_SECONDS = startSeconds;
-    }
-
-    private static QueryRequest buildQueryRequest(QueryTaskParams params) {
-
-        final long startSeconds = START_SECONDS;
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
         startTimeBuilder.setEpochSeconds(startSeconds);
         startTimeBuilder.setNanoseconds(0);
         startTimeBuilder.build();
-        
+
         final long endSeconds = startSeconds + 60;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
         endTimeBuilder.setEpochSeconds(endSeconds);
@@ -277,137 +273,16 @@ public class QueryPerformanceBenchmark {
         return requestBuilder.build();
     }
 
-    private static QueryTaskResult sendQueryDataByTimeRequestBlocking(
-            ManagedChannel channel,
-            QueryTaskParams params) {
-
-        final int streamNumber = params.streamNumber;
-
-        boolean success = true;
-        String msg = "";
-        long dataValuesReceived = 0;
-        long dataBytesReceived = 0;
-        long grpcBytesReceived = 0;
-
-//        final CountDownLatch finishLatch = new CountDownLatch(1);
-//        final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
-
-//        StreamObserver<QueryDataResponse> responseObserver = new StreamObserver<QueryDataResponse>() {
-//
-//            @Override
-//            public void onNext(QueryDataResponse queryDataResponse) {
-//            }
-//
-//            @Override
-//            public void onError(Throwable t) {
-//                Status status = Status.fromThrowable(t);
-//                LOGGER.error("stream: {} queryDataByTime() Failed status: {} message: {}",
-//                        status, t.getMessage());
-//                runtimeError[0] = true;
-//                finishLatch.countDown();
-//            }
-//
-//            @Override
-//            public void onCompleted() {
-//                LOGGER.debug("stream: {} Finished queryDataByTime()", streamNumber);
-//                finishLatch.countDown();
-//            }
-//        }
-
-        int numBucketsReceived = 0;
-
-        QueryRequest request = buildQueryRequest(params);
-        DpQueryServiceGrpc.DpQueryServiceBlockingStub blockingStub = DpQueryServiceGrpc.newBlockingStub(channel);
-        Iterator<QueryResponse> responseStream = blockingStub.queryResponseStream(request);
-        while (responseStream.hasNext()) {
-            QueryResponse response = responseStream.next();
-            final String responseType = response.getResponseType().name();
-//            long firstSeconds = response.getFirstTime().getEpochSeconds();
-//            long lastSeconds = response.getLastTime().getEpochSeconds();
-            LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
-            grpcBytesReceived = grpcBytesReceived + response.getSerializedSize();
-
-            if (response.hasQueryReject()) {
-                success = false;
-                msg = "stream: " + streamNumber
-                        + " received reject with message: " + response.getQueryReject().getMessage();
-                LOGGER.error(msg);
-
-            } else if (response.hasQueryReport()) {
-
-                QueryResponse.QueryReport report = response.getQueryReport();
-
-                if (report.hasQueryData()) {
-                    QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
-                    int numResultBuckets = queryData.getDataBucketsCount();
-                    LOGGER.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
-                    for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
-                        int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
-                        LOGGER.debug(
-                                "stream: {} bucket column: {} startTime: {} numValues: {}",
-                                streamNumber,
-                                bucket.getDataColumn().getName(),
-                                GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
-                                dataValuesCount);
-                        dataValuesReceived = dataValuesReceived + dataValuesCount;
-                        dataBytesReceived = dataBytesReceived + (dataValuesCount * Double.BYTES);
-                        numBucketsReceived = numBucketsReceived + 1;
-                    }
-
-                } else if (report.hasQueryStatus()) {
-                    final QueryResponse.QueryReport.QueryStatus status = report.getQueryStatus();
-
-                    if (status.getQueryStatusType()
-                            == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
-                        success = false;
-                        final String errorMsg = status.getStatusMessage();
-                        msg = "stream: " + streamNumber + " received error response: " + errorMsg;
-                        LOGGER.error(msg);
-                        break;
-
-                    } else if (status.getQueryStatusType()
-                            == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
-                        success = false;
-                        msg = "stream: " + streamNumber + " query returned no data";
-                        LOGGER.error(msg);
-                        break;
-                    }
-
-                } else {
-                    success = false;
-                    msg = "stream: " + streamNumber + " received QueryReport with unexpected content";
-                    LOGGER.error(msg);
-                    break;
-                }
-
-            } else {
-                success = false;
-                msg = "stream: " + streamNumber + " received unexpected response";
-                LOGGER.error(msg);
-                break;
-            }
-        }
-
-        if (success) {
-
-            // expected number of buckets for query is the number of columns * 60 (which is hardwired in the query)
-            int numBucketsExpected = params.columnNames.size() * 60;
-
-            if (numBucketsReceived != numBucketsExpected) {
-                // validate number of buckets received matches summary
-                success = false;
-                LOGGER.error(
-                        "stream: {} numBucketsRecieved: {} mismatch numBucketsExpected: {}",
-                        streamNumber, numBucketsReceived, numBucketsExpected);
-            }
-
-        }
-
-        return new QueryTaskResult(success, dataValuesReceived, dataBytesReceived, grpcBytesReceived);
+    protected static QueryRequest buildNextRequest() {
+        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+        requestBuilder.setCursorOp(QueryRequest.CursorOperation.CURSOR_OP_NEXT);
+        return requestBuilder.build();
     }
 
+    protected abstract QueryTask newQueryTask(
+            ManagedChannel channel, BenchmarkApiBase.QueryTaskParams params);
 
-    public static double queryScenario(
+    private double queryScenario(
             ManagedChannel channel,
             int numPvs,
             int pvsPerRequest,
@@ -428,12 +303,12 @@ public class QueryPerformanceBenchmark {
         List<String> currentBatchColumns = new ArrayList<>();
         int currentBatchIndex = 1;
         for (int i = 1 ; i <= numPvs ; i++) {
-            final String columnName = COLUMN_NAME_BASE + i;
+            final String columnName = BenchmarkApiBase.COLUMN_NAME_BASE + i;
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
                 final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns);
-                final QueryTask task = new QueryTask(channel, params);
+                final QueryTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
                 currentBatchColumns = new ArrayList<>();
@@ -443,7 +318,7 @@ public class QueryPerformanceBenchmark {
         // add task for final batch of columns, if not empty
         if (currentBatchColumns.size() > 0) {
             final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns);
-            final QueryTask task = new QueryTask(channel, params);
+            final QueryTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
 
@@ -455,7 +330,7 @@ public class QueryPerformanceBenchmark {
         try {
             resultList = executorService.invokeAll(taskList);
             executorService.shutdown();
-            if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+            if (executorService.awaitTermination(BenchmarkApiBase.TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                 for (int i = 0 ; i < resultList.size() ; i++) {
                     Future<QueryTaskResult> future = resultList.get(i);
                     QueryTaskResult result = future.get();
@@ -511,26 +386,24 @@ public class QueryPerformanceBenchmark {
             return dataValueRate;
 
         } else {
-            LOGGER.error("streaming ingestion scenario failed, performance data invalid");
+            LOGGER.error("scenario failed, performance data invalid");
         }
 
         return 0.0;
     }
 
-    public static void queryExperiment(ManagedChannel channel) {
+    protected void queryExperiment(
+            ManagedChannel channel, int[] totalNumPvsArray, int[] numPvsPerRequestArray, int[] numThreadsArray) {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final int[] totalNumPvsArray = {/*100, 500,*/ 1000};
-        final int[] numPvsPerRequestArray = {/*1, 10,*/ 25/*, 50*/};
-        final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
-
+        final DecimalFormat numPvsFormatter = new DecimalFormat("0000");
         Map<String, Double> rateMap = new TreeMap<>();
         for (int numPvs : totalNumPvsArray) {
             for (int pvsPerRequest : numPvsPerRequestArray) {
                 for (int numThreads : numThreadsArray) {
                     String mapKey =
-                            "numPvs: " + numPvs + " pvsPerRequest: " + pvsPerRequest + " numThreads: " + numThreads;
+                            "numPvs: " + numPvsFormatter.format(numPvs) + " pvsPerRequest: " + pvsPerRequest + " numThreads: " + numThreads;
                     LOGGER.info(
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
@@ -559,39 +432,8 @@ public class QueryPerformanceBenchmark {
                 minRate = rate;
             }
         }
-        System.out.println("max rate: " + maxRate);
-        System.out.println("min rate: " + minRate);
-    }
-
-    public static void main(final String[] args) {
-
-        // load data for use by the query benchmark
-        loadBucketData();
-
-        // Create a communication channel to the server, known as a Channel. Channels are thread-safe
-        // and reusable. It is common to create channels at the beginning of your application and reuse
-        // them until the application shuts down.
-        //
-        // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
-        // use TLS, use TlsChannelCredentials instead.
-        String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
-        LOGGER.info("Creating gRPC channel using connect string: {}", connectString);
-        final ManagedChannel channel =
-                Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
-
-        queryExperiment(channel);
-
-        // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
-        // resources the channel should be shut down when it will no longer be used. If it may be used
-        // again leave it running.
-        try {
-            boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
-            if (!awaitSuccess) {
-                LOGGER.error("timeout in channel.shutdownNow.awaitTermination");
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
-        }
+        System.out.println("max rate: " + formatter.format(maxRate));
+        System.out.println("min rate: " + formatter.format(minRate));
     }
 
 }

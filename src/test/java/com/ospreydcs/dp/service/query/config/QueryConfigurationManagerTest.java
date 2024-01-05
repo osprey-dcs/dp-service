@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.config;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
-import com.ospreydcs.dp.service.query.benchmark.QueryPerformanceBenchmark;
+import com.ospreydcs.dp.service.query.benchmark.BenchmarkApiResponseStream;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.server.QueryGrpcServer;
 import org.junit.AfterClass;
@@ -57,9 +57,9 @@ public class QueryConfigurationManagerTest {
 
     @Test
     public void testBenchmark() {
-        assertTrue("unexpected value for resource: " + QueryPerformanceBenchmark.CFG_KEY_GRPC_CONNECT_STRING,
-                configMgr.getConfigString(QueryPerformanceBenchmark.CFG_KEY_GRPC_CONNECT_STRING)
-                        .equals(QueryPerformanceBenchmark.DEFAULT_GRPC_CONNECT_STRING));
+        assertTrue("unexpected value for resource: " + BenchmarkApiResponseStream.CFG_KEY_GRPC_CONNECT_STRING,
+                configMgr.getConfigString(BenchmarkApiResponseStream.CFG_KEY_GRPC_CONNECT_STRING)
+                        .equals(BenchmarkApiResponseStream.DEFAULT_GRPC_CONNECT_STRING));
     }
 
 }
