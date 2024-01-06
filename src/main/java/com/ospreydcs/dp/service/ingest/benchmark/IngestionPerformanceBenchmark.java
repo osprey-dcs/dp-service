@@ -447,6 +447,7 @@ public class IngestionPerformanceBenchmark {
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
         // final long startSeconds = Instant.now().getEpochSecond();
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        LOGGER.info("using startSeconds: {}", startSeconds);
         List<IngestionRequestStreamTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {

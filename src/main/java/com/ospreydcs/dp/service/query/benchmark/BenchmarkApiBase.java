@@ -161,7 +161,7 @@ public abstract class BenchmarkApiBase {
         }
 
         // invoke tasks to create and insert bucket documents via executorService
-        LOGGER.info("loading database");
+        LOGGER.info("loading database, using startSeconds: {}", startSeconds);
         List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
         try {
             insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
