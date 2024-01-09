@@ -133,35 +133,72 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>${maven.plugin.shade.version}</version>
-                <configuration>
-                    <transformers>
-                        <transformer
-                                implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <manifestEntries>
-                                <Main-Class>com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer</Main-Class>
-                                <Multi-Release>true</Multi-Release>
-                            </manifestEntries>
-                        </transformer>
-                    </transformers>
-                    <filters>
-                        <filter>
-                            <artifact>*:*</artifact>
-                            <excludes>
-                                <exclude>META-INF/*.SF</exclude>
-                                <exclude>META-INF/*.DSA</exclude>
-                                <exclude>META-INF/*.RSA</exclude>
-                            </excludes>
-                        </filter>
-                    </filters>
-                    <shadedArtifactAttached>true</shadedArtifactAttached>
-                </configuration>
                 <executions>
+					
+					<!-- CKA: Plugin execution for DP Ingestion Service shaded jar (dp-injest.jar) -->
                     <execution>
+						<id>shaded-ingestion-service-jar</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>
+		                <configuration>
+							<finalName>dp-ingest-${version}</finalName>
+                		    <transformers>
+                        		<transformer
+                                		implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                            		<manifestEntries>
+                                		<Main-Class>com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer</Main-Class>
+                                		<Multi-Release>true</Multi-Release>
+                            		</manifestEntries>
+                        		</transformer>
+                    		</transformers>
+                    		<filters>
+                        		<filter>
+                            		<artifact>*:*</artifact>
+                            		<excludes>
+                                		<exclude>META-INF/*.SF</exclude>
+                                		<exclude>META-INF/*.DSA</exclude>
+                                		<exclude>META-INF/*.RSA</exclude>
+                            		</excludes>
+                        		</filter>
+                    		</filters>
+                    		<shadedArtifactAttached>true</shadedArtifactAttached>
+                		</configuration>
                     </execution>
+                    
+					<!-- CKA: Plugin execution for DP Query Service shaded jar (dp-query.jar) -->
+                    <execution>
+						<id>shaded-query-service-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+		                <configuration>
+							<finalName>dp-query-${version}</finalName>
+                		    <transformers>
+                        		<transformer
+                                		implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                            		<manifestEntries>
+                                		<Main-Class>com.ospreydcs.dp.service.query.server.QueryGrpcServer</Main-Class>
+                                		<Multi-Release>true</Multi-Release>
+                            		</manifestEntries>
+                        		</transformer>
+                    		</transformers>
+                    		<filters>
+                        		<filter>
+                            		<artifact>*:*</artifact>
+                            		<excludes>
+                                		<exclude>META-INF/*.SF</exclude>
+                                		<exclude>META-INF/*.DSA</exclude>
+                                		<exclude>META-INF/*.RSA</exclude>
+                            		</excludes>
+                        		</filter>
+                    		</filters>
+                    		<shadedArtifactAttached>true</shadedArtifactAttached>
+                		</configuration>
+                    </execution>
+                    
                 </executions>
             </plugin>
 
