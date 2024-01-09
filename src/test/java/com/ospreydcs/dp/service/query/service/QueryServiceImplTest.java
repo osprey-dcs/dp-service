@@ -35,7 +35,7 @@ public class QueryServiceImplTest extends QueryTestBase {
         Date dateFromInstant = Date.from(instant);
 
         // check that the two dates are equal
-        assertTrue("dateFromTimestamp date mismatch with date from instant", dateFromTimestamp.equals(dateFromInstant));
+        assertTrue(dateFromTimestamp.equals(dateFromInstant));
     }
 
     @Test
@@ -46,16 +46,11 @@ public class QueryServiceImplTest extends QueryTestBase {
                 serviceImpl.queryResponseReject(msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
 
         // check response contains message and reason
-        assertTrue("responseType not set",
-                response.getResponseType() == ResponseType.REJECT_RESPONSE);
-        assertTrue("response time not set",
-                response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set",
-                response.hasQueryReject());
-        assertTrue("reject reason not set",
-                response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
-        assertTrue("reject message not set",
-                response.getQueryReject().getMessage().equals(msg));
+        assertTrue(response.getResponseType() == ResponseType.REJECT_RESPONSE);
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReject());
+        assertTrue(response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+        assertTrue(response.getQueryReject().getMessage().equals(msg));
     }
 
     @Test
@@ -69,7 +64,9 @@ public class QueryServiceImplTest extends QueryTestBase {
         assertTrue(response.hasQueryReport());
         assertTrue(response.getQueryReport().hasQueryStatus());
         QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
-        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
+        assertEquals(
+                QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR,
+                status.getQueryStatusType());
         assertTrue(status.getStatusMessage().equals(msg));
     }
 
@@ -78,12 +75,43 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         QueryResponse response = serviceImpl.queryResponseEmpty();
 
-        assertEquals(ResponseType.SUMMARY_RESPONSE, response.getResponseType());
+        assertEquals(ResponseType.STATUS_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasQueryReport());
         assertTrue(response.getQueryReport().hasQueryStatus());
         QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
-        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
+        assertEquals(
+                QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY,
+                status.getQueryStatusType());
+    }
+
+    @Test
+    public void testQueryResponseNotReady() {
+
+        QueryResponse response = serviceImpl.queryResponseNotReady();
+
+        assertEquals(ResponseType.STATUS_RESPONSE, response.getResponseType());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReport());
+        assertTrue(response.getQueryReport().hasQueryStatus());
+        QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
+        assertEquals(
+                QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_NOT_READY,
+                status.getQueryStatusType());
+    }
+
+    @Test
+    public void testQueryResponseData() {
+
+        QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
+                QueryResponse.QueryReport.QueryData.newBuilder();
+
+        QueryResponse response = serviceImpl.queryResponseData(resultDataBuilder);
+
+        assertEquals(ResponseType.DETAIL_RESPONSE, response.getResponseType());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasQueryReport());
+        assertTrue(response.getQueryReport().hasQueryData());
     }
 
 }

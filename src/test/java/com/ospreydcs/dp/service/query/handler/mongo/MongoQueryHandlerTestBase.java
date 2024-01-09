@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
 import io.grpc.stub.StreamObserver;
@@ -17,6 +18,8 @@ import io.grpc.stub.StreamObserver;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -28,6 +31,9 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
     private static String collectionNamePrefix = null;
     protected static final long startSeconds = Instant.now().getEpochSecond();
     protected static final String columnNameBase = "testpv_";
+    protected static final String COL_1_NAME = columnNameBase + "1";
+    protected static final String COL_2_NAME = columnNameBase + "2";
+
 
 
     protected interface TestClientInterface extends MongoQueryClientInterface {
@@ -72,10 +78,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         clientTestInterface = null;
     }
 
-    protected List<QueryResponse> executeAndDispatchResponseStream(
-            QueryRequest request, int numResponsesExpected) {
-
-        System.out.println("handleQueryRequest responses expected: " + numResponsesExpected);
+    protected List<QueryResponse> executeAndDispatchResponseStream(QueryRequest request) {
 
         List<QueryResponse> responseList = new ArrayList<>();
 
@@ -107,7 +110,86 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         return responseList;
     }
 
-    public void testProcessQueryRequestNoData() {
+    private class ResponseCursorStreamObserver implements StreamObserver<QueryResponse> {
+
+        private ResponseCursorDispatcher dispatcher = null;
+        final CountDownLatch finishLatch;
+        final List<QueryResponse> responseList;
+
+        public ResponseCursorStreamObserver(CountDownLatch finishLatch, List<QueryResponse> responseList) {
+            this.finishLatch = finishLatch;
+            this.responseList = responseList;
+        }
+
+        public void setDispatcher(ResponseCursorDispatcher dispatcher) {
+            this.dispatcher = dispatcher;
+        }
+
+        @Override
+        public void onNext(QueryResponse queryDataResponse) {
+            System.out.println("responseObserver.onNext");
+            if (queryDataResponse.getResponseType() != ResponseType.DETAIL_RESPONSE) {
+                System.out.println("unexpected response type: " + queryDataResponse.getResponseType().name());
+                if (queryDataResponse.getResponseType() == ResponseType.ERROR_RESPONSE) {
+                    System.out.println("response error msg: " + queryDataResponse.getQueryReport().getQueryStatus().getStatusMessage());
+                }
+                finishLatch.countDown();
+            } else {
+                System.out.println("adding detail response");
+                responseList.add(queryDataResponse);
+//                this.dispatcher.next();
+            }
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            System.out.println("responseObserver.onError");
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {
+            System.out.println("responseObserver.onCompleted");
+            finishLatch.countDown();
+        }
+    }
+
+    protected List<QueryResponse> executeAndDispatchResponseCursor(QueryRequest request) {
+
+        List<QueryResponse> responseList = new ArrayList<>();
+        final CountDownLatch finishLatch = new CountDownLatch(1);
+
+        // create observer for api response stream
+        ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
+
+        // create QueryJob and execute it
+        final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
+        responseObserver.setDispatcher(dispatcher);
+        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher);
+        handler.executeQueryAndDispatchResults(job);
+
+        // check if RPC already completed
+        if (finishLatch.getCount() == 0) {
+            // RPC completed or errored already
+            return responseList;
+        }
+
+        // otherwise wait for completion
+        try {
+            boolean awaitSuccess = finishLatch.await(1, TimeUnit.MINUTES);
+            if (!awaitSuccess) {
+                System.out.println("timeout waiting for finishLatch");
+                return responseList;
+            }
+        } catch (InterruptedException e) {
+            System.out.println("InterruptedException waiting for finishLatch");
+            return responseList;
+        }
+
+        return responseObserver.responseList;
+    }
+
+    public void testResponseStreamDispatcherNoData() {
 
         // assemble query request
         // create request with unspecified column name
@@ -123,12 +205,12 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
         QueryResponse response = responseList.get(0);
-        assertTrue(response.getResponseType() == ResponseType.SUMMARY_RESPONSE);
+        assertTrue(response.getResponseType() == ResponseType.STATUS_RESPONSE);
         assertTrue(response.hasQueryReport());
         assertTrue(response.getQueryReport().hasQueryStatus());
         QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
@@ -158,25 +240,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         }
     }
 
-    public void testProcessQueryRequestSuccess() {
-
-        // assemble query request
-        String col1Name = columnNameBase + "1";
-        String col2Name = columnNameBase + "2";
-        List<String> columnNames = List.of(col1Name, col2Name);
-        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
-                columnNames,
-                startSeconds,
-                0L,
-                startSeconds + 5,
-                0L);
-        QueryRequest request = buildQueryRequest(params);
-
-        // send request
-        final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
+    private static void verifyQueryResponse(List<QueryResponse> responseList) {
 
         // examine response
+        final int numResponesesExpected = 1;
         assertTrue(responseList.size() == numResponesesExpected);
 
         // check data message
@@ -192,7 +259,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // check each bucket, 5 for each column
         int secondsIncrement = 0;
-        String columnName = col1Name;
+        String columnName = COL_1_NAME;
         for (int bucketIndex = 0 ; bucketIndex < 10 ; bucketIndex++) {
             final long bucketStartSeconds = startSeconds + secondsIncrement;
             verifyDataBucket(
@@ -205,9 +272,47 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             secondsIncrement = secondsIncrement + 1;
             if (bucketIndex == 4) {
                 secondsIncrement = 0;
-                columnName = col2Name;
+                columnName = COL_2_NAME;
             }
         }
     }
-    
+
+    public void testResponseStreamDispatcher() {
+
+        // assemble query request
+        List<String> columnNames = List.of(COL_1_NAME, COL_2_NAME);
+        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+                columnNames,
+                startSeconds,
+                0L,
+                startSeconds + 5,
+                0L);
+        QueryRequest request = buildQueryRequest(params);
+
+        // execute query and dispatch result using ResponseStreamDispatcher
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
+
+        // examine response
+        verifyQueryResponse(responseList);
+    }
+
+    public void testResponseCursorDispatcher() {
+
+        // assemble query request
+        List<String> columnNames = List.of(COL_1_NAME, COL_2_NAME);
+        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+                columnNames,
+                startSeconds,
+                0L,
+                startSeconds + 5,
+                0L);
+        QueryRequest request = buildQueryRequest(params);
+
+        // execute query and dispatch using ResponseCursorDispatcher
+        List<QueryResponse> responseList = executeAndDispatchResponseCursor(request);
+
+        // examine response
+        verifyQueryResponse(responseList);
+    }
+
 }

@@ -52,42 +52,34 @@ public abstract class ResultDispatcher {
                 QueryResponse.QueryReport.QueryData.newBuilder();
 
         int messageSize = 0;
-        try {
-            while (cursor.hasNext()){
+        while (cursor.hasNext()){
 
-                final BucketDocument document = cursor.next();
-                final QueryResponse.QueryReport.QueryData.DataBucket bucket =
-                        MongoQueryHandler.dataBucketFromDocument(document);
+            final BucketDocument document = cursor.next();
+            final QueryResponse.QueryReport.QueryData.DataBucket bucket =
+                    MongoQueryHandler.dataBucketFromDocument(document);
 
-                // determine bucket size and check if too large
-                int bucketSerializedSize = bucket.getSerializedSize();
-                if (bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
-                    // single bucket is larger than maximum message size, so send error response
-                    return QueryServiceImpl.queryResponseError(
-                            "bucket size: " + bucketSerializedSize
-                                    + " greater than maximum message size: " + MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE);
-                }
-
-                // add bucket to result
-                resultDataBuilder.addDataBuckets(bucket);
-                messageSize = messageSize + bucketSerializedSize;
-
-                // break out of cursor handling loop if next bucket might exceed maximum size
-                if (messageSize + bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
-                    break;
-                }
+            // determine bucket size and check if too large
+            int bucketSerializedSize = bucket.getSerializedSize();
+            if (bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
+                // single bucket is larger than maximum message size, so send error response
+                return QueryServiceImpl.queryResponseError(
+                        "bucket size: " + bucketSerializedSize
+                                + " greater than maximum message size: " + MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE);
             }
 
-            if (messageSize > 0) {
-                // create response from buckets in result
-                return QueryServiceImpl.queryResponseData(resultDataBuilder);
-            }
+            // add bucket to result
+            resultDataBuilder.addDataBuckets(bucket);
+            messageSize = messageSize + bucketSerializedSize;
 
-        } catch (Exception ex) {
-            // send error response and close response stream
-            final String msg = ex.getMessage();
-            LOGGER.error("processQueryRequest: exception accessing result via cursor: " + msg);
-            return QueryServiceImpl.queryResponseError(msg);
+            // break out of cursor handling loop if next bucket might exceed maximum size
+            if (messageSize + bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
+                break;
+            }
+        }
+
+        if (messageSize > 0) {
+            // create response from buckets in result
+            return QueryServiceImpl.queryResponseData(resultDataBuilder);
         }
 
         return null;

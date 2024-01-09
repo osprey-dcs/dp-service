@@ -17,8 +17,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private static final int TIMEOUT_STREAM_FINISH_MINUTES = 1;
-
     private QueryHandlerInterface handler;
 
     public boolean init(QueryHandlerInterface handler) {
@@ -65,7 +63,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
-    public static QueryResponse.QueryReport.QueryStatus queryStatus(
+    private static QueryResponse.QueryReport.QueryStatus queryStatus(
             String msg, QueryResponse.QueryReport.QueryStatus.QueryStatusType statusType
     ) {
         QueryResponse.QueryReport.QueryStatus.Builder statusBuilder = QueryResponse.QueryReport.QueryStatus.newBuilder();
@@ -97,7 +95,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .setQueryStatus(emptyStatus)
                 .build();
 
-        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
+        return responseWithReport(queryReport, ResponseType.STATUS_RESPONSE);
     }
 
     public static QueryResponse queryResponseNotReady() {
@@ -109,7 +107,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .setQueryStatus(emptyStatus)
                 .build();
 
-        return responseWithReport(queryReport, ResponseType.SUMMARY_RESPONSE);
+        return responseWithReport(queryReport, ResponseType.STATUS_RESPONSE);
     }
 
     public static QueryResponse queryResponseData(QueryResponse.QueryReport.QueryData.Builder resultDataBuilder) {
@@ -138,21 +136,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     public static void sendQueryResponseEmpty(StreamObserver<QueryResponse> responseObserver) {
         final QueryResponse summaryResponse = queryResponseEmpty();
         responseObserver.onNext(summaryResponse);
-        responseObserver.onCompleted();
-    }
-
-    /*
-     * Wraps the supplied ResultData.Builder in a QueryResponse and sends it in the specified response stream.
-     */
-    public static void sendQueryResponseData(
-            QueryResponse.QueryReport.QueryData.Builder resultDataBuilder,
-            StreamObserver<QueryResponse> responseObserver) {
-
-        final QueryResponse dataResponse = queryResponseData(resultDataBuilder);
-        responseObserver.onNext(dataResponse);
-    }
-
-    public static void closeResponseStream(StreamObserver<QueryResponse> responseObserver) {
         responseObserver.onCompleted();
     }
 
