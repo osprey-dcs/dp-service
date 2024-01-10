@@ -4,11 +4,7 @@ import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
-import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
-import io.grpc.Grpc;
-import io.grpc.InsecureChannelCredentials;
-import io.grpc.ManagedChannel;
-import io.grpc.Status;
+import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,14 +15,14 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class IngestionPerformanceBenchmark {
+public abstract class IngestionBenchmarkBase {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
     // constants
-    private static final Integer AWAIT_TIMEOUT_MINUTES = 1;
-    private static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
-    private static final String NAME_COLUMN_BASE = "pv_";
+    protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
+    protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
+    protected static final String NAME_COLUMN_BASE = "pv_";
 
     // configuration
     public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionBenchmark.grpcConnectString";
@@ -35,15 +31,48 @@ public class IngestionPerformanceBenchmark {
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
     /**
+     * Defines dimensions and properties for IngestionRequest objects to send in an invocation
+     * of the streamingIngestion gRPC API.
+     */
+    static class IngestionTaskParams {
+
+        protected long startSeconds;
+        protected int streamNumber;
+        protected int numSeconds;
+        protected int numColumns;
+        protected int numRows;
+        protected int firstColumnIndex;
+        protected int lastColumnIndex;
+
+        public IngestionTaskParams(
+                long startSeconds,
+                int streamNumber,
+                int numSeconds,
+                int numColumns,
+                int numRows,
+                int firstColumnIndex,
+                int lastColumnIndex) {
+
+            this.startSeconds = startSeconds;
+            this.streamNumber = streamNumber;
+            this.numSeconds = numSeconds;
+            this.numColumns = numColumns;
+            this.numRows = numRows;
+            this.firstColumnIndex = firstColumnIndex;
+            this.lastColumnIndex = lastColumnIndex;
+        }
+    }
+
+    /**
      * Encapsulates stats for an invocation of the streamingIngestion API. Includes boolean status
      * and details about data values and bytes sent in the stream.
      */
-    static class IngestionStreamResult {
+    protected static class IngestionTaskResult {
 
-        private boolean status;
-        private long dataValuesSubmitted = 0;
-        private long dataBytesSubmitted = 0;
-        private long grpcBytesSubmitted = 0;
+        protected boolean status;
+        protected long dataValuesSubmitted = 0;
+        protected long dataBytesSubmitted = 0;
+        protected long grpcBytesSubmitted = 0;
 
         public boolean getStatus() {
             return status;
@@ -80,39 +109,35 @@ public class IngestionPerformanceBenchmark {
     }
 
     /**
-     * Defines dimensions and properties for IngestionRequest objects to send in an invocation
-     * of the streamingIngestion gRPC API.
+     * Implements Callable interface for an executor service task that submits a stream
+     * of ingestion requests of specified dimensions,
+     * with one request per second for specified number of seconds.
      */
-    static class IngestionRequestStreamTaskParams {
+    protected static abstract class IngestionTask implements Callable<IngestionTaskResult> {
 
-        private long startSeconds;
-        private int streamNumber;
-        private int numSeconds;
-        private int numColumns;
-        private int numRows;
-        private int firstColumnIndex;
-        private int lastColumnIndex;
+        protected final IngestionTaskParams params;
+        protected final DataTable.Builder templateDataTable;
+        protected final Channel channel;
 
-        public IngestionRequestStreamTaskParams(
-                long startSeconds,
-                int streamNumber,
-                int numSeconds,
-                int numColumns,
-                int numRows,
-                int firstColumnIndex,
-                int lastColumnIndex) {
+        public IngestionTask(
+                IngestionTaskParams params,
+                DataTable.Builder templateDataTable,
+                Channel channel) {
 
-            this.startSeconds = startSeconds;
-            this.streamNumber = streamNumber;
-            this.numSeconds = numSeconds;
-            this.numColumns = numColumns;
-            this.numRows = numRows;
-            this.firstColumnIndex = firstColumnIndex;
-            this.lastColumnIndex = lastColumnIndex;
+            this.params = params;
+            this.templateDataTable = templateDataTable;
+            this.channel = channel;
         }
+
+        /**
+         *
+         * @return
+         * @throws Exception
+         */
+        public abstract IngestionTaskResult call();
     }
 
-    private static ConfigurationManager configMgr() {
+    protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
     }
 
@@ -122,7 +147,7 @@ public class IngestionPerformanceBenchmark {
      * @param params
      * @return
      */
-    private static DataTable.Builder buildDataTableTemplate(IngestionRequestStreamTaskParams params) {
+    private static DataTable.Builder buildDataTableTemplate(IngestionTaskParams params) {
 
         DataTable.Builder dataTableBuilder = DataTable.newBuilder();
 
@@ -145,8 +170,8 @@ public class IngestionPerformanceBenchmark {
         return dataTableBuilder;
     }
 
-    private static IngestionRequest prepareIngestionRequest(
-            DataTable.Builder dataTableBuilder, IngestionRequestStreamTaskParams params, Integer secondsOffset) {
+    protected static IngestionRequest prepareIngestionRequest(
+            DataTable.Builder dataTableBuilder, IngestionTaskParams params, Integer secondsOffset) {
 
         final int providerId = params.streamNumber;
         final String requestId = String.valueOf(secondsOffset);
@@ -208,218 +233,8 @@ public class IngestionPerformanceBenchmark {
         return requestBuilder.build();
     }
 
-    /**
-     * Invokes streamingIngestion gRPC API with request dimensions and properties
-     * as specified in the params.
-     * @param params
-     * @return
-     */
-    private static IngestionStreamResult sendStreamingIngestionRequest(
-            IngestionRequestStreamTaskParams params,
-            DataTable.Builder templateDataTable,
-            DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub) {
-
-        final int streamNumber = params.streamNumber;
-        final int numSeconds = params.numSeconds;
-        final int numRows = params.numRows;
-        final int numColumns = params.numColumns;
-
-        final CountDownLatch finishLatch = new CountDownLatch(1);
-        final CountDownLatch responseLatch = new CountDownLatch(numSeconds);
-//        AtomicInteger responseCount = new AtomicInteger(0);
-        final boolean[] responseError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
-        final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
-
-        /**
-         * Implements StreamObserver interface for API response stream.
-         */
-        StreamObserver<IngestionResponse> responseObserver = new StreamObserver<IngestionResponse>() {
-
-            /**
-             * Handles an IngestionResponse object in the API response stream.  Checks properties
-             * of response are as expected.
-             * @param response
-             */
-            @Override
-            public void onNext(IngestionResponse response) {
-
-//                responseCount.incrementAndGet();
-                responseLatch.countDown();
-
-                boolean isError = false;
-                ResponseType responseType = response.getResponseType();
-                if (responseType != ResponseType.ACK_RESPONSE) {
-                    // unexpected response
-                    isError = true;
-                    if (responseType == ResponseType.REJECT_RESPONSE) {
-                        LOGGER.error("received reject with msg: "
-                                + response.getRejectDetails().getMessage());
-                    } else {
-                        LOGGER.error("unexpected responseType: " + responseType.getDescriptorForType());
-                    }
-                }
-
-                int rowCount = response.getAckDetails().getNumRows();
-                int colCount = response.getAckDetails().getNumColumns();
-
-                String requestId = response.getClientRequestId();
-                LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
-
-                if (rowCount != numRows) {
-                    LOGGER.error("stream: {} response rowCount: {} doesn't match expected rowCount: {}", streamNumber, rowCount, numRows);
-                    isError = true;
-                }
-                if (colCount != numColumns) {
-                    LOGGER.error("stream: {} response colCount: {} doesn't match expected colCount: {}", streamNumber, colCount, numColumns);
-                    isError = true;
-                }
-
-                if (isError) {
-                    responseError[0] = true;
-                }
-            }
-
-            /**
-             * Handles error in API response stream.  Logs error message and terminates stream.
-             * @param t
-             */
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                LOGGER.error("stream: {} streamingIngestion() Failed status: {} message: {}",
-                        streamNumber, status, t.getMessage());
-                runtimeError[0] = true;
-                finishLatch.countDown();
-            }
-
-            /**
-             * Handles completion of API response stream.  Logs message and terminates stream.
-             */
-            @Override
-            public void onCompleted() {
-                LOGGER.debug("stream: {} Finished streamingIngestion()", streamNumber);
-                finishLatch.countDown();
-            }
-        };
-
-        StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
-
-        IngestionStreamResult result = new IngestionStreamResult();
-
-        long dataValuesSubmitted = 0;
-        long dataBytesSubmitted = 0;
-        long grpcBytesSubmitted = 0;
-        try {
-            for (int secondsOffset = 0; secondsOffset < numSeconds; secondsOffset++) {
-
-                final String requestId = String.valueOf(secondsOffset);
-
-                // build IngestionRequest for current second, record elapsed time so we can subtract from measurement
-                // final IngestionRequest request = buildIngestionRequest(secondsOffset, params);
-                final IngestionRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
-
-                // send grpc ingestion request
-                LOGGER.debug("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
-                requestObserver.onNext(request);
-
-                dataValuesSubmitted = dataValuesSubmitted + (numRows * numColumns);
-                dataBytesSubmitted = dataBytesSubmitted + (numRows * numColumns * Double.BYTES);
-//                grpcBytesSubmitted = grpcBytesSubmitted + request.getSerializedSize(); // adds 2% performance overhead
-
-                if (finishLatch.getCount() == 0) {
-                    // RPC completed or errored before we finished sending.
-                    // Sending further requests won't error, but they will just be thrown away.
-                    result.setStatus(false);
-                    return result;
-                }
-            }
-        } catch (RuntimeException e) {
-            LOGGER.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
-            // cancel rpc, onError() sets runtimeError[0]
-            requestObserver.onError(e);
-            throw e;
-        }
-
-        try {
-            // wait until all responses received
-            boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            if (!awaitSuccess) {
-                LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
-                result.setStatus(false);
-                return result;
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error("stream: {} streamingIngestion InterruptedException waiting for responseLatch", streamNumber);
-            result.setStatus(false);
-            return result;
-        }
-
-        // mark the end of requests
-        requestObserver.onCompleted();
-
-        // receiving happens asynchronously
-        try {
-            boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            if (!awaitSuccess) {
-                LOGGER.error("stream: {} timeout waiting for finishLatch", streamNumber);
-                result.setStatus(false);
-                return result;
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error("stream: {} streamingIngestion InterruptedException waiting for finishLatch", streamNumber);
-            result.setStatus(false);
-            return result;
-        }
-
-        if (responseError[0]) {
-            LOGGER.error("stream: {} streamingIngestion() response error encountered", streamNumber);
-            result.setStatus(false);
-            return result;
-        } else if (runtimeError[0]) {
-            LOGGER.error("stream: {} streamingIngestion() runtime error encountered", streamNumber);
-            result.setStatus(false);
-            return result;
-        } else {
-//            LOGGER.info("stream: {} responseCount: {}", streamNumber, responseCount);
-            result.setStatus(true);
-            result.setDataValuesSubmitted(dataValuesSubmitted);
-            result.setDataBytesSubmitted(dataBytesSubmitted);
-            result.setGrpcBytesSubmitted(grpcBytesSubmitted);
-            return result;
-        }
-    }
-
-    /**
-     * Implements Callable interface for an executor service task that submits a stream
-     * of ingestion requests of specified dimensions,
-     * with one request per second for specified number of seconds.
-     */
-    static class IngestionRequestStreamTask implements Callable<IngestionStreamResult> {
-
-        private IngestionRequestStreamTaskParams params = null;
-        private DataTable.Builder templateDataTable = null;
-        private DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = null;
-
-        public IngestionRequestStreamTask (
-                IngestionRequestStreamTaskParams params,
-                DataTable.Builder templateDataTable,
-                DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub) {
-
-            this.params = params;
-            this.templateDataTable = templateDataTable;
-            this.asyncStub = asyncStub;
-        }
-
-        /**
-         *
-         * @return
-         * @throws Exception
-         */
-        public IngestionStreamResult call() throws Exception {
-            IngestionStreamResult result = sendStreamingIngestionRequest(this.params, this.templateDataTable, this.asyncStub);
-            return result;
-        }
-    }
+    protected abstract IngestionTask newIngestionTask(
+            IngestionTaskParams params, DataTable.Builder templateDataTable, Channel channel);
 
     /**
      * Executes a multithreaded streaming ingestion scenario with specified properties.
@@ -427,8 +242,8 @@ public class IngestionPerformanceBenchmark {
      * IngestionRequestStreamTasks for execution, each of which will call the streamingIngestion API
      * with a list of IngestionRequests.  Calculates and displays scenario performance stats.
      */
-    public static double streamingIngestionScenario(
-            DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub,
+    public double ingestionScenario(
+            Channel channel,
             int numThreads,
             int numStreams,
             int numRows,
@@ -448,15 +263,15 @@ public class IngestionPerformanceBenchmark {
         // final long startSeconds = Instant.now().getEpochSecond();
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         LOGGER.info("using startSeconds: {}", startSeconds);
-        List<IngestionRequestStreamTask> taskList = new ArrayList<>();
+        List<IngestionTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {
             final int firstColumnIndex = lastColumnIndex + 1;
             lastColumnIndex = lastColumnIndex + numColumns;
-            IngestionRequestStreamTaskParams params = new IngestionRequestStreamTaskParams(
+            IngestionTaskParams params = new IngestionTaskParams(
                     startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex);
             DataTable.Builder templateDataTable = buildDataTableTemplate(params);
-            IngestionRequestStreamTask task = new IngestionRequestStreamTask(params, templateDataTable, asyncStub);
+            IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
         }
 
@@ -464,14 +279,14 @@ public class IngestionPerformanceBenchmark {
         Instant t0 = Instant.now();
 
         // submit tasks to executor service, to send stream of IngestionRequests for each
-        List<Future<IngestionStreamResult>> resultList = null;
+        List<Future<IngestionTaskResult>> resultList = null;
         try {
             resultList = executorService.invokeAll(taskList);
             executorService.shutdown();
             if (executorService.awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                 for (int i = 0 ; i < resultList.size() ; i++) {
-                    Future<IngestionStreamResult> future = resultList.get(i);
-                    IngestionStreamResult ingestionResult = future.get();
+                    Future<IngestionTaskResult> future = resultList.get(i);
+                    IngestionTaskResult ingestionResult = future.get();
                     if (!ingestionResult.getStatus()) {
                         success = false;
                     }
@@ -530,9 +345,7 @@ public class IngestionPerformanceBenchmark {
         return 0.0;
     }
 
-    public static void streamingIngestionExperiment(ManagedChannel channel) {
-
-        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
+    protected void ingestionExperiment(Channel channel) {
 
         // number of PVS, sampling rate, length of run time
         // one minute of data at 4000 PVs x 1000 samples per second for 60 seconds
@@ -557,7 +370,7 @@ public class IngestionPerformanceBenchmark {
                 LOGGER.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                         numThreads, numStreams);
                 double writeRate =
-                        streamingIngestionScenario(asyncStub, numThreads, numStreams, numRows, numColumns, numSeconds);
+                        ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
                 writeRateMap.put(mapKey, writeRate);
             }
         }
@@ -583,35 +396,6 @@ public class IngestionPerformanceBenchmark {
         }
         System.out.println("max write rate: " + maxRate);
         System.out.println("min write rate: " + minRate);
-    }
-
-    public static void main(final String[] args) {
-
-        // Create a communication channel to the server, known as a Channel. Channels are thread-safe
-        // and reusable. It is common to create channels at the beginning of your application and reuse
-        // them until the application shuts down.
-        //
-        // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
-        // use TLS, use TlsChannelCredentials instead.
-        String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
-        LOGGER.info("Creating gRPC channel using connect string: {}", connectString);
-        final ManagedChannel channel =
-                Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
-
-        streamingIngestionExperiment(channel);
-
-        // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
-        // resources the channel should be shut down when it will no longer be used. If it may be used
-        // again leave it running.
-        try {
-            boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
-            if (!awaitSuccess) {
-                LOGGER.error("timeout in channel.shutdownNow.awaitTermination");
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
-        }
-
     }
 
 }

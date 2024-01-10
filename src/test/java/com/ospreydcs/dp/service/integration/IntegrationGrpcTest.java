@@ -1,8 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import com.ospreydcs.dp.service.ingest.benchmark.IngestionPerformanceBenchmark;
+import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkStreamingIngestion;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
@@ -32,13 +31,10 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         private static final int INGESTION_NUM_STREAMS = 20;
         private static final int INGESTION_NUM_ROWS = 1000;
         private static final int INGESTION_NUM_SECONDS = 60;
-        protected static DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub; // must use async stub for streaming api
+        final private Channel channel;
 
         public IntegrationTestGrpcClient(Channel channel) {
-            // 'channel' here is a Channel, not a ManagedChannel, so it is not this code's responsibility to
-            // shut it down.
-            // Passing Channels to code makes code easier to test and makes it easier to reuse Channels.
-            asyncStub = DpIngestionServiceGrpc.newStub(channel);
+            this.channel = channel;
         }
 
         private void runStreamingIngestionScenario() {
@@ -54,8 +50,9 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             System.out.println("number of PVs per stream: " + numColumnsPerStream);
             System.out.println("executorService thread pool size: " + INGESTION_NUM_THREADS);
 
-            IngestionPerformanceBenchmark.streamingIngestionScenario(
-                    this.asyncStub,
+            BenchmarkStreamingIngestion benchmark = new BenchmarkStreamingIngestion();
+            benchmark.ingestionScenario(
+                    channel,
                     INGESTION_NUM_THREADS,
                     INGESTION_NUM_STREAMS,
                     INGESTION_NUM_ROWS,

@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
+import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,7 +21,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.*;
 
-public abstract class BenchmarkApiBase {
+public abstract class QueryBenchmarkBase {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
@@ -234,11 +235,11 @@ public abstract class BenchmarkApiBase {
 
     protected static abstract class QueryTask implements Callable<QueryTaskResult> {
 
-        protected ManagedChannel channel = null;
-        protected QueryTaskParams params = null;
+        protected final Channel channel;
+        protected final QueryTaskParams params;
 
         public QueryTask(
-                ManagedChannel channel,
+                Channel channel,
                 QueryTaskParams params) {
 
             this.channel = channel;
@@ -280,10 +281,10 @@ public abstract class BenchmarkApiBase {
     }
 
     protected abstract QueryTask newQueryTask(
-            ManagedChannel channel, BenchmarkApiBase.QueryTaskParams params);
+            Channel channel, QueryBenchmarkBase.QueryTaskParams params);
 
     private double queryScenario(
-            ManagedChannel channel,
+            Channel channel,
             int numPvs,
             int pvsPerRequest,
             int numThreads) {
@@ -303,7 +304,7 @@ public abstract class BenchmarkApiBase {
         List<String> currentBatchColumns = new ArrayList<>();
         int currentBatchIndex = 1;
         for (int i = 1 ; i <= numPvs ; i++) {
-            final String columnName = BenchmarkApiBase.COLUMN_NAME_BASE + i;
+            final String columnName = QueryBenchmarkBase.COLUMN_NAME_BASE + i;
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
@@ -330,7 +331,7 @@ public abstract class BenchmarkApiBase {
         try {
             resultList = executorService.invokeAll(taskList);
             executorService.shutdown();
-            if (executorService.awaitTermination(BenchmarkApiBase.TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+            if (executorService.awaitTermination(QueryBenchmarkBase.TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                 for (int i = 0 ; i < resultList.size() ; i++) {
                     Future<QueryTaskResult> future = resultList.get(i);
                     QueryTaskResult result = future.get();
@@ -393,7 +394,7 @@ public abstract class BenchmarkApiBase {
     }
 
     protected void queryExperiment(
-            ManagedChannel channel, int[] totalNumPvsArray, int[] numPvsPerRequestArray, int[] numThreadsArray) {
+            Channel channel, int[] totalNumPvsArray, int[] numPvsPerRequestArray, int[] numThreadsArray) {
 
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 

@@ -1,11 +1,9 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import io.grpc.Channel;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -18,16 +16,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
-public class BenchmarkApiResponseCursor extends BenchmarkApiBase {
+public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
     private static long START_SECONDS = 0L;
 
     private static class QueryResponseCursorTask extends QueryTask {
-        public QueryResponseCursorTask(ManagedChannel channel, QueryTaskParams params) {
+        public QueryResponseCursorTask(Channel channel, QueryTaskParams params) {
             super(channel, params);
         }
         public QueryTaskResult call() {
@@ -36,7 +33,7 @@ public class BenchmarkApiResponseCursor extends BenchmarkApiBase {
         }
     }
 
-    protected QueryResponseCursorTask newQueryTask(ManagedChannel channel, QueryTaskParams params) {
+    protected QueryResponseCursorTask newQueryTask(Channel channel, QueryTaskParams params) {
         return new QueryResponseCursorTask(channel, params);
     }
 
@@ -179,7 +176,7 @@ public class BenchmarkApiResponseCursor extends BenchmarkApiBase {
     }
 
     private static QueryTaskResult sendQueryResponseCursor(
-            ManagedChannel channel,
+            Channel channel,
             QueryTaskParams params) {
 
         final int streamNumber = params.streamNumber;
@@ -259,7 +256,7 @@ public class BenchmarkApiResponseCursor extends BenchmarkApiBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        BenchmarkApiResponseCursor benchmark = new BenchmarkApiResponseCursor();
+        BenchmarkQueryResponseCursor benchmark = new BenchmarkQueryResponseCursor();
 
         final int[] totalNumPvsArray = {100, 500, 1000};
         final int[] numPvsPerRequestArray = {1, 10, 25, 50};

@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.config;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
-import com.ospreydcs.dp.service.ingest.benchmark.IngestionPerformanceBenchmark;
+import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer;
 import org.junit.AfterClass;
@@ -57,9 +57,9 @@ public class IngestionConfigurationManagerTest {
 
     @Test
     public void testBenchmark() {
-        assertTrue("unexpected value for resource: " + IngestionPerformanceBenchmark.CFG_KEY_GRPC_CONNECT_STRING,
-                configMgr.getConfigString(IngestionPerformanceBenchmark.CFG_KEY_GRPC_CONNECT_STRING)
-                        .equals(IngestionPerformanceBenchmark.DEFAULT_GRPC_CONNECT_STRING));
+        assertTrue("unexpected value for resource: " + IngestionBenchmarkBase.CFG_KEY_GRPC_CONNECT_STRING,
+                configMgr.getConfigString(IngestionBenchmarkBase.CFG_KEY_GRPC_CONNECT_STRING)
+                        .equals(IngestionBenchmarkBase.DEFAULT_GRPC_CONNECT_STRING));
     }
 
 }

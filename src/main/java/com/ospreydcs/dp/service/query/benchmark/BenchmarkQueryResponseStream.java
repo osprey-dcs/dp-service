@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import io.grpc.Channel;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -14,14 +15,14 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-public class BenchmarkApiResponseStream extends BenchmarkApiBase {
+public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
     private static long START_SECONDS = 0L;
 
     private static class QueryResponseStreamTask extends QueryTask {
-        public QueryResponseStreamTask(ManagedChannel channel, QueryTaskParams params) {
+        public QueryResponseStreamTask(Channel channel, QueryTaskParams params) {
             super(channel, params);
         }
         public QueryTaskResult call() {
@@ -31,7 +32,7 @@ public class BenchmarkApiResponseStream extends BenchmarkApiBase {
     }
 
     private static QueryTaskResult sendQueryResponseStream(
-            ManagedChannel channel,
+            Channel channel,
             QueryTaskParams params) {
 
         final int streamNumber = params.streamNumber;
@@ -160,7 +161,7 @@ public class BenchmarkApiResponseStream extends BenchmarkApiBase {
         return new QueryTaskResult(success, dataValuesReceived, dataBytesReceived, grpcBytesReceived);
     }
 
-    protected QueryResponseStreamTask newQueryTask(ManagedChannel channel, QueryTaskParams params) {
+    protected QueryResponseStreamTask newQueryTask(Channel channel, QueryTaskParams params) {
         return new QueryResponseStreamTask(channel, params);
     }
 
@@ -182,7 +183,7 @@ public class BenchmarkApiResponseStream extends BenchmarkApiBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        BenchmarkApiResponseStream benchmark = new BenchmarkApiResponseStream();
+        BenchmarkQueryResponseStream benchmark = new BenchmarkQueryResponseStream();
 
         final int[] totalNumPvsArray = {100, 500, 1000};
         final int[] numPvsPerRequestArray = {1, 10, 25, 50};
