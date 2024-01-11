@@ -34,15 +34,15 @@ public abstract class IngestionBenchmarkBase {
      * Defines dimensions and properties for IngestionRequest objects to send in an invocation
      * of the streamingIngestion gRPC API.
      */
-    static class IngestionTaskParams {
+    protected static class IngestionTaskParams {
 
-        protected long startSeconds;
-        protected int streamNumber;
-        protected int numSeconds;
-        protected int numColumns;
-        protected int numRows;
-        protected int firstColumnIndex;
-        protected int lastColumnIndex;
+        final public long startSeconds;
+        final public int streamNumber;
+        final public int numSeconds;
+        final public int numColumns;
+        final public int numRows;
+        final public int firstColumnIndex;
+        final public int lastColumnIndex;
 
         public IngestionTaskParams(
                 long startSeconds,

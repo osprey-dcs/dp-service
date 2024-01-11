@@ -1,7 +1,11 @@
 package com.ospreydcs.dp.service.integration;
 
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkStreamingIngestion;
+import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
@@ -10,6 +14,8 @@ import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -23,6 +29,47 @@ import static org.mockito.Mockito.mock;
 
 @RunWith(JUnit4.class)
 public class IntegrationGrpcTest extends IngestionTestBase {
+
+    private static final Logger LOGGER = LogManager.getLogger();
+
+    private static class IntegrationTestStreamingIngestionApp extends BenchmarkStreamingIngestion {
+
+        private static class IntegrationTestIngestionTask
+                extends BenchmarkStreamingIngestion.StreamingIngestionTask
+        {
+
+            public IntegrationTestIngestionTask(
+                    IngestionBenchmarkBase.IngestionTaskParams params,
+                    DataTable.Builder templateDataTable,
+                    Channel channel) {
+
+                super(params, templateDataTable, channel);
+            }
+
+            @Override
+            protected void onRequest(IngestionRequest request) {
+                LOGGER.debug("onRequest stream: " + this.params.streamNumber);
+            }
+
+            @Override
+            protected void onResponse(IngestionResponse response) {
+                LOGGER.debug("onResponse stream: " + this.params.streamNumber);
+            }
+
+            @Override
+            protected void onCompleted() {
+                LOGGER.debug("onCompleted stream: " + this.params.streamNumber);
+            }
+
+        }
+
+        protected StreamingIngestionTask newIngestionTask(
+                IngestionTaskParams params, DataTable.Builder templateDataTable, Channel channel
+        ) {
+            return new IntegrationTestIngestionTask(params, templateDataTable, channel);
+        }
+
+    }
 
     protected static class IntegrationTestGrpcClient {
 
@@ -50,8 +97,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             System.out.println("number of PVs per stream: " + numColumnsPerStream);
             System.out.println("executorService thread pool size: " + INGESTION_NUM_THREADS);
 
-            BenchmarkStreamingIngestion benchmark = new BenchmarkStreamingIngestion();
-            benchmark.ingestionScenario(
+            IntegrationTestStreamingIngestionApp ingestionApp = new IntegrationTestStreamingIngestionApp();
+            ingestionApp.ingestionScenario(
                     channel,
                     INGESTION_NUM_THREADS,
                     INGESTION_NUM_STREAMS,
@@ -114,9 +161,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
      */
     @Test
     public void runIntegrationTestScenarios() {
-
         client.runStreamingIngestionScenario();
-
     }
 
 //    /**

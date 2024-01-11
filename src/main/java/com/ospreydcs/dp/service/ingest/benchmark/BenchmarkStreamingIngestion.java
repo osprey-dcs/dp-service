@@ -39,6 +39,219 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     this.params, this.templateDataTable, this.channel);
             return result;
         }
+
+        protected void onRequest(IngestionRequest request) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onResponse(IngestionResponse response) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onCompleted() {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        /**
+         * Invokes streamingIngestion gRPC API with request dimensions and properties
+         * as specified in the params.
+         * @param params
+         * @return
+         */
+        private IngestionTaskResult sendStreamingIngestionRequest(
+                IngestionTaskParams params,
+                DataTable.Builder templateDataTable,
+                Channel channel) {
+
+            final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
+
+            final int streamNumber = params.streamNumber;
+            final int numSeconds = params.numSeconds;
+            final int numRows = params.numRows;
+            final int numColumns = params.numColumns;
+
+            final CountDownLatch finishLatch = new CountDownLatch(1);
+            final CountDownLatch responseLatch = new CountDownLatch(numSeconds);
+//        AtomicInteger responseCount = new AtomicInteger(0);
+            final boolean[] responseError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
+            final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
+
+            /**
+             * Implements StreamObserver interface for API response stream.
+             */
+            StreamObserver<IngestionResponse> responseObserver = new StreamObserver<IngestionResponse>() {
+
+                /**
+                 * Handles an IngestionResponse object in the API response stream.  Checks properties
+                 * of response are as expected.
+                 * @param response
+                 */
+                @Override
+                public void onNext(IngestionResponse response) {
+
+//                responseCount.incrementAndGet();
+                    responseLatch.countDown();
+
+                    boolean isError = false;
+                    ResponseType responseType = response.getResponseType();
+                    if (responseType != ResponseType.ACK_RESPONSE) {
+                        // unexpected response
+                        isError = true;
+                        if (responseType == ResponseType.REJECT_RESPONSE) {
+                            LOGGER.error("received reject with msg: "
+                                    + response.getRejectDetails().getMessage());
+                        } else {
+                            LOGGER.error("unexpected responseType: " + responseType.getDescriptorForType());
+                        }
+                    }
+
+                    // call hook for subclasses to add validation
+                    onResponse(response);
+
+                    int rowCount = response.getAckDetails().getNumRows();
+                    int colCount = response.getAckDetails().getNumColumns();
+
+                    String requestId = response.getClientRequestId();
+                    LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
+
+                    if (rowCount != numRows) {
+                        LOGGER.error(
+                                "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
+                                streamNumber, rowCount, numRows);
+                        isError = true;
+                    }
+                    if (colCount != numColumns) {
+                        LOGGER.error(
+                                "stream: {} response colCount: {} doesn't match expected colCount: {}",
+                                streamNumber, colCount, numColumns);
+                        isError = true;
+                    }
+
+                    if (isError) {
+                        responseError[0] = true;
+                    }
+                }
+
+                /**
+                 * Handles error in API response stream.  Logs error message and terminates stream.
+                 * @param t
+                 */
+                @Override
+                public void onError(Throwable t) {
+                    Status status = Status.fromThrowable(t);
+                    LOGGER.error("stream: {} streamingIngestion() Failed status: {} message: {}",
+                            streamNumber, status, t.getMessage());
+                    runtimeError[0] = true;
+                    finishLatch.countDown();
+                }
+
+                /**
+                 * Handles completion of API response stream.  Logs message and terminates stream.
+                 */
+                @Override
+                public void onCompleted() {
+                    LOGGER.debug("stream: {} Finished streamingIngestion()", streamNumber);
+                    finishLatch.countDown();
+                }
+            };
+
+            StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
+
+            IngestionTaskResult result = new IngestionTaskResult();
+
+            long dataValuesSubmitted = 0;
+            long dataBytesSubmitted = 0;
+            long grpcBytesSubmitted = 0;
+            try {
+                for (int secondsOffset = 0; secondsOffset < numSeconds; secondsOffset++) {
+
+                    final String requestId = String.valueOf(secondsOffset);
+
+                    // build IngestionRequest for current second, record elapsed time so we can subtract from measurement
+                    // final IngestionRequest request = buildIngestionRequest(secondsOffset, params);
+                    final IngestionRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
+
+                    // call hook for subclasses to add validation
+                    onRequest(request);
+
+                    // send grpc ingestion request
+                    LOGGER.debug("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
+                    requestObserver.onNext(request);
+
+                    dataValuesSubmitted = dataValuesSubmitted + (numRows * numColumns);
+                    dataBytesSubmitted = dataBytesSubmitted + (numRows * numColumns * Double.BYTES);
+//                grpcBytesSubmitted = grpcBytesSubmitted + request.getSerializedSize(); // adds 2% performance overhead
+
+                    if (finishLatch.getCount() == 0) {
+                        // RPC completed or errored before we finished sending.
+                        // Sending further requests won't error, but they will just be thrown away.
+                        result.setStatus(false);
+                        return result;
+                    }
+                }
+            } catch (RuntimeException e) {
+                LOGGER.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
+                // cancel rpc, onError() sets runtimeError[0]
+                requestObserver.onError(e);
+                throw e;
+            }
+
+            try {
+                // wait until all responses received
+                boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+                if (!awaitSuccess) {
+                    LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
+                    result.setStatus(false);
+                    return result;
+                }
+            } catch (InterruptedException e) {
+                LOGGER.error(
+                        "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
+                        streamNumber);
+                result.setStatus(false);
+                return result;
+            }
+
+            // mark the end of requests
+            requestObserver.onCompleted();
+
+            // receiving happens asynchronously
+            try {
+                boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+                if (!awaitSuccess) {
+                    LOGGER.error("stream: {} timeout waiting for finishLatch", streamNumber);
+                    result.setStatus(false);
+                    return result;
+                }
+            } catch (InterruptedException e) {
+                LOGGER.error(
+                        "stream: {} streamingIngestion InterruptedException waiting for finishLatch",
+                        streamNumber);
+                result.setStatus(false);
+                return result;
+            }
+
+            if (responseError[0]) {
+                LOGGER.error("stream: {} streamingIngestion() response error encountered", streamNumber);
+                result.setStatus(false);
+                return result;
+            } else if (runtimeError[0]) {
+                LOGGER.error("stream: {} streamingIngestion() runtime error encountered", streamNumber);
+                result.setStatus(false);
+                return result;
+            } else {
+
+                // call hook for subclasses to add validation
+                onCompleted();
+
+//            LOGGER.info("stream: {} responseCount: {}", streamNumber, responseCount);
+                result.setStatus(true);
+                result.setDataValuesSubmitted(dataValuesSubmitted);
+                result.setDataBytesSubmitted(dataBytesSubmitted);
+                result.setGrpcBytesSubmitted(grpcBytesSubmitted);
+                return result;
+            }
+        }
     }
 
     protected StreamingIngestionTask newIngestionTask(
@@ -47,196 +260,6 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
         return new StreamingIngestionTask(params, templateDataTable, channel);
     }
 
-    /**
-     * Invokes streamingIngestion gRPC API with request dimensions and properties
-     * as specified in the params.
-     * @param params
-     * @return
-     */
-    private static IngestionTaskResult sendStreamingIngestionRequest(
-            IngestionTaskParams params,
-            DataTable.Builder templateDataTable,
-            Channel channel) {
-
-        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
-
-        final int streamNumber = params.streamNumber;
-        final int numSeconds = params.numSeconds;
-        final int numRows = params.numRows;
-        final int numColumns = params.numColumns;
-
-        final CountDownLatch finishLatch = new CountDownLatch(1);
-        final CountDownLatch responseLatch = new CountDownLatch(numSeconds);
-//        AtomicInteger responseCount = new AtomicInteger(0);
-        final boolean[] responseError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
-        final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
-
-        /**
-         * Implements StreamObserver interface for API response stream.
-         */
-        StreamObserver<IngestionResponse> responseObserver = new StreamObserver<IngestionResponse>() {
-
-            /**
-             * Handles an IngestionResponse object in the API response stream.  Checks properties
-             * of response are as expected.
-             * @param response
-             */
-            @Override
-            public void onNext(IngestionResponse response) {
-
-//                responseCount.incrementAndGet();
-                responseLatch.countDown();
-
-                boolean isError = false;
-                ResponseType responseType = response.getResponseType();
-                if (responseType != ResponseType.ACK_RESPONSE) {
-                    // unexpected response
-                    isError = true;
-                    if (responseType == ResponseType.REJECT_RESPONSE) {
-                        LOGGER.error("received reject with msg: "
-                                + response.getRejectDetails().getMessage());
-                    } else {
-                        LOGGER.error("unexpected responseType: " + responseType.getDescriptorForType());
-                    }
-                }
-
-                int rowCount = response.getAckDetails().getNumRows();
-                int colCount = response.getAckDetails().getNumColumns();
-
-                String requestId = response.getClientRequestId();
-                LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
-
-                if (rowCount != numRows) {
-                    LOGGER.error(
-                            "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
-                            streamNumber, rowCount, numRows);
-                    isError = true;
-                }
-                if (colCount != numColumns) {
-                    LOGGER.error(
-                            "stream: {} response colCount: {} doesn't match expected colCount: {}",
-                            streamNumber, colCount, numColumns);
-                    isError = true;
-                }
-
-                if (isError) {
-                    responseError[0] = true;
-                }
-            }
-
-            /**
-             * Handles error in API response stream.  Logs error message and terminates stream.
-             * @param t
-             */
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                LOGGER.error("stream: {} streamingIngestion() Failed status: {} message: {}",
-                        streamNumber, status, t.getMessage());
-                runtimeError[0] = true;
-                finishLatch.countDown();
-            }
-
-            /**
-             * Handles completion of API response stream.  Logs message and terminates stream.
-             */
-            @Override
-            public void onCompleted() {
-                LOGGER.debug("stream: {} Finished streamingIngestion()", streamNumber);
-                finishLatch.countDown();
-            }
-        };
-
-        StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
-
-        IngestionTaskResult result = new IngestionTaskResult();
-
-        long dataValuesSubmitted = 0;
-        long dataBytesSubmitted = 0;
-        long grpcBytesSubmitted = 0;
-        try {
-            for (int secondsOffset = 0; secondsOffset < numSeconds; secondsOffset++) {
-
-                final String requestId = String.valueOf(secondsOffset);
-
-                // build IngestionRequest for current second, record elapsed time so we can subtract from measurement
-                // final IngestionRequest request = buildIngestionRequest(secondsOffset, params);
-                final IngestionRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
-
-                // send grpc ingestion request
-                LOGGER.debug("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
-                requestObserver.onNext(request);
-
-                dataValuesSubmitted = dataValuesSubmitted + (numRows * numColumns);
-                dataBytesSubmitted = dataBytesSubmitted + (numRows * numColumns * Double.BYTES);
-//                grpcBytesSubmitted = grpcBytesSubmitted + request.getSerializedSize(); // adds 2% performance overhead
-
-                if (finishLatch.getCount() == 0) {
-                    // RPC completed or errored before we finished sending.
-                    // Sending further requests won't error, but they will just be thrown away.
-                    result.setStatus(false);
-                    return result;
-                }
-            }
-        } catch (RuntimeException e) {
-            LOGGER.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
-            // cancel rpc, onError() sets runtimeError[0]
-            requestObserver.onError(e);
-            throw e;
-        }
-
-        try {
-            // wait until all responses received
-            boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            if (!awaitSuccess) {
-                LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
-                result.setStatus(false);
-                return result;
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error(
-                    "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
-                    streamNumber);
-            result.setStatus(false);
-            return result;
-        }
-
-        // mark the end of requests
-        requestObserver.onCompleted();
-
-        // receiving happens asynchronously
-        try {
-            boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            if (!awaitSuccess) {
-                LOGGER.error("stream: {} timeout waiting for finishLatch", streamNumber);
-                result.setStatus(false);
-                return result;
-            }
-        } catch (InterruptedException e) {
-            LOGGER.error(
-                    "stream: {} streamingIngestion InterruptedException waiting for finishLatch",
-                    streamNumber);
-            result.setStatus(false);
-            return result;
-        }
-
-        if (responseError[0]) {
-            LOGGER.error("stream: {} streamingIngestion() response error encountered", streamNumber);
-            result.setStatus(false);
-            return result;
-        } else if (runtimeError[0]) {
-            LOGGER.error("stream: {} streamingIngestion() runtime error encountered", streamNumber);
-            result.setStatus(false);
-            return result;
-        } else {
-//            LOGGER.info("stream: {} responseCount: {}", streamNumber, responseCount);
-            result.setStatus(true);
-            result.setDataValuesSubmitted(dataValuesSubmitted);
-            result.setDataBytesSubmitted(dataBytesSubmitted);
-            result.setGrpcBytesSubmitted(grpcBytesSubmitted);
-            return result;
-        }
-    }
 
     public static void main(final String[] args) {
 
