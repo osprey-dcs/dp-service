@@ -23,7 +23,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import static org.junit.Assert.fail;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
@@ -34,9 +39,22 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
     private static class IntegrationTestStreamingIngestionApp extends BenchmarkStreamingIngestion {
 
+        private static class IntegrationTestIngestionRequestInfo {
+            public final int providerId;
+            public boolean responseReceived = false;
+            public IntegrationTestIngestionRequestInfo(int providerId) {
+                this.providerId = providerId;
+            }
+        }
+
         private static class IntegrationTestIngestionTask
                 extends BenchmarkStreamingIngestion.StreamingIngestionTask
         {
+            // instance variables
+            private Map<String, IntegrationTestIngestionRequestInfo> requestValidationMap = new HashMap<>();
+            private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+            private final Lock readLock = rwLock.readLock();
+            private final Lock writeLock = rwLock.writeLock();
 
             public IntegrationTestIngestionTask(
                     IngestionBenchmarkBase.IngestionTaskParams params,
@@ -48,17 +66,81 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
             @Override
             protected void onRequest(IngestionRequest request) {
+
                 LOGGER.debug("onRequest stream: " + this.params.streamNumber);
+
+                // acquire writeLock for updating map
+                writeLock.lock();
+                try {
+                    // add an entry for the request to the validation map
+                    requestValidationMap.put(
+                            request.getClientRequestId(),
+                            new IntegrationTestIngestionRequestInfo(request.getProviderId()));
+
+                } finally {
+                    // using try...finally to make sure we unlock!
+                    writeLock.unlock();
+                }
             }
 
             @Override
             protected void onResponse(IngestionResponse response) {
+
                 LOGGER.debug("onResponse stream: " + this.params.streamNumber);
+
+                // acquire writeLock for updating map
+                writeLock.lock();
+                try {
+                    final String responseRequestId = response.getClientRequestId();
+                    IntegrationTestIngestionRequestInfo requestInfo =
+                            requestValidationMap.get(responseRequestId);
+
+                    // check that requestId in response matches a request
+                    if (requestInfo == null) {
+                        fail("response contains unexpected requestId: " + responseRequestId);
+                        return;
+                    }
+
+                    // check that provider in response matches request
+                    final int responseProviderId = response.getProviderId();
+                    if (responseProviderId != requestInfo.providerId) {
+                        fail("response provider id: " + responseProviderId
+                                + " mismatch request: " + requestInfo.providerId);
+                        return;
+                    }
+
+                    // validate dimensions in ack
+                    assertEquals(this.params.numRows, response.getAckDetails().getNumRows());
+                    assertEquals(this.params.numColumns, response.getAckDetails().getNumColumns());
+
+                    // set validation flag for request
+                    requestInfo.responseReceived = true;
+
+                } finally {
+                    // using try...finally to make sure we unlock!
+                    writeLock.unlock();
+                }
+
             }
 
             @Override
             protected void onCompleted() {
+
                 LOGGER.debug("onCompleted stream: " + this.params.streamNumber);
+
+                readLock.lock();
+                try {
+                    // iterate through requestMap and make sure all requests were acked/verified
+                    for (var entry : requestValidationMap.entrySet()) {
+                        IntegrationTestIngestionRequestInfo requestInfo = entry.getValue();
+                        if (!requestInfo.responseReceived) {
+                            fail("did not receive ack for request: " + entry.getKey());
+                        }
+                    }
+
+                } finally {
+                    readLock.unlock();
+                }
             }
 
         }
@@ -68,7 +150,6 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         ) {
             return new IntegrationTestIngestionTask(params, templateDataTable, channel);
         }
-
     }
 
     protected static class IntegrationTestGrpcClient {

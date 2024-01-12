@@ -104,7 +104,6 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                 }
 
                 LOGGER.debug("IngestionWorker shutting down");
-                System.err.println("IngestionWorker shutting down");
 
             } catch (InterruptedException ex) {
                 LOGGER.error("InterruptedException in IngestionWorker.run");
@@ -321,21 +320,17 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
         shutdownRequested.set(true);
 
-        LOGGER.info("fini");
-        System.err.println("fini");
+        LOGGER.debug("fini");
 
         // shut down executor service
         try {
             LOGGER.debug("shutting down executorService");
-            System.err.println("shutting down executorService");
             executorService.shutdown();
             executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             LOGGER.debug("executorService shutdown completed");
-            System.err.println("executorService shutdown completed");
         } catch (InterruptedException ex) {
             executorService.shutdownNow();
             LOGGER.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
-            System.err.println("InterruptedException in executorService.shutdown: " + ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
@@ -344,8 +339,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             LOGGER.error("error in mongoIngestionClientInterface.fini()");
         }
 
-        LOGGER.info("fini shutdown completed");
-        System.err.println("fini shutdown completed");
+        LOGGER.debug("fini shutdown completed");
 
         return true;
     }

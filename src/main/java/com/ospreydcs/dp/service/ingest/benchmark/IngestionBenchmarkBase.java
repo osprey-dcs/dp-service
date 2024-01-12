@@ -5,7 +5,6 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import io.grpc.*;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -106,6 +105,15 @@ public abstract class IngestionBenchmarkBase {
             this.grpcBytesSubmitted = grpcBytesSubmitted;
         }
 
+    }
+
+    protected static class IngestionScenarioResult {
+        final public boolean isError;
+        final public double valuesPerSecond;
+        public IngestionScenarioResult(boolean isError, double valuesPerSecond) {
+            this.isError = isError;
+            this.valuesPerSecond = valuesPerSecond;
+        }
     }
 
     /**
@@ -242,7 +250,7 @@ public abstract class IngestionBenchmarkBase {
      * IngestionRequestStreamTasks for execution, each of which will call the streamingIngestion API
      * with a list of IngestionRequests.  Calculates and displays scenario performance stats.
      */
-    public double ingestionScenario(
+    public IngestionScenarioResult ingestionScenario(
             Channel channel,
             int numThreads,
             int numStreams,
@@ -262,7 +270,7 @@ public abstract class IngestionBenchmarkBase {
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
         // final long startSeconds = Instant.now().getEpochSecond();
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
-        LOGGER.info("using startSeconds: {}", startSeconds);
+        LOGGER.debug("using startSeconds: {}", startSeconds);
         List<IngestionTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {
@@ -289,13 +297,11 @@ public abstract class IngestionBenchmarkBase {
                     IngestionTaskResult ingestionResult = future.get();
                     if (!ingestionResult.getStatus()) {
                         success = false;
+                        System.err.println("ingestion task failed");
                     }
                     dataValuesSubmitted = dataValuesSubmitted + ingestionResult.getDataValuesSubmitted();
                     dataBytesSubmitted = dataBytesSubmitted + ingestionResult.getDataBytesSubmitted();
                     grpcBytesSubmitted = grpcBytesSubmitted + ingestionResult.getGrpcBytesSubmitted();
-                }
-                if (!success) {
-                    LOGGER.error("thread pool future for sendStreamingIngestionRequest() returned false");
                 }
             } else {
                 LOGGER.error("timeout reached in executorService.awaitTermination");
@@ -303,7 +309,7 @@ public abstract class IngestionBenchmarkBase {
             }
         } catch (InterruptedException | ExecutionException ex) {
             executorService.shutdownNow();
-            LOGGER.warn("Data transmission Interrupted by exception: {}", ex.getMessage());
+            LOGGER.error("Data transmission Interrupted by exception: {}", ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
@@ -336,13 +342,12 @@ public abstract class IngestionBenchmarkBase {
             LOGGER.debug("data byte rate: {} MB/sec", dataMbyteRateString);
             LOGGER.debug("grpc byte rate: {} MB/sec", grpcMbyteRateString);
 
-            return dataValueRate;
+            return new IngestionScenarioResult(true, dataValueRate);
 
         } else {
-            LOGGER.error("streaming ingestion scenario failed, performance data invalid");
+            System.err.println("streaming ingestion scenario failed, performance data invalid");
+            return new IngestionScenarioResult(false, 0.0);
         }
-
-        return 0.0;
     }
 
     protected void ingestionExperiment(Channel channel) {
@@ -369,9 +374,14 @@ public abstract class IngestionBenchmarkBase {
 
                 LOGGER.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                         numThreads, numStreams);
-                double writeRate =
+                IngestionScenarioResult scenarioResult =
                         ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
-                writeRateMap.put(mapKey, writeRate);
+                if (scenarioResult.isError) {
+                    writeRateMap.put(mapKey, scenarioResult.valuesPerSecond);
+                } else {
+                    System.err.println("error running scenario");
+                    return;
+                }
             }
         }
 

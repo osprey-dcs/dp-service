@@ -92,43 +92,57 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 //                responseCount.incrementAndGet();
                     responseLatch.countDown();
 
-                    boolean isError = false;
                     ResponseType responseType = response.getResponseType();
                     if (responseType != ResponseType.ACK_RESPONSE) {
                         // unexpected response
-                        isError = true;
                         if (responseType == ResponseType.REJECT_RESPONSE) {
                             LOGGER.error("received reject with msg: "
                                     + response.getRejectDetails().getMessage());
                         } else {
                             LOGGER.error("unexpected responseType: " + responseType.getDescriptorForType());
                         }
-                    }
-
-                    // call hook for subclasses to add validation
-                    onResponse(response);
-
-                    int rowCount = response.getAckDetails().getNumRows();
-                    int colCount = response.getAckDetails().getNumColumns();
-
-                    String requestId = response.getClientRequestId();
-                    LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
-
-                    if (rowCount != numRows) {
-                        LOGGER.error(
-                                "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
-                                streamNumber, rowCount, numRows);
-                        isError = true;
-                    }
-                    if (colCount != numColumns) {
-                        LOGGER.error(
-                                "stream: {} response colCount: {} doesn't match expected colCount: {}",
-                                streamNumber, colCount, numColumns);
-                        isError = true;
-                    }
-
-                    if (isError) {
                         responseError[0] = true;
+                        finishLatch.countDown();
+                        return;
+
+                    } else {
+
+                        int rowCount = response.getAckDetails().getNumRows();
+                        int colCount = response.getAckDetails().getNumColumns();
+                        String requestId = response.getClientRequestId();
+                        LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
+
+                        if (rowCount != numRows) {
+                            LOGGER.error(
+                                    "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
+                                    streamNumber, rowCount, numRows);
+                            responseError[0] = true;
+                            finishLatch.countDown();
+                            return;
+
+                        }
+                        if (colCount != numColumns) {
+                            LOGGER.error(
+                                    "stream: {} response colCount: {} doesn't match expected colCount: {}",
+                                    streamNumber, colCount, numColumns);
+                            responseError[0] = true;
+                            finishLatch.countDown();
+                            return;
+                        }
+
+                        // call hook for subclasses to add validation
+                        try {
+                            onResponse(response);
+                        } catch (AssertionError assertionError) {
+                            if (finishLatch.getCount() != 0) {
+                                System.err.println("stream: " + streamNumber + " assertion error");
+                                assertionError.printStackTrace(System.err);
+                                finishLatch.countDown();
+                            }
+                            responseError[0] = true;
+                            return;
+                        }
+
                     }
                 }
 
@@ -162,6 +176,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
             long dataValuesSubmitted = 0;
             long dataBytesSubmitted = 0;
             long grpcBytesSubmitted = 0;
+            boolean isError = false;
             try {
                 for (int secondsOffset = 0; secondsOffset < numSeconds; secondsOffset++) {
 
@@ -172,7 +187,14 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     final IngestionRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
 
                     // call hook for subclasses to add validation
-                    onRequest(request);
+                    try {
+                        onRequest(request);
+                    } catch (AssertionError assertionError) {
+                        System.err.println("stream: " + streamNumber + " assertion error");
+                        assertionError.printStackTrace(System.err);
+                        isError = true;
+                        break;
+                    }
 
                     // send grpc ingestion request
                     LOGGER.debug("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
@@ -185,31 +207,33 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     if (finishLatch.getCount() == 0) {
                         // RPC completed or errored before we finished sending.
                         // Sending further requests won't error, but they will just be thrown away.
-                        result.setStatus(false);
-                        return result;
+                        isError = true;
+                        break;
                     }
                 }
             } catch (RuntimeException e) {
                 LOGGER.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
                 // cancel rpc, onError() sets runtimeError[0]
-                requestObserver.onError(e);
-                throw e;
+                isError = true;
             }
 
-            try {
-                // wait until all responses received
-                boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-                if (!awaitSuccess) {
-                    LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
+            // don't wait for responses if there was already an error
+            if (!isError) {
+                try {
+                    // wait until all responses received
+                    boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+                    if (!awaitSuccess) {
+                        LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
+                        result.setStatus(false);
+                        return result;
+                    }
+                } catch (InterruptedException e) {
+                    LOGGER.error(
+                            "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
+                            streamNumber);
                     result.setStatus(false);
                     return result;
                 }
-            } catch (InterruptedException e) {
-                LOGGER.error(
-                        "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
-                        streamNumber);
-                result.setStatus(false);
-                return result;
             }
 
             // mark the end of requests
@@ -232,17 +256,31 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
             }
 
             if (responseError[0]) {
-                LOGGER.error("stream: {} streamingIngestion() response error encountered", streamNumber);
+                System.err.println("stream: " + streamNumber + " response error encountered");
                 result.setStatus(false);
                 return result;
+
             } else if (runtimeError[0]) {
-                LOGGER.error("stream: {} streamingIngestion() runtime error encountered", streamNumber);
+                System.err.println("stream: " + streamNumber + " runtime error encountered");
                 result.setStatus(false);
                 return result;
+
+            } else if (isError) {
+                System.err.println("stream: " + streamNumber + " request error encountered");
+                result.setStatus(false);
+                return result;
+
             } else {
 
-                // call hook for subclasses to add validation
-                onCompleted();
+                try {
+                    // call hook for subclasses to add validation
+                    onCompleted();
+                } catch (AssertionError assertionError) {
+                    System.err.println("stream: " + streamNumber + " assertion error");
+                    assertionError.printStackTrace(System.err);
+                    result.setStatus(false);
+                    return result;
+                }
 
 //            LOGGER.info("stream: {} responseCount: {}", streamNumber, responseCount);
                 result.setStatus(true);
