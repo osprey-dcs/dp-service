@@ -18,8 +18,7 @@ import java.util.concurrent.TimeUnit;
 public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
-    private static long START_SECONDS = 0L;
+    private static final Logger logger = LogManager.getLogger();
 
     private static class QueryResponseStreamTask extends QueryTask {
         public QueryResponseStreamTask(Channel channel, QueryTaskParams params) {
@@ -71,7 +70,7 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
         int numBucketsReceived = 0;
         int numResponsesReceived = 0;
 
-        QueryRequest request = buildQueryRequest(params, START_SECONDS);
+        QueryRequest request = buildQueryRequest(params);
         DpQueryServiceGrpc.DpQueryServiceBlockingStub blockingStub = DpQueryServiceGrpc.newBlockingStub(channel);
         Iterator<QueryResponse> responseStream = blockingStub.queryResponseStream(request);
         while (responseStream.hasNext()) {
@@ -79,14 +78,14 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
             final String responseType = response.getResponseType().name();
 //            long firstSeconds = response.getFirstTime().getEpochSeconds();
 //            long lastSeconds = response.getLastTime().getEpochSeconds();
-            LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
+            logger.debug("stream: {} received response type: {}", streamNumber, responseType);
             grpcBytesReceived = grpcBytesReceived + response.getSerializedSize();
 
             if (response.hasQueryReject()) {
                 success = false;
                 msg = "stream: " + streamNumber
                         + " received reject with message: " + response.getQueryReject().getMessage();
-                LOGGER.error(msg);
+                logger.error(msg);
 
             } else if (response.hasQueryReport()) {
 
@@ -96,10 +95,10 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
                     numResponsesReceived = numResponsesReceived + 1;
                     QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
                     int numResultBuckets = queryData.getDataBucketsCount();
-                    LOGGER.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
+                    logger.debug("stream: {} received data result numBuckets: {}", numResultBuckets);
                     for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
                         int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
-                        LOGGER.debug(
+                        logger.debug(
                                 "stream: {} bucket column: {} startTime: {} numValues: {}",
                                 streamNumber,
                                 bucket.getDataColumn().getName(),
@@ -118,28 +117,28 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
                         success = false;
                         final String errorMsg = status.getStatusMessage();
                         msg = "stream: " + streamNumber + " received error response: " + errorMsg;
-                        LOGGER.error(msg);
+                        logger.error(msg);
                         break;
 
                     } else if (status.getQueryStatusType()
                             == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
                         success = false;
                         msg = "stream: " + streamNumber + " query returned no data";
-                        LOGGER.error(msg);
+                        logger.error(msg);
                         break;
                     }
 
                 } else {
                     success = false;
                     msg = "stream: " + streamNumber + " received QueryReport with unexpected content";
-                    LOGGER.error(msg);
+                    logger.error(msg);
                     break;
                 }
 
             } else {
                 success = false;
                 msg = "stream: " + streamNumber + " received unexpected response";
-                LOGGER.error(msg);
+                logger.error(msg);
                 break;
             }
         }
@@ -152,7 +151,7 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
             if (numBucketsReceived != numBucketsExpected) {
                 // validate number of buckets received matches summary
                 success = false;
-                LOGGER.error(
+                logger.error(
                         "stream: {} numBucketsRecieved: {} mismatch numBucketsExpected: {}",
                         streamNumber, numBucketsReceived, numBucketsExpected);
             }
@@ -167,10 +166,10 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
 
     public static void main(final String[] args) {
 
-        START_SECONDS = Instant.now().getEpochSecond();
+        long startSeconds = Instant.now().getEpochSecond();
 
         // load data for use by the query benchmark
-        loadBucketData(START_SECONDS);
+        loadBucketData(startSeconds);
 
         // Create a communication channel to the server, known as a Channel. Channels are thread-safe
         // and reusable. It is common to create channels at the beginning of your application and reuse
@@ -179,7 +178,7 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
         // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
         // use TLS, use TlsChannelCredentials instead.
         String connectString = getConnectString();
-        LOGGER.info("Creating gRPC channel using connect string: {}", connectString);
+        logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
@@ -193,7 +192,8 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
 //        final int[] numPvsPerRequestArray = {10};
 //        final int[] numThreadsArray = {5};
 
-        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        benchmark.queryExperiment(
+                channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
 
         // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
         // resources the channel should be shut down when it will no longer be used. If it may be used
@@ -202,10 +202,10 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(
                     TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
             if (!awaitSuccess) {
-                LOGGER.error("timeout in channel.shutdownNow.awaitTermination");
+                logger.error("timeout in channel.shutdownNow.awaitTermination");
             }
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
+            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
         }
     }
 

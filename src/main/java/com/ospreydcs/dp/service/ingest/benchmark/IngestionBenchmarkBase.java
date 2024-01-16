@@ -21,7 +21,7 @@ public abstract class IngestionBenchmarkBase {
     // constants
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
-    protected static final String NAME_COLUMN_BASE = "pv_";
+    public static final String NAME_COLUMN_BASE = "dpTest_";
 
     // configuration
     public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionBenchmark.grpcConnectString";

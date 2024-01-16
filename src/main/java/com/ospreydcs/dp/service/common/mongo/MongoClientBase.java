@@ -156,7 +156,7 @@ public abstract class MongoClientBase {
     }
 
     public boolean fini() {
-        LOGGER.info("fini");
+        LOGGER.debug("fini");
         return true;
     }
 }

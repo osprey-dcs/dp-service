@@ -78,12 +78,12 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
                             executeQueryAndDispatchResults(job);
                         } catch (Exception ex) {
                             LOGGER.error("QueryWorker.run encountered exception: {}", ex.getMessage());
+                            ex.printStackTrace(System.err);
                         }
                     }
                 }
 
                 LOGGER.debug("QueryWorker shutting down");
-                System.err.println("QueryWorker shutting down");
 
             } catch (InterruptedException ex) {
                 LOGGER.error("InterruptedException in QueryWorker.run");
@@ -176,21 +176,17 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
         shutdownRequested.set(true);
 
-        LOGGER.info("fini");
-        System.err.println("fini");
+        LOGGER.debug("fini");
 
         // shut down executor service
         try {
             LOGGER.debug("shutting down executorService");
-            System.err.println("shutting down executorService");
             executorService.shutdown();
             executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             LOGGER.debug("executorService shutdown completed");
-            System.err.println("executorService shutdown completed");
         } catch (InterruptedException ex) {
             executorService.shutdownNow();
             LOGGER.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
-            System.err.println("InterruptedException in executorService.shutdown: " + ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
@@ -199,7 +195,6 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         }
 
         LOGGER.info("fini shutdown completed");
-        System.err.println("fini shutdown completed");
 
         return true;
     }

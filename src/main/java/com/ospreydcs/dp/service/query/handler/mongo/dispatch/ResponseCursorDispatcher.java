@@ -10,6 +10,8 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class ResponseCursorDispatcher extends ResultDispatcher {
 
     // static variables
@@ -18,12 +20,17 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
     // instance variables
     private MongoCursor<BucketDocument> mongoCursor = null;
     private final Object cursorLock = new Object(); // used for synchronized access to cursor which is not thread safe
+    private AtomicBoolean cursorClosed = new AtomicBoolean(false);
 
     public ResponseCursorDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
     }
 
     private void sendNextResponse(MongoCursor<BucketDocument> cursor) {
+
+        if (this.cursorClosed.get()) {
+            return;
+        }
 
         synchronized (cursorLock) {
             // mongo cursor is not thread safe so synchronize access
@@ -53,8 +60,10 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
             }
 
             // close stream if there is no response to send or we sent an error
-            if (response == null || isError || !this.mongoCursor.hasNext()) {
+            if (response == null || isError) {
+                LOGGER.debug("sendNextResponse closing cursor");
                 getResponseObserver().onCompleted();
+                this.cursorClosed.set(true);
                 this.mongoCursor.close();
             }
         }
@@ -66,8 +75,12 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
     }
 
     public void close() {
+        if (cursorClosed.get()) {
+            return;
+        }
         synchronized (cursorLock) {
             // mongo cursor is not thread safe so synchronize access
+            this.cursorClosed.set(true);
             this.mongoCursor.close();
             this.mongoCursor = null;
         }

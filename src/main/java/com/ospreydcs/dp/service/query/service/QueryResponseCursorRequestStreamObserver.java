@@ -54,7 +54,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 // extract query spec
                 QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-                LOGGER.info("query columnNames: {} startSeconds: {} endSeconds: {}",
+                LOGGER.debug("query columnNames: {} startSeconds: {} endSeconds: {}",
                         querySpec.getColumnNamesList(),
                         querySpec.getStartTime().getEpochSeconds(),
                         querySpec.getEndTime().getEpochSeconds());

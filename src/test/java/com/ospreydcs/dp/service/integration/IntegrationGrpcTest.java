@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.integration;
 
+import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
@@ -12,6 +13,10 @@ import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
+import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseCursor;
+import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
+import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
@@ -43,8 +48,28 @@ import static org.mockito.Mockito.mock;
 public class IntegrationGrpcTest extends IngestionTestBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
-    private static final IntegrationTestMongoClient MONGO_CLIENT = new IntegrationTestMongoClient();
+    private static final Logger logger = LogManager.getLogger();
+    /**
+     * This rule manages automatic graceful shutdown for the registered servers and channels at the
+     * end of test.
+     */
+    @ClassRule
+    public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
+    private static IntegrationTestMongoClient mongoClient;
+
+    // ingestion service variables
+    private static IngestionServiceImpl ingestionService;
+    private static IngestionServiceImpl ingestionServiceMock;
+    private static IntegrationTestIngestionGrpcClient ingestionGrpcClient;
+
+    // query service variables
+    private static QueryServiceImpl queryService;
+    private static QueryServiceImpl queryServiceMock;
+    private static IntegrationTestQueryGrpcClient queryGrpcClient;
+
+    protected static ConfigurationManager configMgr() {
+        return ConfigurationManager.getInstance();
+    }
 
     private static class IntegrationTestMongoClient extends MongoSyncClient {
 
@@ -59,7 +84,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                     return matchingBuckets.get(0);
                 } else {
                     try {
-                        LOGGER.info("findBucket id: " + id + " retrying");
+                        logger.info("findBucket id: " + id + " retrying");
                         Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
                     } catch (InterruptedException ex) {
                         // ignore and just retry
@@ -78,7 +103,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                     return matchingDocuments.get(0);
                 } else {
                     try {
-                        LOGGER.info("findRequestStatus providerId: " + providerId
+                        logger.info("findRequestStatus providerId: " + providerId
                                 + " requestId: " + requestId
                                 + " retrying");
                         Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
@@ -124,7 +149,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             @Override
             protected void onRequest(IngestionRequest request) {
 
-                LOGGER.debug("onRequest stream: " + this.params.streamNumber);
+                logger.debug("onRequest stream: " + this.params.streamNumber);
 
                 // acquire writeLock for updating map
                 writeLock.lock();
@@ -150,7 +175,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             @Override
             protected void onResponse(IngestionResponse response) {
 
-                LOGGER.debug("onResponse stream: " + this.params.streamNumber);
+                logger.debug("onResponse stream: " + this.params.streamNumber);
 
                 // acquire writeLock for updating map
                 writeLock.lock();
@@ -192,7 +217,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             ) {
                 // verify request status
                 RequestStatusDocument statusDocument =
-                        MONGO_CLIENT.findRequestStatus(requestInfo.providerId, requestId);
+                        mongoClient.findRequestStatus(requestInfo.providerId, requestId);
                 assertEquals(params.numColumns, statusDocument.getIdsCreated().size());
 
                 // verify buckets
@@ -204,7 +229,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                                     + " requestId: " + requestId
                                     + " bucketId: " + bucketId,
                             statusDocument.getIdsCreated().contains(bucketId));
-                    BucketDocument bucketDocument = MONGO_CLIENT.findBucket(bucketId);
+                    BucketDocument bucketDocument = mongoClient.findBucket(bucketId);
                     assertNotNull("bucketId: " + bucketId, bucketDocument);
                     assertEquals(columnName, bucketDocument.getColumnName());
                     assertEquals(bucketId, bucketDocument.getId());
@@ -239,7 +264,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             @Override
             protected void onCompleted() {
 
-                LOGGER.debug("onCompleted stream: " + this.params.streamNumber);
+                logger.debug("onCompleted stream: " + this.params.streamNumber);
 
                 readLock.lock();
                 try {
@@ -267,7 +292,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         }
     }
 
-    protected static class IntegrationTestGrpcClient {
+    protected static class IntegrationTestIngestionGrpcClient {
 
         private static final int INGESTION_NUM_PVS = 4000;
         private static final int INGESTION_NUM_THREADS = 7;
@@ -276,7 +301,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         private static final int INGESTION_NUM_SECONDS = 60;
         final private Channel channel;
 
-        public IntegrationTestGrpcClient(Channel channel) {
+        public IntegrationTestIngestionGrpcClient(Channel channel) {
             this.channel = channel;
         }
 
@@ -308,52 +333,99 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         }
     }
 
-    /**
-     * This rule manages automatic graceful shutdown for the registered servers and channels at the
-     * end of test.
-     */
-    @ClassRule
-    public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
+    private static class IntegrationTestQueryResponseCursorApp extends BenchmarkQueryResponseCursor {
 
-    private static IngestionServiceImpl serviceImpl;
+    }
 
-    private static IntegrationTestGrpcClient client;
+    protected static class IntegrationTestQueryGrpcClient {
+
+        // constants
+        private static final int QUERY_NUM_PVS = 1000;
+        private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
+        private static final int QUERY_NUM_THREADS = 7;
+
+        // instance variables
+        final private Channel channel;
+
+        public IntegrationTestQueryGrpcClient(Channel channel) {
+            this.channel = channel;
+        }
+
+        private void runQueryResponseCursorScenario() {
+
+            System.out.println();
+            System.out.println("========== running queryResponseCursor scenario ==========");
+            System.out.println("number of PVs: " + QUERY_NUM_PVS);
+            System.out.println("number of PVs per request: " + QUERY_NUM_PVS_PER_REQUEST);
+            System.out.println("number of threads: " + QUERY_NUM_THREADS);
+
+            final long startSeconds = configMgr().getConfigLong(
+                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
+                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
+
+            IntegrationTestQueryResponseCursorApp queryResponseCursorApp =
+                    new IntegrationTestQueryResponseCursorApp();
+            queryResponseCursorApp.queryScenario(
+                    channel, QUERY_NUM_PVS, QUERY_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+
+            System.out.println("========== queryResponseCursor scenario completed ==========");
+            System.out.println();
+
+        }
+    }
 
     @BeforeClass
     public static void setUp() throws Exception {
 
         // init the mongo client interface for db verification
-        MONGO_CLIENT.init();
+        mongoClient = new IntegrationTestMongoClient();
+        mongoClient.init();
 
-        // uncomment line below to use a real handler, and write to database
-//        IngestionHandlerInterface handler = new MongoSyncHandler();
-        IngestionHandlerInterface handler = MongoIngestionHandler.newMongoSyncIngestionHandler();
-        IngestionServiceImpl impl = new IngestionServiceImpl();
-        if (!impl.init(handler)) {
+        // init ingestion service
+        IngestionHandlerInterface ingestionHandler = MongoIngestionHandler.newMongoSyncIngestionHandler();
+        ingestionService = new IngestionServiceImpl();
+        if (!ingestionService.init(ingestionHandler)) {
             fail("IngestionServiceImpl.init failed");
         }
-        serviceImpl = mock(IngestionServiceImpl.class, delegatesTo(impl));
-
+        ingestionServiceMock = mock(IngestionServiceImpl.class, delegatesTo(ingestionService));
         // Generate a unique in-process server name.
-        String serverName = InProcessServerBuilder.generateName();
-
+        String ingestionServerName = InProcessServerBuilder.generateName();
         // Create a server, add service, start, and register for automatic graceful shutdown.
         grpcCleanup.register(InProcessServerBuilder
-                .forName(serverName).directExecutor().addService(serviceImpl).build().start());
-
+                .forName(ingestionServerName).directExecutor().addService(ingestionServiceMock).build().start());
         // Create a client channel and register for automatic graceful shutdown.
-        ManagedChannel channel = grpcCleanup.register(
-                InProcessChannelBuilder.forName(serverName).directExecutor().build());
+        ManagedChannel ingestionChannel = grpcCleanup.register(
+                InProcessChannelBuilder.forName(ingestionServerName).directExecutor().build());
+        // Create a grpcClient using the in-process channel;
+        ingestionGrpcClient = new IntegrationTestIngestionGrpcClient(ingestionChannel);
 
-        // Create a HelloWorldClient using the in-process channel;
-        client = new IntegrationTestGrpcClient(channel);
+        // init query service
+        QueryHandlerInterface queryHandler = MongoQueryHandler.newMongoSyncQueryHandler();
+        queryService = new QueryServiceImpl();
+        if (!queryService.init(queryHandler)) {
+            fail("QueryServiceImpl.init failed");
+        }
+        queryServiceMock = mock(QueryServiceImpl.class, delegatesTo(queryService));
+        // Generate a unique in-process server name.
+        String queryServerName = InProcessServerBuilder.generateName();
+        // Create a server, add service, start, and register for automatic graceful shutdown.
+        grpcCleanup.register(InProcessServerBuilder
+                .forName(queryServerName).directExecutor().addService(queryServiceMock).build().start());
+        // Create a client channel and register for automatic graceful shutdown.
+        ManagedChannel queryChannel = grpcCleanup.register(
+                InProcessChannelBuilder.forName(queryServerName).directExecutor().build());
+        // Create a grpcClient using the in-process channel;
+        queryGrpcClient = new IntegrationTestQueryGrpcClient(queryChannel);
     }
 
     @AfterClass
     public static void tearDown() {
-        serviceImpl = null;
-        client = null;
-        MONGO_CLIENT.fini();
+        ingestionService.fini();
+        mongoClient.fini();
+        mongoClient = null;
+        ingestionServiceMock = null;
+        ingestionGrpcClient = null;
+        queryGrpcClient = null;
     }
 
     /**
@@ -361,7 +433,12 @@ public class IntegrationGrpcTest extends IngestionTestBase {
      */
     @Test
     public void runIntegrationTestScenarios() {
-        client.runStreamingIngestionScenario();
+
+        // run and verify ingestion scenario
+        ingestionGrpcClient.runStreamingIngestionScenario();
+
+        // run and verify bidirectional stream query api scenario
+        queryGrpcClient.runQueryResponseCursorScenario();
     }
 
 //    /**

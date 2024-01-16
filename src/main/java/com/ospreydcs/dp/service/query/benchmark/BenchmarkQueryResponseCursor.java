@@ -20,8 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
-    private static long START_SECONDS = 0L;
+    private static final Logger logger = LogManager.getLogger();
 
     private static class QueryResponseCursorTask extends QueryTask {
         public QueryResponseCursorTask(Channel channel, QueryTaskParams params) {
@@ -64,7 +63,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         public void onNext(QueryResponse response) {
 
             final String responseType = response.getResponseType().name();
-            LOGGER.debug("stream: {} received response type: {}", streamNumber, responseType);
+            logger.debug("stream: {} received response type: {}", streamNumber, responseType);
 
             boolean success = true;
             String msg = "";
@@ -74,7 +73,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
                 success = false;
                 msg = "stream: " + streamNumber
                         + " received reject with message: " + response.getQueryReject().getMessage();
-                LOGGER.error(msg);
+                logger.error(msg);
 
             } else if (response.hasQueryReport()) {
 
@@ -87,7 +86,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
                     QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
                     int numResultBuckets = queryData.getDataBucketsCount();
-                    LOGGER.debug("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
+                    logger.debug("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
 
                     for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
                         int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
@@ -112,28 +111,28 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
                         success = false;
                         final String errorMsg = status.getStatusMessage();
                         msg = "stream: " + streamNumber + " received error response: " + errorMsg;
-                        LOGGER.error(msg);
+                        logger.error(msg);
 
                     } else if (status.getQueryStatusType()
                             == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
                         isError.set(true);
                         success = false;
                         msg = "stream: " + streamNumber + " query returned no data";
-                        LOGGER.error(msg);
+                        logger.error(msg);
                     }
 
                 } else {
                     isError.set(true);
                     success = false;
                     msg = "stream: " + streamNumber + " received QueryReport with unexpected content";
-                    LOGGER.error(msg);
+                    logger.error(msg);
                 }
 
             } else {
                 isError.set(true);
                 success = false;
                 msg = "stream: " + streamNumber + " received unexpected response";
-                LOGGER.error(msg);
+                logger.error(msg);
             }
 
             if (success) {
@@ -148,14 +147,14 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
                 } else {
                     // otherwise signal that we are done
-                    LOGGER.debug("stream: {} onNext received expected number of buckets", streamNumber);
+                    logger.debug("stream: {} onNext received expected number of buckets", streamNumber);
                     finishLatch.countDown();
                 }
 
             } else {
                 // something went wrong, signal that we are done
                 isError.set(true);
-                LOGGER.error("stream: {} onNext unexpected error");
+                logger.error("stream: {} onNext unexpected error");
                 finishLatch.countDown();
             }
 
@@ -164,21 +163,21 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         @Override
         public void onError(Throwable t) {
             isError.set(true);
-            LOGGER.error("stream: {} responseObserver.onError with msg: {}", streamNumber, t.getMessage());
+            logger.error("stream: {} responseObserver.onError with msg: {}", streamNumber, t.getMessage());
             finishLatch.countDown();;
         }
 
         @Override
         public void onCompleted() {
-            LOGGER.debug("stream: {} responseObserver.onCompleted", streamNumber);
+            logger.debug("stream: {} responseObserver.onCompleted", streamNumber);
         }
 
     }
 
     private static QueryTaskResult sendQueryResponseCursor(
             Channel channel,
-            QueryTaskParams params) {
-
+            QueryTaskParams params
+    ) {
         final int streamNumber = params.streamNumber;
         final CountDownLatch finishLatch = new CountDownLatch(1);
 
@@ -199,8 +198,8 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         responseObserver.setRequestObserver(requestObserver);
 
         // send query request
-        LOGGER.debug("stream: {} sending QueryRequest", streamNumber);
-        QueryRequest queryRequest = buildQueryRequest(params, START_SECONDS);
+        logger.debug("stream: {} sending QueryRequest", streamNumber);
+        QueryRequest queryRequest = buildQueryRequest(params);
         requestObserver.onNext(queryRequest);
 
         // check if RPC already completed
@@ -213,11 +212,11 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         try {
             boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             if (!awaitSuccess) {
-                LOGGER.error("stream: {} timeout waiting for finishLatch", streamNumber);
+                logger.error("stream: {} timeout waiting for finishLatch", streamNumber);
                 return new QueryTaskResult(false, 0, 0, 0);
             }
         } catch (InterruptedException e) {
-            LOGGER.error("stream: {} InterruptedException waiting for finishLatch", streamNumber);
+            logger.error("stream: {} InterruptedException waiting for finishLatch", streamNumber);
             return new QueryTaskResult(false, 0, 0, 0);
         }
 
@@ -240,10 +239,10 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
     public static void main(final String[] args) {
 
-        START_SECONDS = Instant.now().getEpochSecond();
+        long startSeconds = Instant.now().getEpochSecond();
 
         // load data for use by the query benchmark
-        loadBucketData(START_SECONDS);
+        loadBucketData(startSeconds);
 
         // Create a communication channel to the server, known as a Channel. Channels are thread-safe
         // and reusable. It is common to create channels at the beginning of your application and reuse
@@ -252,7 +251,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
         // use TLS, use TlsChannelCredentials instead.
         String connectString = getConnectString();
-        LOGGER.info("Creating gRPC channel using connect string: {}", connectString);
+        logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
@@ -266,7 +265,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 //        final int[] numPvsPerRequestArray = {10};
 //        final int[] numThreadsArray = {7};
 
-        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
 
         // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
         // resources the channel should be shut down when it will no longer be used. If it may be used
@@ -275,10 +274,10 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(
                     TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
             if (!awaitSuccess) {
-                LOGGER.error("timeout in channel.shutdownNow.awaitTermination");
+                logger.error("timeout in channel.shutdownNow.awaitTermination");
             }
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
+            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
         }
     }
 
