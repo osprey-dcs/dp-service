@@ -298,7 +298,7 @@ public abstract class QueryBenchmarkBase {
         long grpcBytesReceived = 0;
 
         // create thread pool of specified size
-        logger.info("creating thread pool of size: {}", numThreads);
+        logger.debug("creating thread pool of size: {}", numThreads);
         final var executorService = Executors.newFixedThreadPool(numThreads);
 
         // create list of thread pool tasks, each to submit a stream of IngestionRequests

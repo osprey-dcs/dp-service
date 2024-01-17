@@ -35,6 +35,9 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
         synchronized (cursorLock) {
             // mongo cursor is not thread safe so synchronize access
 
+            LOGGER.trace("{} entering sendNextResponse synchronized", this.hashCode());
+//            Thread.dumpStack();
+//
             if (cursor != null) {
                 this.mongoCursor = cursor;
             }
@@ -60,13 +63,18 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
             }
 
             // close stream if there is no response to send or we sent an error
-            if (response == null || isError) {
-                LOGGER.debug("sendNextResponse closing cursor");
+            if (response == null || isError || !this.mongoCursor.hasNext()) {
+                LOGGER.trace(
+                        "sendNextResponse closing cursor isError: {} hasNext: {}",
+                        isError, this.mongoCursor.hasNext());
                 getResponseObserver().onCompleted();
                 this.cursorClosed.set(true);
                 this.mongoCursor.close();
             }
         }
+
+        LOGGER.trace("{} exiting sendNextResponse synchronized", this.hashCode());
+//        Thread.dumpStack();
     }
 
     @Override

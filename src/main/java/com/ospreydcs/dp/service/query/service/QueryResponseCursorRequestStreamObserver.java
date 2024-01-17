@@ -114,7 +114,6 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
     @Override
     public void onCompleted() {
         LOGGER.debug("onCompleted");
-        responseObserver.onCompleted();
         closeCursor();
     }
 

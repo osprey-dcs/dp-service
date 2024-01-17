@@ -142,8 +142,12 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
                 if  ( numBucketsReceivedValue < numBucketsExpected) {
                     // send next request if we have not received all data
-                    QueryRequest nextRequest = buildNextRequest();
-                    requestObserver.onNext(nextRequest);
+                    // TRYING DIFFERENT THREAD TO FIX ISSUE WITH RE-ENTERING ResponseCursorDispathcer.sendNextResponse() in same thread!
+                    new Thread(() -> {
+                        logger.debug("stream: {} requesting next batch of data");
+                        QueryRequest nextRequest = buildNextRequest();
+                        requestObserver.onNext(nextRequest);
+                    }).start();
 
                 } else {
                     // otherwise signal that we are done
