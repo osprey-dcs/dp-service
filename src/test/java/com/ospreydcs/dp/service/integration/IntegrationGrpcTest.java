@@ -1,9 +1,13 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTable;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -14,6 +18,7 @@ import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseCursor;
+import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -57,15 +62,27 @@ public class IntegrationGrpcTest extends IngestionTestBase {
     public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
     private static IntegrationTestMongoClient mongoClient;
 
-    // ingestion service variables
+    // ingestion service instance variables
     private static IngestionServiceImpl ingestionService;
     private static IngestionServiceImpl ingestionServiceMock;
     private static IntegrationTestIngestionGrpcClient ingestionGrpcClient;
 
-    // query service variables
+    // query service instance variables
     private static QueryServiceImpl queryService;
     private static QueryServiceImpl queryServiceMock;
     private static IntegrationTestQueryGrpcClient queryGrpcClient;
+
+    // ingestion constants
+    private static final int INGESTION_NUM_PVS = 4000;
+    private static final int INGESTION_NUM_THREADS = 7;
+    private static final int INGESTION_NUM_STREAMS = 20;
+    private static final int INGESTION_NUM_ROWS = 1000;
+    private static final int INGESTION_NUM_SECONDS = 60;
+
+    // query constants
+    private static final int QUERY_NUM_PVS = 1000;
+    private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
+    private static final int QUERY_NUM_THREADS = 7;
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -255,8 +272,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                     assertEquals(params.numRows, bucketDocument.getColumnDataList().size());
                     // TODO: verify each value
                     for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
-                        final double doubleValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
-                        assertEquals(doubleValue, bucketDocument.getColumnDataList().get(valIndex));
+                        final double expectedValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
+                        assertEquals(expectedValue, bucketDocument.getColumnDataList().get(valIndex));
                     }
                 }
             }
@@ -294,11 +311,6 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
     protected static class IntegrationTestIngestionGrpcClient {
 
-        private static final int INGESTION_NUM_PVS = 4000;
-        private static final int INGESTION_NUM_THREADS = 7;
-        private static final int INGESTION_NUM_STREAMS = 20;
-        private static final int INGESTION_NUM_ROWS = 1000;
-        private static final int INGESTION_NUM_SECONDS = 60;
         final private Channel channel;
 
         public IntegrationTestIngestionGrpcClient(Channel channel) {
@@ -335,14 +347,133 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
     private static class IntegrationTestQueryResponseCursorApp extends BenchmarkQueryResponseCursor {
 
+        private static class IntegrationTestQueryResponseCursorTask
+                extends BenchmarkQueryResponseCursor.QueryResponseCursorTask
+        {
+            // instance variables
+            Map<String,boolean[]> columnBucketMap = new TreeMap<>();
+            private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+            private final Lock readLock = rwLock.readLock();
+            private final Lock writeLock = rwLock.writeLock();
+
+            public IntegrationTestQueryResponseCursorTask(Channel channel, QueryTaskParams params
+            ) {
+                super(channel, params);
+            }
+
+            @Override
+            protected void onRequest(QueryRequest request) {
+
+                writeLock.lock();
+                try {
+                    // add data structure for tracking expected buckets for each column in request
+                    assertTrue(request.hasQuerySpec());
+                    assertTrue(request.getQuerySpec().getColumnNamesCount() > 0);
+                    for (String columnName : request.getQuerySpec().getColumnNamesList()) {
+                        assertNotNull(request.getQuerySpec().getStartTime());
+                        final long startSeconds = request.getQuerySpec().getStartTime().getEpochSeconds();
+                        assertNotNull(request.getQuerySpec().getEndTime());
+                        final long endSeconds = request.getQuerySpec().getEndTime().getEpochSeconds();
+                        final int numSeconds = (int) (endSeconds - startSeconds);
+                        assertTrue(numSeconds > 0);
+                        final boolean[] columnBucketArray = new boolean[numSeconds];
+                        for (int i = 0 ; i < numSeconds ; i++) {
+                            columnBucketArray[i] = false;
+                        }
+                        columnBucketMap.put(columnName, columnBucketArray);
+                    }
+
+                } finally {
+                    writeLock.unlock();
+                }
+            }
+
+            @Override
+            protected void onResponse(QueryResponse response) {
+
+                assertNotNull(response.getResponseTime() != null);
+                assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+                assertTrue(response.hasQueryReport());
+                final QueryResponse.QueryReport report = response.getQueryReport();
+                assertTrue(report.hasQueryData());
+                final QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
+
+                writeLock.lock();
+                try {
+                    // verify buckets in response
+                    assertTrue(queryData.getDataBucketsCount() > 0);
+                    for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+
+                        assertTrue(bucket.hasDataColumn());
+                        final DataColumn dataColumn = bucket.getDataColumn();
+                        final String columnName = dataColumn.getName();
+                        assertNotNull(columnName);
+                        assertNotNull(dataColumn.getDataValuesList());
+                        assertTrue(dataColumn.getDataValuesCount() == INGESTION_NUM_ROWS);
+                        for (int i = 0 ; i < INGESTION_NUM_ROWS ; ++i) {
+                            final DataValue dataValue = dataColumn.getDataValues(i);
+                            assertNotNull(dataValue);
+                            final double actualValue = dataValue.getFloatValue();
+                            assertNotNull(actualValue);
+                            final double expectedValue = i + (double) i / INGESTION_NUM_ROWS;
+                            assertEquals(
+                                    "value mismatch: " + dataValue + " expected: " + actualValue,
+                                    expectedValue, actualValue, 0.0);
+                        }
+                        assertNotNull(bucket.getSamplingInterval());
+                        assertNotNull(bucket.getSamplingInterval().getStartTime());
+                        assertTrue(bucket.getSamplingInterval().getStartTime().getEpochSeconds() > 0);
+                        assertNotNull(bucket.getSamplingInterval().getSampleIntervalNanos());
+                        assertTrue(bucket.getSamplingInterval().getSampleIntervalNanos() > 0);
+                        assertNotNull(bucket.getSamplingInterval().getNumSamples());
+                        assertTrue(bucket.getSamplingInterval().getNumSamples() == INGESTION_NUM_ROWS);
+                        final long bucketSeconds = bucket.getSamplingInterval().getStartTime().getEpochSeconds();
+                        final int bucketIndex = (int) (bucketSeconds - params.startSeconds);
+                        final boolean[] columnBucketArray = columnBucketMap.get(columnName);
+                        assertNotNull("response contains unexpected bucket", columnBucketArray);
+
+                        // mark bucket as received in tracking data structure
+                        columnBucketArray[bucketIndex] = true;
+                    }
+
+                } finally {
+                    writeLock.unlock();
+                }
+            }
+
+            @Override
+            protected void onCompleted() {
+
+                readLock.lock();
+                try {
+                    // check that we recevied all expected buckets for each column
+                    for (var entry : columnBucketMap.entrySet()) {
+                        final String columnName = entry.getKey();
+                        final boolean[] columnBucketArray = entry.getValue();
+                        for (int secondOffset = 0 ; secondOffset < columnBucketArray.length ; ++secondOffset) {
+                            assertTrue(
+                                    "no bucket received column: " + columnName + " secondOffset: " + secondOffset,
+                                    columnBucketArray[secondOffset]);
+                        }
+                    }
+
+                } finally {
+                    readLock.unlock();
+                }
+            }
+
+        }
+
+        @Override
+        protected QueryResponseCursorTask newQueryTask(
+                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+        ) {
+            return new IntegrationTestQueryResponseCursorTask(channel, params);
+        }
+
     }
 
     protected static class IntegrationTestQueryGrpcClient {
-
-        // constants
-        private static final int QUERY_NUM_PVS = 1000;
-        private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
-        private static final int QUERY_NUM_THREADS = 7;
 
         // instance variables
         final private Channel channel;
