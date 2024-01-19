@@ -24,7 +24,7 @@ public abstract class MongoClientBase {
     protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
     protected abstract boolean createMongoIndexRequestStatus(Bson fieldNamesBson);
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
     public static final String MONGO_DATABASE_NAME = "dp";
@@ -56,7 +56,7 @@ public abstract class MongoClientBase {
         // Registration by packageName led to an exception in the query service when iterating result cursor,
         // see details below about registrering classes explicitly.
 //        String packageName = BucketDocument.class.getPackageName();
-//        LOGGER.debug("CodecProvider registering packageName: " + packageName);
+//        LOGGER.trace("CodecProvider registering packageName: " + packageName);
 //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(packageName).build();
 
         // Was registering POJO classes with CodecProvider by packageName as shown above, but this doesn't work
@@ -129,14 +129,14 @@ public abstract class MongoClientBase {
 
     public boolean init() {
 
-        LOGGER.debug("init");
+        logger.trace("init");
 
         String connectString = getMongoConnectString();
         String databaseName = getMongoDatabaseName();
         String collectionNameBuckets = getCollectionNameBuckets();
         String collectionNameRequestStatus = getCollectionNameRequestStatus();
-        LOGGER.info("init connectString: {} databaseName: {}", connectString, databaseName);
-        LOGGER.info("init collection names buckets: {} requestStatus: {}", collectionNameBuckets, collectionNameRequestStatus);
+        logger.debug("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
+        logger.debug("mongo client init collection names buckets: {} requestStatus: {}", collectionNameBuckets, collectionNameRequestStatus);
 
         // connect mongo client
         initMongoClient(connectString);
@@ -156,7 +156,7 @@ public abstract class MongoClientBase {
     }
 
     public boolean fini() {
-        LOGGER.debug("fini");
+        logger.trace("fini");
         return true;
     }
 }

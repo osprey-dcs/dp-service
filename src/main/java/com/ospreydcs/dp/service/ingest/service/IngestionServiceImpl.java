@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.ingest.service;
 
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -14,7 +13,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServiceImplBase {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     private static final int TIMEOUT_STREAM_FINISH_MINUTES = 1;
 
@@ -81,11 +79,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     public boolean init(IngestionHandlerInterface handler) {
         this.handler = handler;
         if (!handler.init()) {
-            LOGGER.error("handler.init failed");
+            logger.error("handler.init failed");
             return false;
         }
         if (!handler.start()) {
-            LOGGER.error("handler.start failed");
+            logger.error("handler.start failed");
         }
         return true;
     }
@@ -109,12 +107,12 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             CountDownLatch pendingRequestLatch = new CountDownLatch(1);
 
             private void decrementPendingRequestCountAndSignalFinish() {
-                LOGGER.debug("decrementPendingRequestCountAndSignalFinish");
+                logger.trace("decrementPendingRequestCountAndSignalFinish");
                 // decrement pending request counter, and decrement finishLatch if last request and close requested
                 int pendingRequestCountValue = pendingRequestCount.decrementAndGet();
-                LOGGER.debug("pendingRequestCountValue: " + pendingRequestCountValue);
+                logger.trace("pendingRequestCountValue: " + pendingRequestCountValue);
                 if (closeRequested.get() && pendingRequestCountValue == 0) {
-                    LOGGER.debug("decrementing pendingRequestLatch");
+                    logger.trace("decrementing pendingRequestLatch");
                     pendingRequestLatch.countDown();
                 }
             }
@@ -125,7 +123,9 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 int providerId = request.getProviderId();
                 String requestId = request.getClientRequestId();
 
-                LOGGER.debug("streamingIngestion.onNext providerId: {} requestId: {}", providerId, requestId);
+                logger.debug(
+                        "id: {} streamingIngestion.onNext providerId: {} requestId: {}",
+                        this.hashCode(), providerId, requestId);
 
                 // add to pending request count, even if we might reject it, to avoid potential race conditions
                 int pendingRequestCountValue = pendingRequestCount.incrementAndGet();
@@ -133,7 +133,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 if (closeRequested.get()) {
 
                     // stream close requested, send a reject for this request
-                    LOGGER.error(
+                    logger.error(
                             "providerId: {} requestId: {} request received after stream close will be ignored",
                             providerId, requestId);
 
@@ -175,7 +175,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
             @Override
             public void onError(Throwable throwable) {
-                LOGGER.error("streamingIngestion.onError: : " + throwable.getMessage());
+                logger.error("id: {} streamingIngestion.onError: {}", this.hashCode(), throwable.getMessage());
             }
 
             @Override
@@ -186,13 +186,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 // mark stream as closed and wait for pending requests to complete
                 closeRequested.set(true);
                 if (pendingRequestCount.get() > 0) {
-                    LOGGER.debug("streamingIngestion.onCompleted waiting for pendingRequestLatch");
+                    logger.trace("streamingIngestion.onCompleted waiting for pendingRequestLatch");
                     try {
                         if (!pendingRequestLatch.await(TIMEOUT_STREAM_FINISH_MINUTES, TimeUnit.MINUTES)) {
-                            LOGGER.error("timeout waiting for finish latch");
+                            logger.error("timeout waiting for finish latch");
                         }
                     } catch (InterruptedException e) {
-                        LOGGER.error("InterruptedException waiting for finishLatch");
+                        logger.error("InterruptedException waiting for finishLatch");
                     }
                 }
 
@@ -201,7 +201,9 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
                 long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
                 double dtSeconds = dtMillis / 1_000.0;
-                LOGGER.debug("streamingIngestion.onCompleted seconds: {}", dtSeconds);
+                logger.debug(
+                        "id: {} streamingIngestion.onCompleted seconds: {}",
+                        this.hashCode(), dtSeconds);
             }
         };
     }

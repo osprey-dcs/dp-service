@@ -10,14 +10,13 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     /**
      * Implements Callable interface for an executor service task that submits a stream
@@ -96,10 +95,10 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     if (responseType != ResponseType.ACK_RESPONSE) {
                         // unexpected response
                         if (responseType == ResponseType.REJECT_RESPONSE) {
-                            LOGGER.error("received reject with msg: "
+                            logger.error("received reject with msg: "
                                     + response.getRejectDetails().getMessage());
                         } else {
-                            LOGGER.error("unexpected responseType: " + responseType.getDescriptorForType());
+                            logger.error("unexpected responseType: " + responseType.getDescriptorForType());
                         }
                         responseError[0] = true;
                         finishLatch.countDown();
@@ -110,10 +109,10 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                         int rowCount = response.getAckDetails().getNumRows();
                         int colCount = response.getAckDetails().getNumColumns();
                         String requestId = response.getClientRequestId();
-                        LOGGER.debug("stream: {} received response for requestId: {}", streamNumber, requestId);
+                        logger.trace("stream: {} received response for requestId: {}", streamNumber, requestId);
 
                         if (rowCount != numRows) {
-                            LOGGER.error(
+                            logger.error(
                                     "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
                                     streamNumber, rowCount, numRows);
                             responseError[0] = true;
@@ -122,7 +121,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
                         }
                         if (colCount != numColumns) {
-                            LOGGER.error(
+                            logger.error(
                                     "stream: {} response colCount: {} doesn't match expected colCount: {}",
                                     streamNumber, colCount, numColumns);
                             responseError[0] = true;
@@ -153,7 +152,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                 @Override
                 public void onError(Throwable t) {
                     Status status = Status.fromThrowable(t);
-                    LOGGER.error("stream: {} streamingIngestion() Failed status: {} message: {}",
+                    logger.error("stream: {} streamingIngestion() Failed status: {} message: {}",
                             streamNumber, status, t.getMessage());
                     runtimeError[0] = true;
                     finishLatch.countDown();
@@ -164,7 +163,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                  */
                 @Override
                 public void onCompleted() {
-                    LOGGER.debug("stream: {} Finished streamingIngestion()", streamNumber);
+                    logger.trace("stream: {} Finished streamingIngestion()", streamNumber);
                     finishLatch.countDown();
                 }
             };
@@ -197,7 +196,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     }
 
                     // send grpc ingestion request
-                    LOGGER.debug("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
+                    logger.trace("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
                     requestObserver.onNext(request);
 
                     dataValuesSubmitted = dataValuesSubmitted + (numRows * numColumns);
@@ -212,7 +211,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     }
                 }
             } catch (RuntimeException e) {
-                LOGGER.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
+                logger.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
                 // cancel rpc, onError() sets runtimeError[0]
                 isError = true;
             }
@@ -223,12 +222,12 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                     // wait until all responses received
                     boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
                     if (!awaitSuccess) {
-                        LOGGER.error("stream: {} timeout waiting for responseLatch", streamNumber);
+                        logger.error("stream: {} timeout waiting for responseLatch", streamNumber);
                         result.setStatus(false);
                         return result;
                     }
                 } catch (InterruptedException e) {
-                    LOGGER.error(
+                    logger.error(
                             "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
                             streamNumber);
                     result.setStatus(false);
@@ -243,12 +242,12 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
             try {
                 boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
                 if (!awaitSuccess) {
-                    LOGGER.error("stream: {} timeout waiting for finishLatch", streamNumber);
+                    logger.error("stream: {} timeout waiting for finishLatch", streamNumber);
                     result.setStatus(false);
                     return result;
                 }
             } catch (InterruptedException e) {
-                LOGGER.error(
+                logger.error(
                         "stream: {} streamingIngestion InterruptedException waiting for finishLatch",
                         streamNumber);
                 result.setStatus(false);
@@ -308,7 +307,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
         // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
         // use TLS, use TlsChannelCredentials instead.
         String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
-        LOGGER.info("Creating gRPC channel using connect string: {}", connectString);
+        logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
@@ -322,10 +321,10 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
         try {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
             if (!awaitSuccess) {
-                LOGGER.error("timeout in channel.shutdownNow.awaitTermination");
+                logger.error("timeout in channel.shutdownNow.awaitTermination");
             }
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
+            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
         }
 
     }

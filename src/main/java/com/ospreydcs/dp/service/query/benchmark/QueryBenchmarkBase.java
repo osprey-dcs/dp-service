@@ -313,7 +313,7 @@ public abstract class QueryBenchmarkBase {
         long grpcBytesReceived = 0;
 
         // create thread pool of specified size
-        logger.debug("creating thread pool of size: {}", numThreads);
+        logger.trace("creating thread pool of size: {}", numThreads);
         final var executorService = Executors.newFixedThreadPool(numThreads);
 
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
@@ -383,10 +383,10 @@ public abstract class QueryBenchmarkBase {
             final String dataBytesReceivedString = String.format("%,8d", dataBytesReceived);
             final String grpcBytesReceivedString = String.format("%,8d", grpcBytesReceived);
             final String grpcOverheadBytesString = String.format("%,8d", grpcBytesReceived - dataBytesReceived);
-            logger.debug("data values received: {}", dataValuesReceivedString);
-            logger.debug("data bytes received: {}", dataBytesReceivedString);
-            logger.debug("grpc bytes received: {}", grpcBytesReceivedString);
-            logger.debug("grpc overhead bytes: {}", grpcOverheadBytesString);
+            logger.trace("query scenario: {} data values received: {}", this.hashCode(), dataValuesReceivedString);
+            logger.trace("query scenario: {} data bytes received: {}", this.hashCode(), dataBytesReceivedString);
+            logger.trace("query scenario: {} grpc bytes received: {}", this.hashCode(), grpcBytesReceivedString);
+            logger.trace("query scenario: {} grpc overhead bytes: {}", this.hashCode(), grpcOverheadBytesString);
 
             final double dataValueRate = dataValuesReceived / secondsElapsed;
             final double dataMByteRate = (dataBytesReceived / 1_000_000.0) / secondsElapsed;
@@ -396,10 +396,10 @@ public abstract class QueryBenchmarkBase {
             final String dataValueRateString = formatter.format(dataValueRate);
             final String dataMbyteRateString = formatter.format(dataMByteRate);
             final String grpcMbyteRateString = formatter.format(grpcMByteRate);
-            logger.debug("execution time: {} seconds", dtSecondsString);
-            logger.debug("data value rate: {} values/sec", dataValueRateString);
-            logger.debug("data byte rate: {} MB/sec", dataMbyteRateString);
-            logger.debug("grpc byte rate: {} MB/sec", grpcMbyteRateString);
+            logger.debug("query scenario: {} execution time: {} seconds", this.hashCode(), dtSecondsString);
+            logger.debug("query scenario: {} data value rate: {} values/sec", this.hashCode(), dataValueRateString);
+            logger.debug("query scenario: {} data byte rate: {} MB/sec", this.hashCode(), dataMbyteRateString);
+            logger.debug("query scenario: {} grpc byte rate: {} MB/sec", this.hashCode(), grpcMbyteRateString);
 
             return new BenchmarkScenarioResult(true, dataValueRate);
 

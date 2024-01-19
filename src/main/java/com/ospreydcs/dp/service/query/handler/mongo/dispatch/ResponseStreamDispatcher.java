@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 public class ResponseStreamDispatcher extends ResultDispatcher {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
     public ResponseStreamDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
     }
@@ -33,7 +33,7 @@ public class ResponseStreamDispatcher extends ResultDispatcher {
 //                int bucketSerializedSize = bucket.getSerializedSize();
 //                if (messageSize + bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
 //                    // hit size limit for message so send current data response and create a new one
-//                    LOGGER.debug("processQueryRequest: sending multiple responses for result");
+//                    LOGGER.trace("processQueryRequest: sending multiple responses for result");
 //                    QueryServiceImpl.sendQueryResponseData(resultDataBuilder, getResponseObserver());
 //                    messageSize = 0;
 //                    resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();

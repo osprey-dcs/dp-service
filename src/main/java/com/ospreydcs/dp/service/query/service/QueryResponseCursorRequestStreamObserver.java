@@ -13,7 +13,7 @@ import org.apache.logging.log4j.Logger;
 public class QueryResponseCursorRequestStreamObserver implements StreamObserver<QueryRequest> {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     private final StreamObserver<QueryResponse> responseObserver;
@@ -54,7 +54,8 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 // extract query spec
                 QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-                LOGGER.trace("query columnNames: {} startSeconds: {} endSeconds: {}",
+                logger.debug("id: {} query request received columnNames: {} startSeconds: {} endSeconds: {}",
+                        responseObserver.hashCode(),
                         querySpec.getColumnNamesList(),
                         querySpec.getStartTime().getEpochSeconds(),
                         querySpec.getEndTime().getEpochSeconds());
@@ -80,7 +81,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 switch (request.getCursorOp()) {
 
                     case CURSOR_OP_NEXT -> {
-                        LOGGER.trace("handling cursor operation: CURSOR_OP_NEXT");
+                        logger.trace("handling cursor operation: CURSOR_OP_NEXT");
 
                         if (this.cursor != null) {
                             this.cursor.next();
@@ -88,7 +89,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                     }
 
                     case UNRECOGNIZED -> {
-                        LOGGER.error("unrecognized cursor operation requested");
+                        logger.error("unrecognized cursor operation requested");
                         responseObserver.onCompleted();
                         closeCursor();
                     }
@@ -97,7 +98,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
             }
 
             case REQUEST_NOT_SET -> {
-                LOGGER.error("unrecognized request case");
+                logger.error("unrecognized request case");
                 responseObserver.onCompleted();
                 closeCursor();
             }
@@ -106,14 +107,14 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
 
     @Override
     public void onError(Throwable throwable) {
-        LOGGER.error("onError called with: {}", throwable.getMessage());
+        logger.error("onError called with: {}", throwable.getMessage());
         responseObserver.onCompleted();
         closeCursor();
     }
 
     @Override
     public void onCompleted() {
-        LOGGER.trace("onCompleted");
+        logger.trace("onCompleted");
         closeCursor();
     }
 

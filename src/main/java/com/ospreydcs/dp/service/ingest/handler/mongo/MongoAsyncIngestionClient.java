@@ -15,12 +15,12 @@ import java.util.List;
 
 public class MongoAsyncIngestionClient extends MongoAsyncClient implements MongoIngestionClientInterface {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     @Override
     public MongoIngestionHandler.IngestionTaskResult insertBatch(IngestionRequest request, List<BucketDocument> dataDocumentBatch) {
 
-        LOGGER.debug("MongoAsyncDbHandler.insertBatch");
+        logger.debug("inserting batch of bucket documents to mongo");
 
         // invoke mongodb insertMany for batch, create subscriber to handle results
         Publisher<InsertManyResult> publisher = mongoCollectionBuckets.insertMany(dataDocumentBatch);  // SILENTLY FAILS IF TsDataBucket DOESN'T HAVE ACCESSOR METHODS FOR ALL INST VARS!
@@ -33,14 +33,14 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
 
         } catch (MongoException ex) {
             String errorMsg = "MongoException encountered: " + ex.getMessage();
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return new MongoIngestionHandler.IngestionTaskResult(true, errorMsg, null);
         }
 
         var receivedList = subscriber.getReceived();
         if (receivedList.size() == 0) {
             String errorMsg = "no response received from insertMany() publisher";
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return new MongoIngestionHandler.IngestionTaskResult(true, errorMsg, null);
         }
 
@@ -51,6 +51,10 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
 
     @Override
     public InsertOneResult insertRequestStatus(RequestStatusDocument requestStatusDocument) {
+
+        logger.debug(
+                "inserting RequestStatus document to mongo provider: {} request: {}",
+                requestStatusDocument.getProviderId(), requestStatusDocument.getRequestId());
 
         // invoke mongodb insertOne, create subscriber to handle results
         Publisher<InsertOneResult> publisher =
@@ -64,14 +68,14 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
 
         } catch (MongoException ex) {
             String errorMsg = "insertRequestStatus MongoException: " + ex.getMessage();
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return null;
         }
 
         var receivedList = subscriber.getReceived();
         if (receivedList.size() == 0) {
             String errorMsg = "no response received from insertOne() publisher";
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return null;
         }
 

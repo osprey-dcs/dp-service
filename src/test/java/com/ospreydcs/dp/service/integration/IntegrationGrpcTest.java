@@ -307,11 +307,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                 }
 
                 logger.debug(
-                        "stream: {} ingestion task verified {} IngestionResponse messages",
-                        params.streamNumber, responseCount.get());
-                logger.debug(
-                        "stream: {} ingestion task verified {} buckets in MongoDB",
-                        params.streamNumber, dbBucketCount.get());
+                        "stream: {} ingestion task verified {} IngestionResponse messages, {} mongodb buckets",
+                        params.streamNumber, responseCount.get(), dbBucketCount.get());
 
             }
 

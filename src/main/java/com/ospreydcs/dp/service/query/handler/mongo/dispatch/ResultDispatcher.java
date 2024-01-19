@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 public abstract class ResultDispatcher {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     final private StreamObserver<QueryResponse> responseObserver;
 
@@ -21,7 +21,7 @@ public abstract class ResultDispatcher {
 
     protected abstract void handleResult_(MongoCursor<BucketDocument> cursor);
 
-    protected StreamObserver<QueryResponse> getResponseObserver() {
+    public StreamObserver<QueryResponse> getResponseObserver() {
         return this.responseObserver;
     }
 
@@ -30,14 +30,14 @@ public abstract class ResultDispatcher {
         // send error response and close response stream if cursor is null
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
-            LOGGER.error(msg);
+            logger.error(msg);
             QueryServiceImpl.sendQueryResponseError(msg, getResponseObserver());
             return;
         }
 
         // send empty QueryStatus and close response stream if query matched no data
         if (!cursor.hasNext()) {
-            LOGGER.debug("processQueryRequest: query matched no data, cursor is empty");
+            logger.trace("processQueryRequest: query matched no data, cursor is empty");
             QueryServiceImpl.sendQueryResponseEmpty(getResponseObserver());
             return;
         }

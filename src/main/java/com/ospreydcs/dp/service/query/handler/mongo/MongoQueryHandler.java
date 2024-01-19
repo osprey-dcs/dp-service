@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerInterface {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
     private static final int TIMEOUT_SECONDS = 60;
@@ -77,16 +77,16 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
                         try {
                             executeQueryAndDispatchResults(job);
                         } catch (Exception ex) {
-                            LOGGER.error("QueryWorker.run encountered exception: {}", ex.getMessage());
+                            logger.error("QueryWorker.run encountered exception: {}", ex.getMessage());
                             ex.printStackTrace(System.err);
                         }
                     }
                 }
 
-                LOGGER.trace("QueryWorker shutting down");
+                logger.trace("QueryWorker shutting down");
 
             } catch (InterruptedException ex) {
-                LOGGER.error("InterruptedException in QueryWorker.run");
+                logger.error("InterruptedException in QueryWorker.run");
                 Thread.currentThread().interrupt();
             }
         }
@@ -124,8 +124,9 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     protected void executeQueryAndDispatchResults(QueryJob job) {
-        LOGGER.trace("executeQueryAndDispatchResults");
+        logger.debug("executing query job id: {}", job.getDispatcher().getResponseObserver().hashCode());
         final var cursor = mongoQueryClient.executeQuery(job.getQuerySpec());
+        logger.debug("dispatching query result job id: {}", job.getDispatcher().getResponseObserver().hashCode());
         job.getDispatcher().handleResult(cursor);
     }
 
@@ -137,15 +138,15 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     @Override
     public boolean init() {
 
-        LOGGER.trace("init");
+        logger.trace("init");
 
         if (!mongoQueryClient.init()) {
-            LOGGER.error("error in mongoQueryClient.init()");
+            logger.error("error in mongoQueryClient.init()");
             return false;
         }
 
         int numWorkers = configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
-        LOGGER.info("init numWorkers: {}", numWorkers);
+        logger.info("init numWorkers: {}", numWorkers);
 
         // init ExecutorService
         executorService = Executors.newFixedThreadPool(numWorkers);
@@ -176,25 +177,25 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
         shutdownRequested.set(true);
 
-        LOGGER.trace("fini");
+        logger.trace("fini");
 
         // shut down executor service
         try {
-            LOGGER.trace("shutting down executorService");
+            logger.trace("shutting down executorService");
             executorService.shutdown();
             executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            LOGGER.trace("executorService shutdown completed");
+            logger.trace("executorService shutdown completed");
         } catch (InterruptedException ex) {
             executorService.shutdownNow();
-            LOGGER.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
+            logger.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
         if (!mongoQueryClient.fini()) {
-            LOGGER.error("error in mongoQueryClient.fini()");
+            logger.error("error in mongoQueryClient.fini()");
         }
 
-        LOGGER.info("fini shutdown completed");
+        logger.info("fini shutdown completed");
 
         return true;
     }
@@ -213,15 +214,15 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public void handleQueryResponseStream(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.trace("handleQueryResponseStream");
-
         final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);
+
+        logger.debug("adding queryResponseStream job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
     }
@@ -230,16 +231,17 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public QueryResultCursor handleQueryResponseCursor(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.trace("handleQueryResponseCursor");
 
         final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
+        logger.debug("adding queryResponseCursor job id: {} to queue", responseObserver.hashCode());
+
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
 
@@ -250,15 +252,15 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public void handleQueryResponseSingle(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.trace("handleQueryResponseSingle");
-
         final ResponseSingleDispatcher dispatcher = new ResponseSingleDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);
+
+        logger.debug("adding queryResponseSingle job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
     }

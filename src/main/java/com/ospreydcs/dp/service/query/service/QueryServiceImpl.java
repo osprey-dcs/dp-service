@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.query.service;
 
-import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
@@ -15,18 +14,18 @@ import org.apache.logging.log4j.Logger;
 
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     private QueryHandlerInterface handler;
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
         if (!handler.init()) {
-            LOGGER.error("handler.init failed");
+            logger.error("handler.init failed");
             return false;
         }
         if (!handler.start()) {
-            LOGGER.error("handler.start failed");
+            logger.error("handler.start failed");
         }
         return true;
     }
@@ -151,7 +150,8 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
         QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-        LOGGER.trace("query columnNames: {} startSeconds: {} endSeconds: {}",
+        logger.debug("id: {} query request received columnNames: {} startSeconds: {} endSeconds: {}",
+                responseObserver.hashCode(),
                 querySpec.getColumnNamesList(),
                 querySpec.getStartTime().getEpochSeconds(),
                 querySpec.getEndTime().getEpochSeconds());
@@ -172,7 +172,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     @Override
     public StreamObserver<QueryRequest> queryResponseCursor(StreamObserver<QueryResponse> responseObserver) {
-        LOGGER.trace("queryResponseCursor");
+        logger.trace("queryResponseCursor");
         return new QueryResponseCursorRequestStreamObserver(responseObserver, handler);
     }
 

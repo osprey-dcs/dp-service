@@ -14,13 +14,15 @@ import java.util.List;
 
 public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIngestionClientInterface {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     @Override
     public MongoIngestionHandler.IngestionTaskResult insertBatch(
             IngestionRequest request, List<BucketDocument> dataDocumentBatch) {
 
-        LOGGER.debug("MongoSyncDbHandler.insertBatch");
+        logger.debug(
+                "inserting batch of bucket documents to mongo provider: {} request: {}",
+                request.getProviderId(), request.getClientRequestId());
 
         // insert batch of bson data documents to mongodb
         String msg = "";
@@ -31,7 +33,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         } catch (MongoException ex) {
             // insertMany exception
             String errorMsg = "MongoException in insertMany: " + ex.getMessage();
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return new MongoIngestionHandler.IngestionTaskResult(true, errorMsg, null);
         }
 
@@ -40,6 +42,11 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
 
     @Override
     public InsertOneResult insertRequestStatus(RequestStatusDocument requestStatusDocument) {
+
+        logger.debug(
+                "inserting RequestStatus document to mongo provider: {} request: {}",
+                requestStatusDocument.getProviderId(), requestStatusDocument.getRequestId());
+
         // insert RequestStatusDocument to mongodb
         String msg = "";
         long recordsInsertedCount = 0;
@@ -49,7 +56,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         } catch (MongoException ex) {
             // insertOne exception
             String errorMsg = "insertRequestStatus MongoException: " + ex.getMessage();
-            LOGGER.error(errorMsg);
+            logger.error(errorMsg);
             return null;
         }
         return result;

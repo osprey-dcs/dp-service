@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 
 public abstract class IngestionBenchmarkBase {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
@@ -256,13 +256,13 @@ public abstract class IngestionBenchmarkBase {
         long grpcBytesSubmitted = 0;
 
         // create thread pool of specified size
-        LOGGER.debug("creating thread pool of size: {}", numThreads);
+        logger.trace("creating thread pool of size: {}", numThreads);
         var executorService = Executors.newFixedThreadPool(numThreads);
 
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
         // final long startSeconds = Instant.now().getEpochSecond();
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
-        LOGGER.debug("using startSeconds: {}", startSeconds);
+        logger.trace("using startSeconds: {}", startSeconds);
         List<IngestionTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {
@@ -296,12 +296,12 @@ public abstract class IngestionBenchmarkBase {
                     grpcBytesSubmitted = grpcBytesSubmitted + ingestionResult.getGrpcBytesSubmitted();
                 }
             } else {
-                LOGGER.error("timeout reached in executorService.awaitTermination");
+                logger.error("timeout reached in executorService.awaitTermination");
                 executorService.shutdownNow();
             }
         } catch (InterruptedException | ExecutionException ex) {
             executorService.shutdownNow();
-            LOGGER.error("Data transmission Interrupted by exception: {}", ex.getMessage());
+            logger.error("Data transmission Interrupted by exception: {}", ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
@@ -316,10 +316,10 @@ public abstract class IngestionBenchmarkBase {
             String dataBytesSubmittedString = String.format("%,8d", dataBytesSubmitted);
             String grpcBytesSubmittedString = String.format("%,8d", grpcBytesSubmitted);
             String grpcOverheadBytesString = String.format("%,8d", grpcBytesSubmitted - dataBytesSubmitted);
-            LOGGER.debug("data values submitted: {}", dataValuesSubmittedString);
-            LOGGER.debug("data bytes submitted: {}", dataBytesSubmittedString);
-            LOGGER.debug("grpc bytes submitted: {}", grpcBytesSubmittedString);
-            LOGGER.debug("grpc overhead bytes: {}", grpcOverheadBytesString);
+            logger.trace("ingestion scenario: {} data values submitted: {}", this.hashCode(), dataValuesSubmittedString);
+            logger.trace("ingestion scenario: {} data bytes submitted: {}", this.hashCode(), dataBytesSubmittedString);
+            logger.trace("ingestion scenario: {} grpc bytes submitted: {}", this.hashCode(), grpcBytesSubmittedString);
+            logger.trace("ingestion scenario: {} grpc overhead bytes: {}", this.hashCode(), grpcOverheadBytesString);
 
             double dataValueRate = dataValuesSubmitted / secondsElapsed;
             double dataMByteRate = (dataBytesSubmitted / 1_000_000.0) / secondsElapsed;
@@ -329,10 +329,10 @@ public abstract class IngestionBenchmarkBase {
             String dataValueRateString = formatter.format(dataValueRate);
             String dataMbyteRateString = formatter.format(dataMByteRate);
             String grpcMbyteRateString = formatter.format(grpcMByteRate);
-            LOGGER.debug("execution time: {} seconds", dtSecondsString);
-            LOGGER.debug("data value rate: {} values/sec", dataValueRateString);
-            LOGGER.debug("data byte rate: {} MB/sec", dataMbyteRateString);
-            LOGGER.debug("grpc byte rate: {} MB/sec", grpcMbyteRateString);
+            logger.debug("ingestion scenario: {} execution time: {} seconds", this.hashCode(), dtSecondsString);
+            logger.debug("ingestion scenario: {} data value rate: {} values/sec", this.hashCode(), dataValueRateString);
+            logger.debug("ingestion scenario: {} data byte rate: {} MB/sec", this.hashCode(), dataMbyteRateString);
+            logger.debug("ingestion scenario: {} grpc byte rate: {} MB/sec", this.hashCode(), grpcMbyteRateString);
 
             return new BenchmarkScenarioResult(true, dataValueRate);
 
@@ -364,7 +364,7 @@ public abstract class IngestionBenchmarkBase {
                 final int numColumns = numPvs / numStreams;
                 final int numRows = samplesPerSecond;
 
-                LOGGER.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
+                logger.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                         numThreads, numStreams);
                 BenchmarkScenarioResult scenarioResult =
                         ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);

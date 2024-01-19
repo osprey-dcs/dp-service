@@ -17,7 +17,7 @@ import static com.mongodb.client.model.Indexes.ascending;
 
 public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryClientInterface {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     public MongoCursor<BucketDocument> executeQuery(QueryRequest.QuerySpec querySpec) {
 
@@ -45,7 +45,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                 gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
         final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
 
-        LOGGER.debug("query column: " + querySpec.getColumnNamesList()
+        logger.debug("executing query columns: " + querySpec.getColumnNamesList()
                 + " startSeconds: " + startTimeSeconds
                 + " endSeconds: " + endTimeSeconds);
 

@@ -84,7 +84,7 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
                 for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
                     int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
-//                        LOGGER.debug(
+//                        LOGGER.trace(
 //                                "stream: {} bucket column: {} startTime: {} numValues: {}",
 //                                streamNumber,
 //                                bucket.getDataColumn().getName(),
