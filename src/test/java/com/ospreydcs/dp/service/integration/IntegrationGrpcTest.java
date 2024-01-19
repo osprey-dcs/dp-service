@@ -10,6 +10,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkStreamingIngestion;
@@ -331,7 +332,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             System.out.println("executorService thread pool size: " + INGESTION_NUM_THREADS);
 
             IntegrationTestStreamingIngestionApp ingestionApp = new IntegrationTestStreamingIngestionApp();
-            ingestionApp.ingestionScenario(
+            BenchmarkScenarioResult scenarioResult = ingestionApp.ingestionScenario(
                     channel,
                     INGESTION_NUM_THREADS,
                     INGESTION_NUM_STREAMS,
@@ -339,6 +340,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                     numColumnsPerStream,
                     INGESTION_NUM_SECONDS
             );
+            assertTrue(scenarioResult.success);
 
             System.out.println("========== ingestion scenario completed ==========");
             System.out.println();
@@ -496,8 +498,9 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
             IntegrationTestQueryResponseCursorApp queryResponseCursorApp =
                     new IntegrationTestQueryResponseCursorApp();
-            queryResponseCursorApp.queryScenario(
+            BenchmarkScenarioResult scenarioResult = queryResponseCursorApp.queryScenario(
                     channel, QUERY_NUM_PVS, QUERY_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+            assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseCursor scenario completed ==========");
             System.out.println();

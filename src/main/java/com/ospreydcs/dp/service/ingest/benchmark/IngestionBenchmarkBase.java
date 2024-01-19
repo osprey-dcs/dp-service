@@ -4,6 +4,7 @@ import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import io.grpc.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -105,15 +106,6 @@ public abstract class IngestionBenchmarkBase {
             this.grpcBytesSubmitted = grpcBytesSubmitted;
         }
 
-    }
-
-    protected static class IngestionScenarioResult {
-        final public boolean isError;
-        final public double valuesPerSecond;
-        public IngestionScenarioResult(boolean isError, double valuesPerSecond) {
-            this.isError = isError;
-            this.valuesPerSecond = valuesPerSecond;
-        }
     }
 
     /**
@@ -250,7 +242,7 @@ public abstract class IngestionBenchmarkBase {
      * IngestionRequestStreamTasks for execution, each of which will call the streamingIngestion API
      * with a list of IngestionRequests.  Calculates and displays scenario performance stats.
      */
-    public IngestionScenarioResult ingestionScenario(
+    public BenchmarkScenarioResult ingestionScenario(
             Channel channel,
             int numThreads,
             int numStreams,
@@ -342,11 +334,11 @@ public abstract class IngestionBenchmarkBase {
             LOGGER.debug("data byte rate: {} MB/sec", dataMbyteRateString);
             LOGGER.debug("grpc byte rate: {} MB/sec", grpcMbyteRateString);
 
-            return new IngestionScenarioResult(true, dataValueRate);
+            return new BenchmarkScenarioResult(true, dataValueRate);
 
         } else {
             System.err.println("streaming ingestion scenario failed, performance data invalid");
-            return new IngestionScenarioResult(false, 0.0);
+            return new BenchmarkScenarioResult(false, 0.0);
         }
     }
 
@@ -374,9 +366,9 @@ public abstract class IngestionBenchmarkBase {
 
                 LOGGER.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                         numThreads, numStreams);
-                IngestionScenarioResult scenarioResult =
+                BenchmarkScenarioResult scenarioResult =
                         ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
-                if (scenarioResult.isError) {
+                if (scenarioResult.success) {
                     writeRateMap.put(mapKey, scenarioResult.valuesPerSecond);
                 } else {
                     System.err.println("error running scenario");

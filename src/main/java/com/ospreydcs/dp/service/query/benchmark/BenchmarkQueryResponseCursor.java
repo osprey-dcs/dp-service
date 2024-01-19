@@ -14,8 +14,6 @@ import org.apache.logging.log4j.Logger;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
@@ -28,23 +26,17 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             super(channel, params);
         }
 
-        private class QueryResponseCursorObserver implements StreamObserver<QueryResponse> {
+        private class QueryResponseCursorObserver extends QueryBenchmarkResponseObserver {
 
-            final private int streamNumber;
-            final private QueryTaskParams params;
-            final CountDownLatch finishLatch;
-            private StreamObserver<QueryRequest> requestObserver;
-            private AtomicBoolean isError = new AtomicBoolean(false);
-            private AtomicInteger dataValuesReceived = new AtomicInteger(0);
-            private AtomicInteger dataBytesReceived = new AtomicInteger(0);
-            private AtomicInteger grpcBytesReceived = new AtomicInteger(0);
-            private AtomicInteger numResponsesReceived = new AtomicInteger(0);
-            private AtomicInteger numBucketsReceived = new AtomicInteger(0);
+            public StreamObserver<QueryRequest> requestObserver;
 
-            public QueryResponseCursorObserver(int streamNumber, QueryTaskParams params, CountDownLatch finishLatch) {
-                this.streamNumber = streamNumber;
-                this.params = params;
-                this.finishLatch = finishLatch;
+            public QueryResponseCursorObserver(
+                    int streamNumber,
+                    QueryTaskParams params,
+                    CountDownLatch finishLatch,
+                    QueryTask task
+            ) {
+                super(streamNumber, params, finishLatch, task);
             }
 
             public void setRequestObserver(StreamObserver<QueryRequest> requestObserver) {
@@ -52,145 +44,23 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             }
 
             @Override
-            public void onNext(QueryResponse response) {
-
-                if (finishLatch.getCount() == 0) {
-                    return;
-                }
-
-                final String responseType = response.getResponseType().name();
-                logger.debug("stream: {} received response type: {}", streamNumber, responseType);
-
-                boolean success = true;
-                String msg = "";
-
-                if (response.hasQueryReject()) {
-                    isError.set(true);
-                    success = false;
-                    msg = "stream: " + streamNumber
-                            + " received reject with message: " + response.getQueryReject().getMessage();
-                    logger.error(msg);
-
-                } else if (response.hasQueryReport()) {
-
-                    QueryResponse.QueryReport report = response.getQueryReport();
-
-                    if (report.hasQueryData()) {
-
-                        grpcBytesReceived.getAndAdd(response.getSerializedSize());
-                        numResponsesReceived.incrementAndGet();
-
-                        QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
-                        int numResultBuckets = queryData.getDataBucketsCount();
-                        logger.debug("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
-
-                        for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
-                            int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
-//                        LOGGER.debug(
-//                                "stream: {} bucket column: {} startTime: {} numValues: {}",
-//                                streamNumber,
-//                                bucket.getDataColumn().getName(),
-//                                GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
-//                                dataValuesCount);
-
-                            dataValuesReceived.addAndGet(dataValuesCount);
-                            dataBytesReceived.addAndGet(dataValuesCount * Double.BYTES);
-                            numBucketsReceived.incrementAndGet();
-                        }
-
-                        // call hook for subclasses to add validation
-                        try {
-                            onResponse(response);
-                        } catch (AssertionError assertionError) {
-                            if (finishLatch.getCount() > 0) {
-                                System.err.println("stream: " + streamNumber + " assertion error");
-                                assertionError.printStackTrace(System.err);
-                                isError.set(true);
-                                finishLatch.countDown();
-                                // run in different thread since in-process grpc uses same thread for sending request and receiving response
-                                new Thread(() -> {
-                                    logger.debug("stream: {} requestObserver.onError");
-                                    requestObserver.onError(assertionError);
-                                }).start();
-
-                            }
-                            return;
-                        }
-
-                    } else if (report.hasQueryStatus()) {
-                        final QueryResponse.QueryReport.QueryStatus status = report.getQueryStatus();
-
-                        if (status.getQueryStatusType()
-                                == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
-                            isError.set(true);
-                            success = false;
-                            final String errorMsg = status.getStatusMessage();
-                            msg = "stream: " + streamNumber + " received error response: " + errorMsg;
-                            logger.error(msg);
-
-                        } else if (status.getQueryStatusType()
-                                == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
-                            isError.set(true);
-                            success = false;
-                            msg = "stream: " + streamNumber + " query returned no data";
-                            logger.error(msg);
-                        }
-
-                    } else {
-                        isError.set(true);
-                        success = false;
-                        msg = "stream: " + streamNumber + " received QueryReport with unexpected content";
-                        logger.error(msg);
-                    }
-
-                } else {
-                    isError.set(true);
-                    success = false;
-                    msg = "stream: " + streamNumber + " received unexpected response";
-                    logger.error(msg);
-                }
-
-                if (success) {
-
-                    final int numBucketsExpected = params.columnNames.size() * 60;
-                    final int numBucketsReceivedValue = numBucketsReceived.get();
-
-                    if  ( numBucketsReceivedValue < numBucketsExpected) {
-                        // send next request if we have not received all data
-                        // run in different thread since in-process grpc uses same thread for sending request and receiving response
-                        new Thread(() -> {
-                            logger.debug("stream: {} requesting next batch of data");
-                            QueryRequest nextRequest = buildNextRequest();
-                            requestObserver.onNext(nextRequest);
-                        }).start();
-
-                    } else {
-                        // otherwise signal that we are done
-                        logger.debug("stream: {} onNext received expected number of buckets", streamNumber);
-                        finishLatch.countDown();
-                    }
-
-                } else {
-                    // something went wrong, signal that we are done
-                    isError.set(true);
-                    logger.error("stream: {} onNext unexpected error", streamNumber);
-                    finishLatch.countDown();
-                }
-
+            protected void onAssertionError(AssertionError assertionError) {
+                // run in different thread since in-process grpc uses same thread for sending request and receiving response
+                new Thread(() -> {
+                    logger.debug("stream: {} requestObserver.onError");
+                    requestObserver.onError(assertionError);
+                }).start();
             }
 
             @Override
-            public void onError(Throwable t) {
-                logger.error("stream: {} responseObserver.onError with msg: {}", streamNumber, t.getMessage());
-                isError.set(true);
-                if (finishLatch.getCount() > 0) {
-                    finishLatch.countDown();
-                }
-            }
-
-            @Override
-            public void onCompleted() {
-                logger.debug("stream: {} responseObserver.onCompleted", streamNumber);
+            protected void onAdditionalBuckets() {
+                // send next request if we have not received all data
+                // run in different thread since in-process grpc uses same thread for sending request and receiving response
+                new Thread(() -> {
+                    logger.debug("stream: {} requesting next batch of data");
+                    QueryRequest nextRequest = buildNextRequest();
+                    requestObserver.onNext(nextRequest);
+                }).start();
             }
 
         }
@@ -200,19 +70,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             return result;
         }
 
-        protected void onRequest(QueryRequest request) {
-            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
-        }
-
-        protected void onResponse(QueryResponse response) {
-            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
-        }
-
-        protected void onCompleted() {
-            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
-        }
-
-        private QueryTaskResult sendQueryResponseCursor(
+         private QueryTaskResult sendQueryResponseCursor(
                 Channel channel,
                 QueryTaskParams params
         ) {
@@ -228,7 +86,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
             // create observer for api response stream
             final QueryResponseCursorObserver responseObserver =
-                    new QueryResponseCursorObserver(streamNumber, params, finishLatch);
+                    new QueryResponseCursorObserver(streamNumber, params, finishLatch, this);
 
             // create observer for api request stream and open api connection
             final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
@@ -259,7 +117,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 //                return new QueryTaskResult(false, 0, 0, 0);
 //            }
 //
-            // otherwise wait for completion
+            // otherwise wait for completion of response stream
             try {
                 boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
                 if (!awaitSuccess) {

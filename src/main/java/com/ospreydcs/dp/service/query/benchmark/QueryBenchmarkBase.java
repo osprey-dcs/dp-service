@@ -4,8 +4,10 @@ import com.mongodb.client.result.InsertManyResult;
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
+import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.Channel;
@@ -242,13 +244,26 @@ public abstract class QueryBenchmarkBase {
 
         public QueryTask(
                 Channel channel,
-                QueryTaskParams params) {
-
+                QueryTaskParams params
+        ) {
             this.channel = channel;
             this.params = params;
         }
 
         public abstract QueryTaskResult call();
+
+        protected void onRequest(QueryRequest request) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onResponse(QueryResponse response) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onCompleted() {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
     }
 
     protected static QueryRequest buildQueryRequest(QueryTaskParams params) {
@@ -285,7 +300,7 @@ public abstract class QueryBenchmarkBase {
     protected abstract QueryTask newQueryTask(
             Channel channel, QueryBenchmarkBase.QueryTaskParams params);
 
-    public double queryScenario(
+    public BenchmarkScenarioResult queryScenario(
             Channel channel,
             int numPvs,
             int pvsPerRequest,
@@ -386,13 +401,13 @@ public abstract class QueryBenchmarkBase {
             logger.debug("data byte rate: {} MB/sec", dataMbyteRateString);
             logger.debug("grpc byte rate: {} MB/sec", grpcMbyteRateString);
 
-            return dataValueRate;
+            return new BenchmarkScenarioResult(true, dataValueRate);
 
         } else {
             logger.error("scenario failed, performance data invalid");
         }
 
-        return 0.0;
+        return new BenchmarkScenarioResult(false, 0.0);
     }
 
     protected void queryExperiment(
@@ -414,7 +429,9 @@ public abstract class QueryBenchmarkBase {
                     logger.info(
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
-                    double writeRate = queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                    BenchmarkScenarioResult scenarioResult =
+                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                    double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
             }
