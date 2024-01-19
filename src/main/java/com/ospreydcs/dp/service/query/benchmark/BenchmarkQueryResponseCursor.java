@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import io.grpc.Channel;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -47,7 +46,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             protected void onAssertionError(AssertionError assertionError) {
                 // run in different thread since in-process grpc uses same thread for sending request and receiving response
                 new Thread(() -> {
-                    logger.debug("stream: {} requestObserver.onError");
+                    logger.trace("stream: {} requestObserver.onError");
                     requestObserver.onError(assertionError);
                 }).start();
             }
@@ -57,7 +56,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
                 // send next request if we have not received all data
                 // run in different thread since in-process grpc uses same thread for sending request and receiving response
                 new Thread(() -> {
-                    logger.debug("stream: {} requesting next batch of data");
+                    logger.trace("stream: {} requesting next batch of data");
                     QueryRequest nextRequest = buildNextRequest();
                     requestObserver.onNext(nextRequest);
                 }).start();
@@ -94,7 +93,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             responseObserver.setRequestObserver(requestObserver);
 
             // build query request
-            logger.debug("stream: {} sending QueryRequest", streamNumber);
+            logger.trace("stream: {} sending QueryRequest", streamNumber);
             QueryRequest queryRequest = buildQueryRequest(params);
 
             // call hook for subclasses to add validation
@@ -103,7 +102,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             } catch (AssertionError assertionError) {
                 System.err.println("stream: " + streamNumber + " assertion error");
                 assertionError.printStackTrace(System.err);
-                requestObserver.onCompleted();
+                requestObserver.onError(assertionError);
                 return new QueryTaskResult(false, 0, 0, 0);
             }
 
@@ -133,7 +132,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 //            requestObserver.onCompleted();
             new Thread(() -> {
                 // run in different thread since in-process grpc uses same thread for sending request and receiving response
-                logger.debug("stream: {} requestObserver.onCompleted");
+                logger.trace("stream: {} requestObserver.onCompleted");
                 requestObserver.onCompleted();
             }).start();
 

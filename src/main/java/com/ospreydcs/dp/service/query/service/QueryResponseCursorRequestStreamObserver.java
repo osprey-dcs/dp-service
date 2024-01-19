@@ -54,7 +54,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 // extract query spec
                 QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-                LOGGER.debug("query columnNames: {} startSeconds: {} endSeconds: {}",
+                LOGGER.trace("query columnNames: {} startSeconds: {} endSeconds: {}",
                         querySpec.getColumnNamesList(),
                         querySpec.getStartTime().getEpochSeconds(),
                         querySpec.getEndTime().getEpochSeconds());
@@ -80,7 +80,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 switch (request.getCursorOp()) {
 
                     case CURSOR_OP_NEXT -> {
-                        LOGGER.debug("handling cursor operation: CURSOR_OP_NEXT");
+                        LOGGER.trace("handling cursor operation: CURSOR_OP_NEXT");
 
                         if (this.cursor != null) {
                             this.cursor.next();
@@ -113,7 +113,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
 
     @Override
     public void onCompleted() {
-        LOGGER.debug("onCompleted");
+        LOGGER.trace("onCompleted");
         closeCursor();
     }
 

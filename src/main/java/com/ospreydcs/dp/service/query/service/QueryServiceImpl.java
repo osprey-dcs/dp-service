@@ -151,7 +151,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
         QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-        LOGGER.info("query columnNames: {} startSeconds: {} endSeconds: {}",
+        LOGGER.trace("query columnNames: {} startSeconds: {} endSeconds: {}",
                 querySpec.getColumnNamesList(),
                 querySpec.getStartTime().getEpochSeconds(),
                 querySpec.getEndTime().getEpochSeconds());
@@ -172,7 +172,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     @Override
     public StreamObserver<QueryRequest> queryResponseCursor(StreamObserver<QueryResponse> responseObserver) {
-        LOGGER.debug("queryResponseCursor");
+        LOGGER.trace("queryResponseCursor");
         return new QueryResponseCursorRequestStreamObserver(responseObserver, handler);
     }
 

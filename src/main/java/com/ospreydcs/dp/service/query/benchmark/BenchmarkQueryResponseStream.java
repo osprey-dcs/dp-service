@@ -20,7 +20,7 @@ public class BenchmarkQueryResponseStream extends QueryBenchmarkBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    private static class QueryResponseStreamTask extends QueryTask {
+    public static class QueryResponseStreamTask extends QueryTask {
 
         public QueryResponseStreamTask(Channel channel, QueryTaskParams params) {
             super(channel, params);

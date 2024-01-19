@@ -203,7 +203,7 @@ public abstract class QueryBenchmarkBase {
         logger.info("loading time: {} seconds", dtSecondsString);
     }
 
-    protected static class QueryTaskParams {
+    public static class QueryTaskParams {
         final public int streamNumber;
         final public List<String> columnNames;
         final public long startSeconds;

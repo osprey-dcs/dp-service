@@ -57,7 +57,7 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
         }
 
         final String responseType = response.getResponseType().name();
-        logger.debug("stream: {} received response type: {}", streamNumber, responseType);
+        logger.trace("stream: {} received response type: {}", streamNumber, responseType);
 
         boolean success = true;
         String msg = "";
@@ -80,7 +80,7 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
                 QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
                 int numResultBuckets = queryData.getDataBucketsCount();
-                logger.debug("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
+                logger.trace("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
 
                 for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
                     int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
@@ -154,7 +154,7 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
             } else {
                 // otherwise signal that we are done
-                logger.debug("stream: {} onNext received expected number of buckets", streamNumber);
+                logger.trace("stream: {} onNext received expected number of buckets", streamNumber);
                 finishLatch.countDown();
             }
 
@@ -178,7 +178,7 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
     @Override
     public void onCompleted() {
-        logger.debug("stream: {} responseObserver.onCompleted", streamNumber);
+        logger.trace("stream: {} responseObserver.onCompleted", streamNumber);
     }
 
 }

@@ -83,7 +83,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
                     }
                 }
 
-                LOGGER.debug("QueryWorker shutting down");
+                LOGGER.trace("QueryWorker shutting down");
 
             } catch (InterruptedException ex) {
                 LOGGER.error("InterruptedException in QueryWorker.run");
@@ -124,7 +124,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     protected void executeQueryAndDispatchResults(QueryJob job) {
-        LOGGER.debug("executeQueryAndDispatchResults");
+        LOGGER.trace("executeQueryAndDispatchResults");
         final var cursor = mongoQueryClient.executeQuery(job.getQuerySpec());
         job.getDispatcher().handleResult(cursor);
     }
@@ -137,7 +137,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     @Override
     public boolean init() {
 
-        LOGGER.debug("init");
+        LOGGER.trace("init");
 
         if (!mongoQueryClient.init()) {
             LOGGER.error("error in mongoQueryClient.init()");
@@ -176,14 +176,14 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
         shutdownRequested.set(true);
 
-        LOGGER.debug("fini");
+        LOGGER.trace("fini");
 
         // shut down executor service
         try {
-            LOGGER.debug("shutting down executorService");
+            LOGGER.trace("shutting down executorService");
             executorService.shutdown();
             executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            LOGGER.debug("executorService shutdown completed");
+            LOGGER.trace("executorService shutdown completed");
         } catch (InterruptedException ex) {
             executorService.shutdownNow();
             LOGGER.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
@@ -213,7 +213,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public void handleQueryResponseStream(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.debug("handleQueryResponseStream");
+        LOGGER.trace("handleQueryResponseStream");
 
         final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);
@@ -230,7 +230,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public QueryResultCursor handleQueryResponseCursor(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.debug("handleQueryResponseCursor");
+        LOGGER.trace("handleQueryResponseCursor");
 
         final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);
@@ -250,7 +250,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public void handleQueryResponseSingle(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        LOGGER.debug("handleQueryResponseSingle");
+        LOGGER.trace("handleQueryResponseSingle");
 
         final ResponseSingleDispatcher dispatcher = new ResponseSingleDispatcher(responseObserver);
         final QueryJob job = new QueryJob(querySpec, dispatcher);

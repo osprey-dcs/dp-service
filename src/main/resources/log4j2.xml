@@ -9,6 +9,7 @@
     <Loggers>
         <Logger name="io.grpc.netty" level="off"/>
         <Logger name="io.netty.util" level="off"/>
+        <Logger name="org.mongodb.driver" level="off"/>
         <Root level="info">
             <AppenderRef ref="console" />
         </Root>
