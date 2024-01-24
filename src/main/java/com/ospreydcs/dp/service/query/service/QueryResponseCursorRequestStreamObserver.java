@@ -16,16 +16,19 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
+    private final QueryServiceImpl serviceImpl;
     private final StreamObserver<QueryResponse> responseObserver;
     private final QueryHandlerInterface handler;
     private ResultCursorInterface cursor = null;
 
     public QueryResponseCursorRequestStreamObserver(
             StreamObserver<QueryResponse> responseObserver,
-            QueryHandlerInterface handler
+            QueryHandlerInterface handler,
+            QueryServiceImpl serviceImpl
     ) {
         this.responseObserver = responseObserver;
         this.handler = handler;
+        this.serviceImpl = serviceImpl;
     }
 
     private void closeCursor() {
@@ -43,33 +46,9 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
             case QUERYSPEC -> {
                 // handle new query spec
 
-                // make sure request contains a query spec
-                if (!request.hasQuerySpec()) {
-                    String errorMsg = "QueryRequest does not contain a QuerySpec";
-                    QueryServiceImpl.sendQueryResponseReject(
-                            errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
-                    return;
-                }
-
-                // extract query spec
-                QueryRequest.QuerySpec querySpec = request.getQuerySpec();
-
-                logger.debug("id: {} query request received columnNames: {} startSeconds: {} endSeconds: {}",
-                        responseObserver.hashCode(),
-                        querySpec.getColumnNamesList(),
-                        querySpec.getStartTime().getEpochSeconds(),
-                        querySpec.getEndTime().getEpochSeconds());
-
-                // validate request
-                ValidationResult validationResult = handler.validateQuerySpec(querySpec);
-
-                // send reject if request is invalid
-                if (validationResult.isError) {
-                    String validationMsg = validationResult.msg;
-                    QueryServiceImpl.sendQueryResponseReject(
-                            validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
-                    return;
-                }
+                // log and validate request
+                QueryRequest.QuerySpec querySpec =
+                        serviceImpl.validateRequest(QueryServiceImpl.REQUEST_CURSOR, request, responseObserver);
 
                 // otherwise handle new query request
                 this.cursor = handler.handleQueryResponseCursor(querySpec, responseObserver);

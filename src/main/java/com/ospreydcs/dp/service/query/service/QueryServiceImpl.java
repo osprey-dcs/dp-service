@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.service;
 
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
@@ -14,9 +15,16 @@ import org.apache.logging.log4j.Logger;
 
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
+    // static variables
     private static final Logger logger = LogManager.getLogger();
 
+    // instance variables
     private QueryHandlerInterface handler;
+
+    // constants
+    protected static final String REQUEST_STREAM = "queryResponseStream";
+    protected static final String REQUEST_CURSOR = "queryResponseCursor";
+    protected static final String REQUEST_SINGLE = "queryResponseSingle";
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
@@ -138,20 +146,21 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    @Override
-    public void queryResponseStream(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+    protected QueryRequest.QuerySpec validateRequest(
+            String requestType, QueryRequest request, StreamObserver responseObserver) {
 
         // check that query request contains a QuerySpec
         if (!request.hasQuerySpec()) {
             String errorMsg = "QueryRequest does not contain a QuerySpec";
             sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
-            return;
+            return null;
         }
 
         QueryRequest.QuerySpec querySpec = request.getQuerySpec();
 
-        logger.debug("id: {} query request received columnNames: {} startSeconds: {} endSeconds: {}",
+        logger.debug("id: {} query request: {} received columnNames: {} startSeconds: {} endSeconds: {}",
                 responseObserver.hashCode(),
+                requestType,
                 querySpec.getColumnNamesList(),
                 querySpec.getStartTime().getEpochSeconds(),
                 querySpec.getEndTime().getEpochSeconds());
@@ -163,17 +172,42 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (validationResult.isError) {
             String validationMsg = validationResult.msg;
             sendQueryResponseReject(validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
-            return;
+            return null;
         }
 
-        // otherwise handle request
+        return querySpec;
+    }
+
+    @Override
+    public void queryResponseStream(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+
+        // log and validate request
+        QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_STREAM, request, responseObserver);
+
+        // handle request
         handler.handleQueryResponseStream(querySpec, responseObserver);
     }
 
     @Override
     public StreamObserver<QueryRequest> queryResponseCursor(StreamObserver<QueryResponse> responseObserver) {
         logger.trace("queryResponseCursor");
-        return new QueryResponseCursorRequestStreamObserver(responseObserver, handler);
+        return new QueryResponseCursorRequestStreamObserver(responseObserver, handler, this);
     }
+
+    @Override
+    public void queryResponseSingle(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+
+        // log and validate request
+        QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_SINGLE, request, responseObserver);
+
+        // handle request
+        handler.handleQueryResponseSingle(querySpec, responseObserver);
+
+    }
+
+//    @Override
+//    public void queryResponseTable(QueryRequest request, StreamObserver<DataTable> responseObserver) {
+//
+//    }
 
 }

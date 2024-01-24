@@ -19,6 +19,7 @@ import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseCursor;
+import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseSingle;
 import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseStream;
 import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
@@ -86,6 +87,9 @@ public class IntegrationGrpcTest extends IngestionTestBase {
     private static final int QUERY_NUM_PVS = 1000;
     private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
     private static final int QUERY_NUM_THREADS = 7;
+    private static final int QUERY_SINGLE_NUM_PVS = 10;
+    private static final int QUERY_SINGLE_NUM_PVS_PER_REQUEST = 1;
+
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -553,6 +557,42 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         }
     }
 
+    private static class IntegrationTestQueryResponseSingleApp extends BenchmarkQueryResponseSingle {
+
+        private static class IntegrationTestQueryResponseSingleTask
+                extends BenchmarkQueryResponseSingle.QueryResponseSingleTask {
+
+            final private IntegrationTestQueryTaskValidationHelper helper;
+
+            public IntegrationTestQueryResponseSingleTask(Channel channel, QueryTaskParams params) {
+                super(channel, params);
+                helper = new IntegrationTestQueryTaskValidationHelper(params);
+            }
+
+            @Override
+            protected void onRequest(QueryRequest request) {
+                helper.onRequest(request);
+            }
+
+            @Override
+            protected void onResponse(QueryResponse response) {
+                helper.onResponse(response);
+            }
+
+            @Override
+            protected void onCompleted() {
+                helper.onCompleted();
+            }
+
+        }
+
+        @Override
+        protected IntegrationTestQueryResponseSingleTask newQueryTask(
+                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+        ) {
+            return new IntegrationTestQueryResponseSingleTask(channel, params);
+        }
+    }
 
     protected static class IntegrationTestQueryGrpcClient {
 
@@ -608,6 +648,30 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             System.out.println();
 
         }
+
+        private void runQueryResponseSingleScenario() {
+
+            System.out.println();
+            System.out.println("========== running queryResponseSingle scenario ==========");
+            System.out.println("number of PVs: " + QUERY_SINGLE_NUM_PVS);
+            System.out.println("number of PVs per request: " + QUERY_SINGLE_NUM_PVS_PER_REQUEST);
+            System.out.println("number of threads: " + QUERY_NUM_THREADS);
+
+            final long startSeconds = configMgr().getConfigLong(
+                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
+                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
+
+            IntegrationTestQueryResponseSingleApp queryResponseSingleApp =
+                    new IntegrationTestQueryResponseSingleApp();
+            BenchmarkScenarioResult scenarioResult = queryResponseSingleApp.queryScenario(
+                    channel, QUERY_SINGLE_NUM_PVS, QUERY_SINGLE_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+            assertTrue(scenarioResult.success);
+
+            System.out.println("========== queryResponseSingle scenario completed ==========");
+            System.out.println();
+
+        }
+
     }
 
     @BeforeClass
@@ -678,6 +742,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
         // run and verify server-streaming query api scenario
         queryGrpcClient.runQueryResponseStreamScenario();
+
+        queryGrpcClient.runQueryResponseSingleScenario();
     }
 
 //    /**
