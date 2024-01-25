@@ -9,13 +9,13 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public abstract class ResultDispatcher {
+public abstract class QueryResponseDispatcher extends Dispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
     final private StreamObserver<QueryResponse> responseObserver;
 
-    public ResultDispatcher(StreamObserver<QueryResponse> responseObserver) {
+    public QueryResponseDispatcher(StreamObserver<QueryResponse> responseObserver) {
         this.responseObserver = responseObserver;
     }
 

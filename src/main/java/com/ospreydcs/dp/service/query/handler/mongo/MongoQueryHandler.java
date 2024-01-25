@@ -1,10 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.FixedIntervalTimestampSpec;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
@@ -16,7 +13,9 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseSingleDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.HandlerJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryTableJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,7 +39,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
     private MongoQueryClientInterface mongoQueryClient = null;
     protected ExecutorService executorService = null;
-    protected BlockingQueue<QueryJob> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
+    protected BlockingQueue<HandlerJob> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
@@ -55,11 +54,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return ConfigurationManager.getInstance();
     }
 
-    private class QueryWorker implements Runnable {
+    private class QueueWorker implements Runnable {
 
         private final BlockingQueue queue;
 
-        public QueryWorker(BlockingQueue q) {
+        public QueueWorker(BlockingQueue q) {
             this.queue = q;
         }
         public void run() {
@@ -70,12 +69,12 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 //                    HandlerQueryRequest request = (HandlerQueryRequest) queue.take();
 
                     // poll for next queue item with a timeout
-                    QueryJob job =
-                            (QueryJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    HandlerJob job =
+                            (HandlerJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
                     if (job != null) {
                         try {
-                            executeQueryAndDispatchResults(job);
+                            job.execute();
                         } catch (Exception ex) {
                             logger.error("QueryWorker.run encountered exception: {}", ex.getMessage());
                             ex.printStackTrace(System.err);
@@ -123,13 +122,6 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return bucketBuilder.build();
     }
 
-    protected void executeQueryAndDispatchResults(QueryJob job) {
-        logger.debug("executing query job id: {}", job.getDispatcher().getResponseObserver().hashCode());
-        final var cursor = mongoQueryClient.executeQuery(job.getQuerySpec());
-        logger.debug("dispatching query result job id: {}", job.getDispatcher().getResponseObserver().hashCode());
-        job.getDispatcher().handleResult(cursor);
-    }
-
     /**
      * Initializes handler. Creates ExecutorService with fixed thread pool.
      *
@@ -152,7 +144,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         executorService = Executors.newFixedThreadPool(numWorkers);
 
         for (int i = 1 ; i <= numWorkers ; i++) {
-            QueryWorker worker = new QueryWorker(requestQueue);
+            QueueWorker worker = new QueueWorker(requestQueue);
             executorService.execute(worker);
         }
 
@@ -215,7 +207,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
         final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher);
+        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseStream job id: {} to queue", responseObserver.hashCode());
 
@@ -233,7 +225,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
 
         final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher);
+        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
         logger.debug("adding queryResponseCursor job id: {} to queue", responseObserver.hashCode());
@@ -253,9 +245,25 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
         final ResponseSingleDispatcher dispatcher = new ResponseSingleDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher);
+        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseSingle job id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQueryResponseTable(
+            QueryRequest.QuerySpec querySpec, StreamObserver<DataTable> responseObserver) {
+
+        final QueryTableJob job = new QueryTableJob(querySpec, responseObserver, mongoQueryClient);
+
+        logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

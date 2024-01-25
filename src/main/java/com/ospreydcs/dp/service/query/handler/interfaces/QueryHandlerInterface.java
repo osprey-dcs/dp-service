@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.interfaces;
 
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -18,4 +19,6 @@ public interface QueryHandlerInterface {
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
     void handleQueryResponseSingle(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
+    void handleQueryResponseTable(
+            QueryRequest.QuerySpec querySpec, StreamObserver<DataTable> responseObserver);
 }

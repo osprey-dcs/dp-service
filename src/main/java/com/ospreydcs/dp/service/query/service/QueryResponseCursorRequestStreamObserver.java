@@ -50,8 +50,10 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 QueryRequest.QuerySpec querySpec =
                         serviceImpl.validateRequest(QueryServiceImpl.REQUEST_CURSOR, request, responseObserver);
 
-                // otherwise handle new query request
-                this.cursor = handler.handleQueryResponseCursor(querySpec, responseObserver);
+                // handle new query request
+                if (querySpec != null) {
+                    this.cursor = handler.handleQueryResponseCursor(querySpec, responseObserver);
+                }
             }
 
             case CURSOROP -> {

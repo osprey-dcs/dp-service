@@ -12,7 +12,7 @@ import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.model.QueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
 import io.grpc.stub.StreamObserver;
 
 import java.time.Instant;
@@ -104,8 +104,8 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // create QueryJob and execute it
         final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher);
-        handler.executeQueryAndDispatchResults(job);
+        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        job.execute();
 
         return responseList;
     }
@@ -165,8 +165,8 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         // create QueryJob and execute it
         final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
         responseObserver.setDispatcher(dispatcher);
-        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher);
-        handler.executeQueryAndDispatchResults(job);
+        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        job.execute();
 
         // check if RPC already completed
         if (finishLatch.getCount() == 0) {

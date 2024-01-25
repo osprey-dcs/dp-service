@@ -25,6 +25,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     protected static final String REQUEST_STREAM = "queryResponseStream";
     protected static final String REQUEST_CURSOR = "queryResponseCursor";
     protected static final String REQUEST_SINGLE = "queryResponseSingle";
+    protected static final String REQUEST_TABLE = "queryResponseTable";
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
@@ -185,7 +186,9 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_STREAM, request, responseObserver);
 
         // handle request
-        handler.handleQueryResponseStream(querySpec, responseObserver);
+        if (querySpec != null) {
+            handler.handleQueryResponseStream(querySpec, responseObserver);
+        }
     }
 
     @Override
@@ -201,13 +204,21 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_SINGLE, request, responseObserver);
 
         // handle request
-        handler.handleQueryResponseSingle(querySpec, responseObserver);
-
+        if (querySpec != null) {
+            handler.handleQueryResponseSingle(querySpec, responseObserver);
+        }
     }
 
-//    @Override
-//    public void queryResponseTable(QueryRequest request, StreamObserver<DataTable> responseObserver) {
-//
-//    }
+    @Override
+    public void queryResponseTable(QueryRequest request, StreamObserver<DataTable> responseObserver) {
+
+        // log and validate request
+        QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_TABLE, request, responseObserver);
+
+        // handle request
+        if (querySpec != null) {
+            handler.handleQueryResponseTable(querySpec, responseObserver);
+        }
+    }
 
 }

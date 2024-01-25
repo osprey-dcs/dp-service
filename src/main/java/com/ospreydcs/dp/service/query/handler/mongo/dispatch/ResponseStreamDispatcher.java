@@ -4,13 +4,11 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
-import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ResponseStreamDispatcher extends ResultDispatcher {
+public class ResponseStreamDispatcher extends QueryResponseDispatcher {
 
     private static final Logger logger = LogManager.getLogger();
     public ResponseStreamDispatcher(StreamObserver<QueryResponse> responseObserver) {
