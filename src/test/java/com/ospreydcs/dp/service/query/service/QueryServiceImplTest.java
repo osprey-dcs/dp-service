@@ -103,15 +103,15 @@ public class QueryServiceImplTest extends QueryTestBase {
     @Test
     public void testQueryResponseData() {
 
-        QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
-                QueryResponse.QueryReport.QueryData.newBuilder();
+        QueryResponse.QueryReport.BucketData.Builder resultDataBuilder =
+                QueryResponse.QueryReport.BucketData.newBuilder();
 
         QueryResponse response = serviceImpl.queryResponseData(resultDataBuilder);
 
         assertEquals(ResponseType.DETAIL_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasQueryReport());
-        assertTrue(response.getQueryReport().hasQueryData());
+        assertTrue(response.getQueryReport().hasBucketData());
     }
 
 }

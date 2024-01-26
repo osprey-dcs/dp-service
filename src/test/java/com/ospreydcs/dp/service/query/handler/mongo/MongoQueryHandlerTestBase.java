@@ -218,7 +218,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
     }
 
     private static void verifyDataBucket(
-            QueryResponse.QueryReport.QueryData.DataBucket bucket,
+            QueryResponse.QueryReport.BucketData.DataBucket bucket,
             long bucketStartSeconds,
             long bucketStartNanos,
             long bucketSampleIntervalNanos,
@@ -252,10 +252,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         QueryResponse dataResponse = responseList.get(0);
         assertTrue(dataResponse.getResponseType() == ResponseType.DETAIL_RESPONSE);
         assertTrue(dataResponse.hasQueryReport());
-        assertTrue(dataResponse.getQueryReport().hasQueryData());
-        QueryResponse.QueryReport.QueryData queryData = dataResponse.getQueryReport().getQueryData();
+        assertTrue(dataResponse.getQueryReport().hasBucketData());
+        QueryResponse.QueryReport.BucketData queryData = dataResponse.getQueryReport().getBucketData();
         assertEquals(numSamplesPerBucket, queryData.getDataBucketsCount());
-        List<QueryResponse.QueryReport.QueryData.DataBucket> bucketList = queryData.getDataBucketsList();
+        List<QueryResponse.QueryReport.BucketData.DataBucket> bucketList = queryData.getDataBucketsList();
 
         // check each bucket, 5 for each column
         int secondsIncrement = 0;

@@ -83,7 +83,7 @@ public class QueryGrpcTest extends QueryTestBase {
 
         @Override
         public void handleQueryResponseTable(
-                QueryRequest.QuerySpec querySpec, StreamObserver<DataTable> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
         }
     }
 

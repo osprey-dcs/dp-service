@@ -9,13 +9,13 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public abstract class QueryResponseDispatcher extends Dispatcher {
+public abstract class BucketCursorResponseDispatcher extends Dispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
     final private StreamObserver<QueryResponse> responseObserver;
 
-    public QueryResponseDispatcher(StreamObserver<QueryResponse> responseObserver) {
+    public BucketCursorResponseDispatcher(StreamObserver<QueryResponse> responseObserver) {
         this.responseObserver = responseObserver;
     }
 
@@ -48,14 +48,14 @@ public abstract class QueryResponseDispatcher extends Dispatcher {
     protected QueryResponse nextQueryResponseFromCursor(MongoCursor<BucketDocument> cursor) {
 
         // build response from query result cursor
-        QueryResponse.QueryReport.QueryData.Builder resultDataBuilder =
-                QueryResponse.QueryReport.QueryData.newBuilder();
+        QueryResponse.QueryReport.BucketData.Builder resultDataBuilder =
+                QueryResponse.QueryReport.BucketData.newBuilder();
 
         int messageSize = 0;
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
-            final QueryResponse.QueryReport.QueryData.DataBucket bucket =
+            final QueryResponse.QueryReport.BucketData.DataBucket bucket =
                     MongoQueryHandler.dataBucketFromDocument(document);
 
             // determine bucket size and check if too large

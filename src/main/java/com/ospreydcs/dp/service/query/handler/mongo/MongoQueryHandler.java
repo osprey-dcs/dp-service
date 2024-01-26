@@ -13,9 +13,9 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseSingleDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseTableDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
-import com.ospreydcs.dp.service.query.handler.mongo.job.QueryTableJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -100,10 +100,10 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return samplingIntervalBuilder.build();
     }
 
-    public static <T> QueryResponse.QueryReport.QueryData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
+    public static <T> QueryResponse.QueryReport.BucketData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
 
-        QueryResponse.QueryReport.QueryData.DataBucket.Builder bucketBuilder =
-                QueryResponse.QueryReport.QueryData.DataBucket.newBuilder();
+        QueryResponse.QueryReport.BucketData.DataBucket.Builder bucketBuilder =
+                QueryResponse.QueryReport.BucketData.DataBucket.newBuilder();
 
         bucketBuilder.setSamplingInterval(bucketSamplingInterval(document));
 
@@ -259,9 +259,10 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
 
     @Override
     public void handleQueryResponseTable(
-            QueryRequest.QuerySpec querySpec, StreamObserver<DataTable> responseObserver) {
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        final QueryTableJob job = new QueryTableJob(querySpec, responseObserver, mongoQueryClient);
+        final ResponseTableDispatcher dispatcher = new ResponseTableDispatcher(responseObserver);
+        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
 

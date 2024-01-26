@@ -8,7 +8,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ResponseSingleDispatcher extends QueryResponseDispatcher {
+public class ResponseSingleDispatcher extends BucketCursorResponseDispatcher {
 
     private static final Logger LOGGER = LogManager.getLogger();
 

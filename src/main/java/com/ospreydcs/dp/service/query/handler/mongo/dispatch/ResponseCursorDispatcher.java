@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class ResponseCursorDispatcher extends QueryResponseDispatcher {
+public class ResponseCursorDispatcher extends BucketCursorResponseDispatcher {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();

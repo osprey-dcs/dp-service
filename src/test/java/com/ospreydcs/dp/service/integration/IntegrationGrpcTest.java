@@ -408,8 +408,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             assertTrue(response.getResponseTime().getEpochSeconds() > 0);
             assertTrue(response.hasQueryReport());
             final QueryResponse.QueryReport report = response.getQueryReport();
-            assertTrue(report.hasQueryData());
-            final QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
+            assertTrue(report.hasBucketData());
+            final QueryResponse.QueryReport.BucketData queryData = report.getBucketData();
 
             responseCount.incrementAndGet();
 
@@ -417,7 +417,7 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             try {
                 // verify buckets in response
                 assertTrue(queryData.getDataBucketsCount() > 0);
-                for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : queryData.getDataBucketsList()) {
 
                     assertTrue(bucket.hasDataColumn());
                     final DataColumn dataColumn = bucket.getDataColumn();

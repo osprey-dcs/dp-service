@@ -73,16 +73,16 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
             QueryResponse.QueryReport report = response.getQueryReport();
 
-            if (report.hasQueryData()) {
+            if (report.hasBucketData()) {
 
                 grpcBytesReceived.getAndAdd(response.getSerializedSize());
                 numResponsesReceived.incrementAndGet();
 
-                QueryResponse.QueryReport.QueryData queryData = report.getQueryData();
+                QueryResponse.QueryReport.BucketData queryData = report.getBucketData();
                 int numResultBuckets = queryData.getDataBucketsCount();
                 logger.trace("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
 
-                for (QueryResponse.QueryReport.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : queryData.getDataBucketsList()) {
                     int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
 //                        LOGGER.trace(
 //                                "stream: {} bucket column: {} startTime: {} numValues: {}",

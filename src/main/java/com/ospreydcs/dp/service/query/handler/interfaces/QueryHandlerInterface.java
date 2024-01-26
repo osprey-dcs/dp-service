@@ -20,5 +20,5 @@ public interface QueryHandlerInterface {
     void handleQueryResponseSingle(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
     void handleQueryResponseTable(
-            QueryRequest.QuerySpec querySpec, StreamObserver<DataTable> responseObserver);
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
 }

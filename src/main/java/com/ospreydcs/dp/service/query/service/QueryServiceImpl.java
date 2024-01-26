@@ -13,6 +13,8 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.xml.crypto.Data;
+
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
     // static variables
@@ -118,14 +120,20 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return responseWithReport(queryReport, ResponseType.STATUS_RESPONSE);
     }
 
-    public static QueryResponse queryResponseData(QueryResponse.QueryReport.QueryData.Builder resultDataBuilder) {
+    public static QueryResponse queryResponseData(QueryResponse.QueryReport.BucketData.Builder resultDataBuilder) {
 
         resultDataBuilder.build();
         final QueryResponse.QueryReport dataReport = QueryResponse.QueryReport.newBuilder()
-                .setQueryData(resultDataBuilder)
+                .setBucketData(resultDataBuilder)
                 .build();
         return responseWithReport(dataReport, ResponseType.DETAIL_RESPONSE);
     }
+
+    public static QueryResponse queryResponseWithTable(DataTable table) {
+        final QueryResponse.QueryReport tableReport = QueryResponse.QueryReport.newBuilder().setDataTable(table).build();
+        return responseWithReport(tableReport, ResponseType.DETAIL_RESPONSE);
+    }
+
 
     public static void sendQueryResponseReject(
             String msg, RejectDetails.RejectReason reason, StreamObserver<QueryResponse> responseObserver) {
@@ -210,7 +218,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     @Override
-    public void queryResponseTable(QueryRequest request, StreamObserver<DataTable> responseObserver) {
+    public void queryResponseTable(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
 
         // log and validate request
         QueryRequest.QuerySpec querySpec = validateRequest(REQUEST_TABLE, request, responseObserver);
