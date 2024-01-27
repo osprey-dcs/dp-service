@@ -25,7 +25,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
             super(channel, params);
         }
 
-        private class QueryResponseCursorObserver extends QueryBenchmarkResponseObserver {
+        private class QueryResponseCursorObserver extends BucketQueryResponseObserver {
 
             public StreamObserver<QueryRequest> requestObserver;
 

@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -9,23 +11,27 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class QueryBenchmarkResponseObserver implements StreamObserver<QueryResponse> {
+public class TableQueryResponseObserver implements StreamObserver<QueryResponse> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
-
+    
+    // instance variables
     final private int streamNumber;
     final private QueryBenchmarkBase.QueryTaskParams params;
     final public CountDownLatch finishLatch;
     final private QueryBenchmarkBase.QueryTask task;
     protected AtomicBoolean isError = new AtomicBoolean(false);
+
+    // stats variables
     protected AtomicInteger dataValuesReceived = new AtomicInteger(0);
     protected AtomicInteger dataBytesReceived = new AtomicInteger(0);
     protected AtomicInteger grpcBytesReceived = new AtomicInteger(0);
     private AtomicInteger numResponsesReceived = new AtomicInteger(0);
-    private AtomicInteger numBucketsReceived = new AtomicInteger(0);
+    private AtomicInteger numColumnsReceived = new AtomicInteger(0);
 
-    public QueryBenchmarkResponseObserver(
+
+    public TableQueryResponseObserver(
             int streamNumber,
             QueryBenchmarkBase.QueryTaskParams params,
             CountDownLatch finishLatch,
@@ -41,15 +47,6 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
         task.onResponse(response);
     }
 
-    protected void onAssertionError(AssertionError assertionError) {
-        // empty override
-    }
-
-    protected void onAdditionalBuckets() {
-        // empty override
-    }
-
-    @Override
     public void onNext(QueryResponse response) {
 
         if (finishLatch.getCount() == 0) {
@@ -73,27 +70,20 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
             QueryResponse.QueryReport report = response.getQueryReport();
 
-            if (report.hasBucketData()) {
+            if (report.hasDataTable()) {
 
                 grpcBytesReceived.getAndAdd(response.getSerializedSize());
                 numResponsesReceived.incrementAndGet();
 
-                QueryResponse.QueryReport.BucketData queryData = report.getBucketData();
-                int numResultBuckets = queryData.getDataBucketsCount();
-                logger.trace("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
+                DataTable dataTable = report.getDataTable();
+                int numResultColumns = dataTable.getDataColumnsCount();
+                logger.trace("stream: {} received DataTable numColumns: {}", streamNumber, numResultColumns);
 
-                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : queryData.getDataBucketsList()) {
-                    int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
-//                        LOGGER.trace(
-//                                "stream: {} bucket column: {} startTime: {} numValues: {}",
-//                                streamNumber,
-//                                bucket.getDataColumn().getName(),
-//                                GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
-//                                dataValuesCount);
-
+                for (DataColumn column : dataTable.getDataColumnsList()) {
+                    int dataValuesCount = column.getDataValuesCount();
                     dataValuesReceived.addAndGet(dataValuesCount);
                     dataBytesReceived.addAndGet(dataValuesCount * Double.BYTES);
-                    numBucketsReceived.incrementAndGet();
+                    numColumnsReceived.incrementAndGet();
                 }
 
                 // call hook for subclasses to add validation
@@ -105,7 +95,6 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
                         assertionError.printStackTrace(System.err);
                         isError.set(true);
                         finishLatch.countDown();
-                        onAssertionError(assertionError);
 
                     }
                     return;
@@ -146,16 +135,30 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
 
         if (success) {
 
-            final int numBucketsExpected = params.columnNames.size() * 60;
-            final int numBucketsReceivedValue = numBucketsReceived.get();
+            final int numColumnsExpected = params.columnNames.size();
+            final int numColumnsReceivedValue = numColumnsReceived.get();
 
-            if  ( numBucketsReceivedValue < numBucketsExpected) {
-                onAdditionalBuckets();
+            if  ( numColumnsReceivedValue < numColumnsExpected) {
+                isError.set(true);
+                logger.error(
+                        "stream: {} onNext number of columns received: {} less than expected: {}",
+                        streamNumber, numColumnsReceivedValue, numColumnsExpected);
 
             } else {
-                // otherwise signal that we are done
-                logger.trace("stream: {} onNext received expected number of buckets", streamNumber);
-                finishLatch.countDown();
+
+                final int numValuesExpected = params.columnNames.size() * 1000 * 60;
+                final int numValuesReceivedValue = dataValuesReceived.get();
+
+                if (numValuesReceivedValue < numValuesExpected) {
+                    isError.set(true);
+                    logger.error("stream: {} onNext number of values received: {} less than expected: {}",
+                            streamNumber, numColumnsReceivedValue, numColumnsExpected);
+
+                } else {
+                    // otherwise signal that we are done
+                    logger.trace("stream: {} onNext received expected number of buckets", streamNumber);
+                    finishLatch.countDown();
+                }
             }
 
         } else {
@@ -164,7 +167,6 @@ public class QueryBenchmarkResponseObserver implements StreamObserver<QueryRespo
             logger.error("stream: {} onNext unexpected error", streamNumber);
             finishLatch.countDown();
         }
-
     }
 
     @Override

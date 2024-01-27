@@ -48,8 +48,8 @@ public class BenchmarkQueryResponseSingle extends QueryBenchmarkBase {
             }
 
             // create observer for api response stream
-            final QueryBenchmarkResponseObserver responseObserver =
-                    new QueryBenchmarkResponseObserver(streamNumber, params, finishLatch, this);
+            final BucketQueryResponseObserver responseObserver =
+                    new BucketQueryResponseObserver(streamNumber, params, finishLatch, this);
 
             // invoke api
             final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
