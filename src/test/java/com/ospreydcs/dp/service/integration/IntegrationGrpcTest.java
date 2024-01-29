@@ -1,9 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
@@ -18,10 +16,7 @@ import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
-import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseCursor;
-import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseSingle;
-import com.ospreydcs.dp.service.query.benchmark.BenchmarkQueryResponseStream;
-import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
+import com.ospreydcs.dp.service.query.benchmark.*;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -89,6 +84,8 @@ public class IntegrationGrpcTest extends IngestionTestBase {
     private static final int QUERY_NUM_THREADS = 7;
     private static final int QUERY_SINGLE_NUM_PVS = 10;
     private static final int QUERY_SINGLE_NUM_PVS_PER_REQUEST = 1;
+    private static final int QUERY_TABLE_NUM_PVS = 50;
+    private static final int QUERY_TABLE_NUM_PVS_PER_REQUEST = 5;
 
 
     protected static ConfigurationManager configMgr() {
@@ -583,7 +580,6 @@ public class IntegrationGrpcTest extends IngestionTestBase {
             protected void onCompleted() {
                 helper.onCompleted();
             }
-
         }
 
         @Override
@@ -591,6 +587,84 @@ public class IntegrationGrpcTest extends IngestionTestBase {
                 Channel channel, QueryBenchmarkBase.QueryTaskParams params
         ) {
             return new IntegrationTestQueryResponseSingleTask(channel, params);
+        }
+    }
+
+    private static class IntegrationTestQueryResponseTableApp extends BenchmarkQueryResponseTable {
+
+        private static class IntegrationTestQueryResponseTableTask
+                extends BenchmarkQueryResponseTable.QueryResponseTableTask {
+
+            public IntegrationTestQueryResponseTableTask(Channel channel, QueryTaskParams params) {
+                super(channel, params);
+            }
+
+            @Override
+            protected void onRequest(QueryRequest request) {
+                // nothing to do for validating requests since we are maintaining a data structure with request info
+            }
+
+            @Override
+            protected void onResponse(QueryResponse response) {
+
+                // check that message contains a table response
+                assertNotNull(response.getResponseTime() != null);
+                assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+                assertTrue(response.hasQueryReport());
+                final QueryResponse.QueryReport report = response.getQueryReport();
+                assertTrue(report.hasDataTable());
+                final DataTable dataTable = report.getDataTable();
+                final List<String> columnNames = params.columnNames;
+                assertEquals(columnNames.size(), dataTable.getDataColumnsCount());
+
+                // validate timestamp list
+                long secondsCurrent = params.startSeconds;
+                long nanosCurrent = 0L;
+                final List<Timestamp> timestampList = dataTable.getDataTimeSpec().getTimestampList().getTimestampsList();
+
+
+                for (Timestamp timestamp : timestampList) {
+
+                    final long timestampSeconds = timestamp.getEpochSeconds();
+                    final long timestampNanos = timestamp.getNanoseconds();
+                    assertEquals(secondsCurrent, timestampSeconds);
+                    assertEquals(nanosCurrent, timestampNanos);
+
+                    nanosCurrent = nanosCurrent + 1_000_000;
+                    if (nanosCurrent == 1_000_000_000L) {
+                        // increment seconds if we hit a billion nanos
+                        nanosCurrent = 0;
+                        secondsCurrent = secondsCurrent + 1;
+                    }
+                }
+
+                // validate columns
+                int valueIndex = 0;
+                for (DataColumn dataColumn : dataTable.getDataColumnsList()) {
+                    assertTrue(columnNames.contains(dataColumn.getName()));
+                    for (DataValue dataValue : dataColumn.getDataValuesList()) {
+                        final double expectedValue = valueIndex + (double) valueIndex / INGESTION_NUM_ROWS;
+                        assertEquals(expectedValue, dataValue.getFloatValue(), 0.0);
+                        valueIndex = valueIndex + 1;
+                        if (valueIndex == 1000) {
+                            // column values start over at 0 every second (every 1000 values)
+                            valueIndex = 0;
+                        }
+                    }
+                }
+            }
+
+            @Override
+            protected void onCompleted() {
+                // nothing to do when task completes since we only receive a single response and have already validated it
+            }
+        }
+
+        @Override
+        protected IntegrationTestQueryResponseTableTask newQueryTask(
+                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+        ) {
+            return new IntegrationTestQueryResponseTableTask(channel, params);
         }
     }
 
@@ -623,7 +697,6 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
             System.out.println("========== queryResponseCursor scenario completed ==========");
             System.out.println();
-
         }
 
         private void runQueryResponseStreamScenario() {
@@ -646,7 +719,6 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
             System.out.println("========== queryResponseStream scenario completed ==========");
             System.out.println();
-
         }
 
         private void runQueryResponseSingleScenario() {
@@ -669,7 +741,28 @@ public class IntegrationGrpcTest extends IngestionTestBase {
 
             System.out.println("========== queryResponseSingle scenario completed ==========");
             System.out.println();
+        }
 
+        private void runQueryResponseTableScenario() {
+
+            System.out.println();
+            System.out.println("========== running queryResponseTable scenario ==========");
+            System.out.println("number of PVs: " + QUERY_TABLE_NUM_PVS);
+            System.out.println("number of PVs per request: " + QUERY_TABLE_NUM_PVS_PER_REQUEST);
+            System.out.println("number of threads: " + QUERY_NUM_THREADS);
+
+            final long startSeconds = configMgr().getConfigLong(
+                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
+                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
+
+            IntegrationTestQueryResponseTableApp queryResponseTableApp =
+                    new IntegrationTestQueryResponseTableApp();
+            BenchmarkScenarioResult scenarioResult = queryResponseTableApp.queryScenario(
+                    channel, QUERY_TABLE_NUM_PVS, QUERY_TABLE_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+            assertTrue(scenarioResult.success);
+
+            System.out.println("========== queryResponseTable scenario completed ==========");
+            System.out.println();
         }
 
     }
@@ -743,8 +836,19 @@ public class IntegrationGrpcTest extends IngestionTestBase {
         // run and verify server-streaming query api scenario
         queryGrpcClient.runQueryResponseStreamScenario();
 
+        // run and verify single response query api scenario
         queryGrpcClient.runQueryResponseSingleScenario();
+
+        // run and verify table response query api scenario
+        queryGrpcClient.runQueryResponseTableScenario();
     }
+
+//    @Test
+//    public void runStaggeredDataScenarios() {
+//
+//        ingestionGrpcClient.runStaggeredDataIngestionScenario();
+//
+//    }
 
 //    /**
 //     * To test the client, call from the client against the fake server, and verify behaviors or state

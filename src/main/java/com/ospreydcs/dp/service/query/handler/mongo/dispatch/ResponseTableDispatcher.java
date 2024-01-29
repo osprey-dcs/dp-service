@@ -6,12 +6,18 @@ import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
+
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
 
     public ResponseTableDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
@@ -49,13 +55,15 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         }
     }
 
-    private static DataTable dataTableFromMap(int numColumns, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
+    private static DataTable dataTableFromMap(List<String> columnNames, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
         final DataTable.Builder dataTableBuilder = DataTable.newBuilder();
         final Map<Integer, DataColumn.Builder> columnBuilderMap = new TreeMap<>();
-        for (int i = 1 ; i <= numColumns ; ++i) {
-            columnBuilderMap.put(i, DataColumn.newBuilder());
+        for (int i = 0 ; i < columnNames.size() ; ++i) {
+            final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+            dataColumnBuilder.setName(columnNames.get(i));
+            columnBuilderMap.put(i, dataColumnBuilder);
         }
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
@@ -72,6 +80,9 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
                     final int columnIndex = columnBuilderMapEntry.getKey();
                     final DataColumn.Builder dataColumnBuilder = columnBuilderMapEntry.getValue();
                     DataValue columnDataValue = nanoValueMap.get(columnIndex);
+                    if (columnDataValue == null) {
+                        columnDataValue = DataValue.newBuilder().build();
+                    }
                     dataColumnBuilder.addDataValues(columnDataValue);
                 }
             }
@@ -96,18 +107,25 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         // create data structure for creating table
         final Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap = new TreeMap<>();
 
+        // data structure for getting column index
+        final List<String> columnNameList = new ArrayList<>();
+
         int messageSize = 0;
-        int columnIndex = 0;
         while (cursor.hasNext()) {
             // add buckets to table data structure
-            columnIndex = columnIndex + 1;
             final BucketDocument bucket = cursor.next();
+            int columnIndex = columnNameList.indexOf(bucket.getColumnName());
+            if (columnIndex == -1) {
+                // add column to list and get index
+                columnNameList.add(bucket.getColumnName());
+                columnIndex = columnNameList.size() - 1;
+            }
             addBucketToTable(columnIndex, bucket, tableValueMap);
         }
         cursor.close();
 
         // create DataTable for response from temporary data structure
-        final DataTable dataTable = dataTableFromMap(columnIndex, tableValueMap);
+        final DataTable dataTable = dataTableFromMap(columnNameList, tableValueMap);
 
         // create and send response, close response stream
         QueryResponse response = QueryServiceImpl.queryResponseWithTable(dataTable);
