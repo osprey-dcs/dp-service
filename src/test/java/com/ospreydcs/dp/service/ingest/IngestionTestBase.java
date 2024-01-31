@@ -9,10 +9,12 @@ import io.grpc.internal.GrpcUtil;
 import io.grpc.stub.StreamObserver;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -22,7 +24,7 @@ import static org.junit.Assert.fail;
  */
 public class IngestionTestBase {
 
-    public enum IngestionDataType {
+    public static enum IngestionDataType {
         STRING,
         FLOAT,
         INT,
@@ -36,7 +38,7 @@ public class IngestionTestBase {
     /**
      * Encapsulates the parameters for creating an IngestionRequest API object.
      */
-    public class IngestionRequestParams {
+    public static class IngestionRequestParams {
 
         public Integer providerId = null;
         public String requestId = null;
@@ -132,7 +134,7 @@ public class IngestionTestBase {
         }
     }
 
-    public IngestionRequest buildIngestionRequest(IngestionRequestParams params) {
+    public static IngestionRequest buildIngestionRequest(IngestionRequestParams params) {
         return buildIngestionRequest(params, null);
     }
     /**
@@ -141,7 +143,7 @@ public class IngestionTestBase {
      * @param params
      * @return
      */
-    public IngestionRequest buildIngestionRequest(IngestionRequestParams params, List<DataColumn> dataColumnList) {
+    public static IngestionRequest buildIngestionRequest(IngestionRequestParams params, List<DataColumn> dataColumnList) {
 
         IngestionRequest.Builder requestBuilder = IngestionRequest.newBuilder();
 
@@ -311,10 +313,12 @@ public class IngestionTestBase {
      * and decremented for each message received.  The user can use await() to know when all responses have been
      * received.
      */
-    public class IngestionResponseObserver implements StreamObserver<IngestionResponse> {
+    public static class IngestionResponseObserver implements StreamObserver<IngestionResponse> {
 
+        // instance variables
         CountDownLatch finishLatch = null;
-        List<IngestionResponse> responseList = new ArrayList<>();
+        private final List<IngestionResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicBoolean isError = new AtomicBoolean(false);
 
         public IngestionResponseObserver(int expectedResponseCount) {
             this.finishLatch = new CountDownLatch(expectedResponseCount);
@@ -324,13 +328,16 @@ public class IngestionTestBase {
             try {
                 finishLatch.await(1, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
-                fail("IngestionResponseObserver timeout waiting for finishLatch");
+                System.err.println("InterruptedException waiting for finishLatch");
+                isError.set(true);
             }
         }
 
         public List<IngestionResponse> getResponseList() {
             return responseList;
         }
+
+        public boolean isError() { return isError.get(); }
 
         @Override
         public void onNext(IngestionResponse ingestionResponse) {
@@ -341,7 +348,8 @@ public class IngestionTestBase {
         @Override
         public void onError(Throwable t) {
             Status status = Status.fromThrowable(t);
-            fail("IngestionResponseObserver error: " + status);
+            System.err.println("IngestionResponseObserver error: " + status);
+            isError.set(true);
         }
 
         @Override

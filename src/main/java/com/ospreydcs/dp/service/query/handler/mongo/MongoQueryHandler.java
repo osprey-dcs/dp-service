@@ -261,7 +261,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     public void handleQueryResponseTable(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
 
-        final ResponseTableDispatcher dispatcher = new ResponseTableDispatcher(responseObserver);
+        final ResponseTableDispatcher dispatcher = new ResponseTableDispatcher(responseObserver, querySpec);
         final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());

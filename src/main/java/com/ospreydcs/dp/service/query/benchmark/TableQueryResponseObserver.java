@@ -15,7 +15,7 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
-    
+
     // instance variables
     final private int streamNumber;
     final private QueryBenchmarkBase.QueryTaskParams params;
@@ -138,7 +138,7 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
             final int numColumnsExpected = params.columnNames.size();
             final int numColumnsReceivedValue = numColumnsReceived.get();
 
-            if  ( numColumnsReceivedValue < numColumnsExpected) {
+            if (numColumnsReceivedValue < numColumnsExpected) {
                 isError.set(true);
                 logger.error(
                         "stream: {} onNext number of columns received: {} less than expected: {}",

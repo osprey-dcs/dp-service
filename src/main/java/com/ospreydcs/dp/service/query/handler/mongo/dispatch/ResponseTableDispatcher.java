@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -19,12 +20,20 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    public ResponseTableDispatcher(StreamObserver<QueryResponse> responseObserver) {
+    // instance variables
+    private final QueryRequest.QuerySpec querySpec;
+
+    public ResponseTableDispatcher(
+            StreamObserver<QueryResponse> responseObserver,
+            QueryRequest.QuerySpec querySpec
+    ) {
         super(responseObserver);
+        this.querySpec = querySpec;
     }
 
     private static <T> void addBucketToTable(
-            int columnIndex, BucketDocument<T> bucket, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
+            int columnIndex, BucketDocument<T> bucket, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap
+    ) {
         long second = bucket.getFirstSeconds();
         long nano = bucket.getFirstNanos();
         final long delta = bucket.getSampleFrequency();
@@ -55,7 +64,8 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         }
     }
 
-    private static DataTable dataTableFromMap(List<String> columnNames, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
+    private DataTable dataTableFromMap(
+            List<String> columnNames, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
         final DataTable.Builder dataTableBuilder = DataTable.newBuilder();
@@ -67,12 +77,24 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         }
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
-        // add data values to column builders
+        // add data values to column builders, filter by specified time range
+        final long startSeconds = this.querySpec.getStartTime().getEpochSeconds();
+        final long startNanos = this.querySpec.getStartTime().getNanoseconds();
+        final long endSeconds = this.querySpec.getEndTime().getEpochSeconds();
+        final long endNanos = this.querySpec.getEndTime().getNanoseconds();
         for (var secondEntry : tableValueMap.entrySet()) {
             final long second = secondEntry.getKey();
+            if (second < startSeconds || second > endSeconds) {
+                // ignore values that are out of query range
+                continue;
+            }
             final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
             for (var nanoEntry : secondValueMap.entrySet()) {
                 final long nano = nanoEntry.getKey();
+                if ((second == startSeconds && nano < startNanos) || (second == endSeconds && nano >= endNanos)) {
+                    // ignore values that are out of query range
+                    continue;
+                }
                 final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
                 final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
                 timestampListBuilder.addTimestamps(timestamp);

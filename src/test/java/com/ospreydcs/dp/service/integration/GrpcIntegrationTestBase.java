@@ -1,6 +1,13 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
+import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
+import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -8,12 +15,14 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,17 +31,17 @@ import org.junit.ClassRule;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
 @RunWith(JUnit4.class)
-public class GrpcIntegrationTestBase extends IngestionTestBase {
+public class GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -147,6 +156,133 @@ public class GrpcIntegrationTestBase extends IngestionTestBase {
         mongoClient.fini();
         mongoClient = null;
         ingestionServiceMock = null;
+    }
+
+    protected List<IngestionResponse> sendIngestionRequests(List<IngestionRequest> requestList) {
+
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(ingestionChannel);
+
+        final IngestionTestBase.IngestionResponseObserver responseObserver =
+                new IngestionTestBase.IngestionResponseObserver(requestList.size());
+
+        StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
+
+        for (IngestionRequest request : requestList) {
+            requestObserver.onNext(request);
+        }
+
+        responseObserver.await();
+        requestObserver.onCompleted();
+
+        if (responseObserver.isError()) {
+            return new ArrayList<>();
+        } else {
+            return responseObserver.getResponseList();
+        }
+    }
+
+    protected Map<Long, Map<Long, Double>> streamingIngestion(
+            long startSeconds,
+            long startNanos,
+            int providerId,
+            String requestIdBase,
+            long measurementInterval,
+            String columnName,
+            int numBuckets,
+            int numSecondsPerBucket
+    ) {
+        final int numSamplesPerSecond = ((int)(1_000_000_000 / measurementInterval));
+        final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
+        final int numSeconds = numBuckets * numSecondsPerBucket;
+
+        // create map to contain data values to use for later validation
+        Map<Long, Map<Long, Double>> valueMap = new HashMap<>();
+
+        // create requests
+        final List<IngestionRequest> requestList = new ArrayList<>();
+        long currentSeconds = startSeconds;
+        int secondsCount = 0;
+        for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
+
+            final String requestIdHundredths = requestIdBase + bucketIndex;
+
+            // create list of column data values for request
+            final List<List<Object>> columnValues = new ArrayList<>();
+            final List<Object> dataValuesList = new ArrayList<>();
+            for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
+                long currentNanos = 0;
+                Map<Long, Double> nanoMap = new TreeMap<>();
+                valueMap.put(currentSeconds + secondIndex, nanoMap);
+
+                for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
+                    final double dataValue =
+                            secondsCount + (double) sampleIndex / numSamplesPerSecond;
+                    dataValuesList.add(dataValue);
+                    nanoMap.put(currentNanos, dataValue);
+                    currentNanos = currentNanos + measurementInterval;
+                }
+                secondsCount = secondsCount + 1;
+            }
+            columnValues.add(dataValuesList);
+
+            // create request parameters
+            final IngestionTestBase.IngestionRequestParams paramsHundredths =
+                    new IngestionTestBase.IngestionRequestParams(
+                    providerId,
+                    requestIdHundredths,
+                    null,
+                    null,
+                    null,
+                    null,
+                    currentSeconds,
+                    startNanos,
+                    measurementInterval,
+                    numSamplesPerBucket,
+                    List.of(columnName),
+                    IngestionTestBase.IngestionDataType.FLOAT,
+                    columnValues);
+
+            // build request
+            final IngestionRequest request = IngestionTestBase.buildIngestionRequest(paramsHundredths);
+            requestList.add(request);
+
+            currentSeconds = currentSeconds + numSecondsPerBucket;
+        }
+
+        // send requests
+        List<IngestionResponse> responseList = sendIngestionRequests(requestList);
+        assertEquals(requestList.size(), responseList.size());
+
+        return valueMap;
+    }
+
+    protected DataTable sendQueryResponseTable(QueryRequest request) {
+
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryResponseTableObserver responseObserver =
+                new QueryTestBase.QueryResponseTableObserver();
+
+        asyncStub.queryResponseTable(request, responseObserver);
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return null;
+        } else {
+            final QueryResponse response = responseObserver.getQueryResponse();
+            return response.getQueryReport().getDataTable();
+        }
+    }
+
+    protected DataTable queryResponseTable(
+            List<String> columnNames, long startSeconds, long startNanos, long endSeconds, long endNanos
+    ) {
+        final QueryTestBase.QueryRequestParams params =
+                new QueryTestBase.QueryRequestParams(columnNames, startSeconds, startNanos, endSeconds, endNanos);
+        final QueryRequest request = QueryTestBase.buildQueryRequest(params);
+        return sendQueryResponseTable(request);
     }
 
 }
