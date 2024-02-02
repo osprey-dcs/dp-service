@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.grpc.v1.ingestion.AckDetails;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
@@ -109,6 +110,30 @@ public class GrpcIntegrationTestBase {
                 }
             }
             return null;
+        }
+    }
+
+    protected static class IngestionColumnInfo {
+
+        // instance variables
+        public final String columnName;
+        public final String requestIdBase;
+        public final long measurementInterval;
+        public final int numBuckets;
+        public final int numSecondsPerBucket;
+
+        public IngestionColumnInfo(
+                String columnName,
+                String requestIdBase,
+                long measurementInterval,
+                int numBuckets,
+                int numSecondsPerBucket
+        ) {
+            this.columnName = columnName;
+            this.requestIdBase = requestIdBase;
+            this.measurementInterval = measurementInterval;
+            this.numBuckets = numBuckets;
+            this.numSecondsPerBucket = numSecondsPerBucket;
         }
     }
 
@@ -232,8 +257,8 @@ public class GrpcIntegrationTestBase {
         final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
 
         // create data structures for later validation
-        Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
-        Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
+        final Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
+        final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
 
         // create requests
         final List<IngestionRequest> requestList = new ArrayList<>();
@@ -248,7 +273,7 @@ public class GrpcIntegrationTestBase {
             final List<Object> dataValuesList = new ArrayList<>();
             for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
                 long currentNanos = 0;
-                Map<Long, Double> nanoMap = new TreeMap<>();
+                final Map<Long, Double> nanoMap = new TreeMap<>();
                 valueMap.put(currentSeconds + secondIndex, nanoMap);
 
                 for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
@@ -279,11 +304,12 @@ public class GrpcIntegrationTestBase {
                     IngestionTestBase.IngestionDataType.FLOAT,
                     columnValues);
 
-            Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
-            Instant endTimeInstant = startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket-1));
+            final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
+            final Instant endTimeInstant =
+                    startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket-1));
 
             // capture data for later validation
-            IngestionBucketInfo bucketInfo =
+            final IngestionBucketInfo bucketInfo =
                     new IngestionBucketInfo(
                             currentSeconds,
                             startNanos,
@@ -301,10 +327,42 @@ public class GrpcIntegrationTestBase {
         }
 
         // send requests
-        List<IngestionResponse> responseList = sendIngestionRequests(requestList);
+        final List<IngestionResponse> responseList = sendIngestionRequests(requestList);
         assertEquals(requestList.size(), responseList.size());
+        for (IngestionResponse response: responseList) {
+            assertTrue(response.hasAckDetails());
+            final AckDetails ackDetails = response.getAckDetails();
+            assertEquals(1, ackDetails.getNumColumns());
+            assertEquals(numSamplesPerBucket, ackDetails.getNumRows());
+        }
 
         return new IngestionStreamInfo(bucketInfoMap, valueMap);
+    }
+
+    protected Map<String, IngestionStreamInfo> ingestColumnData(
+            List<IngestionColumnInfo> columnInfoList,
+            long startSeconds,
+            long startNanos,
+            int providerId
+    ) {
+        // create data structure for validating query result
+        Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
+
+        for (IngestionColumnInfo columnInfo : columnInfoList) {
+            final IngestionStreamInfo streamInfo =
+                    streamingIngestion(
+                            startSeconds,
+                            startNanos,
+                            providerId,
+                            columnInfo.requestIdBase,
+                            columnInfo.measurementInterval,
+                            columnInfo.columnName,
+                            columnInfo.numBuckets,
+                            columnInfo.numSecondsPerBucket);
+            validationMap.put(columnInfo.columnName, streamInfo);
+        }
+
+        return validationMap;
     }
 
     protected DataTable sendQueryResponseTable(QueryRequest request) {

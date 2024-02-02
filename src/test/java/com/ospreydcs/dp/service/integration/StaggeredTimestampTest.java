@@ -8,6 +8,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -45,8 +46,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         final String columnNameTwentieths = "TEST_TWENTIETHS";
         final String columnNameQuarters = "TEST_QUARTERS";
 
-        // create data structure for validating query result
-        Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
+        List<IngestionColumnInfo> columnInfoList = new ArrayList<>();
 
         {
             // ingest data with timestamps every tenth of a second
@@ -54,17 +54,14 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             final long intervalTenths = 100_000_000L;
             final int numBucketsTenths = 30;
             final int numSecondsPerBucketTenths = 1;
-            final IngestionStreamInfo streamInfoTenths =
-                    streamingIngestion(
-                            startSeconds,
-                            startNanos,
-                            providerId,
+            final IngestionColumnInfo columnInfoTenths =
+                    new IngestionColumnInfo(
+                            columnNameTenths,
                             requestIdBaseTenths,
                             intervalTenths,
-                            columnNameTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths);
-            validationMap.put(columnNameTenths, streamInfoTenths);
+            columnInfoList.add(columnInfoTenths);
         }
 
         {
@@ -73,17 +70,14 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             final long intervalTwentieths = 200_000_000L;
             final int numBucketsTwentieths = 10;
             final int numSecondsPerBucketTwentieths = 3;
-            final IngestionStreamInfo streamInfoTwentieths =
-                    streamingIngestion(
-                            startSeconds,
-                            startNanos,
-                            providerId,
+            final IngestionColumnInfo columnInfoTwentieths =
+                    new IngestionColumnInfo(
+                            columnNameTwentieths,
                             requestIdBaseTwentieths,
                             intervalTwentieths,
-                            columnNameTwentieths,
                             numBucketsTwentieths,
                             numSecondsPerBucketTwentieths);
-            validationMap.put(columnNameTwentieths, streamInfoTwentieths);
+            columnInfoList.add(columnInfoTwentieths);
         }
 
         {
@@ -92,17 +86,20 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             final long intervalQuarters = 250_000_000L;
             final int numBucketsQuarters = 6;
             final int numSecondsPerBucketQuarters = 5;
-            final IngestionStreamInfo streamInfoQuarters =
-                    streamingIngestion(
-                            startSeconds,
-                            startNanos,
-                            providerId,
+            final IngestionColumnInfo columnInfoQuarters =
+                    new IngestionColumnInfo(
+                            columnNameQuarters,
                             requestIdBaseQuarters,
                             intervalQuarters,
-                            columnNameQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters);
-            validationMap.put(columnNameQuarters, streamInfoQuarters);
+            columnInfoList.add(columnInfoQuarters);
+        }
+
+        Map<String, IngestionStreamInfo> validationMap = null;
+        {
+            // perform ingestion for specified list of columns
+            validationMap = ingestColumnData(columnInfoList, startSeconds, startNanos, providerId);
         }
 
         {
