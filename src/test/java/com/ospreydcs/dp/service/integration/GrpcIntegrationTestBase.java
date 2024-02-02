@@ -11,6 +11,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
@@ -146,9 +147,16 @@ public class GrpcIntegrationTestBase {
         public final long endNanos;
         public final int numValues;
         public final long intervalNanos;
+        public final List<Object> dataValues;
 
         public IngestionBucketInfo(
-                long startSeconds, long startNanos, long endSeconds, long endNanos, int numValues, long intervalNanos
+                long startSeconds,
+                long startNanos,
+                long endSeconds,
+                long endNanos,
+                int numValues,
+                long intervalNanos,
+                List<Object> dataValues
         ) {
             this.startSeconds = startSeconds;
             this.startNanos = startNanos;
@@ -156,6 +164,7 @@ public class GrpcIntegrationTestBase {
             this.endNanos = endNanos;
             this.numValues = numValues;
             this.intervalNanos = intervalNanos;
+            this.dataValues = dataValues;
         }
     }
 
@@ -163,10 +172,10 @@ public class GrpcIntegrationTestBase {
 
         // instance variables
         final public Map<Long, IngestionBucketInfo> bucketInfoMap;
-        final public Map<Long, Map<Long, Double>> valueMap;
+        final public TimestampMap<Double> valueMap;
 
         public IngestionStreamInfo(
-                Map<Long, IngestionBucketInfo> bucketInfoMap, Map<Long, Map<Long, Double>> valueMap
+                Map<Long, IngestionBucketInfo> bucketInfoMap, TimestampMap<Double> valueMap
         ) {
             this.bucketInfoMap = bucketInfoMap;
             this.valueMap = valueMap;
@@ -256,38 +265,68 @@ public class GrpcIntegrationTestBase {
         final int numSamplesPerSecond = ((int)(1_000_000_000 / measurementInterval));
         final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
 
-        // create data structures for later validation
-        final Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
-        final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
+//        // create data structures for later validation
+//        final Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
+//        final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
+//
+//        // create requests
+//        final List<IngestionRequest> requestList = new ArrayList<>();
+//        long currentSeconds = startSeconds;
+//        int secondsCount = 0;
+//        for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
+//
+//            final String requestId = requestIdBase + bucketIndex;
+//
+//            // create list of column data values for request
+//            final List<List<Object>> columnValues = new ArrayList<>();
+//            final List<Object> dataValuesList = new ArrayList<>();
+//            for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
+//                long currentNanos = 0;
+//                final Map<Long, Double> nanoMap = new TreeMap<>();
+//                valueMap.put(currentSeconds + secondIndex, nanoMap);
+//
+//                for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
+//                    final double dataValue =
+//                            secondsCount + (double) sampleIndex / numSamplesPerSecond;
+//                    dataValuesList.add(dataValue);
+//                    nanoMap.put(currentNanos, dataValue);
+//                    currentNanos = currentNanos + measurementInterval;
+//                }
+//                secondsCount = secondsCount + 1;
+//            }
+//            columnValues.add(dataValuesList);
 
-        // create requests
-        final List<IngestionRequest> requestList = new ArrayList<>();
-        long currentSeconds = startSeconds;
-        int secondsCount = 0;
-        for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
+            // create data structures for later validation
+            final TimestampMap<Double> valueMap = new TimestampMap<>();
+            final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
 
-            final String requestId = requestIdBase + bucketIndex;
+            // create requests
+            final List<IngestionRequest> requestList = new ArrayList<>();
+            long currentSeconds = startSeconds;
+            int secondsCount = 0;
+            for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
 
-            // create list of column data values for request
-            final List<List<Object>> columnValues = new ArrayList<>();
-            final List<Object> dataValuesList = new ArrayList<>();
-            for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
-                long currentNanos = 0;
-                final Map<Long, Double> nanoMap = new TreeMap<>();
-                valueMap.put(currentSeconds + secondIndex, nanoMap);
+                final String requestId = requestIdBase + bucketIndex;
 
-                for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
-                    final double dataValue =
-                            secondsCount + (double) sampleIndex / numSamplesPerSecond;
-                    dataValuesList.add(dataValue);
-                    nanoMap.put(currentNanos, dataValue);
-                    currentNanos = currentNanos + measurementInterval;
+                // create list of column data values for request
+                final List<List<Object>> columnValues = new ArrayList<>();
+                final List<Object> dataValuesList = new ArrayList<>();
+                for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
+                    long currentNanos = 0;
+
+                    for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
+                        final double dataValue =
+                                secondsCount + (double) sampleIndex / numSamplesPerSecond;
+                        dataValuesList.add(dataValue);
+                        valueMap.put(currentSeconds + secondIndex, currentNanos, dataValue);
+                        currentNanos = currentNanos + measurementInterval;
+                    }
+
+                    secondsCount = secondsCount + 1;
                 }
-                secondsCount = secondsCount + 1;
-            }
-            columnValues.add(dataValuesList);
+                columnValues.add(dataValuesList);
 
-            // create request parameters
+                // create request parameters
             final IngestionTestBase.IngestionRequestParams params =
                     new IngestionTestBase.IngestionRequestParams(
                     providerId,
@@ -316,7 +355,8 @@ public class GrpcIntegrationTestBase {
                             endTimeInstant.getEpochSecond(),
                             endTimeInstant.getNano(),
                             numSamplesPerBucket,
-                            measurementInterval);
+                            measurementInterval,
+                            dataValuesList);
             bucketInfoMap.put(currentSeconds, bucketInfo);
 
             // build request
@@ -424,10 +464,8 @@ public class GrpcIntegrationTestBase {
                 Double columnDataValue = dataColumn.getDataValues(rowIndex).getFloatValue();
 
                 // get expected value from validation map
-                final Map<Long, Map<Long, Double>> columnValueMap = validationMap.get(columnName).valueMap;
-                final Map<Long, Double> columnSecondMap = columnValueMap.get(timestampSeconds);
-                assertNotNull(columnSecondMap);
-                Double expectedColumnDataValue = columnSecondMap.get(timestampNanos);
+                final TimestampMap<Double> columnValueMap = validationMap.get(columnName).valueMap;
+                Double expectedColumnDataValue = columnValueMap.get(timestampSeconds, timestampNanos);
                 if (expectedColumnDataValue != null) {
                     assertEquals(expectedColumnDataValue, columnDataValue, 0.0);
                 } else {
@@ -482,26 +520,20 @@ public class GrpcIntegrationTestBase {
                 queryResponseStream(columnNames, startSeconds, startNanos, endSeconds, endNanos);
 
         // build map of buckets in query response for vallidation
-        Map<String, Map<Long, Map<Long, QueryResponse.QueryReport.BucketData.DataBucket>>> responseBucketMap =
+        Map<String, TimestampMap<QueryResponse.QueryReport.BucketData.DataBucket>> responseBucketMap =
                 new TreeMap<>();
         for (QueryResponse.QueryReport.BucketData.DataBucket dataBucket : dataBucketList) {
             final String bucketColumnName = dataBucket.getDataColumn().getName();
             final Timestamp bucketStartTimestamp = dataBucket.getSamplingInterval().getStartTime();
             final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
             final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
-            Map<Long, Map<Long, QueryResponse.QueryReport.BucketData.DataBucket>> columnSecondMap =
+            TimestampMap<QueryResponse.QueryReport.BucketData.DataBucket> columnTimestampMap =
                     responseBucketMap.get(bucketColumnName);
-            if (columnSecondMap == null) {
-                columnSecondMap = new TreeMap<>();
-                responseBucketMap.put(bucketColumnName, columnSecondMap);
+            if (columnTimestampMap == null) {
+                columnTimestampMap = new TimestampMap<>();
+                responseBucketMap.put(bucketColumnName, columnTimestampMap);
             }
-            Map<Long, QueryResponse.QueryReport.BucketData.DataBucket> nanoMap =
-                    columnSecondMap.get(bucketStartSeconds);
-            if (nanoMap == null) {
-                nanoMap = new TreeMap<>();
-                columnSecondMap.put(bucketStartSeconds, nanoMap);
-            }
-            nanoMap.put(bucketStartNanos, dataBucket);
+            columnTimestampMap.put(bucketStartSeconds, bucketStartNanos, dataBucket);
         }
 
         // iterate through the expected buckets for each column,
@@ -529,34 +561,25 @@ public class GrpcIntegrationTestBase {
 
                 // find the response bucket corresponding to the expected bucket
                 final QueryResponse.QueryReport.BucketData.DataBucket responseBucket =
-                        responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds).get(columnBucketInfo.startNanos);
+                        responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
 
-                assertEquals(columnBucketInfo.intervalNanos, responseBucket.getSamplingInterval().getSampleIntervalNanos());
+                assertEquals(
+                        columnBucketInfo.intervalNanos,
+                        responseBucket.getSamplingInterval().getSampleIntervalNanos());
                 assertEquals(columnBucketInfo.numValues, responseBucket.getSamplingInterval().getNumSamples());
 
                 // validate bucket data values
-                final FixedIntervalTimestampSpec responseBucketTimeSpec = responseBucket.getSamplingInterval();
-                long responseBucketSecond = responseBucketTimeSpec.getStartTime().getEpochSeconds();
-                long responseBucketNano = responseBucketTimeSpec.getStartTime().getNanoseconds();
-                final long responseBucketInterval = responseBucketTimeSpec.getSampleIntervalNanos();
+                int valueIndex = 0;
                 for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
 
-                    // get value from query response
                     final double responseDataValueFloat = responseDataValue.getFloatValue();
 
-                    // get expected value
-                    final Map<Long, Double> columnSecondMap = columnStreamInfo.valueMap.get(responseBucketSecond);
-                    final double expectedDataValue = columnSecondMap.get(responseBucketNano);
+                    Object expectedValue = columnBucketInfo.dataValues.get(valueIndex);
+                    assertTrue(expectedValue instanceof Double);
+                    Double expectedValueFloat = (Double) expectedValue;
+                    assertEquals(expectedValueFloat, responseDataValueFloat, 0.0);
 
-                    // compare
-                    assertEquals(expectedDataValue, responseDataValueFloat, 0.0);
-
-                    // increment seconds and nanos
-                    responseBucketNano = responseBucketNano + responseBucketInterval;
-                    if (responseBucketNano >= 1_000_000_000) {
-                        responseBucketSecond = responseBucketSecond + 1;
-                        responseBucketNano = responseBucketNano - 1_000_000_000;
-                    }
+                    valueIndex = valueIndex + 1;
                 }
 
                 validatedBuckets = validatedBuckets + 1;

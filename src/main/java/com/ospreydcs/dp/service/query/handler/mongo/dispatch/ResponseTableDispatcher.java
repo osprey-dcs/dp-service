@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -32,7 +33,7 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
     }
 
     private static <T> void addBucketToTable(
-            int columnIndex, BucketDocument<T> bucket, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap
+            int columnIndex, BucketDocument<T> bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
     ) {
         long second = bucket.getFirstSeconds();
         long nano = bucket.getFirstNanos();
@@ -45,14 +46,11 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
             final DataValue dataValue = valueBuilder.build();
 
             // add to table data structure
-            if (!tableValueMap.containsKey(second)) {
-                tableValueMap.put(second, new TreeMap<>());
+            Map<Integer, DataValue> nanoValueMap = tableValueMap.get(second, nano);
+            if (nanoValueMap == null) {
+                nanoValueMap = new TreeMap<>();
+                tableValueMap.put(second, nano, nanoValueMap);
             }
-            final Map<Long, Map<Integer, DataValue>> secondValueMap = tableValueMap.get(second);
-            if (!secondValueMap.containsKey(nano)) {
-                secondValueMap.put(nano, new TreeMap<>());
-            }
-            final Map<Integer, DataValue> nanoValueMap = secondValueMap.get(nano);
             nanoValueMap.put(columnIndex, dataValue);
 
             // increment nanos, and increment seconds if nanos rolled over one billion
@@ -65,7 +63,7 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
     }
 
     private DataTable dataTableFromMap(
-            List<String> columnNames, Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap) {
+            List<String> columnNames, TimestampMap<Map<Integer, DataValue>> tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
         final DataTable.Builder dataTableBuilder = DataTable.newBuilder();
@@ -127,7 +125,7 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         // we have a non-empty cursor in call from handleResult()
 
         // create data structure for creating table
-        final Map<Long, Map<Long, Map<Integer, DataValue>>> tableValueMap = new TreeMap<>();
+        final TimestampMap<Map<Integer, DataValue>> tableValueMap = new TimestampMap<>();
 
         // data structure for getting column index
         final List<String> columnNameList = new ArrayList<>();
