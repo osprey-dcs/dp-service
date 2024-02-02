@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.common.config.ConfigurationManager;
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
@@ -31,12 +31,12 @@ import org.junit.ClassRule;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.time.Instant;
 import java.util.*;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
@@ -112,6 +112,42 @@ public class GrpcIntegrationTestBase {
         }
     }
 
+    protected static class IngestionBucketInfo {
+
+        // instance variables
+        public final long startSeconds;
+        public final long startNanos;
+        public final long endSeconds;
+        public final long endNanos;
+        public final int numValues;
+        public final long intervalNanos;
+
+        public IngestionBucketInfo(
+                long startSeconds, long startNanos, long endSeconds, long endNanos, int numValues, long intervalNanos
+        ) {
+            this.startSeconds = startSeconds;
+            this.startNanos = startNanos;
+            this.endSeconds = endSeconds;
+            this.endNanos = endNanos;
+            this.numValues = numValues;
+            this.intervalNanos = intervalNanos;
+        }
+    }
+
+    protected static class IngestionStreamInfo {
+
+        // instance variables
+        final public Map<Long, IngestionBucketInfo> bucketInfoMap;
+        final public Map<Long, Map<Long, Double>> valueMap;
+
+        public IngestionStreamInfo(
+                Map<Long, IngestionBucketInfo> bucketInfoMap, Map<Long, Map<Long, Double>> valueMap
+        ) {
+            this.bucketInfoMap = bucketInfoMap;
+            this.valueMap = valueMap;
+        }
+    }
+
     public static void setUp() throws Exception {
 
         // init the mongo client interface for db verification
@@ -182,7 +218,7 @@ public class GrpcIntegrationTestBase {
         }
     }
 
-    protected Map<Long, Map<Long, Double>> streamingIngestion(
+    protected IngestionStreamInfo streamingIngestion(
             long startSeconds,
             long startNanos,
             int providerId,
@@ -194,10 +230,10 @@ public class GrpcIntegrationTestBase {
     ) {
         final int numSamplesPerSecond = ((int)(1_000_000_000 / measurementInterval));
         final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
-        final int numSeconds = numBuckets * numSecondsPerBucket;
 
-        // create map to contain data values to use for later validation
-        Map<Long, Map<Long, Double>> valueMap = new HashMap<>();
+        // create data structures for later validation
+        Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
+        Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
 
         // create requests
         final List<IngestionRequest> requestList = new ArrayList<>();
@@ -205,7 +241,7 @@ public class GrpcIntegrationTestBase {
         int secondsCount = 0;
         for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
 
-            final String requestIdHundredths = requestIdBase + bucketIndex;
+            final String requestId = requestIdBase + bucketIndex;
 
             // create list of column data values for request
             final List<List<Object>> columnValues = new ArrayList<>();
@@ -227,10 +263,10 @@ public class GrpcIntegrationTestBase {
             columnValues.add(dataValuesList);
 
             // create request parameters
-            final IngestionTestBase.IngestionRequestParams paramsHundredths =
+            final IngestionTestBase.IngestionRequestParams params =
                     new IngestionTestBase.IngestionRequestParams(
                     providerId,
-                    requestIdHundredths,
+                    requestId,
                     null,
                     null,
                     null,
@@ -243,8 +279,22 @@ public class GrpcIntegrationTestBase {
                     IngestionTestBase.IngestionDataType.FLOAT,
                     columnValues);
 
+            Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
+            Instant endTimeInstant = startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket-1));
+
+            // capture data for later validation
+            IngestionBucketInfo bucketInfo =
+                    new IngestionBucketInfo(
+                            currentSeconds,
+                            startNanos,
+                            endTimeInstant.getEpochSecond(),
+                            endTimeInstant.getNano(),
+                            numSamplesPerBucket,
+                            measurementInterval);
+            bucketInfoMap.put(currentSeconds, bucketInfo);
+
             // build request
-            final IngestionRequest request = IngestionTestBase.buildIngestionRequest(paramsHundredths);
+            final IngestionRequest request = IngestionTestBase.buildIngestionRequest(params);
             requestList.add(request);
 
             currentSeconds = currentSeconds + numSecondsPerBucket;
@@ -254,7 +304,7 @@ public class GrpcIntegrationTestBase {
         List<IngestionResponse> responseList = sendIngestionRequests(requestList);
         assertEquals(requestList.size(), responseList.size());
 
-        return valueMap;
+        return new IngestionStreamInfo(bucketInfoMap, valueMap);
     }
 
     protected DataTable sendQueryResponseTable(QueryRequest request) {
@@ -283,6 +333,181 @@ public class GrpcIntegrationTestBase {
                 new QueryTestBase.QueryRequestParams(columnNames, startSeconds, startNanos, endSeconds, endNanos);
         final QueryRequest request = QueryTestBase.buildQueryRequest(params);
         return sendQueryResponseTable(request);
+    }
+
+    protected void sendAndVerifyTableQuery(
+            int numRowsExpected,
+            List<String> columnNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final DataTable table =
+                queryResponseTable(
+                        columnNames,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+
+        // validate table contents
+        final List<Timestamp> timestampList = table.getDataTimeSpec().getTimestampList().getTimestampsList();
+        assertEquals(numRowsExpected, timestampList.size());
+        assertEquals(columnNames.size(), table.getDataColumnsCount());
+        int rowIndex = 0;
+        for (Timestamp timestamp : timestampList) {
+            final long timestampSeconds = timestamp.getEpochSeconds();
+            final long timestampNanos = timestamp.getNanoseconds();
+            for (DataColumn dataColumn : table.getDataColumnsList()) {
+                // get column name and value from query result
+                String columnName = dataColumn.getName();
+                Double columnDataValue = dataColumn.getDataValues(rowIndex).getFloatValue();
+
+                // get expected value from validation map
+                final Map<Long, Map<Long, Double>> columnValueMap = validationMap.get(columnName).valueMap;
+                final Map<Long, Double> columnSecondMap = columnValueMap.get(timestampSeconds);
+                assertNotNull(columnSecondMap);
+                Double expectedColumnDataValue = columnSecondMap.get(timestampNanos);
+                if (expectedColumnDataValue != null) {
+                    assertEquals(expectedColumnDataValue, columnDataValue, 0.0);
+                } else {
+                    assertEquals(0.0, columnDataValue, 0.0);
+                }
+            }
+            rowIndex = rowIndex + 1;
+        }
+    }
+
+    protected List<QueryResponse.QueryReport.BucketData.DataBucket> sendQueryResponseStream(QueryRequest request) {
+
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryResponseStreamObserver responseObserver =
+                new QueryTestBase.QueryResponseStreamObserver();
+
+        asyncStub.queryResponseStream(request, responseObserver);
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return null;
+        } else {
+            return responseObserver.getDataBucketList();
+        }
+    }
+
+    protected List<QueryResponse.QueryReport.BucketData.DataBucket> queryResponseStream(
+            List<String> columnNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos
+    ) {
+        final QueryTestBase.QueryRequestParams params =
+                new QueryTestBase.QueryRequestParams(columnNames, startSeconds, startNanos, endSeconds, endNanos);
+        final QueryRequest request = QueryTestBase.buildQueryRequest(params);
+        return sendQueryResponseStream(request);
+    }
+
+    protected void sendAndVerifyBucketQuery(
+            int numBucketsExpected,
+            List<String> columnNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final List<QueryResponse.QueryReport.BucketData.DataBucket> dataBucketList =
+                queryResponseStream(columnNames, startSeconds, startNanos, endSeconds, endNanos);
+
+        // build map of buckets in query response for vallidation
+        Map<String, Map<Long, Map<Long, QueryResponse.QueryReport.BucketData.DataBucket>>> responseBucketMap =
+                new TreeMap<>();
+        for (QueryResponse.QueryReport.BucketData.DataBucket dataBucket : dataBucketList) {
+            final String bucketColumnName = dataBucket.getDataColumn().getName();
+            final Timestamp bucketStartTimestamp = dataBucket.getSamplingInterval().getStartTime();
+            final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
+            final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
+            Map<Long, Map<Long, QueryResponse.QueryReport.BucketData.DataBucket>> columnSecondMap =
+                    responseBucketMap.get(bucketColumnName);
+            if (columnSecondMap == null) {
+                columnSecondMap = new TreeMap<>();
+                responseBucketMap.put(bucketColumnName, columnSecondMap);
+            }
+            Map<Long, QueryResponse.QueryReport.BucketData.DataBucket> nanoMap =
+                    columnSecondMap.get(bucketStartSeconds);
+            if (nanoMap == null) {
+                nanoMap = new TreeMap<>();
+                columnSecondMap.put(bucketStartSeconds, nanoMap);
+            }
+            nanoMap.put(bucketStartNanos, dataBucket);
+        }
+
+        // iterate through the expected buckets for each column,
+        // and validate them against the corresponding response bucket
+        int validatedBuckets = 0;
+        for (var validationMapEntry : validationMap.entrySet()) {
+            final String columnName = validationMapEntry.getKey();
+            final IngestionStreamInfo columnStreamInfo = validationMapEntry.getValue();
+            for (var bucketInfoMapEntry : columnStreamInfo.bucketInfoMap.entrySet()) {
+                final IngestionBucketInfo columnBucketInfo = bucketInfoMapEntry.getValue();
+
+                // skip buckets outside the query range
+                if ((columnBucketInfo.startSeconds > endSeconds)
+                        || ((columnBucketInfo.startSeconds == endSeconds) && (columnBucketInfo.startNanos >= endNanos)))
+                {
+                    // bucket starts after query end time
+                    continue;
+                }
+                if ((columnBucketInfo.endSeconds < startSeconds)
+                        || ((columnBucketInfo.endSeconds == startSeconds) && (columnBucketInfo.endNanos < startNanos)))
+                {
+                    // bucket ends before query start time
+                    continue;
+                }
+
+                // find the response bucket corresponding to the expected bucket
+                final QueryResponse.QueryReport.BucketData.DataBucket responseBucket =
+                        responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds).get(columnBucketInfo.startNanos);
+
+                assertEquals(columnBucketInfo.intervalNanos, responseBucket.getSamplingInterval().getSampleIntervalNanos());
+                assertEquals(columnBucketInfo.numValues, responseBucket.getSamplingInterval().getNumSamples());
+
+                // validate bucket data values
+                final FixedIntervalTimestampSpec responseBucketTimeSpec = responseBucket.getSamplingInterval();
+                long responseBucketSecond = responseBucketTimeSpec.getStartTime().getEpochSeconds();
+                long responseBucketNano = responseBucketTimeSpec.getStartTime().getNanoseconds();
+                final long responseBucketInterval = responseBucketTimeSpec.getSampleIntervalNanos();
+                for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
+
+                    // get value from query response
+                    final double responseDataValueFloat = responseDataValue.getFloatValue();
+
+                    // get expected value
+                    final Map<Long, Double> columnSecondMap = columnStreamInfo.valueMap.get(responseBucketSecond);
+                    final double expectedDataValue = columnSecondMap.get(responseBucketNano);
+
+                    // compare
+                    assertEquals(expectedDataValue, responseDataValueFloat, 0.0);
+
+                    // increment seconds and nanos
+                    responseBucketNano = responseBucketNano + responseBucketInterval;
+                    if (responseBucketNano >= 1_000_000_000) {
+                        responseBucketSecond = responseBucketSecond + 1;
+                        responseBucketNano = responseBucketNano - 1_000_000_000;
+                    }
+                }
+
+                validatedBuckets = validatedBuckets + 1;
+            }
+        }
+
+        // check that we validated all buckets returned by the query, and that query returned expected number of buckets
+        assertEquals(dataBucketList.size(), validatedBuckets);
+        assertEquals(numBucketsExpected, dataBucketList.size());
     }
 
 }

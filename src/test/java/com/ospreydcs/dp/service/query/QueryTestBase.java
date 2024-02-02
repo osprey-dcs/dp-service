@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.query;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import io.grpc.Status;
@@ -112,6 +111,58 @@ public class QueryTestBase {
 
         @Override
         public void onCompleted() {
+        }
+    }
+
+    public static class QueryResponseStreamObserver implements StreamObserver<QueryResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<QueryResponse.QueryReport.BucketData.DataBucket> dataBucketList =
+                Collections.synchronizedList(new ArrayList<>());
+
+//        public QueryResponseStreamObserver(int numBucketsExpected) {
+//            this.finishLatch = new CountDownLatch(numBucketsExpected);
+//        }
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                System.err.println("InterruptedException waiting for finishLatch");
+                isError.set(true);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public List<QueryResponse.QueryReport.BucketData.DataBucket> getDataBucketList() {
+            return dataBucketList;
+        }
+
+        @Override
+        public void onNext(QueryResponse response) {
+
+            List<QueryResponse.QueryReport.BucketData.DataBucket> responseBucketList =
+                    response.getQueryReport().getBucketData().getDataBucketsList();
+
+            for (QueryResponse.QueryReport.BucketData.DataBucket bucket : responseBucketList) {
+                dataBucketList.add(bucket);
+//                finishLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            Status status = Status.fromThrowable(t);
+            System.err.println("QueryResponseTableObserver error: " + status);
+            isError.set(true);
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {
+            finishLatch.countDown();
         }
     }
 
