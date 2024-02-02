@@ -141,6 +141,8 @@ public class GrpcIntegrationTestBase {
     protected static class IngestionBucketInfo {
 
         // instance variables
+        public final int providerId;
+        public final String requestId;
         public final long startSeconds;
         public final long startNanos;
         public final long endSeconds;
@@ -150,6 +152,8 @@ public class GrpcIntegrationTestBase {
         public final List<Object> dataValues;
 
         public IngestionBucketInfo(
+                int providerId,
+                String requestId,
                 long startSeconds,
                 long startNanos,
                 long endSeconds,
@@ -158,6 +162,8 @@ public class GrpcIntegrationTestBase {
                 long intervalNanos,
                 List<Object> dataValues
         ) {
+            this.providerId = providerId;
+            this.requestId = requestId;
             this.startSeconds = startSeconds;
             this.startNanos = startNanos;
             this.endSeconds = endSeconds;
@@ -171,11 +177,11 @@ public class GrpcIntegrationTestBase {
     protected static class IngestionStreamInfo {
 
         // instance variables
-        final public Map<Long, IngestionBucketInfo> bucketInfoMap;
+        final public TimestampMap<IngestionBucketInfo> bucketInfoMap;
         final public TimestampMap<Double> valueMap;
 
         public IngestionStreamInfo(
-                Map<Long, IngestionBucketInfo> bucketInfoMap, TimestampMap<Double> valueMap
+                TimestampMap<IngestionBucketInfo> bucketInfoMap, TimestampMap<Double> valueMap
         ) {
             this.bucketInfoMap = bucketInfoMap;
             this.valueMap = valueMap;
@@ -262,94 +268,65 @@ public class GrpcIntegrationTestBase {
             int numBuckets,
             int numSecondsPerBucket
     ) {
-        final int numSamplesPerSecond = ((int)(1_000_000_000 / measurementInterval));
+        final int numSamplesPerSecond = ((int) (1_000_000_000 / measurementInterval));
         final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
 
-//        // create data structures for later validation
-//        final Map<Long, Map<Long, Double>> valueMap = new TreeMap<>();
-//        final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
-//
-//        // create requests
-//        final List<IngestionRequest> requestList = new ArrayList<>();
-//        long currentSeconds = startSeconds;
-//        int secondsCount = 0;
-//        for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
-//
-//            final String requestId = requestIdBase + bucketIndex;
-//
-//            // create list of column data values for request
-//            final List<List<Object>> columnValues = new ArrayList<>();
-//            final List<Object> dataValuesList = new ArrayList<>();
-//            for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
-//                long currentNanos = 0;
-//                final Map<Long, Double> nanoMap = new TreeMap<>();
-//                valueMap.put(currentSeconds + secondIndex, nanoMap);
-//
-//                for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
-//                    final double dataValue =
-//                            secondsCount + (double) sampleIndex / numSamplesPerSecond;
-//                    dataValuesList.add(dataValue);
-//                    nanoMap.put(currentNanos, dataValue);
-//                    currentNanos = currentNanos + measurementInterval;
-//                }
-//                secondsCount = secondsCount + 1;
-//            }
-//            columnValues.add(dataValuesList);
+        // create data structures for later validation
+        final TimestampMap<Double> valueMap = new TimestampMap<>();
+        final TimestampMap<IngestionBucketInfo> bucketInfoMap = new TimestampMap<>();
 
-            // create data structures for later validation
-            final TimestampMap<Double> valueMap = new TimestampMap<>();
-            final Map<Long, IngestionBucketInfo> bucketInfoMap = new TreeMap<>();
+        // create requests
+        final List<IngestionRequest> requestList = new ArrayList<>();
+        long currentSeconds = startSeconds;
+        int secondsCount = 0;
+        for (int bucketIndex = 0; bucketIndex < numBuckets; ++bucketIndex) {
 
-            // create requests
-            final List<IngestionRequest> requestList = new ArrayList<>();
-            long currentSeconds = startSeconds;
-            int secondsCount = 0;
-            for (int bucketIndex = 0 ; bucketIndex < numBuckets ; ++bucketIndex) {
+            final String requestId = requestIdBase + bucketIndex;
 
-                final String requestId = requestIdBase + bucketIndex;
+            // create list of column data values for request
+            final List<List<Object>> columnValues = new ArrayList<>();
+            final List<Object> dataValuesList = new ArrayList<>();
+            for (int secondIndex = 0; secondIndex < numSecondsPerBucket; ++secondIndex) {
+                long currentNanos = 0;
 
-                // create list of column data values for request
-                final List<List<Object>> columnValues = new ArrayList<>();
-                final List<Object> dataValuesList = new ArrayList<>();
-                for (int secondIndex = 0 ; secondIndex < numSecondsPerBucket ; ++secondIndex) {
-                    long currentNanos = 0;
-
-                    for (int sampleIndex = 0 ; sampleIndex < numSamplesPerSecond ; ++sampleIndex) {
-                        final double dataValue =
-                                secondsCount + (double) sampleIndex / numSamplesPerSecond;
-                        dataValuesList.add(dataValue);
-                        valueMap.put(currentSeconds + secondIndex, currentNanos, dataValue);
-                        currentNanos = currentNanos + measurementInterval;
-                    }
-
-                    secondsCount = secondsCount + 1;
+                for (int sampleIndex = 0; sampleIndex < numSamplesPerSecond; ++sampleIndex) {
+                    final double dataValue =
+                            secondsCount + (double) sampleIndex / numSamplesPerSecond;
+                    dataValuesList.add(dataValue);
+                    valueMap.put(currentSeconds + secondIndex, currentNanos, dataValue);
+                    currentNanos = currentNanos + measurementInterval;
                 }
-                columnValues.add(dataValuesList);
 
-                // create request parameters
+                secondsCount = secondsCount + 1;
+            }
+            columnValues.add(dataValuesList);
+
+            // create request parameters
             final IngestionTestBase.IngestionRequestParams params =
                     new IngestionTestBase.IngestionRequestParams(
-                    providerId,
-                    requestId,
-                    null,
-                    null,
-                    null,
-                    null,
-                    currentSeconds,
-                    startNanos,
-                    measurementInterval,
-                    numSamplesPerBucket,
-                    List.of(columnName),
-                    IngestionTestBase.IngestionDataType.FLOAT,
-                    columnValues);
+                            providerId,
+                            requestId,
+                            null,
+                            null,
+                            null,
+                            null,
+                            currentSeconds,
+                            startNanos,
+                            measurementInterval,
+                            numSamplesPerBucket,
+                            List.of(columnName),
+                            IngestionTestBase.IngestionDataType.FLOAT,
+                            columnValues);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
             final Instant endTimeInstant =
-                    startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket-1));
+                    startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket - 1));
 
             // capture data for later validation
             final IngestionBucketInfo bucketInfo =
                     new IngestionBucketInfo(
+                            providerId,
+                            requestId,
                             currentSeconds,
                             startNanos,
                             endTimeInstant.getEpochSecond(),
@@ -357,7 +334,7 @@ public class GrpcIntegrationTestBase {
                             numSamplesPerBucket,
                             measurementInterval,
                             dataValuesList);
-            bucketInfoMap.put(currentSeconds, bucketInfo);
+            bucketInfoMap.put(currentSeconds, startNanos, bucketInfo);
 
             // build request
             final IngestionRequest request = IngestionTestBase.buildIngestionRequest(params);
@@ -369,7 +346,7 @@ public class GrpcIntegrationTestBase {
         // send requests
         final List<IngestionResponse> responseList = sendIngestionRequests(requestList);
         assertEquals(requestList.size(), responseList.size());
-        for (IngestionResponse response: responseList) {
+        for (IngestionResponse response : responseList) {
             assertTrue(response.hasAckDetails());
             final AckDetails ackDetails = response.getAckDetails();
             assertEquals(1, ackDetails.getNumColumns());
@@ -403,6 +380,61 @@ public class GrpcIntegrationTestBase {
         }
 
         return validationMap;
+    }
+
+    protected void verifyIngestionDbArtifacts(Map<String, IngestionStreamInfo> validationMap) {
+
+        for (var columnIngestionStreamInfoEntry : validationMap.entrySet()) {
+            final String columnName = columnIngestionStreamInfoEntry.getKey();
+            final IngestionStreamInfo columnIngestionInfo = columnIngestionStreamInfoEntry.getValue();
+
+            for (var bucketInfoMapEntry : columnIngestionInfo.bucketInfoMap.entrySet()) {
+                final long second = bucketInfoMapEntry.getKey();
+                final Map<Long, IngestionBucketInfo> nanoMap = bucketInfoMapEntry.getValue();
+                for (var nanoMapEntry : nanoMap.entrySet()) {
+                    final long nano = nanoMapEntry.getKey();
+                    final IngestionBucketInfo requestBucketInfo = nanoMapEntry.getValue();
+
+                    // validate request in database
+                    RequestStatusDocument statusDocument =
+                            mongoClient.findRequestStatus(requestBucketInfo.providerId, requestBucketInfo.requestId);
+                    assertEquals(1, statusDocument.getIdsCreated().size());
+                    final String bucketId = columnName + "-"
+                            + requestBucketInfo.startSeconds
+                            + "-"
+                            + requestBucketInfo.startNanos;
+                    assertTrue(statusDocument.getIdsCreated().contains(bucketId));
+
+                    // validate bucket in database
+                    BucketDocument bucketDocument = mongoClient.findBucket(bucketId);
+                    assertNotNull("bucketId: " + bucketId, bucketDocument);
+                    assertEquals(columnName, bucketDocument.getColumnName());
+                    assertEquals(bucketId, bucketDocument.getId());
+                    assertEquals(requestBucketInfo.numValues, bucketDocument.getNumSamples());
+                    assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSampleFrequency());
+                    assertEquals(requestBucketInfo.startSeconds, bucketDocument.getFirstSeconds());
+                    assertEquals(requestBucketInfo.startNanos, bucketDocument.getFirstNanos());
+                    assertEquals(
+                            Date.from(Instant.ofEpochSecond(
+                                    requestBucketInfo.startSeconds, requestBucketInfo.startNanos)),
+                            bucketDocument.getFirstTime());
+                    assertEquals(requestBucketInfo.endSeconds, bucketDocument.getLastSeconds());
+                    assertEquals(requestBucketInfo.endNanos, bucketDocument.getLastNanos());
+                    assertEquals(
+                            Date.from(Instant.ofEpochSecond(
+                                    requestBucketInfo.endSeconds, requestBucketInfo.endNanos)),
+                            bucketDocument.getLastTime());
+                    assertEquals(requestBucketInfo.numValues, bucketDocument.getColumnDataList().size());
+                    // verify each value
+                    for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
+                        Object expectedValue = requestBucketInfo.dataValues.get(valIndex);
+                        assertTrue(expectedValue instanceof Double);
+                        final double expectedValueDouble = (Double) expectedValue;
+                        assertEquals(expectedValueDouble, bucketDocument.getColumnDataList().get(valIndex));
+                    }
+                }
+            }
+        }
     }
 
     protected DataTable sendQueryResponseTable(QueryRequest request) {
@@ -543,46 +575,47 @@ public class GrpcIntegrationTestBase {
             final String columnName = validationMapEntry.getKey();
             final IngestionStreamInfo columnStreamInfo = validationMapEntry.getValue();
             for (var bucketInfoMapEntry : columnStreamInfo.bucketInfoMap.entrySet()) {
-                final IngestionBucketInfo columnBucketInfo = bucketInfoMapEntry.getValue();
+                final long bucketSecond = bucketInfoMapEntry.getKey();
+                final Map<Long, IngestionBucketInfo> bucketNanoMap = bucketInfoMapEntry.getValue();
+                for (IngestionBucketInfo columnBucketInfo : bucketNanoMap.values()) {
 
-                // skip buckets outside the query range
-                if ((columnBucketInfo.startSeconds > endSeconds)
-                        || ((columnBucketInfo.startSeconds == endSeconds) && (columnBucketInfo.startNanos >= endNanos)))
-                {
-                    // bucket starts after query end time
-                    continue;
+                    // skip buckets outside the query range
+                    if ((columnBucketInfo.startSeconds > endSeconds)
+                            || ((columnBucketInfo.startSeconds == endSeconds) && (columnBucketInfo.startNanos >= endNanos))) {
+                        // bucket starts after query end time
+                        continue;
+                    }
+                    if ((columnBucketInfo.endSeconds < startSeconds)
+                            || ((columnBucketInfo.endSeconds == startSeconds) && (columnBucketInfo.endNanos < startNanos))) {
+                        // bucket ends before query start time
+                        continue;
+                    }
+
+                    // find the response bucket corresponding to the expected bucket
+                    final QueryResponse.QueryReport.BucketData.DataBucket responseBucket =
+                            responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
+
+                    assertEquals(
+                            columnBucketInfo.intervalNanos,
+                            responseBucket.getSamplingInterval().getSampleIntervalNanos());
+                    assertEquals(columnBucketInfo.numValues, responseBucket.getSamplingInterval().getNumSamples());
+
+                    // validate bucket data values
+                    int valueIndex = 0;
+                    for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
+
+                        final double responseDataValueFloat = responseDataValue.getFloatValue();
+
+                        Object expectedValue = columnBucketInfo.dataValues.get(valueIndex);
+                        assertTrue(expectedValue instanceof Double);
+                        Double expectedValueFloat = (Double) expectedValue;
+                        assertEquals(expectedValueFloat, responseDataValueFloat, 0.0);
+
+                        valueIndex = valueIndex + 1;
+                    }
+
+                    validatedBuckets = validatedBuckets + 1;
                 }
-                if ((columnBucketInfo.endSeconds < startSeconds)
-                        || ((columnBucketInfo.endSeconds == startSeconds) && (columnBucketInfo.endNanos < startNanos)))
-                {
-                    // bucket ends before query start time
-                    continue;
-                }
-
-                // find the response bucket corresponding to the expected bucket
-                final QueryResponse.QueryReport.BucketData.DataBucket responseBucket =
-                        responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
-
-                assertEquals(
-                        columnBucketInfo.intervalNanos,
-                        responseBucket.getSamplingInterval().getSampleIntervalNanos());
-                assertEquals(columnBucketInfo.numValues, responseBucket.getSamplingInterval().getNumSamples());
-
-                // validate bucket data values
-                int valueIndex = 0;
-                for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
-
-                    final double responseDataValueFloat = responseDataValue.getFloatValue();
-
-                    Object expectedValue = columnBucketInfo.dataValues.get(valueIndex);
-                    assertTrue(expectedValue instanceof Double);
-                    Double expectedValueFloat = (Double) expectedValue;
-                    assertEquals(expectedValueFloat, responseDataValueFloat, 0.0);
-
-                    valueIndex = valueIndex + 1;
-                }
-
-                validatedBuckets = validatedBuckets + 1;
             }
         }
 

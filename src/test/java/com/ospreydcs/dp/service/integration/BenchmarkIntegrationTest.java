@@ -198,7 +198,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertTrue(bucketDocument.getAttributeMap().get("sector").equals("07"));
                     assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
                     assertEquals(params.numRows, bucketDocument.getColumnDataList().size());
-                    // TODO: verify each value
+                    // verify each value
                     for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
                         final double expectedValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
                         assertEquals(expectedValue, bucketDocument.getColumnDataList().get(valIndex));
