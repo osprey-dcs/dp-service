@@ -245,7 +245,11 @@ public class GrpcIntegrationTestBase {
         StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
 
         for (IngestionRequest request : requestList) {
-            requestObserver.onNext(request);
+            // send request in separate thread to better simulate out of process grpc,
+            // otherwise service handles request in this thread
+            new Thread(() -> {
+                requestObserver.onNext(request);
+            }).start();
         }
 
         responseObserver.await();
@@ -444,7 +448,11 @@ public class GrpcIntegrationTestBase {
         final QueryTestBase.QueryResponseTableObserver responseObserver =
                 new QueryTestBase.QueryResponseTableObserver();
 
-        asyncStub.queryResponseTable(request, responseObserver);
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryResponseTable(request, responseObserver);
+        }).start();
 
         responseObserver.await();
 
@@ -515,7 +523,11 @@ public class GrpcIntegrationTestBase {
         final QueryTestBase.QueryResponseStreamObserver responseObserver =
                 new QueryTestBase.QueryResponseStreamObserver();
 
-        asyncStub.queryResponseStream(request, responseObserver);
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryResponseStream(request, responseObserver);
+        }).start();
 
         responseObserver.await();
 

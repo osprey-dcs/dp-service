@@ -94,19 +94,28 @@ public class QueryTestBase {
 
         @Override
         public void onNext(QueryResponse response) {
-            responseList.add(response);
-            finishLatch.countDown();
-            if (responseList.size() > 1) {
-                System.err.println("QueryResponseTableObserver onNext received more than one response");
-                isError.set(true);
-            }
+            // handle request in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                responseList.add(response);
+                finishLatch.countDown();
+                if (responseList.size() > 1) {
+                    System.err.println("QueryResponseTableObserver onNext received more than one response");
+                    isError.set(true);
+                }
+            }).start();
+
         }
 
         @Override
         public void onError(Throwable t) {
-            Status status = Status.fromThrowable(t);
-            System.err.println("QueryResponseTableObserver error: " + status);
-            isError.set(true);
+            // handle request in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                Status status = Status.fromThrowable(t);
+                System.err.println("QueryResponseTableObserver error: " + status);
+                isError.set(true);
+            }).start();
         }
 
         @Override
@@ -142,27 +151,37 @@ public class QueryTestBase {
 
         @Override
         public void onNext(QueryResponse response) {
-
-            List<QueryResponse.QueryReport.BucketData.DataBucket> responseBucketList =
-                    response.getQueryReport().getBucketData().getDataBucketsList();
-
-            for (QueryResponse.QueryReport.BucketData.DataBucket bucket : responseBucketList) {
-                dataBucketList.add(bucket);
-//                finishLatch.countDown();
-            }
+            
+            // handle request in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                List<QueryResponse.QueryReport.BucketData.DataBucket> responseBucketList =
+                        response.getQueryReport().getBucketData().getDataBucketsList();
+                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : responseBucketList) {
+                    dataBucketList.add(bucket);
+                }
+            }).start();
         }
 
         @Override
         public void onError(Throwable t) {
-            Status status = Status.fromThrowable(t);
-            System.err.println("QueryResponseTableObserver error: " + status);
-            isError.set(true);
-            finishLatch.countDown();
+            // handle request in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                Status status = Status.fromThrowable(t);
+                System.err.println("QueryResponseTableObserver error: " + status);
+                isError.set(true);
+                finishLatch.countDown();
+            }).start();
         }
 
         @Override
         public void onCompleted() {
-            finishLatch.countDown();
+            // handle request in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                finishLatch.countDown();
+            }).start();
         }
     }
 
