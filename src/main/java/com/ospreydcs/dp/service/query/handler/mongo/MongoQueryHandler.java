@@ -10,10 +10,8 @@ import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseSingleDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseTableDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
+import com.ospreydcs.dp.service.query.handler.mongo.job.ColumnInfoQueryJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
 import io.grpc.stub.StreamObserver;
@@ -272,6 +270,24 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
             logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Override
+    public void handleGetColumnInfo(
+            QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec, StreamObserver<QueryResponse> responseObserver
+    ) {
+        final ColumnInfoQueryJob job =
+                new ColumnInfoQueryJob(columnInfoQuerySpec, responseObserver, mongoQueryClient);
+
+        logger.debug("adding getColumnInfo job id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+
     }
 
 }

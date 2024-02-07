@@ -636,4 +636,109 @@ public class GrpcIntegrationTestBase {
         assertEquals(numBucketsExpected, dataBucketList.size());
     }
 
+    protected List<QueryResponse.QueryReport.ColumnInfoList.ColumnInfo> sendGetColumnInfo(
+            QueryRequest request, boolean expectReject, String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryResponseColumnInfoObserver responseObserver =
+                new QueryTestBase.QueryResponseColumnInfoObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.getColumnInfo(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getColumnInfoList();
+    }
+
+    private void sendAndVerifyColumnInfoQuery(
+            QueryRequest request,
+            List<String> columnNames,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryResponse.QueryReport.ColumnInfoList.ColumnInfo> columnInfoList =
+                sendGetColumnInfo(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(0, columnInfoList.size());
+            return;
+        }
+
+        // verify results, check that there is a ColumnInfo for each column in the query
+        assertEquals(columnNames.size(), columnInfoList.size());
+
+        // build map of column info list for convenience
+        final Map<String, QueryResponse.QueryReport.ColumnInfoList.ColumnInfo> columnInfoMap = new HashMap<>();
+        for (QueryResponse.QueryReport.ColumnInfoList.ColumnInfo columnInfo : columnInfoList) {
+            columnInfoMap.put(columnInfo.getColumnName(), columnInfo);
+        }
+
+        // check that a column info was received for each name and verify its contents
+        for (String columnName : columnNames) {
+            final QueryResponse.QueryReport.ColumnInfoList.ColumnInfo columnInfoForName = columnInfoMap.get(columnName);
+            assertNotNull(columnInfoForName);
+            assertEquals(columnName, columnInfoForName.getColumnName());
+            assertEquals("DOUBLE", columnInfoForName.getDataType());
+
+            // iterate through validationMap to get info for first and last bucket for column
+            IngestionBucketInfo firstBucketInfo = null;
+            IngestionBucketInfo lastBucketInfo = null;
+            boolean first = true;
+            for (var bucketMapEntry : validationMap.get(columnName).bucketInfoMap.entrySet()) {
+                final var nanoMap = bucketMapEntry.getValue();
+                for (var nanoMapEntry : nanoMap.entrySet()) {
+                    if (first) {
+                        firstBucketInfo = nanoMapEntry.getValue();
+                        first = false;
+                    }
+                    lastBucketInfo = nanoMapEntry.getValue();
+                }
+            }
+
+            // verify ColumnInfo contents for column against last and first bucket details
+            assertNotNull(lastBucketInfo);
+            assertEquals(lastBucketInfo.intervalNanos, columnInfoForName.getSamplingClock());
+            assertEquals(lastBucketInfo.numValues, columnInfoForName.getBucketSize());
+            assertEquals(lastBucketInfo.startSeconds, columnInfoForName.getLastTime().getEpochSeconds());
+            assertEquals(lastBucketInfo.startNanos, columnInfoForName.getLastTime().getNanoseconds());
+            assertNotNull(firstBucketInfo);
+            assertEquals(firstBucketInfo.startSeconds, columnInfoForName.getFirstTime().getEpochSeconds());
+            assertEquals(firstBucketInfo.startNanos, columnInfoForName.getFirstTime().getNanoseconds());
+        }
+    }
+
+    protected void sendAndVerifyColumnInfoQueryList(
+            List<String> columnNames,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryRequest request = QueryTestBase.buildColumnInfoQueryRequest(columnNames);
+        sendAndVerifyColumnInfoQuery(request, columnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
+    protected void sendAndVerifyColumnInfoQueryPattern(
+            String columnNamePattern,
+            Map<String, IngestionStreamInfo> validationMap,
+            List<String> expectedColumnNames,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryRequest request = QueryTestBase.buildColumnInfoQueryRequest(columnNamePattern);
+        sendAndVerifyColumnInfoQuery(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
 }

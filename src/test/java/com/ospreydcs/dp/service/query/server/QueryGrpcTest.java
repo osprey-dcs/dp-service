@@ -72,18 +72,27 @@ public class QueryGrpcTest extends QueryTestBase {
 
         @Override
         public ResultCursorInterface handleQueryResponseCursor(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
             return null;
         }
 
         @Override
         public void handleQueryResponseSingle(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
         }
 
         @Override
         public void handleQueryResponseTable(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
+        }
+
+        @Override
+        public void handleGetColumnInfo(
+                QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
         }
     }
 

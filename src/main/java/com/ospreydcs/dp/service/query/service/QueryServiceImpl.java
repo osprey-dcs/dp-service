@@ -130,10 +130,18 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     public static QueryResponse queryResponseWithTable(DataTable table) {
-        final QueryResponse.QueryReport tableReport = QueryResponse.QueryReport.newBuilder().setDataTable(table).build();
+        final QueryResponse.QueryReport tableReport = QueryResponse.QueryReport.newBuilder()
+                .setDataTable(table)
+                .build();
         return responseWithReport(tableReport, ResponseType.DETAIL_RESPONSE);
     }
 
+    public static QueryResponse queryResponseColumnInfo(QueryResponse.QueryReport.ColumnInfoList columnInfoList) {
+        final QueryResponse.QueryReport columnInfoReport = QueryResponse.QueryReport.newBuilder()
+                .setColumnInfoList(columnInfoList)
+                .build();
+        return responseWithReport(columnInfoReport, ResponseType.DETAIL_RESPONSE);
+    }
 
     public static void sendQueryResponseReject(
             String msg, RejectDetails.RejectReason reason, StreamObserver<QueryResponse> responseObserver) {
@@ -152,6 +160,15 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     public static void sendQueryResponseEmpty(StreamObserver<QueryResponse> responseObserver) {
         final QueryResponse summaryResponse = queryResponseEmpty();
         responseObserver.onNext(summaryResponse);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryResponseColumnInfo(
+            QueryResponse.QueryReport.ColumnInfoList columnInfoList,
+            StreamObserver<QueryResponse> responseObserver
+    ) {
+        final QueryResponse columnInfoResponse  = queryResponseColumnInfo(columnInfoList);
+        responseObserver.onNext(columnInfoResponse);
         responseObserver.onCompleted();
     }
 
@@ -227,6 +244,43 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (querySpec != null) {
             handler.handleQueryResponseTable(querySpec, responseObserver);
         }
+    }
+
+    @Override
+    public void getColumnInfo(QueryRequest request, StreamObserver<QueryResponse> responseObserver) {
+
+        // check that query request contains a ColumnInfoQuerySpec
+        if (!request.hasColumnInfoQuerySpec()) {
+            String errorMsg = "QueryRequest does not contain a ColumnInfoQuerySpec";
+            sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+            return;
+        }
+
+        logger.debug("id: {} column info request received", responseObserver.hashCode());
+
+        QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec = request.getColumnInfoQuerySpec();
+
+        // validate query spec
+        boolean isError = false;
+        if (columnInfoQuerySpec.hasColumnNameList()) {
+            if (columnInfoQuerySpec.getColumnNameList().getColumnNamesCount() == 0) {
+                String errorMsg = "column name list must not be empty";
+                sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+                return;
+            }
+        } else if (columnInfoQuerySpec.hasColumnNamePattern()) {
+            if (columnInfoQuerySpec.getColumnNamePattern().getPattern().isBlank()) {
+                String errorMsg = "column name pattern must not be empty";
+                sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+                return;
+            }
+        } else {
+            String errorMsg = "column info query must specify either list of column names or column name pattern";
+            sendQueryResponseReject(errorMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON, responseObserver);
+            return;
+        }
+
+        handler.handleGetColumnInfo(columnInfoQuerySpec, responseObserver);
     }
 
 }
