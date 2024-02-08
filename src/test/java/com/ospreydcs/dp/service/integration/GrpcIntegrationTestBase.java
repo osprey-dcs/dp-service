@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.integration;
 
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.AckDetails;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
@@ -30,8 +30,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.junit.ClassRule;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 
 import java.time.Instant;
 import java.util.*;
@@ -42,7 +40,6 @@ import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-@RunWith(JUnit4.class)
 public class GrpcIntegrationTestBase {
 
     // static variables

@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.server;
 
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;

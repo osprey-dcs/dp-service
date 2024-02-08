@@ -1,0 +1,11 @@
+Level1:
+  Level2:
+    intValue: 60
+    longValue: 1698767462
+    floatValue: 42.42
+    doubleValue: 3.14159265
+    stringValue: junk
+    booleanValueTrue: trUE
+    booleanValueFalse: faLse
+    booeanValueUnknown: unknown
+    noValue:

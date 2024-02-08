@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.mongodb.client.result.InsertManyResult;
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;

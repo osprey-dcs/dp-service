@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.benchmark;
 
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
