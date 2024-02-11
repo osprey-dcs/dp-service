@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.server;
 
+import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
@@ -71,13 +72,27 @@ public class QueryGrpcTest extends QueryTestBase {
 
         @Override
         public ResultCursorInterface handleQueryResponseCursor(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
             return null;
         }
 
         @Override
         public void handleQueryResponseSingle(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
+        }
+
+        @Override
+        public void handleQueryResponseTable(
+                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
+        }
+
+        @Override
+        public void handleGetColumnInfo(
+                QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec, StreamObserver<QueryResponse> responseObserver
+        ) {
         }
     }
 

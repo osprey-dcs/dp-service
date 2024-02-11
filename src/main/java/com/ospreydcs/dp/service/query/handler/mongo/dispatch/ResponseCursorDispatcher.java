@@ -4,13 +4,14 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ResponseCursorDispatcher extends ResultDispatcher {
+import java.util.concurrent.atomic.AtomicBoolean;
+
+public class ResponseCursorDispatcher extends BucketCursorResponseDispatcher {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
@@ -18,6 +19,7 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
     // instance variables
     private MongoCursor<BucketDocument> mongoCursor = null;
     private final Object cursorLock = new Object(); // used for synchronized access to cursor which is not thread safe
+    private AtomicBoolean cursorClosed = new AtomicBoolean(false);
 
     public ResponseCursorDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
@@ -25,9 +27,16 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
 
     private void sendNextResponse(MongoCursor<BucketDocument> cursor) {
 
+        if (this.cursorClosed.get()) {
+            return;
+        }
+
         synchronized (cursorLock) {
             // mongo cursor is not thread safe so synchronize access
 
+            LOGGER.trace("{} entering sendNextResponse synchronized", this.hashCode());
+//            Thread.dumpStack();
+//
             if (cursor != null) {
                 this.mongoCursor = cursor;
             }
@@ -54,10 +63,17 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
 
             // close stream if there is no response to send or we sent an error
             if (response == null || isError || !this.mongoCursor.hasNext()) {
+                LOGGER.trace(
+                        "sendNextResponse closing cursor isError: {} hasNext: {}",
+                        isError, this.mongoCursor.hasNext());
                 getResponseObserver().onCompleted();
+                this.cursorClosed.set(true);
                 this.mongoCursor.close();
             }
         }
+
+        LOGGER.trace("{} exiting sendNextResponse synchronized", this.hashCode());
+//        Thread.dumpStack();
     }
 
     @Override
@@ -66,8 +82,12 @@ public class ResponseCursorDispatcher extends ResultDispatcher {
     }
 
     public void close() {
+        if (cursorClosed.get()) {
+            return;
+        }
         synchronized (cursorLock) {
             // mongo cursor is not thread safe so synchronize access
+            this.cursorClosed.set(true);
             this.mongoCursor.close();
             this.mongoCursor = null;
         }

@@ -1,13 +1,16 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.mongodb.client.result.InsertManyResult;
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
+import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
+import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
-import io.grpc.ManagedChannel;
+import io.grpc.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,13 +23,12 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.*;
 
-public abstract class BenchmarkApiBase {
+public abstract class QueryBenchmarkBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
-    protected static final String COLUMN_NAME_BASE = "queryBenchmark_";
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
 
@@ -126,7 +128,7 @@ public abstract class BenchmarkApiBase {
                 params.bucketStartSeconds,
                 params.numSamplesPerSecond,
                 params.numSecondsPerBucket,
-                COLUMN_NAME_BASE,
+                IngestionBenchmarkBase.NAME_COLUMN_BASE,
                 params.numColumns,
                 1);
         int bucketsInserted = params.dbClient.insertBucketDocuments(bucketList);
@@ -161,7 +163,7 @@ public abstract class BenchmarkApiBase {
         }
 
         // invoke tasks to create and insert bucket documents via executorService
-        LOGGER.info("loading database, using startSeconds: {}", startSeconds);
+        logger.info("loading database, using startSeconds: {}", startSeconds);
         List<Future<InsertTaskResult>> insertTaskResultFutureList = null;
         try {
             insertTaskResultFutureList = executorService.invokeAll(insertTaskList);
@@ -171,19 +173,19 @@ public abstract class BenchmarkApiBase {
                     Future<InsertTaskResult> future = insertTaskResultFutureList.get(i);
                     InsertTaskResult result = future.get();
                     if (result.bucketsInserted != numColumns) {
-                        LOGGER.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
+                        logger.error("loading error, unexpected numBucketsInserted: {}", result.bucketsInserted);
                         dbClient.fini();
                         System.exit(1);
                     }
                 }
             } else {
-                LOGGER.error("loading error, executorService.awaitTermination reached timeout");
+                logger.error("loading error, executorService.awaitTermination reached timeout");
                 executorService.shutdownNow();
                 dbClient.fini();
                 System.exit(1);
             }
         } catch (InterruptedException | ExecutionException ex) {
-            LOGGER.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
+            logger.error("loading error, executorService interrupted by exception: {}", ex.getMessage());
             executorService.shutdownNow();
             dbClient.fini();
             Thread.currentThread().interrupt();
@@ -192,25 +194,28 @@ public abstract class BenchmarkApiBase {
 
         // clean up after loading and calculate stats
         dbClient.fini();
-        LOGGER.info("finished loading database");
+        logger.info("finished loading database");
         Instant t1 = Instant.now();
         long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
         double secondsElapsed = dtMillis / 1_000.0;
         final DecimalFormat formatter = new DecimalFormat("#,###.00");
         String dtSecondsString = formatter.format(secondsElapsed);
-        LOGGER.info("loading time: {} seconds", dtSecondsString);
+        logger.info("loading time: {} seconds", dtSecondsString);
     }
 
-    protected static class QueryTaskParams {
-        public int streamNumber;
-        public List<String> columnNames;
+    public static class QueryTaskParams {
+        final public int streamNumber;
+        final public List<String> columnNames;
+        final public long startSeconds;
 
         public QueryTaskParams(
                 int streamNumber,
-                List<String> columnNames) {
-
+                List<String> columnNames,
+                long startSeconds
+        ) {
             this.streamNumber = streamNumber;
             this.columnNames = columnNames;
+            this.startSeconds = startSeconds;
         }
     }
 
@@ -234,28 +239,41 @@ public abstract class BenchmarkApiBase {
 
     protected static abstract class QueryTask implements Callable<QueryTaskResult> {
 
-        protected ManagedChannel channel = null;
-        protected QueryTaskParams params = null;
+        protected final Channel channel;
+        protected final QueryTaskParams params;
 
         public QueryTask(
-                ManagedChannel channel,
-                QueryTaskParams params) {
-
+                Channel channel,
+                QueryTaskParams params
+        ) {
             this.channel = channel;
             this.params = params;
         }
 
         public abstract QueryTaskResult call();
+
+        protected void onRequest(QueryRequest request) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onResponse(QueryResponse response) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onCompleted() {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
     }
 
-    protected static QueryRequest buildQueryRequest(QueryTaskParams params, long startSeconds) {
+    protected static QueryRequest buildQueryRequest(QueryTaskParams params) {
 
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
-        startTimeBuilder.setEpochSeconds(startSeconds);
+        startTimeBuilder.setEpochSeconds(params.startSeconds);
         startTimeBuilder.setNanoseconds(0);
         startTimeBuilder.build();
 
-        final long endSeconds = startSeconds + 60;
+        final long endSeconds = params.startSeconds + 60;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
         endTimeBuilder.setEpochSeconds(endSeconds);
         endTimeBuilder.setNanoseconds(0);
@@ -280,34 +298,34 @@ public abstract class BenchmarkApiBase {
     }
 
     protected abstract QueryTask newQueryTask(
-            ManagedChannel channel, BenchmarkApiBase.QueryTaskParams params);
+            Channel channel, QueryBenchmarkBase.QueryTaskParams params);
 
-    private double queryScenario(
-            ManagedChannel channel,
+    public BenchmarkScenarioResult queryScenario(
+            Channel channel,
             int numPvs,
             int pvsPerRequest,
-            int numThreads) {
-
+            int numThreads,
+            long startSeconds
+    ) {
         boolean success = true;
         long dataValuesReceived = 0;
         long dataBytesReceived = 0;
         long grpcBytesReceived = 0;
 
         // create thread pool of specified size
-        LOGGER.info("creating thread pool of size: {}", numThreads);
+        logger.trace("creating thread pool of size: {}", numThreads);
         final var executorService = Executors.newFixedThreadPool(numThreads);
 
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
-        final long startSeconds = Instant.now().getEpochSecond();
         final List<QueryTask> taskList = new ArrayList<>();
         List<String> currentBatchColumns = new ArrayList<>();
         int currentBatchIndex = 1;
         for (int i = 1 ; i <= numPvs ; i++) {
-            final String columnName = BenchmarkApiBase.COLUMN_NAME_BASE + i;
+            final String columnName = IngestionBenchmarkBase.NAME_COLUMN_BASE + i;
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
-                final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns);
+                final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
                 final QueryTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
@@ -317,7 +335,7 @@ public abstract class BenchmarkApiBase {
         }
         // add task for final batch of columns, if not empty
         if (currentBatchColumns.size() > 0) {
-            final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns);
+            final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
             final QueryTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
@@ -330,7 +348,7 @@ public abstract class BenchmarkApiBase {
         try {
             resultList = executorService.invokeAll(taskList);
             executorService.shutdown();
-            if (executorService.awaitTermination(BenchmarkApiBase.TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+            if (executorService.awaitTermination(QueryBenchmarkBase.TERMINATION_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                 for (int i = 0 ; i < resultList.size() ; i++) {
                     Future<QueryTaskResult> future = resultList.get(i);
                     QueryTaskResult result = future.get();
@@ -342,15 +360,15 @@ public abstract class BenchmarkApiBase {
                     grpcBytesReceived = grpcBytesReceived + result.grpcBytesReceived;
                 }
                 if (!success) {
-                    LOGGER.error("thread pool future returned false");
+                    logger.error("thread pool future returned false");
                 }
             } else {
-                LOGGER.error("timeout reached in executorService.awaitTermination");
+                logger.error("timeout reached in executorService.awaitTermination");
                 executorService.shutdownNow();
             }
         } catch (InterruptedException | ExecutionException ex) {
             executorService.shutdownNow();
-            LOGGER.warn("Data transmission interrupted by exception: {}", ex.getMessage());
+            logger.warn("Data transmission interrupted by exception: {}", ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
@@ -365,10 +383,10 @@ public abstract class BenchmarkApiBase {
             final String dataBytesReceivedString = String.format("%,8d", dataBytesReceived);
             final String grpcBytesReceivedString = String.format("%,8d", grpcBytesReceived);
             final String grpcOverheadBytesString = String.format("%,8d", grpcBytesReceived - dataBytesReceived);
-            LOGGER.info("data values received: {}", dataValuesReceivedString);
-            LOGGER.info("data bytes received: {}", dataBytesReceivedString);
-            LOGGER.info("grpc bytes received: {}", grpcBytesReceivedString);
-            LOGGER.info("grpc overhead bytes: {}", grpcOverheadBytesString);
+            logger.trace("query scenario: {} data values received: {}", this.hashCode(), dataValuesReceivedString);
+            logger.trace("query scenario: {} data bytes received: {}", this.hashCode(), dataBytesReceivedString);
+            logger.trace("query scenario: {} grpc bytes received: {}", this.hashCode(), grpcBytesReceivedString);
+            logger.trace("query scenario: {} grpc overhead bytes: {}", this.hashCode(), grpcOverheadBytesString);
 
             final double dataValueRate = dataValuesReceived / secondsElapsed;
             final double dataMByteRate = (dataBytesReceived / 1_000_000.0) / secondsElapsed;
@@ -378,23 +396,27 @@ public abstract class BenchmarkApiBase {
             final String dataValueRateString = formatter.format(dataValueRate);
             final String dataMbyteRateString = formatter.format(dataMByteRate);
             final String grpcMbyteRateString = formatter.format(grpcMByteRate);
-            LOGGER.info("execution time: {} seconds", dtSecondsString);
-            LOGGER.info("data value rate: {} values/sec", dataValueRateString);
-            LOGGER.info("data byte rate: {} MB/sec", dataMbyteRateString);
-            LOGGER.info("grpc byte rate: {} MB/sec", grpcMbyteRateString);
+            logger.debug("query scenario: {} execution time: {} seconds", this.hashCode(), dtSecondsString);
+            logger.debug("query scenario: {} data value rate: {} values/sec", this.hashCode(), dataValueRateString);
+            logger.debug("query scenario: {} data byte rate: {} MB/sec", this.hashCode(), dataMbyteRateString);
+            logger.debug("query scenario: {} grpc byte rate: {} MB/sec", this.hashCode(), grpcMbyteRateString);
 
-            return dataValueRate;
+            return new BenchmarkScenarioResult(true, dataValueRate);
 
         } else {
-            LOGGER.error("scenario failed, performance data invalid");
+            logger.error("scenario failed, performance data invalid");
         }
 
-        return 0.0;
+        return new BenchmarkScenarioResult(false, 0.0);
     }
 
     protected void queryExperiment(
-            ManagedChannel channel, int[] totalNumPvsArray, int[] numPvsPerRequestArray, int[] numThreadsArray) {
-
+            Channel channel,
+            int[] totalNumPvsArray,
+            int[] numPvsPerRequestArray,
+            int[] numThreadsArray,
+            long startSeconds
+    ) {
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final DecimalFormat numPvsFormatter = new DecimalFormat("0000");
@@ -404,10 +426,12 @@ public abstract class BenchmarkApiBase {
                 for (int numThreads : numThreadsArray) {
                     String mapKey =
                             "numPvs: " + numPvsFormatter.format(numPvs) + " pvsPerRequest: " + pvsPerRequest + " numThreads: " + numThreads;
-                    LOGGER.info(
+                    logger.info(
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
-                    double writeRate = queryScenario(channel, numPvs, pvsPerRequest, numThreads);
+                    BenchmarkScenarioResult scenarioResult =
+                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                    double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
             }

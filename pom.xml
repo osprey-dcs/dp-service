@@ -27,7 +27,7 @@
         <io.grpc.version>1.49.0</io.grpc.version>
         <mongodb.version>4.9.1</mongodb.version>
         <dp-grpc.version>1.0.0</dp-grpc.version>
-        <dp-common.version>1.0.0</dp-common.version>
+        <snakeyaml.version>2.2</snakeyaml.version>
 
     </properties>
 
@@ -61,12 +61,6 @@
             <groupId>com.ospreydcs</groupId>
             <artifactId>dp-grpc</artifactId>
             <version>${dp-grpc.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.ospreydcs</groupId>
-            <artifactId>dp-common</artifactId>
-            <version>${dp-common.version}</version>
         </dependency>
 
         <dependency>
@@ -115,6 +109,13 @@
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-slf4j-impl</artifactId>
             <version>${log4j-version}</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.yaml/snakeyaml -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${snakeyaml.version}</version>
         </dependency>
 
         <dependency>

@@ -75,7 +75,7 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
 
         // WE EXPECT processQueryRequest to trigger an error response from the handler since
         // ErrorTestClient.executeQuery RETURNS A NULL CURSOR.
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request, numResponesesExpected);
+        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
 
         // examine response
         assertEquals(numResponesesExpected, responseList.size());

@@ -1,0 +1,5 @@
+Level1:
+  Level2:
+    intValue: 42
+    stringValue: stuff
+    booleanValueTrue: false

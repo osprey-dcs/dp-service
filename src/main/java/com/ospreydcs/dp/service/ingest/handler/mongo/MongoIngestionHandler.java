@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
-import com.ospreydcs.dp.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MongoIngestionHandler extends IngestionHandlerBase implements IngestionHandlerInterface {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
     private static final int TIMEOUT_SECONDS = 60;
@@ -98,16 +98,15 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                         try {
                             handleIngestionRequest(handlerIngestionRequest);
                         } catch (Exception ex) {
-                            LOGGER.error("IngestionWorker.run encountered exception: {}", ex.getMessage());
+                            logger.error("IngestionWorker.run encountered exception: {}", ex.getMessage());
                         }
                     }
                 }
 
-                LOGGER.debug("IngestionWorker shutting down");
-                System.err.println("IngestionWorker shutting down");
+                logger.trace("IngestionWorker shutting down");
 
             } catch (InterruptedException ex) {
-                LOGGER.error("InterruptedException in IngestionWorker.run");
+                logger.error("InterruptedException in IngestionWorker.run");
                 Thread.currentThread().interrupt();
             }
         }
@@ -165,7 +164,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                                 + " column: " + columnName
                                 + " data type mismatch: " + datum.getValueOneofCase().name()
                                 + " expected: " + columnDataType.name();
-                        LOGGER.debug(errorMsg);
+                        logger.debug(errorMsg);
                         throw new DpIngestionException(errorMsg);
                     }
                 }
@@ -219,7 +218,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                                 + " request: " + request.getClientRequestId()
                                 + " column: " + columnName
                                 + " data type not specified (DataValue.valueOneof)";
-                        LOGGER.debug(errorMsg);
+                        logger.debug(errorMsg);
                         throw new DpIngestionException(errorMsg);
                     }
                 }
@@ -228,7 +227,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                             + " request: " + request.getClientRequestId()
                             + " column: " + columnName
                             + " unhandled data type: " + columnDataType.name();
-                    LOGGER.debug(errorMsg);
+                    logger.debug(errorMsg);
                     throw new DpIngestionException(errorMsg);
                 }
 
@@ -282,15 +281,15 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
     @Override
     public boolean init() {
 
-        LOGGER.debug("init");
+        logger.trace("init");
 
         if (!mongoIngestionClientInterface.init()) {
-            LOGGER.error("error in mongoIngestionClientInterface.init()");
+            logger.error("error in mongoIngestionClientInterface.init()");
             return false;
         }
 
         int numWorkers = configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
-        LOGGER.info("init numWorkers: {}", numWorkers);
+        logger.info("init numWorkers: {}", numWorkers);
 
         // init ExecutorService
         executorService = Executors.newFixedThreadPool(numWorkers);
@@ -321,31 +320,26 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
         shutdownRequested.set(true);
 
-        LOGGER.info("fini");
-        System.err.println("fini");
+        logger.trace("fini");
 
         // shut down executor service
         try {
-            LOGGER.debug("shutting down executorService");
-            System.err.println("shutting down executorService");
+            logger.trace("shutting down executorService");
             executorService.shutdown();
             executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            LOGGER.debug("executorService shutdown completed");
-            System.err.println("executorService shutdown completed");
+            logger.trace("executorService shutdown completed");
         } catch (InterruptedException ex) {
             executorService.shutdownNow();
-            LOGGER.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
-            System.err.println("InterruptedException in executorService.shutdown: " + ex.getMessage());
+            logger.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
             Thread.currentThread().interrupt();
         }
 
         MongoClientBase mongoClient = (MongoClientBase) mongoIngestionClientInterface;
         if (!mongoClient.fini()) {
-            LOGGER.error("error in mongoIngestionClientInterface.fini()");
+            logger.error("error in mongoIngestionClientInterface.fini()");
         }
 
-        LOGGER.info("fini shutdown completed");
-        System.err.println("fini shutdown completed");
+        logger.trace("fini shutdown completed");
 
         return true;
     }
@@ -363,7 +357,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
     protected HandlerIngestionResult handleIngestionRequest(HandlerIngestionRequest handlerIngestionRequest) {
 
         final IngestionRequest request = handlerIngestionRequest.request;
-        LOGGER.debug("IngestionWorker.run handling request providerId: {} requestId: {}",
+        logger.debug("IngestionWorker handling request providerId: {} requestId: {}",
                 request.getProviderId(), request.getClientRequestId());
 
         String status = BsonConstants.BSON_VALUE_STATUS_SUCCESS;
@@ -397,7 +391,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                 if (ingestionTaskResult.isError) {
                     isError = true;
                     errorMsg = ingestionTaskResult.msg;
-                    LOGGER.error(errorMsg);
+                    logger.error(errorMsg);
 
                 } else {
 
@@ -407,7 +401,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                         // check mongo insertMany result was acknowledged
                         isError = true;
                         errorMsg = "insertMany result not acknowledged";
-                        LOGGER.error(errorMsg);
+                        logger.error(errorMsg);
 
                     } else {
 
@@ -418,7 +412,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                             isError = true;
                             errorMsg = "insertMany actual records inserted: "
                                     + recordsInsertedCount + " mismatch expected: " + recordsExpected;
-                            LOGGER.error(errorMsg);
+                            logger.error(errorMsg);
 
                         } else {
                             // get list of ids created
@@ -444,12 +438,12 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                 idsCreated);
         InsertOneResult insertRequestStatusResult = mongoIngestionClientInterface.insertRequestStatus(statusDocument);
         if (insertRequestStatusResult == null) {
-            LOGGER.error("error inserting request status");
+            logger.error("error inserting request status");
         } else {
             if (!insertRequestStatusResult.wasAcknowledged()) {
-                LOGGER.error("insertOne not acknowledged inserting request status");
+                logger.error("insertOne not acknowledged inserting request status");
             } else {
-                LOGGER.debug("inserted request status id:" + insertRequestStatusResult.getInsertedId());
+                logger.trace("inserted request status id:" + insertRequestStatusResult.getInsertedId());
             }
         }
 
@@ -458,12 +452,14 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
     public void onNext(HandlerIngestionRequest handlerIngestionRequest) {
 
-        LOGGER.debug("handleIngestionRequest");
+        logger.debug(
+                "adding IngestionRequest to queue provider: {} request: {}",
+                handlerIngestionRequest.request.getProviderId(), handlerIngestionRequest.request.getClientRequestId());
 
         try {
             requestQueue.put(handlerIngestionRequest);
         } catch (InterruptedException e) {
-            LOGGER.error("InterruptedException waiting for requestQueue.put");
+            logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
     }

@@ -4,15 +4,13 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
-import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class ResponseStreamDispatcher extends ResultDispatcher {
+public class ResponseStreamDispatcher extends BucketCursorResponseDispatcher {
 
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
     public ResponseStreamDispatcher(StreamObserver<QueryResponse> responseObserver) {
         super(responseObserver);
     }
@@ -33,7 +31,7 @@ public class ResponseStreamDispatcher extends ResultDispatcher {
 //                int bucketSerializedSize = bucket.getSerializedSize();
 //                if (messageSize + bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
 //                    // hit size limit for message so send current data response and create a new one
-//                    LOGGER.debug("processQueryRequest: sending multiple responses for result");
+//                    LOGGER.trace("processQueryRequest: sending multiple responses for result");
 //                    QueryServiceImpl.sendQueryResponseData(resultDataBuilder, getResponseObserver());
 //                    messageSize = 0;
 //                    resultDataBuilder = QueryResponse.QueryReport.QueryData.newBuilder();

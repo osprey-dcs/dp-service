@@ -18,4 +18,8 @@ public interface QueryHandlerInterface {
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
     void handleQueryResponseSingle(
             QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
+    void handleQueryResponseTable(
+            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver);
+    void handleGetColumnInfo(
+            QueryRequest.ColumnInfoQuerySpec spec, StreamObserver<QueryResponse> responseObserver);
 }
