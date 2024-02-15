@@ -3,9 +3,7 @@ package com.ospreydcs.dp.service.ingest;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
-import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.Status;
-import io.grpc.internal.GrpcUtil;
 import io.grpc.stub.StreamObserver;
 
 import java.util.ArrayList;
@@ -17,7 +15,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /**
  * Provides features and utilities for testing of ingestion service by inheritance to derived classes.
@@ -43,47 +40,49 @@ public class IngestionTestBase {
         public Integer providerId = null;
         public String requestId = null;
         public boolean setRequestTime = true;
-        public Long snapshotTimestampSeconds = null;
-        public Long snapshotTimestampNanos = null;
+        public Long snapshotStartTimestampSeconds = null;
+        public Long snapshotStartTimestampNanos = null;
         public List<Long> timestampsSecondsList = null;
         public List<Long> timestampNanosList = null;
-        public Long timeSpecIteratorStartSeconds = null;
-        public Long timeSpecIteratorStartNanos = null;
-        public Long timeSpecIteratorSampleIntervalNanos = null;
-        public Integer timeSpecIteratorNumSamples = null;
+        public Long samplingClockStartSeconds = null;
+        public Long samplingClockStartNanos = null;
+        public Long samplingClockPeriodNanos = null;
+        public Integer samplingClockCount = null;
         public List<String> columnNames = null;
         public IngestionDataType dataType = null;
         public List<List<Object>> values = null;
         public Map<String, String> attributes = null;
         public String eventDescription = null;
-        public Long eventSeconds = null;
-        public Long eventNanos = null;
+        public Long eventStartSeconds = null;
+        public Long eventStartNanos = null;
+        public Long eventStopSeconds = null;
+        public Long eventStopNanos = null;
 
         public IngestionRequestParams(
                 Integer providerId,
                 String requestId,
-                Long snapshotTimestampSeconds,
-                Long snapshotTimestampNanos,
+                Long snapshotStartTimestampSeconds,
+                Long snapshotStartTimestampNanos,
                 List<Long> timestampsSecondsList,
                 List<Long> timestampNanosList,
-                Long timeSpecIteratorStartSeconds,
-                Long timeSpecIteratorStartNanos,
-                Long timeSpecIteratorSampleIntervalNanos,
-                Integer timeSpecIteratorNumSamples,
+                Long samplingClockStartSeconds,
+                Long samplingClockStartNanos,
+                Long samplingClockPeriodNanos,
+                Integer samplingClockCount,
                 List<String> columnNames,
                 IngestionDataType dataType,
                 List<List<Object>> values) {
 
             this.providerId = providerId;
             this.requestId = requestId;
-            this.snapshotTimestampSeconds = snapshotTimestampSeconds;
-            this.snapshotTimestampNanos = snapshotTimestampNanos;
+            this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
+            this.snapshotStartTimestampNanos = snapshotStartTimestampNanos;
             this.timestampsSecondsList = timestampsSecondsList;
             this.timestampNanosList = timestampNanosList;
-            this.timeSpecIteratorStartSeconds = timeSpecIteratorStartSeconds;
-            this.timeSpecIteratorStartNanos = timeSpecIteratorStartNanos;
-            this.timeSpecIteratorSampleIntervalNanos = timeSpecIteratorSampleIntervalNanos;
-            this.timeSpecIteratorNumSamples = timeSpecIteratorNumSamples;
+            this.samplingClockStartSeconds = samplingClockStartSeconds;
+            this.samplingClockStartNanos = samplingClockStartNanos;
+            this.samplingClockPeriodNanos = samplingClockPeriodNanos;
+            this.samplingClockCount = samplingClockCount;
             this.columnNames = columnNames;
             this.dataType = dataType;
             this.values = values;
@@ -92,41 +91,45 @@ public class IngestionTestBase {
         public IngestionRequestParams(
                 Integer providerId,
                 String requestId,
-                Long snapshotTimestampSeconds,
-                Long snapshotTimestampNanos,
+                Long snapshotStartTimestampSeconds,
+                Long snapshotStartTimestampNanos,
                 List<Long> timestampsSecondsList,
                 List<Long> timestampNanosList,
-                Long timeSpecIteratorStartSeconds,
-                Long timeSpecIteratorStartNanos,
-                Long timeSpecIteratorSampleIntervalNanos,
-                Integer timeSpecIteratorNumSamples,
+                Long samplingClockStartSeconds,
+                Long samplingClockStartNanos,
+                Long samplingClockPeriodNanos,
+                Integer samplingClockCount,
                 List<String> columnNames,
                 IngestionDataType dataType,
                 List<List<Object>> values,
                 Map<String, String> attributes,
                 String eventDescription,
-                Long eventSeconds,
-                Long eventNanos) {
+                Long eventStartSeconds,
+                Long eventStartNanos,
+                Long eventStopSeconds,
+                Long eventStopNanos) {
 
             this(
                     providerId,
                     requestId,
-                    snapshotTimestampSeconds,
-                    snapshotTimestampNanos,
+                    snapshotStartTimestampSeconds,
+                    snapshotStartTimestampNanos,
                     timestampsSecondsList,
                     timestampNanosList,
-                    timeSpecIteratorStartSeconds,
-                    timeSpecIteratorStartNanos,
-                    timeSpecIteratorSampleIntervalNanos,
-                    timeSpecIteratorNumSamples,
+                    samplingClockStartSeconds,
+                    samplingClockStartNanos,
+                    samplingClockPeriodNanos,
+                    samplingClockCount,
                     columnNames,
                     dataType,
                     values);
 
             this.attributes = attributes;
             this.eventDescription = eventDescription;
-            this.eventSeconds = eventSeconds;
-            this.eventNanos = eventNanos;
+            this.eventStartSeconds = eventStartSeconds;
+            this.eventStartNanos = eventStartNanos;
+            this.eventStopSeconds = eventStopSeconds;
+            this.eventStopNanos = eventStopNanos;
         }
 
         public void setRequestTime(boolean setRequestTime) {
@@ -134,18 +137,19 @@ public class IngestionTestBase {
         }
     }
 
-    public static IngestionRequest buildIngestionRequest(IngestionRequestParams params) {
+    public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
         return buildIngestionRequest(params, null);
     }
     /**
      * Builds an IngestionRequest gRPC API object from an IngestionRequestParams object.
      * This utility avoids having code to build API requests scattered around the test methods.
+     *
      * @param params
      * @return
      */
-    public static IngestionRequest buildIngestionRequest(IngestionRequestParams params, List<DataColumn> dataColumnList) {
+    public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params, List<DataColumn> dataColumnList) {
 
-        IngestionRequest.Builder requestBuilder = IngestionRequest.newBuilder();
+        IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
 
         if (params.providerId != null) {
             requestBuilder.setProviderId(params.providerId);
@@ -158,19 +162,19 @@ public class IngestionTestBase {
         }
 
         // set event description if snapshotTimestamp specified
-        if (params.snapshotTimestampSeconds != null) {
+        if (params.snapshotStartTimestampSeconds != null) {
             EventMetadata.Builder EventMetadataBuilder = EventMetadata.newBuilder();
             final Timestamp.Builder snapshotTimestampBuilder = Timestamp.newBuilder();
-            snapshotTimestampBuilder.setEpochSeconds(params.snapshotTimestampSeconds);
-            if (params.snapshotTimestampNanos != null) snapshotTimestampBuilder.setNanoseconds(params.snapshotTimestampNanos);
+            snapshotTimestampBuilder.setEpochSeconds(params.snapshotStartTimestampSeconds);
+            if (params.snapshotStartTimestampNanos != null) snapshotTimestampBuilder.setNanoseconds(params.snapshotStartTimestampNanos);
             snapshotTimestampBuilder.build();
-            EventMetadataBuilder.setEventTimestamp(snapshotTimestampBuilder);
+            EventMetadataBuilder.setStartTimestamp(snapshotTimestampBuilder);
             EventMetadataBuilder.build();
             requestBuilder.setEventMetadata(EventMetadataBuilder);
         }
 
-        DataTable.Builder dataTableBuilder = DataTable.newBuilder();
-        DataTimeSpec.Builder timeSpecBuilder = DataTimeSpec.newBuilder();
+        IngestionDataFrame.Builder dataFrameBuilder = IngestionDataFrame.newBuilder();
+        DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
 
         // set list of timestamps if specified
         if (params.timestampsSecondsList != null) {
@@ -187,40 +191,40 @@ public class IngestionTestBase {
                 timestampListBuilder.addTimestamps(timestampBuilder);
             }
             timestampListBuilder.build();
-            timeSpecBuilder.setTimestampList(timestampListBuilder);
-            timeSpecBuilder.build();
-            dataTableBuilder.setDataTimeSpec(timeSpecBuilder);
+            dataTimestampsBuilder.setTimestampList(timestampListBuilder);
+            dataTimestampsBuilder.build();
+            dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
         }
 
         // set timestamp iterator in time spec
-        if (params.timeSpecIteratorStartSeconds != null) {
-            assertTrue("timeSpecIteratorStartNanos must be specified", params.timeSpecIteratorStartNanos != null);
-            assertTrue("timeSpecIteratorSampleIntervalNanos must be specified", params.timeSpecIteratorSampleIntervalNanos != null);
-            assertTrue("timeSpecIteratorNumSamples must be specified", params.timeSpecIteratorNumSamples != null);
+        if (params.samplingClockStartSeconds != null) {
+            assertTrue(params.samplingClockStartNanos != null);
+            assertTrue(params.samplingClockPeriodNanos != null);
+            assertTrue(params.samplingClockCount != null);
             Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
-            startTimeBuilder.setEpochSeconds(params.timeSpecIteratorStartSeconds);
-            startTimeBuilder.setNanoseconds(params.timeSpecIteratorStartNanos);
+            startTimeBuilder.setEpochSeconds(params.samplingClockStartSeconds);
+            startTimeBuilder.setNanoseconds(params.samplingClockStartNanos);
             startTimeBuilder.build();
-            FixedIntervalTimestampSpec.Builder fixedIntervalSpecBuilder = FixedIntervalTimestampSpec.newBuilder();
-            fixedIntervalSpecBuilder.setStartTime(startTimeBuilder);
-            fixedIntervalSpecBuilder.setSampleIntervalNanos(params.timeSpecIteratorSampleIntervalNanos);
-            fixedIntervalSpecBuilder.setNumSamples(params.timeSpecIteratorNumSamples);
-            fixedIntervalSpecBuilder.build();
-            timeSpecBuilder.setFixedIntervalTimestampSpec(fixedIntervalSpecBuilder);
-            timeSpecBuilder.build();
-            dataTableBuilder.setDataTimeSpec(timeSpecBuilder);
+            SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
+            samplingClockBuilder.setStartTime(startTimeBuilder);
+            samplingClockBuilder.setPeriodNanos(params.samplingClockPeriodNanos);
+            samplingClockBuilder.setCount(params.samplingClockCount);
+            samplingClockBuilder.build();
+            dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
+            dataTimestampsBuilder.build();
+            dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
         }
 
         // create list of columns if specified
         if (dataColumnList != null) {
             // caller can override building data columns by providing dataColumnList
             for (DataColumn column : dataColumnList) {
-                dataTableBuilder.addDataColumns(column);
+                dataFrameBuilder.addDataColumns(column);
             }
 
         } else if (params.columnNames != null) {
-            assertTrue("values list must be specified when columnNames list is provided", params.values != null);
-            assertTrue("size of columnNames and values lists must match", params.columnNames.size() == params.values.size());
+            assertTrue(params.values != null);
+            assertTrue(params.columnNames.size() == params.values.size());
             for (int i = 0 ; i < params.columnNames.size() ; i++) {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
@@ -231,10 +235,10 @@ public class IngestionTestBase {
                             dataValue = DataValue.newBuilder().setStringValue((String) value).build();
                         }
                         case FLOAT -> {
-                            dataValue = DataValue.newBuilder().setFloatValue((Double) value).build();
+                            dataValue = DataValue.newBuilder().setDoubleValue((Double) value).build();
                         }
                         case INT -> {
-                            dataValue = DataValue.newBuilder().setIntValue((Long) value).build();
+                            dataValue = DataValue.newBuilder().setLongValue((Long) value).build();
                         }
                         case BYTE_ARRAY -> {
                         }
@@ -249,7 +253,7 @@ public class IngestionTestBase {
                             List<Double> doubleList = (List<Double>) value;
                             Array.Builder arrayBuilder = Array.newBuilder();
                             for (Double doubleValue : doubleList) {
-                                arrayBuilder.addDataValues(DataValue.newBuilder().setFloatValue(doubleValue).build());
+                                arrayBuilder.addDataValues(DataValue.newBuilder().setDoubleValue(doubleValue).build());
                             }
                             arrayBuilder.build();
                             dataValue = DataValue.newBuilder().setArrayValue(arrayBuilder).build();
@@ -259,7 +263,7 @@ public class IngestionTestBase {
                     dataColumnBuilder.addDataValues(dataValue);
                 }
                 dataColumnBuilder.build();
-                dataTableBuilder.addDataColumns(dataColumnBuilder);
+                dataFrameBuilder.addDataColumns(dataColumnBuilder);
             }
         }
 
@@ -277,32 +281,32 @@ public class IngestionTestBase {
         }
 
         // set event metadata if specified
-        if (params.eventDescription != null ||  params.eventSeconds != null || params.eventNanos != null) {
+        if (params.eventDescription != null ||  params.eventStartSeconds != null || params.eventStartNanos != null) {
 
             EventMetadata.Builder eventMetadataBuilder = EventMetadata.newBuilder();
 
             if (params.eventDescription != null) {
-                eventMetadataBuilder.setEventDescription(params.eventDescription);
+                eventMetadataBuilder.setDescription(params.eventDescription);
             }
 
-            if (params.eventSeconds != null || params.eventNanos != null) {
+            if (params.eventStartSeconds != null || params.eventStartNanos != null) {
                 Timestamp.Builder eventTimeBuilder = Timestamp.newBuilder();
-                if (params.eventSeconds != null) {
-                    eventTimeBuilder.setEpochSeconds(params.eventSeconds);
+                if (params.eventStartSeconds != null) {
+                    eventTimeBuilder.setEpochSeconds(params.eventStartSeconds);
                 }
-                if (params.eventNanos != null) {
-                    eventTimeBuilder.setNanoseconds(params.eventNanos);
+                if (params.eventStartNanos != null) {
+                    eventTimeBuilder.setNanoseconds(params.eventStartNanos);
                 }
                 eventTimeBuilder.build();
-                eventMetadataBuilder.setEventTimestamp(eventTimeBuilder);
+                eventMetadataBuilder.setStartTimestamp(eventTimeBuilder);
             }
 
             eventMetadataBuilder.build();
             requestBuilder.setEventMetadata(eventMetadataBuilder);
         }
 
-        dataTableBuilder.build();
-        requestBuilder.setDataTable(dataTableBuilder);
+        dataFrameBuilder.build();
+        requestBuilder.setIngestionDataFrame(dataFrameBuilder);
         return requestBuilder.build();
     }
 
@@ -313,11 +317,11 @@ public class IngestionTestBase {
      * and decremented for each message received.  The user can use await() to know when all responses have been
      * received.
      */
-    public static class IngestionResponseObserver implements StreamObserver<IngestionResponse> {
+    public static class IngestionResponseObserver implements StreamObserver<IngestDataResponse> {
 
         // instance variables
         CountDownLatch finishLatch = null;
-        private final List<IngestionResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final List<IngestDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
 
         public IngestionResponseObserver(int expectedResponseCount) {
@@ -333,14 +337,14 @@ public class IngestionTestBase {
             }
         }
 
-        public List<IngestionResponse> getResponseList() {
+        public List<IngestDataResponse> getResponseList() {
             return responseList;
         }
 
         public boolean isError() { return isError.get(); }
 
         @Override
-        public void onNext(IngestionResponse ingestionResponse) {
+        public void onNext(IngestDataResponse ingestionResponse) {
             responseList.add(ingestionResponse);
             finishLatch.countDown();
         }

@@ -7,7 +7,7 @@ import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 
 public abstract class IngestionHandlerBase {
 
-    public ValidationResult validateIngestionRequest(IngestionRequest request) {
+    public ValidationResult validateIngestionRequest(IngestDataRequest request) {
 
         boolean isError = false;
         String statusMsg = "";
@@ -15,7 +15,7 @@ public abstract class IngestionHandlerBase {
         int providerId = request.getProviderId();
         String requestId = request.getClientRequestId();
         Timestamp requestTimestamp = request.getRequestTime();
-        int numRequestColumns = request.getDataTable().getDataColumnsList().size();
+        int numRequestColumns = request.getIngestionDataFrame().getDataColumnsList().size();
         int numRequestRows = IngestionServiceImpl.getNumRequestRows(request);
 
         // validate request
@@ -34,15 +34,17 @@ public abstract class IngestionHandlerBase {
             isError = true;
             statusMsg = "clientRequestId must be specified";
 
-        } else if (!request.getDataTable().getDataTimeSpec().hasFixedIntervalTimestampSpec()) {
-            // currently only timestamp iterator is supported for time spec
+        } else if (!request.getIngestionDataFrame().getDataTimestamps().hasSamplingClock()) {
+            // currently only SamplingClock is supported for time spec
             isError = true;
-            statusMsg = "only timestamp iterator is currently supported for dataTimeSpec";
+            statusMsg = "only SamplingClock is currently supported for "
+                            + "IngestDataRequest.ingestionDataFrame.dataTimestamps.value";
 
         } else if (numRequestRows == 0) {
             // check that time spec specifies number of rows for request
             isError = true;
-            statusMsg = "dataTimeSpec must specify list of timestamps or iterator with numSamples";
+            statusMsg = "IngestDataRequest.ingestionDataFrame.dataTimestamps.value "
+                    + "must specify SamplingClock or list of timestamps";
 
         } else if (numRequestColumns == 0) {
             // check that columns are provided
@@ -50,7 +52,7 @@ public abstract class IngestionHandlerBase {
             statusMsg = "columns list cannot be empty";
 
         } else {
-            for (DataColumn column : request.getDataTable().getDataColumnsList()) {
+            for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
                 if (column.getDataValuesList().size() != numRequestRows) {
                     // validate column sizes
                     isError = true;

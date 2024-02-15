@@ -88,8 +88,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         if (checkBuckets) {
             // check database contents, no buckets should be created
             int columnIndex = 0;
-            long firstSeconds = params.timeSpecIteratorStartSeconds;
-            long firstNanos = params.timeSpecIteratorStartNanos;
+            long firstSeconds = params.samplingClockStartSeconds;
+            long firstNanos = params.samplingClockStartNanos;
             for (String columnName : params.columnNames) {
                 String id = columnName + "-" + firstSeconds + "-" + firstNanos;
                 BucketDocument bucket = clientTestInterface.findBucketWithId(id);
@@ -121,10 +121,10 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         params.providerId, params.requestId, BsonConstants.BSON_VALUE_STATUS_SUCCESS);
 
         // check bucket in database for each column in request
-        long firstSeconds = params.timeSpecIteratorStartSeconds;
-        long firstNanos = params.timeSpecIteratorStartNanos;
-        long sampleIntervalNanos = params.timeSpecIteratorSampleIntervalNanos;
-        int numSamples = params.timeSpecIteratorNumSamples;
+        long firstSeconds = params.samplingClockStartSeconds;
+        long firstNanos = params.samplingClockStartNanos;
+        long sampleIntervalNanos = params.samplingClockPeriodNanos;
+        int numSamples = params.samplingClockCount;
         Instant startInstant = Instant.ofEpochSecond(firstSeconds, firstNanos);
         int columnIndex = 0;
         for (String columnName : params.columnNames) {
@@ -211,7 +211,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         IngestionRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -268,7 +268,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         params.setRequestTime(false); // this would cause a reject for missing request time, but we aren't really validating the request
         IngestionRequest request = buildIngestionRequest(params);
 
@@ -320,7 +320,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         IngestionRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -366,7 +366,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         IngestionRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -412,7 +412,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         IngestionRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -462,7 +462,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
         IngestionRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -511,7 +511,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos);
+                        firstNanos, null, null);
 
         // override the column data with both string and float data, to trigger mismatch exception
         List<DataColumn> dataColumnList = new ArrayList<>();

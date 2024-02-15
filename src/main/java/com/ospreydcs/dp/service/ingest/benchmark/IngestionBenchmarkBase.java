@@ -116,16 +116,16 @@ public abstract class IngestionBenchmarkBase {
     protected static abstract class IngestionTask implements Callable<IngestionTaskResult> {
 
         protected final IngestionTaskParams params;
-        protected final DataTable.Builder templateDataTable;
+        protected final IngestionDataFrame.Builder templdateDataFrameBuilder;
         protected final Channel channel;
 
         public IngestionTask(
                 IngestionTaskParams params,
-                DataTable.Builder templateDataTable,
+                IngestionDataFrame.Builder templdateDataFrameBuilder,
                 Channel channel) {
 
             this.params = params;
-            this.templateDataTable = templateDataTable;
+            this.templdateDataFrameBuilder = templdateDataFrameBuilder;
             this.channel = channel;
         }
 
@@ -147,9 +147,9 @@ public abstract class IngestionBenchmarkBase {
      * @param params
      * @return
      */
-    private static DataTable.Builder buildDataTableTemplate(IngestionTaskParams params) {
+    private static IngestionDataFrame.Builder buildDataTableTemplate(IngestionTaskParams params) {
 
-        DataTable.Builder dataTableBuilder = DataTable.newBuilder();
+        IngestionDataFrame.Builder dataTableBuilder = IngestionDataFrame.newBuilder();
 
         // build list of Data objects (columns), each a list of Datum objects (cell values)
         for (int colIndex = params.firstColumnIndex; colIndex <= params.lastColumnIndex ; colIndex++) {
@@ -157,7 +157,7 @@ public abstract class IngestionBenchmarkBase {
             dataColumnBuilder.setName(NAME_COLUMN_BASE + colIndex);
             for (int rowIndex = 0 ; rowIndex < params.numRows ; rowIndex++) {
                 double cellValue = rowIndex + (double) rowIndex /params.numRows;
-                DataValue dataValue = DataValue.newBuilder().setFloatValue(cellValue).build();
+                DataValue dataValue = DataValue.newBuilder().setDoubleValue(cellValue).build();
                 dataColumnBuilder.addDataValues(dataValue);
 //                // use this commented code to look at serialized size of double data
 //                int datumSize = rowDatum.getSerializedSize();
@@ -170,13 +170,13 @@ public abstract class IngestionBenchmarkBase {
         return dataTableBuilder;
     }
 
-    protected static IngestionRequest prepareIngestionRequest(
-            DataTable.Builder dataTableBuilder, IngestionTaskParams params, Integer secondsOffset) {
+    protected static IngestDataRequest prepareIngestionRequest(
+            IngestionDataFrame.Builder dataFrameBuilder, IngestionTaskParams params, Integer secondsOffset) {
 
         final int providerId = params.streamNumber;
         final String requestId = String.valueOf(secondsOffset);
 
-        IngestionRequest.Builder requestBuilder = IngestionRequest.newBuilder();
+        IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
 
         requestBuilder.setProviderId(providerId);
         requestBuilder.setClientRequestId(requestId);
@@ -187,24 +187,24 @@ public abstract class IngestionBenchmarkBase {
         startTimeBuilder.setEpochSeconds(params.startSeconds + secondsOffset);
         startTimeBuilder.setNanoseconds(0);
         startTimeBuilder.build();
-        FixedIntervalTimestampSpec.Builder fixedIntervalSpecBuilder = FixedIntervalTimestampSpec.newBuilder();
-        fixedIntervalSpecBuilder.setStartTime(startTimeBuilder);
-        fixedIntervalSpecBuilder.setSampleIntervalNanos(1_000_000L);
-        fixedIntervalSpecBuilder.setNumSamples(params.numRows);
-        fixedIntervalSpecBuilder.build();
-        DataTimeSpec.Builder timeSpecBuilder = DataTimeSpec.newBuilder();
-        timeSpecBuilder.setFixedIntervalTimestampSpec(fixedIntervalSpecBuilder);
+        SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
+        samplingClockBuilder.setStartTime(startTimeBuilder);
+        samplingClockBuilder.setPeriodNanos(1_000_000L);
+        samplingClockBuilder.setCount(params.numRows);
+        samplingClockBuilder.build();
+        DataTimestamps.Builder timeSpecBuilder = DataTimestamps.newBuilder();
+        timeSpecBuilder.setSamplingClock(samplingClockBuilder);
         timeSpecBuilder.build();
-        dataTableBuilder.setDataTimeSpec(timeSpecBuilder);
+        dataFrameBuilder.setDataTimestamps(timeSpecBuilder);
 
         // add some attributes and event metadata
         EventMetadata.Builder eventMetadataBuilder = EventMetadata.newBuilder();
-        eventMetadataBuilder.setEventDescription("calibration test");
+        eventMetadataBuilder.setDescription("calibration test");
         Timestamp.Builder eventTimeBuilder = Timestamp.newBuilder();
         eventTimeBuilder.setEpochSeconds(params.startSeconds);
         eventTimeBuilder.setNanoseconds(0);
         eventTimeBuilder.build();
-        eventMetadataBuilder.setEventTimestamp(eventTimeBuilder);
+        eventMetadataBuilder.setStartTimestamp(eventTimeBuilder);
         eventMetadataBuilder.build();
         requestBuilder.setEventMetadata(eventMetadataBuilder);
         Attribute.Builder subsystemAttributeBuilder = Attribute.newBuilder();
@@ -228,13 +228,13 @@ public abstract class IngestionBenchmarkBase {
 //            dataTableBuilder.addTimestamps(timestampBuilder);
 //        }
 
-        dataTableBuilder.build();
-        requestBuilder.setDataTable(dataTableBuilder);
+        dataFrameBuilder.build();
+        requestBuilder.setIngestionDataFrame(dataFrameBuilder);
         return requestBuilder.build();
     }
 
     protected abstract IngestionTask newIngestionTask(
-            IngestionTaskParams params, DataTable.Builder templateDataTable, Channel channel);
+            IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel);
 
     /**
      * Executes a multithreaded streaming ingestion scenario with specified properties.
@@ -270,7 +270,7 @@ public abstract class IngestionBenchmarkBase {
             lastColumnIndex = lastColumnIndex + numColumns;
             IngestionTaskParams params = new IngestionTaskParams(
                     startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex);
-            DataTable.Builder templateDataTable = buildDataTableTemplate(params);
+            IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
             IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
         }

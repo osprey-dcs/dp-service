@@ -2,12 +2,12 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.service.common.bson.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
@@ -15,7 +15,7 @@ import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
-import com.ospreydcs.dp.service.ingest.model.DataTimeSpecModel;
+import com.ospreydcs.dp.service.ingest.model.DataTimestampsModel;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -122,13 +122,13 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
      * @param request
      * @return
      */
-    protected static List<BucketDocument> generateBucketsFromRequest(IngestionRequest request)
+    protected static List<BucketDocument> generateBucketsFromRequest(IngestDataRequest request)
             throws DpIngestionException {
 
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         // get timestamp details
-        DataTimeSpecModel timeSpecModel = new DataTimeSpecModel(request.getDataTable().getDataTimeSpec());
+        DataTimestampsModel timeSpecModel = new DataTimestampsModel(request.getIngestionDataFrame().getDataTimestamps());
         final Timestamp firstTimestamp = timeSpecModel.getFirstTimestamp();
         final long firstTimestampSeconds = firstTimestamp.getEpochSeconds();
         final long firstTimestampNanos = firstTimestamp.getNanoseconds();
@@ -139,7 +139,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
         final Date lastTimestampDate = GrpcUtility.dateFromTimestamp(lastTimestamp);
 
         // create BSON document for each column
-        final List<DataColumn> columns = request.getDataTable().getDataColumnsList();
+        final List<DataColumn> columns = request.getIngestionDataFrame().getDataColumnsList();
         for (DataColumn column : columns) {
 //            final BucketDocument bucket = new BucketDocument(); // ALL NEW FIELDS MUST HAVE ACCESSOR METHODS OR CODEC SILENTLY FAILS!
             final String columnName = column.getName();
@@ -151,18 +151,18 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             // places (like utility method on bucket subtype) but in the end it would need to do the same thing.
             BucketDocument bucket = null;
             boolean first = true;
-            DataValue.ValueOneofCase columnDataType = null;
+            DataValue.ValueCase columnDataType = null;
             for (DataValue datum : column.getDataValuesList()) {
 
                 // use data type of first element to set expected data type for column
                 if (first) {
-                    columnDataType = datum.getValueOneofCase();
+                    columnDataType = datum.getValueCase();
                 } else {
-                    if (datum.getValueOneofCase() != columnDataType) {
+                    if (datum.getValueCase() != columnDataType) {
                         String errorMsg = "provider: " + request.getProviderId()
                                 + " request: " + request.getClientRequestId()
                                 + " column: " + columnName
-                                + " data type mismatch: " + datum.getValueOneofCase().name()
+                                + " data type mismatch: " + datum.getValueCase().name()
                                 + " expected: " + columnDataType.name();
                         logger.debug(errorMsg);
                         throw new DpIngestionException(errorMsg);
@@ -170,7 +170,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                 }
 
                 boolean unhandledDataType = false;
-                switch (datum.getValueOneofCase()) {
+                switch (datum.getValueCase()) {
 
                     case STRINGVALUE -> {
                         if (first) {
@@ -207,13 +207,13 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                     case BYTEARRAYVALUE -> {
                         unhandledDataType = true;
                     }
-                    case IMAGE -> {
+                    case IMAGEVALUE -> {
                         unhandledDataType = true;
                     }
                     case STRUCTUREVALUE -> {
                         unhandledDataType = true;
                     }
-                    case VALUEONEOF_NOT_SET -> {
+                    case VALUE_NOT_SET -> {
                         String errorMsg = "provider: " + request.getProviderId()
                                 + " request: " + request.getClientRequestId()
                                 + " column: " + columnName
@@ -242,8 +242,8 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             bucket.setLastTime(lastTimestampDate);
             bucket.setLastSeconds(lastTimestampSeconds);
             bucket.setLastNanos(lastTimestampNanos);
-            bucket.setSampleFrequency(timeSpecModel.getSampleFrequency());
-            bucket.setNumSamples(timeSpecModel.getNumSamples());
+            bucket.setSampleFrequency(timeSpecModel.getSamplePeriodNanos());
+            bucket.setNumSamples(timeSpecModel.getSampleCount());
 
             // add metadata
             Map<String, String> attributeMap = new TreeMap<>();
@@ -254,12 +254,12 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                 attributeMap.put(attribute.getName(), attribute.getValue());
             }
             if (request.hasEventMetadata()) {
-                if (request.getEventMetadata().getEventDescription() != null) {
-                    eventDescription = request.getEventMetadata().getEventDescription();
+                if (request.getEventMetadata().getDescription() != null) {
+                    eventDescription = request.getEventMetadata().getDescription();
                 }
-                if (request.getEventMetadata().hasEventTimestamp()) {
-                    eventSeconds = request.getEventMetadata().getEventTimestamp().getEpochSeconds();
-                    eventNanos = request.getEventMetadata().getEventTimestamp().getNanoseconds();
+                if (request.getEventMetadata().hasStartTimestamp()) {
+                    eventSeconds = request.getEventMetadata().getStartTimestamp().getEpochSeconds();
+                    eventNanos = request.getEventMetadata().getStartTimestamp().getNanoseconds();
                 }
             }
             bucket.setAttributeMap(attributeMap);
@@ -356,7 +356,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 
     protected HandlerIngestionResult handleIngestionRequest(HandlerIngestionRequest handlerIngestionRequest) {
 
-        final IngestionRequest request = handlerIngestionRequest.request;
+        final IngestDataRequest request = handlerIngestionRequest.request;
         logger.debug("IngestionWorker handling request providerId: {} requestId: {}",
                 request.getProviderId(), request.getClientRequestId());
 
@@ -406,7 +406,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                     } else {
 
                         long recordsInsertedCount = insertManyResult.getInsertedIds().size();
-                        long recordsExpected = request.getDataTable().getDataColumnsList().size();
+                        long recordsExpected = request.getIngestionDataFrame().getDataColumnsList().size();
                         if (recordsInsertedCount != recordsExpected) {
                             // check records inserted matches expected
                             isError = true;

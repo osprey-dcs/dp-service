@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
+import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
@@ -26,47 +26,49 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
     private IngestionHandlerInterface handler;
 
-    public static int getNumRequestRows(IngestionRequest request) {
+    public static int getNumRequestRows(IngestDataRequest request) {
         int numRequestValues = 0;
-        switch (request.getDataTable().getDataTimeSpec().getValueOneofCase()) {
-            case FIXEDINTERVALTIMESTAMPSPEC -> {
-                numRequestValues = request.getDataTable().getDataTimeSpec().getFixedIntervalTimestampSpec().getNumSamples();
+        switch (request.getIngestionDataFrame().getDataTimestamps().getValueCase()) {
+            case SAMPLINGCLOCK -> {
+                numRequestValues =
+                        request.getIngestionDataFrame().getDataTimestamps().getSamplingClock().getCount();
             }
             case TIMESTAMPLIST -> {
-                numRequestValues = request.getDataTable().getDataTimeSpec().getTimestampList().getTimestampsCount();
+                numRequestValues =
+                        request.getIngestionDataFrame().getDataTimestamps().getTimestampList().getTimestampsCount();
             }
-            case VALUEONEOF_NOT_SET -> {
+            case VALUE_NOT_SET -> {
                 numRequestValues = 0;
             }
         }
         return numRequestValues;
     }
 
-    public static IngestionResponse ingestionResponseReject(
-            IngestionRequest request, String msg, RejectDetails.RejectReason reason) {
+    public static IngestDataResponse ingestionResponseReject(
+            IngestDataRequest request, String msg, RejectionDetails.Reason reason) {
 
-        RejectDetails rejectDetails = RejectDetails.newBuilder()
-                .setRejectReason(reason)
+        RejectionDetails rejectDetails = RejectionDetails.newBuilder()
+                .setReason(reason)
                 .setMessage(msg)
                 .build();
-        IngestionResponse response = IngestionResponse.newBuilder()
+        IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectDetails(rejectDetails)
+                .setRejectionDetails(rejectDetails)
                 .build();
         return response;
     }
 
-    public static IngestionResponse ingestionResponseAck(IngestionRequest request) {
+    public static IngestDataResponse ingestionResponseAck(IngestDataRequest request) {
         int numRows = getNumRequestRows(request);
-        int numColumns = request.getDataTable().getDataColumnsCount();
+        int numColumns = request.getIngestionDataFrame().getDataColumnsCount();
         AckDetails details = AckDetails.newBuilder()
                 .setNumRows(numRows)
                 .setNumColumns(numColumns)
                 .build();
-        IngestionResponse response = IngestionResponse.newBuilder()
+        IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseType(ResponseType.ACK_RESPONSE)
@@ -97,9 +99,9 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     @Override
-    public StreamObserver<IngestionRequest> streamingIngestion(StreamObserver<IngestionResponse> responseObserver) {
+    public StreamObserver<IngestDataRequest> ingestDataStream(StreamObserver<IngestDataResponse> responseObserver) {
 
-        return new StreamObserver<IngestionRequest>() {
+        return new StreamObserver<IngestDataRequest>() {
 
             Instant t0 = Instant.now();
             AtomicBoolean closeRequested = new AtomicBoolean(false);
@@ -118,7 +120,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             }
 
             @Override
-            public void onNext(IngestionRequest request) {
+            public void onNext(IngestDataRequest request) {
 
                 int providerId = request.getProviderId();
                 String requestId = request.getClientRequestId();
@@ -153,13 +155,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                         // send error reject
                         validationError = true;
                         validationMsg = validationResult.msg;
-                        IngestionResponse rejectResponse = ingestionResponseReject(
-                                request, validationMsg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                        IngestDataResponse rejectResponse = ingestionResponseReject(
+                                request, validationMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON);
                         responseObserver.onNext(rejectResponse);
 
                     } else {
                         // send ack response
-                        IngestionResponse ackResponse = ingestionResponseAck(request);
+                        IngestDataResponse ackResponse = ingestionResponseAck(request);
                         responseObserver.onNext(ackResponse);
                     }
 

@@ -1,10 +1,10 @@
 package com.ospreydcs.dp.service.ingest.benchmark;
 
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionDataFrame;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -27,23 +27,23 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
         public StreamingIngestionTask(
                 IngestionTaskParams params,
-                DataTable.Builder templateDataTable,
+                IngestionDataFrame.Builder templateDataFrameBuilder,
                 Channel channel) {
 
-            super(params, templateDataTable, channel);
+            super(params, templateDataFrameBuilder, channel);
         }
 
         public IngestionTaskResult call() {
             IngestionTaskResult result = sendStreamingIngestionRequest(
-                    this.params, this.templateDataTable, this.channel);
+                    this.params, this.templdateDataFrameBuilder, this.channel);
             return result;
         }
 
-        protected void onRequest(IngestionRequest request) {
+        protected void onRequest(IngestDataRequest request) {
             // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
         }
 
-        protected void onResponse(IngestionResponse response) {
+        protected void onResponse(IngestDataResponse response) {
             // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
         }
 
@@ -59,7 +59,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
          */
         private IngestionTaskResult sendStreamingIngestionRequest(
                 IngestionTaskParams params,
-                DataTable.Builder templateDataTable,
+                IngestionDataFrame.Builder templateDataTable,
                 Channel channel) {
 
             final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
@@ -78,7 +78,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
             /**
              * Implements StreamObserver interface for API response stream.
              */
-            StreamObserver<IngestionResponse> responseObserver = new StreamObserver<IngestionResponse>() {
+            StreamObserver<IngestDataResponse> responseObserver = new StreamObserver<IngestDataResponse>() {
 
                 /**
                  * Handles an IngestionResponse object in the API response stream.  Checks properties
@@ -86,7 +86,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                  * @param response
                  */
                 @Override
-                public void onNext(IngestionResponse response) {
+                public void onNext(IngestDataResponse response) {
 
 //                responseCount.incrementAndGet();
                     responseLatch.countDown();
@@ -96,7 +96,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                         // unexpected response
                         if (responseType == ResponseType.REJECT_RESPONSE) {
                             logger.error("received reject with msg: "
-                                    + response.getRejectDetails().getMessage());
+                                    + response.getRejectionDetails().getMessage());
                         } else {
                             logger.error("unexpected responseType: " + responseType.getDescriptorForType());
                         }
@@ -168,7 +168,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                 }
             };
 
-            StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
+            StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataStream(responseObserver);
 
             IngestionTaskResult result = new IngestionTaskResult();
 
@@ -183,7 +183,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
                     // build IngestionRequest for current second, record elapsed time so we can subtract from measurement
                     // final IngestionRequest request = buildIngestionRequest(secondsOffset, params);
-                    final IngestionRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
+                    final IngestDataRequest request = prepareIngestionRequest(templateDataTable, params, secondsOffset);
 
                     // call hook for subclasses to add validation
                     try {
@@ -292,7 +292,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
     }
 
     protected StreamingIngestionTask newIngestionTask(
-            IngestionTaskParams params, DataTable.Builder templateDataTable, Channel channel
+            IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel
     ) {
         return new StreamingIngestionTask(params, templateDataTable, channel);
     }

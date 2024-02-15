@@ -1,19 +1,19 @@
 package com.ospreydcs.dp.service.ingest.handler.model;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import io.grpc.stub.StreamObserver;
 
 public class HandlerIngestionRequest {
 
-    public IngestionRequest request = null;
-    public StreamObserver<IngestionResponse> responseObserver = null;
+    public IngestDataRequest request = null;
+    public StreamObserver<IngestDataResponse> responseObserver = null;
     public Boolean rejected = null;
     public String rejectMsg = null;
 
     public HandlerIngestionRequest(
-            IngestionRequest request,
-            StreamObserver<IngestionResponse> responseObserver,
+            IngestDataRequest request,
+            StreamObserver<IngestDataResponse> responseObserver,
             boolean rejected,
             String rejectMsg) {
 

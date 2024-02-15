@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.handler;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.junit.Test;
@@ -41,10 +41,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.FLOAT,
                         values);
         params.setRequestTime(false);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue("validation result msg not set to expected value", result.msg.equals("requestTime must be specified"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("requestTime must be specified"));
     }
 
     @Test
@@ -68,10 +68,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue("validation result msg not set to expected value", result.msg.equals("providerId must be specified"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("providerId must be specified"));
     }
 
     @Test
@@ -95,12 +95,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue(
-                "validation result msg not set to expected value",
-                result.msg.equals("clientRequestId must be specified"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("clientRequestId must be specified"));
     }
 
     /**
@@ -129,12 +127,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue(
-                "validation result message not set",
-                result.msg.equals("only timestamp iterator is currently supported for dataTimeSpec"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("only timestamp iterator is currently supported for dataTimeSpec"));
     }
 
     @Test
@@ -159,12 +155,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue(
-                "validation result message not set",
-                result.msg.equals("dataTimeSpec must specify list of timestamps or iterator with numSamples"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("dataTimeSpec must specify list of timestamps or iterator with numSamples"));
     }
 
     /**
@@ -190,12 +184,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         null,
                         IngestionDataType.FLOAT,
                         null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue(
-                "validation result msg not set",
-                result.msg.equals("columns list cannot be empty"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("columns list cannot be empty"));
     }
 
     /**
@@ -224,10 +216,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue("validation result msg not set to expected value", result.msg.contains("mismatch numValues:"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("mismatch numValues:"));
     }
 
     /**
@@ -255,10 +247,10 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         columnNames,
                         IngestionDataType.FLOAT,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
-        assertTrue("validation result error flag not set", result.isError);
-        assertTrue("validation result msg not set to expected value", result.msg.equals("name must be specified for all data columns"));
+        assertTrue(result.isError);
+        assertTrue(result.msg.equals("name must be specified for all data columns"));
     }
 
 }

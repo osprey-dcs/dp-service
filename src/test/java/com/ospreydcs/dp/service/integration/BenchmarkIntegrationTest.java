@@ -4,6 +4,8 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
@@ -91,7 +93,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             }
 
             @Override
-            protected void onRequest(IngestionRequest request) {
+            protected void onRequest(IngestDataRequest request) {
 
                 logger.trace("onRequest stream: " + this.params.streamNumber);
 
@@ -117,7 +119,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             }
 
             @Override
-            protected void onResponse(IngestionResponse response) {
+            protected void onResponse(IngestDataResponse response) {
 
                 logger.trace("onResponse stream: " + this.params.streamNumber);
                 responseCount.incrementAndGet();

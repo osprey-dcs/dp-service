@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 import com.mongodb.MongoException;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -18,7 +18,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
 
     @Override
     public MongoIngestionHandler.IngestionTaskResult insertBatch(
-            IngestionRequest request, List<BucketDocument> dataDocumentBatch) {
+            IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 
         logger.debug(
                 "inserting batch of bucket documents to mongo provider: {} request: {}",
