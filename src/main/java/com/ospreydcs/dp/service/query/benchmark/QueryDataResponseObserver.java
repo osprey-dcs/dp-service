@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -9,15 +10,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class BucketQueryResponseObserver implements StreamObserver<QueryResponse> {
+public class QueryDataResponseObserver implements StreamObserver<QueryDataResponse> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     final private int streamNumber;
-    final private QueryBenchmarkBase.QueryTaskParams params;
+    final private QueryBenchmarkBase.QueryDataRequestTaskParams params;
     final public CountDownLatch finishLatch;
-    final private QueryBenchmarkBase.QueryTask task;
+    final private QueryBenchmarkBase.QueryDataResponseTask task;
     protected AtomicBoolean isError = new AtomicBoolean(false);
     protected AtomicInteger dataValuesReceived = new AtomicInteger(0);
     protected AtomicInteger dataBytesReceived = new AtomicInteger(0);
@@ -25,11 +26,11 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
     private AtomicInteger numResponsesReceived = new AtomicInteger(0);
     private AtomicInteger numBucketsReceived = new AtomicInteger(0);
 
-    public BucketQueryResponseObserver(
+    public QueryDataResponseObserver(
             int streamNumber,
-            QueryBenchmarkBase.QueryTaskParams params,
+            QueryBenchmarkBase.QueryDataRequestTaskParams params,
             CountDownLatch finishLatch,
-            QueryBenchmarkBase.QueryTask task
+            QueryBenchmarkBase.QueryDataResponseTask task
     ) {
         this.streamNumber = streamNumber;
         this.params = params;
@@ -37,7 +38,7 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
         this.task = task;
     }
 
-    protected void verifyResponse(QueryResponse response) {
+    protected void verifyResponse(QueryDataResponse response) {
         task.onResponse(response);
     }
 
@@ -50,7 +51,7 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
     }
 
     @Override
-    public void onNext(QueryResponse response) {
+    public void onNext(QueryDataResponse response) {
 
         if (finishLatch.getCount() == 0) {
             return;
@@ -62,27 +63,27 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
         boolean success = true;
         String msg = "";
 
-        if (response.hasQueryReject()) {
+        if (response.hasRejectionDetails()) {
             isError.set(true);
             success = false;
             msg = "stream: " + streamNumber
-                    + " received reject with message: " + response.getQueryReject().getMessage();
+                    + " received reject with message: " + response.getRejectionDetails().getMessage();
             logger.error(msg);
 
-        } else if (response.hasQueryReport()) {
+        } else if (response.hasQueryResult()) {
 
-            QueryResponse.QueryReport report = response.getQueryReport();
+            QueryDataResponse.QueryResult report = response.getQueryResult();
 
-            if (report.hasBucketData()) {
+            if (report.hasQueryData()) {
 
                 grpcBytesReceived.getAndAdd(response.getSerializedSize());
                 numResponsesReceived.incrementAndGet();
 
-                QueryResponse.QueryReport.BucketData queryData = report.getBucketData();
+                QueryDataResponse.QueryResult.QueryData queryData = report.getQueryData();
                 int numResultBuckets = queryData.getDataBucketsCount();
                 logger.trace("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
 
-                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (QueryDataResponse.QueryResult.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
                     int dataValuesCount = bucket.getDataColumn().getDataValuesCount();
 //                        LOGGER.trace(
 //                                "stream: {} bucket column: {} startTime: {} numValues: {}",
@@ -112,10 +113,10 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
                 }
 
             } else if (report.hasQueryStatus()) {
-                final QueryResponse.QueryReport.QueryStatus status = report.getQueryStatus();
+                final QueryStatus status = report.getQueryStatus();
 
                 if (status.getQueryStatusType()
-                        == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
+                        == QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
                     isError.set(true);
                     success = false;
                     final String errorMsg = status.getStatusMessage();
@@ -123,7 +124,7 @@ public class BucketQueryResponseObserver implements StreamObserver<QueryResponse
                     logger.error(msg);
 
                 } else if (status.getQueryStatusType()
-                        == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
+                        == QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
                     isError.set(true);
                     success = false;
                     msg = "stream: " + streamNumber + " query returned no data";

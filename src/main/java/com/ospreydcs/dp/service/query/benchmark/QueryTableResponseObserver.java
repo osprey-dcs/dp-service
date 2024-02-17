@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,16 +11,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TableQueryResponseObserver implements StreamObserver<QueryResponse> {
+public class QueryTableResponseObserver implements StreamObserver<QueryTableResponse> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     final private int streamNumber;
-    final private QueryBenchmarkBase.QueryTaskParams params;
+    final private QueryBenchmarkBase.QueryDataRequestTaskParams params;
     final public CountDownLatch finishLatch;
-    final private QueryBenchmarkBase.QueryTask task;
+    final private BenchmarkQueryDataTable.QueryResponseTableTask task;
     protected AtomicBoolean isError = new AtomicBoolean(false);
 
     // stats variables
@@ -31,11 +31,11 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
     private AtomicInteger numColumnsReceived = new AtomicInteger(0);
 
 
-    public TableQueryResponseObserver(
+    public QueryTableResponseObserver(
             int streamNumber,
-            QueryBenchmarkBase.QueryTaskParams params,
+            QueryBenchmarkBase.QueryDataRequestTaskParams params,
             CountDownLatch finishLatch,
-            QueryBenchmarkBase.QueryTask task
+            BenchmarkQueryDataTable.QueryResponseTableTask task
     ) {
         this.streamNumber = streamNumber;
         this.params = params;
@@ -43,11 +43,11 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
         this.task = task;
     }
 
-    protected void verifyResponse(QueryResponse response) {
+    protected void verifyResponse(QueryTableResponse response) {
         task.onResponse(response);
     }
 
-    public void onNext(QueryResponse response) {
+    public void onNext(QueryTableResponse response) {
 
         if (finishLatch.getCount() == 0) {
             return;
@@ -59,23 +59,23 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
         boolean success = true;
         String msg = "";
 
-        if (response.hasQueryReject()) {
+        if (response.hasRejectionDetails()) {
             isError.set(true);
             success = false;
             msg = "stream: " + streamNumber
-                    + " received reject with message: " + response.getQueryReject().getMessage();
+                    + " received reject with message: " + response.getRejectionDetails().getMessage();
             logger.error(msg);
 
-        } else if (response.hasQueryReport()) {
+        } else if (response.hasQueryResult()) {
 
-            QueryResponse.QueryReport report = response.getQueryReport();
+            QueryTableResponse.QueryResult report = response.getQueryResult();
 
-            if (report.hasDataTable()) {
+            if (report.hasTableResult()) {
 
                 grpcBytesReceived.getAndAdd(response.getSerializedSize());
                 numResponsesReceived.incrementAndGet();
 
-                DataTable dataTable = report.getDataTable();
+                QueryTableResponse.QueryResult.TableResult dataTable = report.getTableResult();
                 int numResultColumns = dataTable.getDataColumnsCount();
                 logger.trace("stream: {} received DataTable numColumns: {}", streamNumber, numResultColumns);
 
@@ -101,10 +101,10 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
                 }
 
             } else if (report.hasQueryStatus()) {
-                final QueryResponse.QueryReport.QueryStatus status = report.getQueryStatus();
+                final QueryStatus status = report.getQueryStatus();
 
                 if (status.getQueryStatusType()
-                        == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
+                        == QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
                     isError.set(true);
                     success = false;
                     final String errorMsg = status.getStatusMessage();
@@ -112,7 +112,7 @@ public class TableQueryResponseObserver implements StreamObserver<QueryResponse>
                     logger.error(msg);
 
                 } else if (status.getQueryStatusType()
-                        == QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
+                        == QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
                     isError.set(true);
                     success = false;
                     msg = "stream: " + streamNumber + " query returned no data";

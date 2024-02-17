@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import io.grpc.Channel;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -14,31 +14,31 @@ import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
+public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    protected static class QueryResponseCursorTask extends QueryTask {
+    protected static class QueryResponseCursorTask extends QueryDataResponseTask {
 
-        public QueryResponseCursorTask(Channel channel, QueryTaskParams params) {
+        public QueryResponseCursorTask(Channel channel, QueryDataRequestTaskParams params) {
             super(channel, params);
         }
 
-        private class QueryResponseCursorObserver extends BucketQueryResponseObserver {
+        private class QueryResponseCursorObserver extends QueryDataResponseObserver {
 
-            public StreamObserver<QueryRequest> requestObserver;
+            public StreamObserver<QueryDataRequest> requestObserver;
 
             public QueryResponseCursorObserver(
                     int streamNumber,
-                    QueryTaskParams params,
+                    QueryDataRequestTaskParams params,
                     CountDownLatch finishLatch,
-                    QueryTask task
+                    QueryDataResponseTask task
             ) {
                 super(streamNumber, params, finishLatch, task);
             }
 
-            public void setRequestObserver(StreamObserver<QueryRequest> requestObserver) {
+            public void setRequestObserver(StreamObserver<QueryDataRequest> requestObserver) {
                 this.requestObserver = requestObserver;
             }
 
@@ -57,7 +57,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
                 // run in different thread since in-process grpc uses same thread for sending request and receiving response
                 new Thread(() -> {
                     logger.trace("stream: {} requesting next batch of data");
-                    QueryRequest nextRequest = buildNextRequest();
+                    QueryDataRequest nextRequest = buildNextQueryDataRequest();
                     requestObserver.onNext(nextRequest);
                 }).start();
             }
@@ -71,7 +71,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
          private QueryTaskResult sendQueryResponseCursor(
                 Channel channel,
-                QueryTaskParams params
+                QueryDataRequestTaskParams params
         ) {
             final int streamNumber = params.streamNumber;
             final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -89,12 +89,12 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
             // create observer for api request stream and open api connection
             final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
-            StreamObserver<QueryRequest> requestObserver = asyncStub.queryResponseCursor(responseObserver);
+            StreamObserver<QueryDataRequest> requestObserver = asyncStub.queryDataBidiStream(responseObserver);
             responseObserver.setRequestObserver(requestObserver);
 
             // build query request
             logger.trace("stream: {} sending QueryRequest", streamNumber);
-            QueryRequest queryRequest = buildQueryRequest(params);
+            QueryDataRequest queryRequest = buildQueryDataRequest(params);
 
             // call hook for subclasses to add validation
             try {
@@ -162,7 +162,7 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
 
     }
 
-    protected QueryResponseCursorTask newQueryTask(Channel channel, QueryTaskParams params) {
+    protected QueryResponseCursorTask newQueryTask(Channel channel, QueryDataRequestTaskParams params) {
         return new QueryResponseCursorTask(channel, params);
     }
 
@@ -184,15 +184,15 @@ public class BenchmarkQueryResponseCursor extends QueryBenchmarkBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        BenchmarkQueryResponseCursor benchmark = new BenchmarkQueryResponseCursor();
+        BenchmarkQueryDataBidiStream benchmark = new BenchmarkQueryDataBidiStream();
 
-        final int[] totalNumPvsArray = {100, 500, 1000};
-        final int[] numPvsPerRequestArray = {1, 10, 25, 50};
-        final int[] numThreadsArray = {1, 3, 5, 7};
+//        final int[] totalNumPvsArray = {100, 500, 1000};
+//        final int[] numPvsPerRequestArray = {1, 10, 25, 50};
+//        final int[] numThreadsArray = {1, 3, 5, 7};
 
-//        final int[] totalNumPvsArray = {1000};
-//        final int[] numPvsPerRequestArray = {10};
-//        final int[] numThreadsArray = {7};
+        final int[] totalNumPvsArray = {1000};
+        final int[] numPvsPerRequestArray = {10};
+        final int[] numThreadsArray = {7};
 
         benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
 

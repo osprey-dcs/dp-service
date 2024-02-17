@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class IngestionHandlerBaseTest extends IngestionTestBase {
@@ -38,7 +39,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         1,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         params.setRequestTime(false);
         IngestDataRequest request = buildIngestionRequest(params);
@@ -66,7 +67,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         1,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
@@ -93,7 +94,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         1,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
@@ -125,12 +126,12 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         null,
                         null,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue(result.isError);
-        assertTrue(result.msg.equals("only timestamp iterator is currently supported for dataTimeSpec"));
+        assertEquals("only SamplingClock is currently supported for IngestDataRequest.ingestionDataFrame.dataTimestamps.value", result.msg);
     }
 
     @Test
@@ -153,12 +154,14 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         0,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
         assertTrue(result.isError);
-        assertTrue(result.msg.equals("dataTimeSpec must specify list of timestamps or iterator with numSamples"));
+        assertEquals(
+                result.msg,
+                "IngestDataRequest.ingestionDataFrame.dataTimestamps.value must specify SamplingClock or list of timestamps");
     }
 
     /**
@@ -182,7 +185,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         2,
                         null,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         null);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
@@ -214,7 +217,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         2,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);
@@ -245,7 +248,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         1_000_000L,
                         2,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = handler.validateIngestionRequest(request);

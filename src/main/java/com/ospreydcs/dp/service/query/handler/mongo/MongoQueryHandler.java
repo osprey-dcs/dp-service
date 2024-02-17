@@ -1,9 +1,8 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
+import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
@@ -11,9 +10,9 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
-import com.ospreydcs.dp.service.query.handler.mongo.job.ColumnInfoQueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryMetadataJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.HandlerJob;
-import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -89,27 +88,28 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         }
     }
 
-    public static FixedIntervalTimestampSpec bucketSamplingInterval(BucketDocument document) {
+    public static SamplingClock samplingClockForBucket(BucketDocument document) {
         Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
-        FixedIntervalTimestampSpec.Builder samplingIntervalBuilder = FixedIntervalTimestampSpec.newBuilder();
+        SamplingClock.Builder samplingIntervalBuilder = SamplingClock.newBuilder();
         samplingIntervalBuilder.setStartTime(startTime);
-        samplingIntervalBuilder.setSampleIntervalNanos(document.getSampleFrequency());
-        samplingIntervalBuilder.setNumSamples(document.getNumSamples());
+        samplingIntervalBuilder.setPeriodNanos(document.getSampleFrequency());
+        samplingIntervalBuilder.setCount(document.getNumSamples());
         return samplingIntervalBuilder.build();
     }
 
-    public static <T> QueryResponse.QueryReport.BucketData.DataBucket dataBucketFromDocument(BucketDocument<T> document) {
+    public static <T> QueryDataResponse.QueryResult.QueryData.DataBucket dataBucketFromDocument(
+            BucketDocument<T> document
+    ) {
+        final QueryDataResponse.QueryResult.QueryData.DataBucket.Builder bucketBuilder =
+                QueryDataResponse.QueryResult.QueryData.DataBucket.newBuilder();
 
-        QueryResponse.QueryReport.BucketData.DataBucket.Builder bucketBuilder =
-                QueryResponse.QueryReport.BucketData.DataBucket.newBuilder();
+        bucketBuilder.setSamplingClock(samplingClockForBucket(document));
 
-        bucketBuilder.setSamplingInterval(bucketSamplingInterval(document));
-
-        DataColumn.Builder columnBuilder = DataColumn.newBuilder();
+        final DataColumn.Builder columnBuilder = DataColumn.newBuilder();
         columnBuilder.setName(document.getColumnName());
 //        addBucketDataToColumn(document, columnBuilder);
         for (T dataValue: document.getColumnDataList()) {
-            DataValue.Builder valueBuilder = DataValue.newBuilder();
+            final DataValue.Builder valueBuilder = DataValue.newBuilder();
             document.addColumnDataValue(dataValue, valueBuilder);
             valueBuilder.build();
             columnBuilder.addDataValues(valueBuilder);
@@ -201,11 +201,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryResponseStream(
-            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+    public void handleQueryDataStream(
+            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final DataResponseStreamDispatcher dispatcher = new DataResponseStreamDispatcher(responseObserver);
+        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseStream job id: {} to queue", responseObserver.hashCode());
 
@@ -218,12 +218,12 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public QueryResultCursor handleQueryResponseCursor(
-            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+    public QueryResultCursor handleQueryDataBidiStream(
+            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
 
-        final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final DataResponseBidiStreamDispatcher dispatcher = new DataResponseBidiStreamDispatcher(responseObserver);
+        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
         logger.debug("adding queryResponseCursor job id: {} to queue", responseObserver.hashCode());
@@ -239,11 +239,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryResponseSingle(
-            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+    public void handleQueryData(
+            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final ResponseSingleDispatcher dispatcher = new ResponseSingleDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final DataResponseUnaryDispatcher dispatcher = new DataResponseUnaryDispatcher(responseObserver);
+        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseSingle job id: {} to queue", responseObserver.hashCode());
 
@@ -256,11 +256,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryResponseTable(
-            QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver) {
+    public void handleQueryDataTable(
+            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final ResponseTableDispatcher dispatcher = new ResponseTableDispatcher(responseObserver, querySpec);
-        final QueryJob job = new QueryJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final TableResponseDispatcher dispatcher = new TableResponseDispatcher(responseObserver, querySpec);
+        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
 
@@ -273,11 +273,11 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleGetColumnInfo(
-            QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec, StreamObserver<QueryResponse> responseObserver
+    public void handleQueryMetadata(
+            QueryMetadataRequest.QuerySpec querySpec, StreamObserver<QueryMetadataResponse> responseObserver
     ) {
-        final ColumnInfoQueryJob job =
-                new ColumnInfoQueryJob(columnInfoQuerySpec, responseObserver, mongoQueryClient);
+        final QueryMetadataJob job =
+                new QueryMetadataJob(querySpec, responseObserver, mongoQueryClient);
 
         logger.debug("adding getColumnInfo job id: {} to queue", responseObserver.hashCode());
 

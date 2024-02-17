@@ -2,8 +2,7 @@ package com.ospreydcs.dp.service.query;
 
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.*;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -14,11 +13,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class QueryTestBase {
 
-    public static class QueryRequestParams {
+    public static class QueryDataRequestParams {
 
         public List<String> columnNames = null;
         public Long startTimeSeconds = null;
@@ -26,7 +26,7 @@ public class QueryTestBase {
         public Long endTimeSeconds = null;
         public Long endTimeNanos = null;
 
-        public QueryRequestParams(
+        public QueryDataRequestParams(
                 List<String> columnNames,
                 Long startTimeSeconds,
                 Long startTimeNanos,
@@ -41,23 +41,23 @@ public class QueryTestBase {
         }
     }
     
-    public static QueryRequest buildQueryRequest(QueryRequestParams params) {
+    public static QueryDataRequest buildQueryDataRequest(QueryDataRequestParams params) {
         
         // build API query request from params
-        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+        QueryDataRequest.Builder requestBuilder = QueryDataRequest.newBuilder();
 
-        QueryRequest.QuerySpec.Builder querySpecBuilder = QueryRequest.QuerySpec.newBuilder();
+        QueryDataRequest.QuerySpec.Builder querySpecBuilder = QueryDataRequest.QuerySpec.newBuilder();
         
         if (params.columnNames != null && !params.columnNames.isEmpty()) {
-            querySpecBuilder.addAllColumnNames(params.columnNames);
+            querySpecBuilder.addAllPvNames(params.columnNames);
         }
         
         if (params.startTimeSeconds != null) {
-            final Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
-            startTimeBuilder.setEpochSeconds(params.startTimeSeconds);
-            if (params.startTimeNanos != null) startTimeBuilder.setNanoseconds(params.startTimeNanos);
-            startTimeBuilder.build();
-            querySpecBuilder.setStartTime(startTimeBuilder);
+            final Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+            beginTimeBuilder.setEpochSeconds(params.startTimeSeconds);
+            if (params.startTimeNanos != null) beginTimeBuilder.setNanoseconds(params.startTimeNanos);
+            beginTimeBuilder.build();
+            querySpecBuilder.setBeginTime(beginTimeBuilder);
         }
         
         if (params.endTimeSeconds != null) {
@@ -74,47 +74,47 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryRequest buildColumnInfoQueryRequest(String columnNamePattern) {
+    public static QueryMetadataRequest buildQueryMetadataRequest(String columnNamePattern) {
 
-        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+        QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryRequest.ColumnInfoQuerySpec.Builder specBuilder = QueryRequest.ColumnInfoQuerySpec.newBuilder();
+        QueryMetadataRequest.QuerySpec.Builder specBuilder = QueryMetadataRequest.QuerySpec.newBuilder();
 
-        QueryRequest.ColumnInfoQuerySpec.ColumnNamePattern.Builder columnNamePatternBuilder =
-                QueryRequest.ColumnInfoQuerySpec.ColumnNamePattern.newBuilder();
-        columnNamePatternBuilder.setPattern(columnNamePattern);
-        columnNamePatternBuilder.build();
+        QueryMetadataRequest.QuerySpec.PvNamePattern.Builder pvNamePatternBuilder =
+                QueryMetadataRequest.QuerySpec.PvNamePattern.newBuilder();
+        pvNamePatternBuilder.setPattern(columnNamePattern);
+        pvNamePatternBuilder.build();
 
-        specBuilder.setColumnNamePattern(columnNamePatternBuilder);
+        specBuilder.setPvNamePattern(pvNamePatternBuilder);
         specBuilder.build();
 
-        requestBuilder.setColumnInfoQuerySpec(specBuilder);
+        requestBuilder.setQuerySpec(specBuilder);
         return requestBuilder.build();
     }
 
-    public static QueryRequest buildColumnInfoQueryRequest(List<String> columnNames) {
+    public static QueryMetadataRequest buildQueryMetadataRequest(List<String> pvNames) {
 
-        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+        QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryRequest.ColumnInfoQuerySpec.Builder specBuilder = QueryRequest.ColumnInfoQuerySpec.newBuilder();
+        QueryMetadataRequest.QuerySpec.Builder specBuilder = QueryMetadataRequest.QuerySpec.newBuilder();
 
-        QueryRequest.ColumnInfoQuerySpec.ColumnNameList.Builder columnNameListBuilder =
-                QueryRequest.ColumnInfoQuerySpec.ColumnNameList.newBuilder();
-        columnNameListBuilder.addAllColumnNames(columnNames);
-        columnNameListBuilder.build();
+        QueryMetadataRequest.QuerySpec.PvNameList.Builder pvNameListBuilder =
+                QueryMetadataRequest.QuerySpec.PvNameList.newBuilder();
+        pvNameListBuilder.addAllPvNames(pvNames);
+        pvNameListBuilder.build();
 
-        specBuilder.setColumnNameList(columnNameListBuilder);
+        specBuilder.setPvNameList(pvNameListBuilder);
         specBuilder.build();
 
-        requestBuilder.setColumnInfoQuerySpec(specBuilder);
+        requestBuilder.setQuerySpec(specBuilder);
         return requestBuilder.build();
     }
 
-    public static class QueryResponseTableObserver implements StreamObserver<QueryResponse> {
+    public static class QueryResponseTableObserver implements StreamObserver<QueryTableResponse> {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<QueryResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryTableResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
             try {
@@ -127,12 +127,12 @@ public class QueryTestBase {
 
         public boolean isError() { return isError.get(); }
 
-        public QueryResponse getQueryResponse() {
+        public QueryTableResponse getQueryResponse() {
             return responseList.get(0);
         }
 
         @Override
-        public void onNext(QueryResponse response) {
+        public void onNext(QueryTableResponse response) {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
@@ -162,11 +162,11 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryResponseStreamObserver implements StreamObserver<QueryResponse> {
+    public static class QueryResponseStreamObserver implements StreamObserver<QueryDataResponse> {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<QueryResponse.QueryReport.BucketData.DataBucket> dataBucketList =
+        private final List<QueryDataResponse.QueryResult.QueryData.DataBucket> dataBucketList =
                 Collections.synchronizedList(new ArrayList<>());
 
 //        public QueryResponseStreamObserver(int numBucketsExpected) {
@@ -184,19 +184,19 @@ public class QueryTestBase {
 
         public boolean isError() { return isError.get(); }
 
-        public List<QueryResponse.QueryReport.BucketData.DataBucket> getDataBucketList() {
+        public List<QueryDataResponse.QueryResult.QueryData.DataBucket> getDataBucketList() {
             return dataBucketList;
         }
 
         @Override
-        public void onNext(QueryResponse response) {
+        public void onNext(QueryDataResponse response) {
             
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                List<QueryResponse.QueryReport.BucketData.DataBucket> responseBucketList =
-                        response.getQueryReport().getBucketData().getDataBucketsList();
-                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : responseBucketList) {
+                List<QueryDataResponse.QueryResult.QueryData.DataBucket> responseBucketList =
+                        response.getQueryResult().getQueryData().getDataBucketsList();
+                for (QueryDataResponse.QueryResult.QueryData.DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
                 }
             }).start();
@@ -224,13 +224,13 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryResponseColumnInfoObserver implements StreamObserver<QueryResponse> {
+    public static class QueryMetadataResponseObserver implements StreamObserver<QueryMetadataResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryResponse.QueryReport.ColumnInfoList.ColumnInfo> columnInfoList =
+        private final List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> pvInfoList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -253,20 +253,20 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryResponse.QueryReport.ColumnInfoList.ColumnInfo> getColumnInfoList() {
-            return columnInfoList;
+        public List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> getPvInfoList() {
+            return pvInfoList;
         }
 
         @Override
-        public void onNext(QueryResponse response) {
+        public void onNext(QueryMetadataResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
 
-                if (response.hasQueryReject()) {
+                if (response.hasRejectionDetails()) {
                     final String errorMsg = "QueryResponseColumnInfoObserver onNext received reject response: "
-                            + response.getQueryReject().getMessage();
+                            + response.getRejectionDetails().getMessage();
                     System.err.println(errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);
@@ -274,7 +274,7 @@ public class QueryTestBase {
                     return;
                 } else if (response.getResponseType() == ResponseType.ERROR_RESPONSE) {
                     final String errorMsg = "QueryResponseColumnInfoObserver onNext received error response: "
-                            + response.getQueryReport().getQueryStatus().getStatusMessage();
+                            + response.getQueryResult().getQueryStatus().getStatusMessage();
                     System.err.println();
                     isError.set(true);
                     errorMessageList.add(errorMsg);
@@ -282,21 +282,24 @@ public class QueryTestBase {
                     return;
                 }
 
-                assertTrue(response.hasQueryReport());
-                final QueryResponse.QueryReport report = response.getQueryReport();
-                assertTrue(report.hasColumnInfoList());
+                assertTrue(response.hasQueryResult());
+                final QueryMetadataResponse.QueryResult queryResult = response.getQueryResult();
+                assertTrue(queryResult.hasMetadataResult());
+                final QueryMetadataResponse.QueryResult.MetadataResult metadataResult = queryResult.getMetadataResult();
+                assertNotNull(metadataResult);
+                // assertTrue(metadataResult.getPvInfosCount() > 0); - MAYBE ALLOW AN EMPTY RESULT FOR NEGATIVE TEST CASE?
 
                 // flag error if already received a response
-                if (!columnInfoList.isEmpty()) {
+                if (!pvInfoList.isEmpty()) {
                     final String errorMsg = "QueryResponseColumnInfoObserver onNext received more than one response";
                     System.err.println(errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);
 
                 } else {
-                    for (QueryResponse.QueryReport.ColumnInfoList.ColumnInfo columnInfo :
-                            report.getColumnInfoList().getColumnInfoListList()) {
-                        columnInfoList.add(columnInfo);
+                    for (QueryMetadataResponse.QueryResult.MetadataResult.PvInfo pvInfo :
+                            queryResult.getMetadataResult().getPvInfosList()) {
+                        pvInfoList.add(pvInfo);
                     }
                     finishLatch.countDown();
                 }

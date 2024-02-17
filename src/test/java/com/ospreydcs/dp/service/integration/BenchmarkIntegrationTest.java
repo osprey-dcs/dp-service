@@ -1,15 +1,14 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionDataFrame;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
@@ -86,7 +85,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
             public IntegrationTestIngestionTask(
                     IngestionBenchmarkBase.IngestionTaskParams params,
-                    DataTable.Builder templateDataTable,
+                    IngestionDataFrame.Builder templateDataTable,
                     Channel channel) {
 
                 super(params, templateDataTable, channel);
@@ -106,9 +105,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             new IntegrationTestIngestionRequestInfo(
                                     request.getProviderId(),
                                     request
-                                            .getDataTable()
-                                            .getDataTimeSpec()
-                                            .getFixedIntervalTimestampSpec()
+                                            .getIngestionDataFrame()
+                                            .getDataTimestamps()
+                                            .getSamplingClock()
                                             .getStartTime()
                                             .getEpochSeconds()));
 
@@ -239,7 +238,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         }
 
         protected StreamingIngestionTask newIngestionTask(
-                IngestionTaskParams params, DataTable.Builder templateDataTable, Channel channel
+                IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel
         ) {
             return new IntegrationTestIngestionTask(params, templateDataTable, channel);
         }
@@ -285,27 +284,27 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static class IntegrationTestQueryTaskValidationHelper {
 
         // instance variables
-        final QueryBenchmarkBase.QueryTaskParams params;
+        final QueryBenchmarkBase.QueryDataRequestTaskParams params;
         final Map<String,boolean[]> columnBucketMap = new TreeMap<>();
         private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
         private final Lock readLock = rwLock.readLock();
         private final Lock writeLock = rwLock.writeLock();
         private final AtomicInteger responseCount = new AtomicInteger(0);
 
-        public IntegrationTestQueryTaskValidationHelper(QueryBenchmarkBase.QueryTaskParams params) {
+        public IntegrationTestQueryTaskValidationHelper(QueryBenchmarkBase.QueryDataRequestTaskParams params) {
             this.params = params;
         }
 
-        protected void onRequest(QueryRequest request) {
+        protected void onRequest(QueryDataRequest request) {
 
             writeLock.lock();
             try {
                 // add data structure for tracking expected buckets for each column in request
                 assertTrue(request.hasQuerySpec());
-                assertTrue(request.getQuerySpec().getColumnNamesCount() > 0);
-                for (String columnName : request.getQuerySpec().getColumnNamesList()) {
-                    assertNotNull(request.getQuerySpec().getStartTime());
-                    final long startSeconds = request.getQuerySpec().getStartTime().getEpochSeconds();
+                assertTrue(request.getQuerySpec().getPvNamesCount() > 0);
+                for (String columnName : request.getQuerySpec().getPvNamesList()) {
+                    assertNotNull(request.getQuerySpec().getBeginTime());
+                    final long startSeconds = request.getQuerySpec().getBeginTime().getEpochSeconds();
                     assertNotNull(request.getQuerySpec().getEndTime());
                     final long endSeconds = request.getQuerySpec().getEndTime().getEpochSeconds();
                     final int numSeconds = (int) (endSeconds - startSeconds);
@@ -322,14 +321,14 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             }
         }
 
-        protected void onResponse(QueryResponse response) {
+        protected void onResponse(QueryDataResponse response) {
 
             assertNotNull(response.getResponseTime() != null);
             assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-            assertTrue(response.hasQueryReport());
-            final QueryResponse.QueryReport report = response.getQueryReport();
-            assertTrue(report.hasBucketData());
-            final QueryResponse.QueryReport.BucketData queryData = report.getBucketData();
+            assertTrue(response.hasQueryResult());
+            final QueryDataResponse.QueryResult result = response.getQueryResult();
+            assertTrue(result.hasQueryData());
+            final QueryDataResponse.QueryResult.QueryData queryData = result.getQueryData();
 
             responseCount.incrementAndGet();
 
@@ -337,7 +336,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             try {
                 // verify buckets in response
                 assertTrue(queryData.getDataBucketsCount() > 0);
-                for (QueryResponse.QueryReport.BucketData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (QueryDataResponse.QueryResult.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
 
                     assertTrue(bucket.hasDataColumn());
                     final DataColumn dataColumn = bucket.getDataColumn();
@@ -348,21 +347,21 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     for (int i = 0 ; i < INGESTION_NUM_ROWS ; ++i) {
                         final DataValue dataValue = dataColumn.getDataValues(i);
                         assertNotNull(dataValue);
-                        final double actualValue = dataValue.getFloatValue();
+                        final double actualValue = dataValue.getDoubleValue();
                         assertNotNull(actualValue);
                         final double expectedValue = i + (double) i / INGESTION_NUM_ROWS;
                         assertEquals(
                                 "value mismatch: " + dataValue + " expected: " + actualValue,
                                 expectedValue, actualValue, 0.0);
                     }
-                    assertNotNull(bucket.getSamplingInterval());
-                    assertNotNull(bucket.getSamplingInterval().getStartTime());
-                    assertTrue(bucket.getSamplingInterval().getStartTime().getEpochSeconds() > 0);
-                    assertNotNull(bucket.getSamplingInterval().getSampleIntervalNanos());
-                    assertTrue(bucket.getSamplingInterval().getSampleIntervalNanos() > 0);
-                    assertNotNull(bucket.getSamplingInterval().getNumSamples());
-                    assertTrue(bucket.getSamplingInterval().getNumSamples() == INGESTION_NUM_ROWS);
-                    final long bucketSeconds = bucket.getSamplingInterval().getStartTime().getEpochSeconds();
+                    assertNotNull(bucket.getSamplingClock());
+                    assertNotNull(bucket.getSamplingClock().getStartTime());
+                    assertTrue(bucket.getSamplingClock().getStartTime().getEpochSeconds() > 0);
+                    assertNotNull(bucket.getSamplingClock().getPeriodNanos());
+                    assertTrue(bucket.getSamplingClock().getPeriodNanos() > 0);
+                    assertNotNull(bucket.getSamplingClock().getCount());
+                    assertTrue(bucket.getSamplingClock().getCount() == INGESTION_NUM_ROWS);
+                    final long bucketSeconds = bucket.getSamplingClock().getStartTime().getEpochSeconds();
                     final int bucketIndex = (int) (bucketSeconds - params.startSeconds);
                     final boolean[] columnBucketArray = columnBucketMap.get(columnName);
                     assertNotNull("response contains unexpected bucket", columnBucketArray);
@@ -401,26 +400,26 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
     }
 
-    private static class IntegrationTestQueryResponseCursorApp extends BenchmarkQueryResponseCursor {
+    private static class IntegrationTestQueryResponseCursorApp extends BenchmarkQueryDataBidiStream {
 
         private static class IntegrationTestQueryResponseCursorTask
-                extends BenchmarkQueryResponseCursor.QueryResponseCursorTask
+                extends BenchmarkQueryDataBidiStream.QueryResponseCursorTask
         {
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseCursorTask(Channel channel, QueryTaskParams params
+            public IntegrationTestQueryResponseCursorTask(Channel channel, QueryDataRequestTaskParams params
             ) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
             }
 
             @Override
-            protected void onRequest(QueryRequest request) {
+            protected void onRequest(QueryDataRequest request) {
                 helper.onRequest(request);
             }
 
             @Override
-            protected void onResponse(QueryResponse response) {
+            protected void onResponse(QueryDataResponse response) {
                 helper.onResponse(response);
             }
 
@@ -433,32 +432,32 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         @Override
         protected QueryResponseCursorTask newQueryTask(
-                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+                Channel channel, QueryDataRequestTaskParams params
         ) {
             return new IntegrationTestQueryResponseCursorTask(channel, params);
         }
 
     }
 
-    private static class IntegrationTestQueryResponseStreamApp extends BenchmarkQueryResponseStream {
+    private static class IntegrationTestQueryResponseStreamApp extends BenchmarkQueryDataStream {
 
         private static class IntegrationTestQueryResponseStreamTask
-                extends BenchmarkQueryResponseStream.QueryResponseStreamTask {
+                extends BenchmarkQueryDataStream.QueryResponseStreamTask {
 
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseStreamTask(Channel channel, QueryTaskParams params) {
+            public IntegrationTestQueryResponseStreamTask(Channel channel, QueryDataRequestTaskParams params) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
             }
 
             @Override
-            protected void onRequest(QueryRequest request) {
+            protected void onRequest(QueryDataRequest request) {
                 helper.onRequest(request);
             }
 
             @Override
-            protected void onResponse(QueryResponse response) {
+            protected void onResponse(QueryDataResponse response) {
                 helper.onResponse(response);
             }
 
@@ -471,31 +470,31 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         @Override
         protected QueryResponseStreamTask newQueryTask(
-                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+                Channel channel, QueryDataRequestTaskParams params
         ) {
             return new IntegrationTestQueryResponseStreamTask(channel, params);
         }
     }
 
-    private static class IntegrationTestQueryResponseSingleApp extends BenchmarkQueryResponseSingle {
+    private static class IntegrationTestQueryResponseSingleApp extends BenchmarkQueryDataUnary {
 
         private static class IntegrationTestQueryResponseSingleTask
-                extends BenchmarkQueryResponseSingle.QueryResponseSingleTask {
+                extends BenchmarkQueryDataUnary.QueryResponseSingleTask {
 
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseSingleTask(Channel channel, QueryTaskParams params) {
+            public IntegrationTestQueryResponseSingleTask(Channel channel, QueryDataRequestTaskParams params) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
             }
 
             @Override
-            protected void onRequest(QueryRequest request) {
+            protected void onRequest(QueryDataRequest request) {
                 helper.onRequest(request);
             }
 
             @Override
-            protected void onResponse(QueryResponse response) {
+            protected void onResponse(QueryDataResponse response) {
                 helper.onResponse(response);
             }
 
@@ -507,44 +506,44 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         @Override
         protected IntegrationTestQueryResponseSingleTask newQueryTask(
-                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+                Channel channel, QueryDataRequestTaskParams params
         ) {
             return new IntegrationTestQueryResponseSingleTask(channel, params);
         }
     }
 
-    private static class IntegrationTestQueryResponseTableApp extends BenchmarkQueryResponseTable {
+    private static class IntegrationTestQueryResponseTableApp extends BenchmarkQueryDataTable {
 
         private static class IntegrationTestQueryResponseTableTask
-                extends BenchmarkQueryResponseTable.QueryResponseTableTask {
+                extends BenchmarkQueryDataTable.QueryResponseTableTask {
 
-            public IntegrationTestQueryResponseTableTask(Channel channel, QueryTaskParams params) {
+            public IntegrationTestQueryResponseTableTask(Channel channel, QueryDataRequestTaskParams params) {
                 super(channel, params);
             }
 
             @Override
-            protected void onRequest(QueryRequest request) {
+            protected void onRequest(QueryDataRequest request) {
                 // nothing to do for validating requests since we are maintaining a data structure with request info
             }
 
             @Override
-            protected void onResponse(QueryResponse response) {
+            protected void onResponse(QueryTableResponse response) {
 
                 // check that message contains a table response
                 assertNotNull(response.getResponseTime() != null);
                 assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-                assertTrue(response.hasQueryReport());
-                final QueryResponse.QueryReport report = response.getQueryReport();
-                assertTrue(report.hasDataTable());
-                final DataTable dataTable = report.getDataTable();
+                assertTrue(response.hasQueryResult());
+                final QueryTableResponse.QueryResult queryResult = response.getQueryResult();
+                assertTrue(queryResult.hasTableResult());
+                final QueryTableResponse.QueryResult.TableResult tableResult = queryResult.getTableResult();
                 final List<String> columnNames = params.columnNames;
-                assertEquals(columnNames.size(), dataTable.getDataColumnsCount());
+                assertEquals(columnNames.size(), tableResult.getDataColumnsCount());
 
                 // validate timestamp list
                 long secondsCurrent = params.startSeconds;
                 long nanosCurrent = 0L;
-                final List<Timestamp> timestampList = dataTable.getDataTimeSpec().getTimestampList().getTimestampsList();
-
+                final List<Timestamp> timestampList =
+                        tableResult.getDataTimestamps().getTimestampList().getTimestampsList();
 
                 for (Timestamp timestamp : timestampList) {
 
@@ -563,11 +562,11 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
                 // validate columns
                 int valueIndex = 0;
-                for (DataColumn dataColumn : dataTable.getDataColumnsList()) {
+                for (DataColumn dataColumn : tableResult.getDataColumnsList()) {
                     assertTrue(columnNames.contains(dataColumn.getName()));
                     for (DataValue dataValue : dataColumn.getDataValuesList()) {
                         final double expectedValue = valueIndex + (double) valueIndex / INGESTION_NUM_ROWS;
-                        assertEquals(expectedValue, dataValue.getFloatValue(), 0.0);
+                        assertEquals(expectedValue, dataValue.getDoubleValue(), 0.0);
                         valueIndex = valueIndex + 1;
                         if (valueIndex == 1000) {
                             // column values start over at 0 every second (every 1000 values)
@@ -585,7 +584,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         @Override
         protected IntegrationTestQueryResponseTableTask newQueryTask(
-                Channel channel, QueryBenchmarkBase.QueryTaskParams params
+                Channel channel, QueryDataRequestTaskParams params
         ) {
             return new IntegrationTestQueryResponseTableTask(channel, params);
         }

@@ -23,13 +23,13 @@ public class IngestionTestBase {
 
     public static enum IngestionDataType {
         STRING,
-        FLOAT,
+        DOUBLE,
         INT,
         BYTE_ARRAY,
         BOOLEAN,
         IMAGE,
         STRUCTURE,
-        ARRAY_FLOAT
+        ARRAY_DOUBLE
     }
 
     /**
@@ -234,7 +234,7 @@ public class IngestionTestBase {
                         case STRING -> {
                             dataValue = DataValue.newBuilder().setStringValue((String) value).build();
                         }
-                        case FLOAT -> {
+                        case DOUBLE -> {
                             dataValue = DataValue.newBuilder().setDoubleValue((Double) value).build();
                         }
                         case INT -> {
@@ -249,7 +249,7 @@ public class IngestionTestBase {
                         }
                         case STRUCTURE -> {
                         }
-                        case ARRAY_FLOAT -> {
+                        case ARRAY_DOUBLE -> {
                             List<Double> doubleList = (List<Double>) value;
                             Array.Builder arrayBuilder = Array.newBuilder();
                             for (Double doubleValue : doubleList) {

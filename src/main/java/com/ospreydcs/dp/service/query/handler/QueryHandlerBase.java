@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 
 import java.util.List;
@@ -9,23 +9,23 @@ import java.util.stream.Collectors;
 
 public abstract class QueryHandlerBase {
 
-    public ValidationResult validateQuerySpec(QueryRequest.QuerySpec querySpec) {
+    public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
 
-        final List<String> columnNames = querySpec.getColumnNamesList();
-        final Timestamp startTime = querySpec.getStartTime();
+        final List<String> pvNamesList = querySpec.getPvNamesList();
+        final Timestamp beginTime = querySpec.getBeginTime();
         final Timestamp endTime = querySpec.getEndTime();
-        final long startSeconds = startTime.getEpochSeconds();
-        final long startNanos = startTime.getNanoseconds();
+        final long startSeconds = beginTime.getEpochSeconds();
+        final long startNanos = beginTime.getNanoseconds();
         final long endSeconds = endTime.getEpochSeconds();
         final long endNanos = endTime.getNanoseconds();
 
         // check that columnNames list is specified
-        if (columnNames == null || columnNames.isEmpty()) {
+        if (pvNamesList == null || pvNamesList.isEmpty()) {
             return new ValidationResult(true, "columnName must be specified");
         }
 
         // check that all columnNames are non-empty strings
-        List<String> emptyColumnNames = columnNames.stream()
+        List<String> emptyColumnNames = pvNamesList.stream()
                 .filter(name -> name.isBlank())
                 .collect(Collectors.toList());
         if (!emptyColumnNames.isEmpty()) {
@@ -33,7 +33,7 @@ public abstract class QueryHandlerBase {
         }
 
         // check that startTime is specified
-        if (startTime == null || startTime.getEpochSeconds() == 0) {
+        if (beginTime == null || beginTime.getEpochSeconds() == 0) {
             return new ValidationResult(true, "startTime must be specified");
         }
 

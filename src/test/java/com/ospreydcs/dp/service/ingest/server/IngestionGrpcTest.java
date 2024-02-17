@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.server;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
+import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -85,27 +85,27 @@ public class IngestionGrpcTest extends IngestionTestBase {
          * @param requestList
          * @return
          */
-        protected List<IngestionResponse> sendIngestionRequestStream(
-                List<IngestionRequest> requestList,
+        protected List<IngestDataResponse> sendIngestionRequestStream(
+                List<IngestDataRequest> requestList,
                 int numResponsesExpected) {
 
             System.out.println("sendIngestionRequestStream requestList size: "
                     + requestList.size() + " responses expected: " + numResponsesExpected);
 
-            List<IngestionResponse> responseList = new ArrayList<>();
+            List<IngestDataResponse> responseList = new ArrayList<>();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             /**
              * Implements StreamObserver interface for handling the API's response stream.
              */
-            StreamObserver<IngestionResponse> responseObserver = new StreamObserver<IngestionResponse>() {
+            StreamObserver<IngestDataResponse> responseObserver = new StreamObserver<IngestDataResponse>() {
 
                 /**
                  * Adds response to the list of responses for the API stream.
                  * @param response
                  */
                 @Override
-                public void onNext(IngestionResponse response) {
+                public void onNext(IngestDataResponse response) {
                     System.out.println("sendIngestionRequestStream.responseObserver.onNext");
                     responseList.add(response);
                 }
@@ -133,9 +133,9 @@ public class IngestionGrpcTest extends IngestionTestBase {
 
             // send each request in a new stream
 //        List<IngestionResponse> responseList = new ArrayList<>();
-            for (IngestionRequest request : requestList) {
+            for (IngestDataRequest request : requestList) {
 //            IngestionResponseObserver responseObserver = new IngestionResponseObserver(numResponsesExpected);
-                StreamObserver<IngestionRequest> requestObserver = asyncStub.streamingIngestion(responseObserver);
+                StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataStream(responseObserver);
                 requestObserver.onNext(request);
                 requestObserver.onCompleted();
                 try {
@@ -223,25 +223,25 @@ public class IngestionGrpcTest extends IngestionTestBase {
                         1_000_000L,
                         1,
                         columnNames,
-                        IngestionTestBase.IngestionDataType.FLOAT,
+                        IngestionTestBase.IngestionDataType.DOUBLE,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
-        List<IngestionRequest> requests = Arrays.asList(request);
+        IngestDataRequest request = buildIngestionRequest(params);
+        List<IngestDataRequest> requests = Arrays.asList(request);
 
         // send request and examine response
-        List<IngestionResponse> responses = client.sendIngestionRequestStream(requests, 1);
+        List<IngestDataResponse> responses = client.sendIngestionRequestStream(requests, 1);
         assertTrue("size mismatch between lists of requests and responses", responses.size() == requests.size());
-        IngestionResponse response = responses.get(0);
+        IngestDataResponse response = responses.get(0);
         assertTrue("providerId not set", response.getProviderId() == providerId);
         assertTrue("requestId not set", response.getClientRequestId().equals(requestId));
         assertTrue("responseType not set", response.getResponseType() == ResponseType.REJECT_RESPONSE);
         assertTrue("response time not set", response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set", response.hasRejectDetails());
+        assertTrue("response details not set", response.hasRejectionDetails());
         assertTrue("reject reason not set",
-                response.getRejectDetails().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                response.getRejectionDetails().getReason() == RejectionDetails.Reason.INVALID_REQUEST_REASON);
         assertTrue(
                 "reject message not set",
-                response.getRejectDetails().getMessage().equals("name must be specified for all data columns"));
+                response.getRejectionDetails().getMessage().equals("name must be specified for all data columns"));
     }
 
     /**
@@ -252,7 +252,7 @@ public class IngestionGrpcTest extends IngestionTestBase {
 
         System.out.println("test02SendValidIngestionRequestStream");
 
-        List<IngestionRequest> requests = new ArrayList<>();
+        List<IngestDataRequest> requests = new ArrayList<>();
 
         // assemble request
         int providerId = 1;
@@ -274,13 +274,13 @@ public class IngestionGrpcTest extends IngestionTestBase {
                         1_000_000L,
                         numSamples,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
         requests.add(request);
 
         // send request
-        List<IngestionResponse> responseList = client.sendIngestionRequestStream(requests, 1);
+        List<IngestDataResponse> responseList = client.sendIngestionRequestStream(requests, 1);
 
         // check response
         final int numResponses = 1;
@@ -289,7 +289,7 @@ public class IngestionGrpcTest extends IngestionTestBase {
                 responseList.size() == numResponses);
 
         // check ack
-        IngestionResponse ackResponse = responseList.get(0);
+        IngestDataResponse ackResponse = responseList.get(0);
         assertTrue("providerId not set", ackResponse.getProviderId() == providerId);
         assertTrue("requestId not set", ackResponse.getClientRequestId().equals(requestId));
         assertTrue("responseType not set", ackResponse.getResponseType() == ResponseType.ACK_RESPONSE);

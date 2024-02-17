@@ -1,22 +1,18 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
-import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.DoubleBucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
-import io.opencensus.metrics.export.Distribution;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.BsonDocument;
-import org.bson.BsonString;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
@@ -24,8 +20,6 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.regex.Pattern;
 
-import static com.mongodb.client.model.Accumulators.last;
-import static com.mongodb.client.model.Accumulators.sum;
 import static com.mongodb.client.model.Aggregates.group;
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Indexes.ascending;
@@ -34,10 +28,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private static final Logger logger = LogManager.getLogger();
 
-    @Override
-    public MongoCursor<BucketDocument> executeQuery(QueryRequest.QuerySpec querySpec) {
+    public MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec) {
 
-        final Date startTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getStartTime());
+        final Date startTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getBeginTime());
         final Date endTimeDate = GrpcUtility.dateFromTimestamp(querySpec.getEndTime());
 
         // snippet to get query plan
@@ -45,12 +38,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 //        List<String> keys = Arrays.asList("queryPlanner", "winningPlan");
 //        System.out.println(explanation.getEmbedded(keys, Document.class).toJson());
 
-        final long startTimeSeconds = querySpec.getStartTime().getEpochSeconds();
-        final long startTimeNanos = querySpec.getStartTime().getNanoseconds();
+        final long startTimeSeconds = querySpec.getBeginTime().getEpochSeconds();
+        final long startTimeNanos = querySpec.getBeginTime().getNanoseconds();
         final long endTimeSeconds = querySpec.getEndTime().getEpochSeconds();
         final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
-        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, querySpec.getColumnNamesList());
+        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, querySpec.getPvNamesList());
         final Bson endTimeFilter =
                 or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
                 and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
@@ -61,7 +54,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                 gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
         final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
 
-        logger.debug("executing query columns: " + querySpec.getColumnNamesList()
+        logger.debug("executing query columns: " + querySpec.getPvNamesList()
                 + " startSeconds: " + startTimeSeconds
                 + " endSeconds: " + endTimeSeconds);
 
@@ -76,15 +69,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<Document> getColumnInfo(QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec) {
+    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec) {
 
         Bson columnNameFilter;
-        if (columnInfoQuerySpec.hasColumnNameList()) {
+        if (querySpec.hasPvNameList()) {
             columnNameFilter =
                     in(BsonConstants.BSON_KEY_BUCKET_NAME,
-                            columnInfoQuerySpec.getColumnNameList().getColumnNamesList());
+                            querySpec.getPvNameList().getPvNamesList());
         } else {
-            final String columnNamePatternString = columnInfoQuerySpec.getColumnNamePattern().getPattern();
+            final String columnNamePatternString = querySpec.getPvNamePattern().getPattern();
             final Pattern columnNamePattern = Pattern.compile(columnNamePatternString, Pattern.CASE_INSENSITIVE);
             columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, columnNamePattern);
         }

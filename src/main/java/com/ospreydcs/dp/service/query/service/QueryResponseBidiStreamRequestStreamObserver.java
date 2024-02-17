@@ -1,28 +1,26 @@
 package com.ospreydcs.dp.service.query.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.interfaces.ResultCursorInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QueryResponseCursorRequestStreamObserver implements StreamObserver<QueryRequest> {
+public class QueryResponseBidiStreamRequestStreamObserver implements StreamObserver<QueryDataRequest> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     private final QueryServiceImpl serviceImpl;
-    private final StreamObserver<QueryResponse> responseObserver;
+    private final StreamObserver<QueryDataResponse> responseObserver;
     private final QueryHandlerInterface handler;
     private ResultCursorInterface cursor = null;
 
-    public QueryResponseCursorRequestStreamObserver(
-            StreamObserver<QueryResponse> responseObserver,
+    public QueryResponseBidiStreamRequestStreamObserver(
+            StreamObserver<QueryDataResponse> responseObserver,
             QueryHandlerInterface handler,
             QueryServiceImpl serviceImpl
     ) {
@@ -38,7 +36,7 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
     }
 
     @Override
-    public void onNext(QueryRequest request) {
+    public void onNext(QueryDataRequest request) {
 
         // handling depends on type of request
         switch (request.getRequestCase()) {
@@ -47,19 +45,19 @@ public class QueryResponseCursorRequestStreamObserver implements StreamObserver<
                 // handle new query spec
 
                 // log and validate request
-                QueryRequest.QuerySpec querySpec =
-                        serviceImpl.validateRequest(QueryServiceImpl.REQUEST_CURSOR, request, responseObserver);
+                QueryDataRequest.QuerySpec querySpec =
+                        serviceImpl.validateQueryDataRequest(QueryServiceImpl.REQUEST_CURSOR, request, responseObserver);
 
                 // handle new query request
                 if (querySpec != null) {
-                    this.cursor = handler.handleQueryResponseCursor(querySpec, responseObserver);
+                    this.cursor = handler.handleQueryDataBidiStream(querySpec, responseObserver);
                 }
             }
 
             case CURSOROP -> {
                 // handle cursor operation on query result
 
-                switch (request.getCursorOp()) {
+                switch (request.getCursorOp().getCursorOperationType()) {
 
                     case CURSOR_OP_NEXT -> {
                         logger.trace("handling cursor operation: CURSOR_OP_NEXT");

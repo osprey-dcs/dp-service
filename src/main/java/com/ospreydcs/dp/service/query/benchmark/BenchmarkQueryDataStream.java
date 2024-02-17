@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import io.grpc.Channel;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -13,30 +13,39 @@ import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-public class BenchmarkQueryResponseSingle extends QueryBenchmarkBase {
+public class BenchmarkQueryDataStream extends QueryBenchmarkBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    public static class QueryResponseSingleTask extends QueryTask {
+    public static class QueryResponseStreamTask extends QueryDataResponseTask {
 
-        public QueryResponseSingleTask(Channel channel, QueryTaskParams params) {
+        public QueryResponseStreamTask(Channel channel, QueryDataRequestTaskParams params) {
             super(channel, params);
         }
 
         public QueryTaskResult call() {
-            QueryTaskResult result = sendQueryResponseSingle(this.channel, this.params);
+            QueryTaskResult result = sendQueryResponseStream(this.channel, this.params);
             return result;
         }
 
-        private QueryTaskResult sendQueryResponseSingle(
+        private QueryTaskResult sendQueryResponseStream(
                 Channel channel,
-                QueryTaskParams params) {
+                QueryDataRequestTaskParams params) {
 
             final int streamNumber = params.streamNumber;
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
-            QueryRequest request = buildQueryRequest(params);
+            boolean success = true;
+            String msg = "";
+            long dataValuesReceived = 0;
+            long dataBytesReceived = 0;
+            long grpcBytesReceived = 0;
+            int numBucketsReceived = 0;
+            int numResponsesReceived = 0;
+
+            // build query request
+            final QueryDataRequest request = buildQueryDataRequest(params);
 
             // call hook for subclasses to validate request
             try {
@@ -48,12 +57,12 @@ public class BenchmarkQueryResponseSingle extends QueryBenchmarkBase {
             }
 
             // create observer for api response stream
-            final BucketQueryResponseObserver responseObserver =
-                    new BucketQueryResponseObserver(streamNumber, params, finishLatch, this);
+            final QueryDataResponseObserver responseObserver =
+                    new QueryDataResponseObserver(streamNumber, params, finishLatch, this);
 
-            // invoke api
+            // create observer for api request stream and invoke api
             final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
-            asyncStub.queryResponseSingle(request, responseObserver);
+            asyncStub.queryDataStream(request, responseObserver);
 
             // wait for completion of response stream
             try {
@@ -90,10 +99,11 @@ public class BenchmarkQueryResponseSingle extends QueryBenchmarkBase {
                 return new QueryTaskResult(false, 0, 0, 0);
             }
         }
+
     }
 
-    protected QueryResponseSingleTask newQueryTask(Channel channel, QueryTaskParams params) {
-        return new QueryResponseSingleTask(channel, params);
+    protected QueryResponseStreamTask newQueryTask(Channel channel, QueryDataRequestTaskParams params) {
+        return new QueryResponseStreamTask(channel, params);
     }
 
     public static void main(final String[] args) {
@@ -114,15 +124,15 @@ public class BenchmarkQueryResponseSingle extends QueryBenchmarkBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        BenchmarkQueryResponseSingle benchmark = new BenchmarkQueryResponseSingle();
+        BenchmarkQueryDataStream benchmark = new BenchmarkQueryDataStream();
 
-        final int[] totalNumPvsArray = {10, /*100, 500, 1000*/};
-        final int[] numPvsPerRequestArray = {/*1,*/ 1/*, 25, 50*/};
-        final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
+//        final int[] totalNumPvsArray = {100, 500, 1000};
+//        final int[] numPvsPerRequestArray = {1, 10, 25, 50};
+//        final int[] numThreadsArray = {1, 3, 5, 7};
 
-//        final int[] totalNumPvsArray = {1000};
-//        final int[] numPvsPerRequestArray = {10};
-//        final int[] numThreadsArray = {5};
+        final int[] totalNumPvsArray = {1000};
+        final int[] numPvsPerRequestArray = {10};
+        final int[] numThreadsArray = {5};
 
         benchmark.queryExperiment(
                 channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);

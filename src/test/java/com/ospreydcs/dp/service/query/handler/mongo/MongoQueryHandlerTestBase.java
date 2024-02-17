@@ -3,16 +3,17 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseStreamDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.job.QueryJob;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.DataResponseBidiStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.DataResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import io.grpc.stub.StreamObserver;
 
 import java.time.Instant;
@@ -78,15 +79,15 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         clientTestInterface = null;
     }
 
-    protected List<QueryResponse> executeAndDispatchResponseStream(QueryRequest request) {
+    protected List<QueryDataResponse> executeAndDispatchResponseStream(QueryDataRequest request) {
 
-        List<QueryResponse> responseList = new ArrayList<>();
+        List<QueryDataResponse> responseList = new ArrayList<>();
 
         // create observer for api response stream
-        StreamObserver<QueryResponse> responseObserver = new StreamObserver<QueryResponse>() {
+        StreamObserver<QueryDataResponse> responseObserver = new StreamObserver<QueryDataResponse>() {
 
             @Override
-            public void onNext(QueryResponse queryDataResponse) {
+            public void onNext(QueryDataResponse queryDataResponse) {
                 System.out.println("responseObserver.onNext");
                 responseList.add(queryDataResponse);
             }
@@ -103,35 +104,35 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
-        final ResponseStreamDispatcher dispatcher = new ResponseStreamDispatcher(responseObserver);
-        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final DataResponseStreamDispatcher dispatcher = new DataResponseStreamDispatcher(responseObserver);
+        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         return responseList;
     }
 
-    private class ResponseCursorStreamObserver implements StreamObserver<QueryResponse> {
+    private class ResponseCursorStreamObserver implements StreamObserver<QueryDataResponse> {
 
-        private ResponseCursorDispatcher dispatcher = null;
+        private DataResponseBidiStreamDispatcher dispatcher = null;
         final CountDownLatch finishLatch;
-        final List<QueryResponse> responseList;
+        final List<QueryDataResponse> responseList;
 
-        public ResponseCursorStreamObserver(CountDownLatch finishLatch, List<QueryResponse> responseList) {
+        public ResponseCursorStreamObserver(CountDownLatch finishLatch, List<QueryDataResponse> responseList) {
             this.finishLatch = finishLatch;
             this.responseList = responseList;
         }
 
-        public void setDispatcher(ResponseCursorDispatcher dispatcher) {
+        public void setDispatcher(DataResponseBidiStreamDispatcher dispatcher) {
             this.dispatcher = dispatcher;
         }
 
         @Override
-        public void onNext(QueryResponse queryDataResponse) {
+        public void onNext(QueryDataResponse queryDataResponse) {
             System.out.println("responseObserver.onNext");
             if (queryDataResponse.getResponseType() != ResponseType.DETAIL_RESPONSE) {
                 System.out.println("unexpected response type: " + queryDataResponse.getResponseType().name());
                 if (queryDataResponse.getResponseType() == ResponseType.ERROR_RESPONSE) {
-                    System.out.println("response error msg: " + queryDataResponse.getQueryReport().getQueryStatus().getStatusMessage());
+                    System.out.println("response error msg: " + queryDataResponse.getQueryResult().getQueryStatus().getStatusMessage());
                 }
                 finishLatch.countDown();
             } else {
@@ -154,18 +155,18 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         }
     }
 
-    protected List<QueryResponse> executeAndDispatchResponseCursor(QueryRequest request) {
+    protected List<QueryDataResponse> executeAndDispatchResponseCursor(QueryDataRequest request) {
 
-        List<QueryResponse> responseList = new ArrayList<>();
+        List<QueryDataResponse> responseList = new ArrayList<>();
         final CountDownLatch finishLatch = new CountDownLatch(1);
 
         // create observer for api response stream
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
-        final ResponseCursorDispatcher dispatcher = new ResponseCursorDispatcher(responseObserver);
+        final DataResponseBidiStreamDispatcher dispatcher = new DataResponseBidiStreamDispatcher(responseObserver);
         responseObserver.setDispatcher(dispatcher);
-        final QueryJob job = new QueryJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         // check if RPC already completed
@@ -195,52 +196,52 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         // create request with unspecified column name
         List<String> columnNames = List.of("pv_1", "pv_2");
         Long nowSeconds = Instant.now().getEpochSecond();
-        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 columnNames,
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
+        List<QueryDataResponse> responseList = executeAndDispatchResponseStream(request);
 
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
-        QueryResponse response = responseList.get(0);
+        QueryDataResponse response = responseList.get(0);
         assertTrue(response.getResponseType() == ResponseType.STATUS_RESPONSE);
-        assertTrue(response.hasQueryReport());
-        assertTrue(response.getQueryReport().hasQueryStatus());
-        QueryResponse.QueryReport.QueryStatus status = response.getQueryReport().getQueryStatus();
-        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
+        assertTrue(response.hasQueryResult());
+        assertTrue(response.getQueryResult().hasQueryStatus());
+        QueryStatus status = response.getQueryResult().getQueryStatus();
+        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
     }
 
     private static void verifyDataBucket(
-            QueryResponse.QueryReport.BucketData.DataBucket bucket,
+            QueryDataResponse.QueryResult.QueryData.DataBucket bucket,
             long bucketStartSeconds,
             long bucketStartNanos,
             long bucketSampleIntervalNanos,
             int bucketNumSamples,
             String bucketColumnName) {
 
-        assertTrue(bucket.hasSamplingInterval());
-        assertTrue(bucket.getSamplingInterval().getStartTime().getEpochSeconds() == bucketStartSeconds);
-        assertTrue(bucket.getSamplingInterval().getStartTime().getNanoseconds() == bucketStartNanos);
-        assertTrue(bucket.getSamplingInterval().getSampleIntervalNanos() == bucketSampleIntervalNanos);
-        assertTrue(bucket.getSamplingInterval().getNumSamples() == bucketNumSamples);
+        assertTrue(bucket.hasSamplingClock());
+        assertTrue(bucket.getSamplingClock().getStartTime().getEpochSeconds() == bucketStartSeconds);
+        assertTrue(bucket.getSamplingClock().getStartTime().getNanoseconds() == bucketStartNanos);
+        assertTrue(bucket.getSamplingClock().getPeriodNanos() == bucketSampleIntervalNanos);
+        assertTrue(bucket.getSamplingClock().getCount() == bucketNumSamples);
         assertTrue(bucket.hasDataColumn());
         DataColumn bucketColumn = bucket.getDataColumn();
         assertTrue(bucketColumn.getName().equals(bucketColumnName));
         assertTrue(bucketColumn.getDataValuesCount() == bucketNumSamples);
         for (int valueIndex = 0 ; valueIndex < bucketColumn.getDataValuesCount() ; valueIndex++) {
             DataValue dataValue = bucketColumn.getDataValues(valueIndex);
-            assertEquals((double) valueIndex, dataValue.getFloatValue(), 0);
+            assertEquals((double) valueIndex, dataValue.getDoubleValue(), 0);
         }
     }
 
-    private static void verifyQueryResponse(List<QueryResponse> responseList) {
+    private static void verifyQueryResponse(List<QueryDataResponse> responseList) {
 
         // examine response
         final int numResponesesExpected = 1;
@@ -249,13 +250,13 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         // check data message
         final int numSamplesPerBucket = 10;
         final long bucketSampleIntervalNanos = 100_000_000L;
-        QueryResponse dataResponse = responseList.get(0);
+        QueryDataResponse dataResponse = responseList.get(0);
         assertTrue(dataResponse.getResponseType() == ResponseType.DETAIL_RESPONSE);
-        assertTrue(dataResponse.hasQueryReport());
-        assertTrue(dataResponse.getQueryReport().hasBucketData());
-        QueryResponse.QueryReport.BucketData queryData = dataResponse.getQueryReport().getBucketData();
+        assertTrue(dataResponse.hasQueryResult());
+        assertTrue(dataResponse.getQueryResult().hasQueryData());
+        QueryDataResponse.QueryResult.QueryData queryData = dataResponse.getQueryResult().getQueryData();
         assertEquals(numSamplesPerBucket, queryData.getDataBucketsCount());
-        List<QueryResponse.QueryReport.BucketData.DataBucket> bucketList = queryData.getDataBucketsList();
+        List<QueryDataResponse.QueryResult.QueryData.DataBucket> bucketList = queryData.getDataBucketsList();
 
         // check each bucket, 5 for each column
         int secondsIncrement = 0;
@@ -281,16 +282,16 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // assemble query request
         List<String> columnNames = List.of(COL_1_NAME, COL_2_NAME);
-        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 columnNames,
                 startSeconds,
                 0L,
                 startSeconds + 5,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch result using ResponseStreamDispatcher
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
+        List<QueryDataResponse> responseList = executeAndDispatchResponseStream(request);
 
         // examine response
         verifyQueryResponse(responseList);
@@ -300,16 +301,16 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // assemble query request
         List<String> columnNames = List.of(COL_1_NAME, COL_2_NAME);
-        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 columnNames,
                 startSeconds,
                 0L,
                 startSeconds + 5,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch using ResponseCursorDispatcher
-        List<QueryResponse> responseList = executeAndDispatchResponseCursor(request);
+        List<QueryDataResponse> responseList = executeAndDispatchResponseCursor(request);
 
         // examine response
         verifyQueryResponse(responseList);

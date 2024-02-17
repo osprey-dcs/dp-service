@@ -1,10 +1,10 @@
 package com.ospreydcs.dp.service.ingest.service;
 
+import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.junit.Test;
@@ -70,12 +70,12 @@ public class IngestionServiceImplTest extends IngestionTestBase {
                         1_000_000L,
                         numSamples,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // test ingestionResponseAck
-        IngestionResponse response = serviceImpl.ingestionResponseAck(request);
+        IngestDataResponse response = serviceImpl.ingestionResponseAck(request);
         assertTrue("providerId not set", response.getProviderId() == providerId);
         assertTrue("requestId not set", response.getClientRequestId().equals(requestId));
         assertTrue("responseType not set", response.getResponseType() == ResponseType.ACK_RESPONSE);
@@ -110,14 +110,14 @@ public class IngestionServiceImplTest extends IngestionTestBase {
                         1_000_000L,
                         numSamples,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // test ingestionResponseRejectInvalid
         String msg = "test";
-        IngestionResponse response =
-                serviceImpl.ingestionResponseReject(request, msg, RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+        IngestDataResponse response =
+                serviceImpl.ingestionResponseReject(request, msg, RejectionDetails.Reason.INVALID_REQUEST_REASON);
         assertTrue("providerId not set",
                 response.getProviderId() == providerId);
         assertTrue("requestId not set",
@@ -127,11 +127,11 @@ public class IngestionServiceImplTest extends IngestionTestBase {
         assertTrue("response time not set",
                 response.getResponseTime().getEpochSeconds() > 0);
         assertTrue("response details not set",
-                response.hasRejectDetails());
+                response.hasRejectionDetails());
         assertTrue("reject reason not set",
-                response.getRejectDetails().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
+                response.getRejectionDetails().getReason() == RejectionDetails.Reason.INVALID_REQUEST_REASON);
         assertTrue("reject message not set",
-                response.getRejectDetails().getMessage().equals(msg));
+                response.getRejectionDetails().getMessage().equals(msg));
     }
 
 }

@@ -2,10 +2,10 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
-import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -36,7 +36,7 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
         }
 
         @Override
-        public MongoCursor<BucketDocument> executeQuery(QueryRequest.QuerySpec querySpec) {
+        public MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec) {
             // THIS IS KEY FOR THE TEST CASE.
             // THE NULL CURSOR returned by this method triggers the error response condition from the handler!
             return null;
@@ -62,29 +62,29 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
         String col1Name = columnNameBase + "1";
         String col2Name = columnNameBase + "2";
         List<String> columnNames = List.of(col1Name, col2Name);
-        QueryTestBase.QueryRequestParams params = new QueryTestBase.QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 columnNames,
                 startSeconds,
                 0L,
                 startSeconds + 5,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request
         final int numResponesesExpected = 1;
 
         // WE EXPECT processQueryRequest to trigger an error response from the handler since
         // ErrorTestClient.executeQuery RETURNS A NULL CURSOR.
-        List<QueryResponse> responseList = executeAndDispatchResponseStream(request);
+        List<QueryDataResponse> responseList = executeAndDispatchResponseStream(request);
 
         // examine response
         assertEquals(numResponesesExpected, responseList.size());
-        QueryResponse summaryResponse = responseList.get(0);
+        QueryDataResponse summaryResponse = responseList.get(0);
         assertEquals(ResponseType.ERROR_RESPONSE, summaryResponse.getResponseType());
-        assertTrue(summaryResponse.hasQueryReport());
-        assertTrue(summaryResponse.getQueryReport().hasQueryStatus());
-        QueryResponse.QueryReport.QueryStatus status = summaryResponse.getQueryReport().getQueryStatus();
-        assertEquals(QueryResponse.QueryReport.QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
+        assertTrue(summaryResponse.hasQueryResult());
+        assertTrue(summaryResponse.getQueryResult().hasQueryStatus());
+        QueryStatus status = summaryResponse.getQueryResult().getQueryStatus();
+        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
         assertEquals("executeQuery returned null cursor", status.getStatusMessage());
     }
 

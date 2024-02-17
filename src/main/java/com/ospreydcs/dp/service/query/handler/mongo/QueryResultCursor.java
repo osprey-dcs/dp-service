@@ -1,12 +1,12 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.service.query.handler.interfaces.ResultCursorInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.ResponseCursorDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.DataResponseBidiStreamDispatcher;
 
 public class QueryResultCursor implements ResultCursorInterface {
     private final MongoQueryHandler handler;
-    private final ResponseCursorDispatcher dispatcher;
-    public QueryResultCursor(MongoQueryHandler handler, ResponseCursorDispatcher dispatcher) {
+    private final DataResponseBidiStreamDispatcher dispatcher;
+    public QueryResultCursor(MongoQueryHandler handler, DataResponseBidiStreamDispatcher dispatcher) {
         this.handler = handler;
         this.dispatcher = dispatcher;
     }

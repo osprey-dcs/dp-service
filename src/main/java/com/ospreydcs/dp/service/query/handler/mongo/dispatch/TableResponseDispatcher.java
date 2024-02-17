@@ -2,8 +2,8 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -16,19 +16,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
+public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryRequest.QuerySpec querySpec;
+    private final StreamObserver<QueryTableResponse> responseObserver;
+    private final QueryDataRequest.QuerySpec querySpec;
 
-    public ResponseTableDispatcher(
-            StreamObserver<QueryResponse> responseObserver,
-            QueryRequest.QuerySpec querySpec
+    public TableResponseDispatcher(
+            StreamObserver<QueryTableResponse> responseObserver,
+            QueryDataRequest.QuerySpec querySpec
     ) {
-        super(responseObserver);
+        this.responseObserver = responseObserver;
         this.querySpec = querySpec;
     }
 
@@ -62,11 +63,13 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         }
     }
 
-    private DataTable dataTableFromMap(
+    private QueryTableResponse.QueryResult.TableResult tableResultFromMap(
             List<String> columnNames, TimestampMap<Map<Integer, DataValue>> tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
-        final DataTable.Builder dataTableBuilder = DataTable.newBuilder();
+        final QueryTableResponse.QueryResult.TableResult.Builder tableResultBuilder =
+                QueryTableResponse.QueryResult.TableResult.newBuilder();
+
         final Map<Integer, DataColumn.Builder> columnBuilderMap = new TreeMap<>();
         for (int i = 0 ; i < columnNames.size() ; ++i) {
             final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
@@ -76,20 +79,20 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
         // add data values to column builders, filter by specified time range
-        final long startSeconds = this.querySpec.getStartTime().getEpochSeconds();
-        final long startNanos = this.querySpec.getStartTime().getNanoseconds();
+        final long beginSeconds = this.querySpec.getBeginTime().getEpochSeconds();
+        final long beginNanos = this.querySpec.getBeginTime().getNanoseconds();
         final long endSeconds = this.querySpec.getEndTime().getEpochSeconds();
         final long endNanos = this.querySpec.getEndTime().getNanoseconds();
         for (var secondEntry : tableValueMap.entrySet()) {
             final long second = secondEntry.getKey();
-            if (second < startSeconds || second > endSeconds) {
+            if (second < beginSeconds || second > endSeconds) {
                 // ignore values that are out of query range
                 continue;
             }
             final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
             for (var nanoEntry : secondValueMap.entrySet()) {
                 final long nano = nanoEntry.getKey();
-                if ((second == startSeconds && nano < startNanos) || (second == endSeconds && nano >= endNanos)) {
+                if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
                     // ignore values that are out of query range
                     continue;
                 }
@@ -110,14 +113,14 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
 
         // build timestamp list, columns, and table
         timestampListBuilder.build();
-        DataTimeSpec.Builder dataTimeSpecBuilder = DataTimeSpec.newBuilder();
-        dataTimeSpecBuilder.setTimestampList(timestampListBuilder).build();
-        dataTableBuilder.setDataTimeSpec(dataTimeSpecBuilder);
+        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+        dataTimestampsBuilder.setTimestampList(timestampListBuilder).build();
+        tableResultBuilder.setDataTimestamps(dataTimestampsBuilder);
         for (DataColumn.Builder dataColumnBuilder : columnBuilderMap.values()) {
             dataColumnBuilder.build();
-            dataTableBuilder.addDataColumns(dataColumnBuilder);
+            tableResultBuilder.addDataColumns(dataColumnBuilder);
         }
-        return dataTableBuilder.build();
+        return tableResultBuilder.build();
     }
 
     public void handleResult_(MongoCursor<BucketDocument> cursor) {
@@ -145,11 +148,11 @@ public class ResponseTableDispatcher extends BucketCursorResponseDispatcher {
         cursor.close();
 
         // create DataTable for response from temporary data structure
-        final DataTable dataTable = dataTableFromMap(columnNameList, tableValueMap);
+        final QueryTableResponse.QueryResult.TableResult tableResult = tableResultFromMap(columnNameList, tableValueMap);
 
         // create and send response, close response stream
-        QueryResponse response = QueryServiceImpl.queryResponseWithTable(dataTable);
-        getResponseObserver().onNext(response);
-        getResponseObserver().onCompleted();
+        QueryTableResponse response = QueryServiceImpl.queryResponseTable(tableResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
     }
 }

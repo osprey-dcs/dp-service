@@ -9,6 +9,6 @@ public class LongBucketDocument extends BucketDocument<Long> {
 
     @Override
     public void addColumnDataValue(Long dataValue, DataValue.Builder valueBuilder) {
-        valueBuilder.setIntValue(dataValue);
+        valueBuilder.setLongValue(dataValue);
     }
 }

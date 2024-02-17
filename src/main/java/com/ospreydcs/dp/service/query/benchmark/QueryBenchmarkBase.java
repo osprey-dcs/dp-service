@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.mongodb.client.result.InsertManyResult;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
@@ -201,12 +203,12 @@ public abstract class QueryBenchmarkBase {
         logger.info("loading time: {} seconds", dtSecondsString);
     }
 
-    public static class QueryTaskParams {
+    public static class QueryDataRequestTaskParams {
         final public int streamNumber;
         final public List<String> columnNames;
         final public long startSeconds;
 
-        public QueryTaskParams(
+        public QueryDataRequestTaskParams(
                 int streamNumber,
                 List<String> columnNames,
                 long startSeconds
@@ -235,28 +237,18 @@ public abstract class QueryBenchmarkBase {
         }
     }
 
+    /**
+     * Base class for ExecutorService Callable tasks that send a query and handle the response.
+     */
     protected static abstract class QueryTask implements Callable<QueryTaskResult> {
 
         protected final Channel channel;
-        protected final QueryTaskParams params;
 
-        public QueryTask(
-                Channel channel,
-                QueryTaskParams params
-        ) {
+        public QueryTask(Channel channel) {
             this.channel = channel;
-            this.params = params;
         }
 
         public abstract QueryTaskResult call();
-
-        protected void onRequest(QueryRequest request) {
-            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
-        }
-
-        protected void onResponse(QueryResponse response) {
-            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
-        }
 
         protected void onCompleted() {
             // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
@@ -264,12 +256,48 @@ public abstract class QueryBenchmarkBase {
 
     }
 
-    protected static QueryRequest buildQueryRequest(QueryTaskParams params) {
 
-        Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
-        startTimeBuilder.setEpochSeconds(params.startSeconds);
-        startTimeBuilder.setNanoseconds(0);
-        startTimeBuilder.build();
+    /**
+     * Intermediate base class for query tasks that send a QueryDataRequest to one of the queryData* APIs.
+     */
+    protected static abstract class QueryDataRequestTask extends QueryTask {
+
+        protected final QueryDataRequestTaskParams params;
+
+        public QueryDataRequestTask(
+                Channel channel,
+                QueryDataRequestTaskParams params
+        ) {
+            super(channel);
+            this.params = params;
+        }
+
+        protected void onRequest(QueryDataRequest request) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+    }
+
+    /**
+     * Intermediate base class for query tasks that receive one or more QueryDataResponse objects.
+     */
+    protected static abstract class QueryDataResponseTask extends QueryDataRequestTask {
+
+        public QueryDataResponseTask(Channel channel, QueryDataRequestTaskParams params) {
+            super(channel, params);
+        }
+
+        protected void onResponse(QueryDataResponse response) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+    }
+
+    protected static QueryDataRequest buildQueryDataRequest(QueryDataRequestTaskParams params) {
+
+        Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+        beginTimeBuilder.setEpochSeconds(params.startSeconds);
+        beginTimeBuilder.setNanoseconds(0);
+        beginTimeBuilder.build();
 
         final long endSeconds = params.startSeconds + 60;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
@@ -277,26 +305,29 @@ public abstract class QueryBenchmarkBase {
         endTimeBuilder.setNanoseconds(0);
         endTimeBuilder.build();
 
-        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
+        QueryDataRequest.Builder requestBuilder = QueryDataRequest.newBuilder();
 
-        QueryRequest.QuerySpec.Builder querySpecBuilder = QueryRequest.QuerySpec.newBuilder();
-        querySpecBuilder.setStartTime(startTimeBuilder);
+        QueryDataRequest.QuerySpec.Builder querySpecBuilder = QueryDataRequest.QuerySpec.newBuilder();
+        querySpecBuilder.setBeginTime(beginTimeBuilder);
         querySpecBuilder.setEndTime(endTimeBuilder);
-        querySpecBuilder.addAllColumnNames(params.columnNames);
+        querySpecBuilder.addAllPvNames(params.columnNames);
         querySpecBuilder.build();
         requestBuilder.setQuerySpec(querySpecBuilder);
 
         return requestBuilder.build();
     }
 
-    protected static QueryRequest buildNextRequest() {
-        QueryRequest.Builder requestBuilder = QueryRequest.newBuilder();
-        requestBuilder.setCursorOp(QueryRequest.CursorOperation.CURSOR_OP_NEXT);
+    protected static QueryDataRequest buildNextQueryDataRequest() {
+        QueryDataRequest.Builder requestBuilder = QueryDataRequest.newBuilder();
+        QueryDataRequest.CursorOperation.Builder cursorOperationBuilder = QueryDataRequest.CursorOperation.newBuilder();
+        cursorOperationBuilder.setCursorOperationType(QueryDataRequest.CursorOperation.CursorOperationType.CURSOR_OP_NEXT);
+        cursorOperationBuilder.build();
+        requestBuilder.setCursorOp(cursorOperationBuilder);
         return requestBuilder.build();
     }
 
-    protected abstract QueryTask newQueryTask(
-            Channel channel, QueryBenchmarkBase.QueryTaskParams params);
+    protected abstract QueryDataRequestTask newQueryTask(
+            Channel channel, QueryDataRequestTaskParams params);
 
     public BenchmarkScenarioResult queryScenario(
             Channel channel,
@@ -315,7 +346,7 @@ public abstract class QueryBenchmarkBase {
         final var executorService = Executors.newFixedThreadPool(numThreads);
 
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
-        final List<QueryTask> taskList = new ArrayList<>();
+        final List<QueryDataRequestTask> taskList = new ArrayList<>();
         List<String> currentBatchColumns = new ArrayList<>();
         int currentBatchIndex = 1;
         for (int i = 1 ; i <= numPvs ; i++) {
@@ -323,8 +354,8 @@ public abstract class QueryBenchmarkBase {
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
-                final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
-                final QueryTask task = newQueryTask(channel, params);
+                final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+                final QueryDataRequestTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
                 currentBatchColumns = new ArrayList<>();
@@ -333,8 +364,8 @@ public abstract class QueryBenchmarkBase {
         }
         // add task for final batch of columns, if not empty
         if (currentBatchColumns.size() > 0) {
-            final QueryTaskParams params = new QueryTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
-            final QueryTask task = newQueryTask(channel, params);
+            final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+            final QueryDataRequestTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
 

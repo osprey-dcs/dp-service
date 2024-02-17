@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -103,14 +103,10 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // check database contents for request status document with specified status
         RequestStatusDocument statusDocument =
                 findRequestStatus(params.providerId, params.requestId, status);
-        assertTrue("no request status document found with status: " + status,
-                statusDocument != null);
-        assertTrue("list size idsCreated != 0: " + statusDocument.getIdsCreated().size(),
-                statusDocument.getIdsCreated().size() == 0);
-        assertTrue("null updateTime value",
-                statusDocument.getUpdateTime() != null);
-        assertTrue("unexpected msg value: " + statusDocument.getMsg(),
-                statusDocument.getMsg().contains(statusMsg));
+        assertTrue(statusDocument != null);
+        assertTrue(statusDocument.getIdsCreated().size() == 0);
+        assertTrue(statusDocument.getUpdateTime() != null);
+        assertTrue(statusDocument.getMsg().contains(statusMsg));
     }
 
     private void verifySuccessfulRequest(IngestionRequestParams params) {
@@ -206,13 +202,13 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         sampleIntervalNanos,
                         numSamples,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values,
                         attributes,
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -263,14 +259,14 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         sampleIntervalNanos,
                         numSamples,
                         columnNames,
-                        IngestionDataType.FLOAT,
+                        IngestionDataType.DOUBLE,
                         values,
                         attributes,
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
         params.setRequestTime(false); // this would cause a reject for missing request time, but we aren't really validating the request
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         String rejectMsg = "requestTime must be specified";
@@ -321,7 +317,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -367,7 +363,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -413,7 +409,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -457,13 +453,13 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         sampleIntervalNanos,
                         numSamples,
                         columnNames,
-                        IngestionDataType.ARRAY_FLOAT,
+                        IngestionDataType.ARRAY_DOUBLE,
                         values,
                         attributes,
                         eventDescription,
                         firstSeconds,
                         firstNanos, null, null);
-        IngestionRequest request = buildIngestionRequest(params);
+        IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -506,7 +502,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         sampleIntervalNanos,
                         numSamples,
                         columnNames,
-                        IngestionDataType.ARRAY_FLOAT,
+                        IngestionDataType.ARRAY_DOUBLE,
                         null, // don't set any column values, we're going to override
                         attributes,
                         eventDescription,
@@ -519,11 +515,11 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         dataColumnBuilder.setName(pvName);
         DataValue stringValue = DataValue.newBuilder().setStringValue("junk").build();
         dataColumnBuilder.addDataValues(stringValue);
-        DataValue floatValue = DataValue.newBuilder().setFloatValue(12.34).build();
-        dataColumnBuilder.addDataValues(floatValue);
+        DataValue doubleValue = DataValue.newBuilder().setDoubleValue(12.34).build();
+        dataColumnBuilder.addDataValues(doubleValue);
         dataColumnList.add(dataColumnBuilder.build());
 
-        IngestionRequest request = buildIngestionRequest(params, dataColumnList);
+        IngestDataRequest request = buildIngestionRequest(params, dataColumnList);
 
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
@@ -533,7 +529,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         verifyFailedRequest(
                 params,
                 BsonConstants.BSON_VALUE_STATUS_ERROR,
-                "data type mismatch: FLOATVALUE expected: STRINGVALUE",
+                "data type mismatch: DOUBLEVALUE expected: STRINGVALUE",
                 true);
     }
 

@@ -9,6 +9,6 @@ public class DoubleBucketDocument extends BucketDocument<Double> {
 
     @Override
     public void addColumnDataValue(Double dataValue, DataValue.Builder valueBuilder) {
-        valueBuilder.setFloatValue(dataValue);
+        valueBuilder.setDoubleValue(dataValue);
     }
 }

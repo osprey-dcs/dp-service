@@ -9,12 +9,11 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 @RunWith(JUnit4.class)
-public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
+public class MetadataQueryTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -85,7 +84,7 @@ public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestColumnData(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+            validationMap = ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
         }
 
         {
@@ -96,7 +95,7 @@ public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
         {
             // send column info query for list of columns
             List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
-            sendAndVerifyColumnInfoQueryList(
+            sendAndVerifyQueryMetadata(
                     queryColumnNames, validationMap, false, null);
         }
 
@@ -105,7 +104,7 @@ public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
             String columnNamePattern = "S01";
             List<String> expectedColumnNameMatches =
                     List.of("S01-GCC01", "S01-GCC02", "S01-GCC03", "S01-BPM01", "S01-BPM02", "S01-BPM03");
-            sendAndVerifyColumnInfoQueryPattern(
+            sendAndVerifyQueryMetadata(
                     columnNamePattern,
                     validationMap,
                     expectedColumnNameMatches,
@@ -121,7 +120,7 @@ public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
                 final String sectorName = String.format("S%02d", i);
                 expectedColumnNameMatches.add(sectorName + "-GCC02");
             }
-            sendAndVerifyColumnInfoQueryPattern(
+            sendAndVerifyQueryMetadata(
                     columnNamePattern,
                     validationMap,
                     expectedColumnNameMatches,
@@ -133,12 +132,12 @@ public class ColumnInfoQueryTest extends GrpcIntegrationTestBase {
             // test rejected column info query
             String columnNamePattern = ""; // send a blank string for name pattern
             List<String> expectedColumnNameMatches = new ArrayList<>();
-            sendAndVerifyColumnInfoQueryPattern(
+            sendAndVerifyQueryMetadata(
                     columnNamePattern,
                     validationMap,
                     expectedColumnNameMatches,
                     true,
-                    "column name pattern must not be empty");
+                    "QuerySpec.pvNamePattern.pattern must not be empty");
         }
 
     }

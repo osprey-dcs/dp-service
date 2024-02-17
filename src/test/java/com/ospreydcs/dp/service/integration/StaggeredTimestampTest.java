@@ -96,7 +96,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestColumnData(columnInfoList, startSeconds, startNanos, providerId);
+            validationMap = ingestDataStreamFromColumn(columnInfoList, startSeconds, startNanos, providerId);
         }
 
         {
@@ -116,7 +116,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
 
             final int numRowsExpected = 12 * queryNumSeconds;
 
-            sendAndVerifyTableQuery(
+            sendAndVerifyQueryDataTable(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
@@ -142,7 +142,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             // 2 buckets for quarters (5 secs/bucket)
             final int numBucketsExpected = 9;
 
-            sendAndVerifyBucketQuery(
+            sendAndVerifyQueryDataStream(
                     numBucketsExpected,
                     queryColumnNamesBucket,
                     queryStartSecondsBucket,

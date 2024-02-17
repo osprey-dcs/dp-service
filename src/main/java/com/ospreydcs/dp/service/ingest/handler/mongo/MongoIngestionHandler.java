@@ -180,19 +180,19 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
 //                        ((StringBucketDocument) bucket).addColumnData(datum.getStringValue());
                         bucket.addColumnData(datum.getStringValue());
                     }
-                    case FLOATVALUE -> {
+                    case DOUBLEVALUE -> {
                         if (first) {
                             bucket = new DoubleBucketDocument();
                             bucket.initColumnDataList();
                         }
-                        bucket.addColumnData(datum.getFloatValue());
+                        bucket.addColumnData(datum.getDoubleValue());
                     }
-                    case INTVALUE -> {
+                    case LONGVALUE -> {
                         if (first) {
                             bucket = new LongBucketDocument();
                             bucket.initColumnDataList();
                         }
-                        bucket.addColumnData(datum.getIntValue());
+                        bucket.addColumnData(datum.getLongValue());
                     }
                     case BOOLEANVALUE -> {
                         if (first) {

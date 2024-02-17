@@ -1,11 +1,8 @@
 package com.ospreydcs.dp.service.query.server;
 
-import com.ospreydcs.dp.grpc.v1.common.DataTable;
-import com.ospreydcs.dp.grpc.v1.common.RejectDetails;
+import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.query.QueryRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
@@ -63,35 +60,34 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
-        public void handleQueryResponseStream(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        public void handleQueryDataStream(
+                QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver
         ) {
-            System.out.println("handleQueryRequest: " + querySpec.getColumnNamesList());
+            System.out.println("handleQueryRequest: " + querySpec.getPvNamesList());
             responseObserver.onCompleted(); // close response stream so that client stream is closed
         }
 
         @Override
-        public ResultCursorInterface handleQueryResponseCursor(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
-        ) {
+        public ResultCursorInterface handleQueryDataBidiStream(
+                QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
             return null;
         }
 
         @Override
-        public void handleQueryResponseSingle(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        public void handleQueryData(
+                QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver
         ) {
         }
 
         @Override
-        public void handleQueryResponseTable(
-                QueryRequest.QuerySpec querySpec, StreamObserver<QueryResponse> responseObserver
+        public void handleQueryDataTable(
+                QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver
         ) {
         }
 
         @Override
-        public void handleGetColumnInfo(
-                QueryRequest.ColumnInfoQuerySpec columnInfoQuerySpec, StreamObserver<QueryResponse> responseObserver
+        public void handleQueryMetadata(
+                QueryMetadataRequest.QuerySpec spec, StreamObserver<QueryMetadataResponse> responseObserver
         ) {
         }
     }
@@ -105,19 +101,17 @@ public class QueryGrpcTest extends QueryTestBase {
             asyncStub = DpQueryServiceGrpc.newStub(channel);
         }
 
-        protected List<QueryResponse> sendQueryRequest(
-                QueryRequest request, int numResponsesExpected) {
+        protected List<QueryDataResponse> sendQueryResponseStream(
+                QueryDataRequest request, int numResponsesExpected) {
 
-            System.out.println("sendQueryRequest responses expected: " + numResponsesExpected);
-
-            List<QueryResponse> responseList = new ArrayList<>();
+            List<QueryDataResponse> responseList = new ArrayList<>();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             // create observer for api response stream
-            StreamObserver<QueryResponse> responseObserver = new StreamObserver<QueryResponse>() {
+            StreamObserver<QueryDataResponse> responseObserver = new StreamObserver<QueryDataResponse>() {
 
                 @Override
-                public void onNext(QueryResponse queryDataResponse) {
+                public void onNext(QueryDataResponse queryDataResponse) {
                     System.out.println("sendQueryDataByTimeRequest.responseObserver.onNext");
                     responseList.add(queryDataResponse);
                 }
@@ -137,7 +131,7 @@ public class QueryGrpcTest extends QueryTestBase {
             };
 
             // send api request
-            asyncStub.queryResponseStream(request, responseObserver);
+            asyncStub.queryDataStream(request, responseObserver);
 
             // wait for completion of api response stream via finishLatch notification
             try {
@@ -198,26 +192,27 @@ public class QueryGrpcTest extends QueryTestBase {
 
         // create request with unspecified column name list
         Long nowSeconds = Instant.now().getEpochSecond();
-        QueryRequestParams params = new QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 null,
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request
         final int numResponesesExpected = 1;
-        List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
+        List<QueryDataResponse> responseList = client.sendQueryResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == 1);
-        QueryResponse response = responseList.get(0);
+        QueryDataResponse response = responseList.get(0);
         assertTrue(response.getResponseType() == ResponseType.REJECT_RESPONSE);
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasQueryReject());
-        assertTrue(response.getQueryReject().getRejectReason() == RejectDetails.RejectReason.INVALID_REQUEST_REASON);
-        assertTrue(response.getQueryReject().getMessage().equals("columnName must be specified"));
+        assertTrue(response.hasRejectionDetails());
+        assertTrue(response.getRejectionDetails().getReason() ==
+                RejectionDetails.Reason.INVALID_REQUEST_REASON);
+        assertTrue(response.getRejectionDetails().getMessage().equals("columnName must be specified"));
     }
 
     /**
@@ -229,17 +224,17 @@ public class QueryGrpcTest extends QueryTestBase {
         // create request with unspecified column name
         List<String> columnNames = List.of("pv_1", "pv_2");
         Long nowSeconds = Instant.now().getEpochSecond();
-        QueryRequestParams params = new QueryRequestParams(
+        QueryDataRequestParams params = new QueryDataRequestParams(
                 columnNames,
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
                 0L);
-        QueryRequest request = buildQueryRequest(params);
+        QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request
         final int numResponesesExpected = 0;
-        List<QueryResponse> responseList = client.sendQueryRequest(request, numResponesesExpected);
+        List<QueryDataResponse> responseList = client.sendQueryResponseStream(request, numResponesesExpected);
 
         // examine response
         assertTrue(responseList.size() == 0);

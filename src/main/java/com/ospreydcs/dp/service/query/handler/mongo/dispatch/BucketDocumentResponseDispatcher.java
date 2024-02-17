@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.query.QueryResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -9,19 +9,22 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public abstract class BucketCursorResponseDispatcher extends Dispatcher {
+public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
-    final private StreamObserver<QueryResponse> responseObserver;
+    private StreamObserver<QueryDataResponse> responseObserver;
 
-    public BucketCursorResponseDispatcher(StreamObserver<QueryResponse> responseObserver) {
+    public BucketDocumentResponseDispatcher() {
+    }
+
+    public BucketDocumentResponseDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
         this.responseObserver = responseObserver;
     }
 
     protected abstract void handleResult_(MongoCursor<BucketDocument> cursor);
 
-    public StreamObserver<QueryResponse> getResponseObserver() {
+    public StreamObserver<QueryDataResponse> getResponseObserver() {
         return this.responseObserver;
     }
 
@@ -31,44 +34,44 @@ public abstract class BucketCursorResponseDispatcher extends Dispatcher {
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryResponseError(msg, getResponseObserver());
+            QueryServiceImpl.sendQueryResponseDataError(msg, getResponseObserver());
             return;
         }
 
         // send empty QueryStatus and close response stream if query matched no data
         if (!cursor.hasNext()) {
             logger.trace("processQueryRequest: query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryResponseEmpty(getResponseObserver());
+            QueryServiceImpl.sendQueryResponseDataEmpty(getResponseObserver());
             return;
         }
 
         handleResult_(cursor);
     }
 
-    protected QueryResponse nextQueryResponseFromCursor(MongoCursor<BucketDocument> cursor) {
+    protected QueryDataResponse nextQueryResponseFromCursor(MongoCursor<BucketDocument> cursor) {
 
         // build response from query result cursor
-        QueryResponse.QueryReport.BucketData.Builder resultDataBuilder =
-                QueryResponse.QueryReport.BucketData.newBuilder();
+        QueryDataResponse.QueryResult.QueryData.Builder queryDataBuilder =
+                QueryDataResponse.QueryResult.QueryData.newBuilder();
 
         int messageSize = 0;
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
-            final QueryResponse.QueryReport.BucketData.DataBucket bucket =
+            final QueryDataResponse.QueryResult.QueryData.DataBucket bucket =
                     MongoQueryHandler.dataBucketFromDocument(document);
 
             // determine bucket size and check if too large
             int bucketSerializedSize = bucket.getSerializedSize();
             if (bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
                 // single bucket is larger than maximum message size, so send error response
-                return QueryServiceImpl.queryResponseError(
+                return QueryServiceImpl.queryResponseDataError(
                         "bucket size: " + bucketSerializedSize
                                 + " greater than maximum message size: " + MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE);
             }
 
             // add bucket to result
-            resultDataBuilder.addDataBuckets(bucket);
+            queryDataBuilder.addDataBuckets(bucket);
             messageSize = messageSize + bucketSerializedSize;
 
             // break out of cursor handling loop if next bucket might exceed maximum size
@@ -79,7 +82,7 @@ public abstract class BucketCursorResponseDispatcher extends Dispatcher {
 
         if (messageSize > 0) {
             // create response from buckets in result
-            return QueryServiceImpl.queryResponseData(resultDataBuilder);
+            return QueryServiceImpl.queryResponseData(queryDataBuilder);
         }
 
         return null;
