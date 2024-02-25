@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
@@ -354,14 +355,17 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                                 "value mismatch: " + dataValue + " expected: " + actualValue,
                                 expectedValue, actualValue, 0.0);
                     }
-                    assertNotNull(bucket.getSamplingClock());
-                    assertNotNull(bucket.getSamplingClock().getStartTime());
-                    assertTrue(bucket.getSamplingClock().getStartTime().getEpochSeconds() > 0);
-                    assertNotNull(bucket.getSamplingClock().getPeriodNanos());
-                    assertTrue(bucket.getSamplingClock().getPeriodNanos() > 0);
-                    assertNotNull(bucket.getSamplingClock().getCount());
-                    assertTrue(bucket.getSamplingClock().getCount() == INGESTION_NUM_ROWS);
-                    final long bucketSeconds = bucket.getSamplingClock().getStartTime().getEpochSeconds();
+                    assertTrue(bucket.hasDataTimestamps());
+                    assertTrue(bucket.getDataTimestamps().hasSamplingClock());
+                    SamplingClock samplingClock = bucket.getDataTimestamps().getSamplingClock();
+                    assertNotNull(samplingClock);
+                    assertNotNull(samplingClock.getStartTime());
+                    assertTrue(samplingClock.getStartTime().getEpochSeconds() > 0);
+                    assertNotNull(samplingClock.getPeriodNanos());
+                    assertTrue(samplingClock.getPeriodNanos() > 0);
+                    assertNotNull(samplingClock.getCount());
+                    assertTrue(samplingClock.getCount() == INGESTION_NUM_ROWS);
+                    final long bucketSeconds = samplingClock.getStartTime().getEpochSeconds();
                     final int bucketIndex = (int) (bucketSeconds - params.startSeconds);
                     final boolean[] columnBucketArray = columnBucketMap.get(columnName);
                     assertNotNull("response contains unexpected bucket", columnBucketArray);

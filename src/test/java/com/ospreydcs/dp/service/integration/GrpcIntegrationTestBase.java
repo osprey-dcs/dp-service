@@ -563,7 +563,7 @@ public class GrpcIntegrationTestBase {
                 new TreeMap<>();
         for (QueryDataResponse.QueryResult.QueryData.DataBucket dataBucket : dataBucketList) {
             final String bucketColumnName = dataBucket.getDataColumn().getName();
-            final Timestamp bucketStartTimestamp = dataBucket.getSamplingClock().getStartTime();
+            final Timestamp bucketStartTimestamp = dataBucket.getDataTimestamps().getSamplingClock().getStartTime();
             final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
             final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
             TimestampMap<QueryDataResponse.QueryResult.QueryData.DataBucket> columnTimestampMap =
@@ -604,8 +604,10 @@ public class GrpcIntegrationTestBase {
 
                     assertEquals(
                             columnBucketInfo.intervalNanos,
-                            responseBucket.getSamplingClock().getPeriodNanos());
-                    assertEquals(columnBucketInfo.numValues, responseBucket.getSamplingClock().getCount());
+                            responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
+                    assertEquals(
+                            columnBucketInfo.numValues,
+                            responseBucket.getDataTimestamps().getSamplingClock().getCount());
 
                     // validate bucket data values
                     int valueIndex = 0;

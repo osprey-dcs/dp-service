@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
@@ -226,11 +227,13 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             int bucketNumSamples,
             String bucketColumnName) {
 
-        assertTrue(bucket.hasSamplingClock());
-        assertTrue(bucket.getSamplingClock().getStartTime().getEpochSeconds() == bucketStartSeconds);
-        assertTrue(bucket.getSamplingClock().getStartTime().getNanoseconds() == bucketStartNanos);
-        assertTrue(bucket.getSamplingClock().getPeriodNanos() == bucketSampleIntervalNanos);
-        assertTrue(bucket.getSamplingClock().getCount() == bucketNumSamples);
+        assertTrue(bucket.hasDataTimestamps());
+        assertTrue(bucket.getDataTimestamps().hasSamplingClock());
+        SamplingClock samplingClock = bucket.getDataTimestamps().getSamplingClock();
+        assertTrue(samplingClock.getStartTime().getEpochSeconds() == bucketStartSeconds);
+        assertTrue(samplingClock.getStartTime().getNanoseconds() == bucketStartNanos);
+        assertTrue(samplingClock.getPeriodNanos() == bucketSampleIntervalNanos);
+        assertTrue(samplingClock.getCount() == bucketNumSamples);
         assertTrue(bucket.hasDataColumn());
         DataColumn bucketColumn = bucket.getDataColumn();
         assertTrue(bucketColumn.getName().equals(bucketColumnName));

@@ -88,13 +88,22 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         }
     }
 
-    public static SamplingClock samplingClockForBucket(BucketDocument document) {
-        Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
-        SamplingClock.Builder samplingIntervalBuilder = SamplingClock.newBuilder();
-        samplingIntervalBuilder.setStartTime(startTime);
-        samplingIntervalBuilder.setPeriodNanos(document.getSampleFrequency());
-        samplingIntervalBuilder.setCount(document.getNumSamples());
-        return samplingIntervalBuilder.build();
+    public static DataTimestamps dataTimestampsForBucket(BucketDocument document) {
+
+        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+
+        // TODO: determine whether to use explicit timestamp list if BucketDocument contains non-empty list,
+        // otherwise use SamplingClock as currently implemented...
+
+        final Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
+        final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
+        samplingClockBuilder.setStartTime(startTime);
+        samplingClockBuilder.setPeriodNanos(document.getSampleFrequency());
+        samplingClockBuilder.setCount(document.getNumSamples());
+        samplingClockBuilder.build();
+
+        dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
+        return dataTimestampsBuilder.build();
     }
 
     public static <T> QueryDataResponse.QueryResult.QueryData.DataBucket dataBucketFromDocument(
@@ -103,7 +112,7 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         final QueryDataResponse.QueryResult.QueryData.DataBucket.Builder bucketBuilder =
                 QueryDataResponse.QueryResult.QueryData.DataBucket.newBuilder();
 
-        bucketBuilder.setSamplingClock(samplingClockForBucket(document));
+        bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
 
         final DataColumn.Builder columnBuilder = DataColumn.newBuilder();
         columnBuilder.setName(document.getColumnName());
