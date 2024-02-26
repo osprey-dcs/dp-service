@@ -85,6 +85,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         Bson bucketFieldProjection = Projections.fields(Projections.include(
                 BsonConstants.BSON_KEY_BUCKET_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
+                BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
                 BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY
@@ -121,9 +122,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_FIRST_TIME),
                                         Accumulators.last(
-                                                // confusing but we're saving the first time of the last document to the lastTime field
+                                                // save the last time of the last document to the lastTime field
                                                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
-                                                "$" + BsonConstants.BSON_KEY_BUCKET_FIRST_TIME)
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME)
                                 )
                         ));
 

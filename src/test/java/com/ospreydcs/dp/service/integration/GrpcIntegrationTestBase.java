@@ -710,8 +710,8 @@ public class GrpcIntegrationTestBase {
             assertNotNull(lastBucketInfo);
             assertEquals(lastBucketInfo.intervalNanos, columnInfoForName.getLastSamplingClock().getPeriodNanos());
             assertEquals(lastBucketInfo.numValues, columnInfoForName.getLastSamplingClock().getCount());
-            assertEquals(lastBucketInfo.startSeconds, columnInfoForName.getLastTimestamp().getEpochSeconds());
-            assertEquals(lastBucketInfo.startNanos, columnInfoForName.getLastTimestamp().getNanoseconds());
+            assertEquals(lastBucketInfo.endSeconds, columnInfoForName.getLastTimestamp().getEpochSeconds());
+            assertEquals(lastBucketInfo.endNanos, columnInfoForName.getLastTimestamp().getNanoseconds());
             assertNotNull(firstBucketInfo);
             assertEquals(firstBucketInfo.startSeconds, columnInfoForName.getFirstTimestamp().getEpochSeconds());
             assertEquals(firstBucketInfo.startNanos, columnInfoForName.getFirstTimestamp().getNanoseconds());

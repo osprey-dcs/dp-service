@@ -76,7 +76,6 @@ public class MetadataResponseDispatcher extends Dispatcher {
             firstTimeBuilder.build();
             pvInfoBuilder.setFirstTimestamp(firstTimeBuilder);
 
-            // TODO: Change to use the last timestamp in the data instead of the start time of the last bucket
             final Date lastTimeDate = (Date) columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_LAST_TIME);
             final Instant lastTimeInstant = lastTimeDate.toInstant();
             final Timestamp.Builder lastTimeBuilder = Timestamp.newBuilder();
