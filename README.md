@@ -29,3 +29,4 @@ TODO: documentation of service framework, performance benchmark applications, an
 ## Ingestion service
 
 * [initial ingestion service implementation](doc/ingestion.md)
+* [refactoring of ingestion service](doc/refactor.md)
