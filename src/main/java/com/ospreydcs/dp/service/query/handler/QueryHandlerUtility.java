@@ -7,9 +7,9 @@ import com.ospreydcs.dp.service.common.model.ValidationResult;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public abstract class QueryHandlerBase {
+public class QueryHandlerUtility {
 
-    public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
+    public static ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
 
         final List<String> pvNamesList = querySpec.getPvNamesList();
         final Timestamp beginTime = querySpec.getBeginTime();

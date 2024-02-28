@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.job;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataResponse;
+import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.MetadataResponseDispatcher;
 import io.grpc.stub.StreamObserver;

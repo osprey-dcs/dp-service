@@ -1,43 +1,31 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
+import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryMetadataJob;
-import com.ospreydcs.dp.service.query.handler.mongo.job.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerInterface {
+public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerInterface {
 
     private static final Logger logger = LogManager.getLogger();
-
-    // constants
-    private static final int TIMEOUT_SECONDS = 60;
-    protected static final int MAX_QUEUE_SIZE = 1;
-    protected static final int POLL_TIMEOUT_SECONDS = 1;
-    public static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
 
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
     private MongoQueryClientInterface mongoQueryClient = null;
-    protected ExecutorService executorService = null;
-    protected BlockingQueue<HandlerJob> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
-    private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
         this.mongoQueryClient = clientInterface;
@@ -47,45 +35,9 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return new MongoQueryHandler(new MongoSyncQueryClient());
     }
 
-    private static ConfigurationManager configMgr() {
-        return ConfigurationManager.getInstance();
-    }
-
-    private class QueueWorker implements Runnable {
-
-        private final BlockingQueue queue;
-
-        public QueueWorker(BlockingQueue q) {
-            this.queue = q;
-        }
-        public void run() {
-            try {
-                while (!Thread.currentThread().isInterrupted() && !shutdownRequested.get()) {
-
-//                    // block while waiting for a queue element
-//                    HandlerQueryRequest request = (HandlerQueryRequest) queue.take();
-
-                    // poll for next queue item with a timeout
-                    HandlerJob job =
-                            (HandlerJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-                    if (job != null) {
-                        try {
-                            job.execute();
-                        } catch (Exception ex) {
-                            logger.error("QueryWorker.run encountered exception: {}", ex.getMessage());
-                            ex.printStackTrace(System.err);
-                        }
-                    }
-                }
-
-                logger.trace("QueryWorker shutting down");
-
-            } catch (InterruptedException ex) {
-                logger.error("InterruptedException in QueryWorker.run");
-                Thread.currentThread().interrupt();
-            }
-        }
+    @Override
+    public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
+        return QueryHandlerUtility.validateQuerySpecData(querySpec);
     }
 
     public static DataTimestamps dataTimestampsForBucket(BucketDocument document) {
@@ -129,83 +81,25 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
         return bucketBuilder.build();
     }
 
-    /**
-     * Initializes handler. Creates ExecutorService with fixed thread pool.
-     *
-     * @return
-     */
+    protected int getNumWorkers_() {
+        return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
     @Override
-    public boolean init() {
-
-        logger.trace("init");
-
+    protected boolean init_() {
+        logger.trace("init_");
         if (!mongoQueryClient.init()) {
             logger.error("error in mongoQueryClient.init()");
             return false;
         }
-
-        int numWorkers = configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
-        logger.info("init numWorkers: {}", numWorkers);
-
-        // init ExecutorService
-        executorService = Executors.newFixedThreadPool(numWorkers);
-
-        for (int i = 1 ; i <= numWorkers ; i++) {
-            QueueWorker worker = new QueueWorker(requestQueue);
-            executorService.execute(worker);
-        }
-
-        // add a JVM shutdown hook just in case
-        final Thread shutdownHook = new Thread(() -> this.fini());
-        Runtime.getRuntime().addShutdownHook(shutdownHook);
-
         return true;
     }
 
-    /**
-     * Cleans up handler.  Shuts down ExecutorService.
-     *
-     * @return
-     */
     @Override
-    public boolean fini() {
-
-        if (shutdownRequested.get()) {
-            return true;
-        }
-
-        shutdownRequested.set(true);
-
-        logger.trace("fini");
-
-        // shut down executor service
-        try {
-            logger.trace("shutting down executorService");
-            executorService.shutdown();
-            executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            logger.trace("executorService shutdown completed");
-        } catch (InterruptedException ex) {
-            executorService.shutdownNow();
-            logger.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
-            Thread.currentThread().interrupt();
-        }
-
+    protected boolean fini_() {
         if (!mongoQueryClient.fini()) {
             logger.error("error in mongoQueryClient.fini()");
         }
-
-        logger.info("fini shutdown completed");
-
-        return true;
-    }
-
-    @Override
-    public boolean start() {
-        return true;
-    }
-
-    @Override
-    public boolean stop() {
         return true;
     }
 
@@ -296,7 +190,6 @@ public class MongoQueryHandler extends QueryHandlerBase implements QueryHandlerI
             logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
-
     }
 
 }

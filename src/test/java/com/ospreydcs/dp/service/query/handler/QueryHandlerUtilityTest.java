@@ -11,12 +11,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 
-public class QueryHandlerBaseTest extends QueryTestBase {
-
-    protected static class TestQueryHandler extends QueryHandlerBase {
-    }
-
-    private TestQueryHandler handler = new TestQueryHandler();
+public class QueryHandlerUtilityTest extends QueryTestBase {
 
     @Test
     public void testValidateRequestEmptyColumnNameList() {
@@ -29,7 +24,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds + 1,
                 0L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("columnName must be specified"));
     }
@@ -45,7 +40,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds + 1,
                 0L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("columnNamesList contains empty string"));
     }
@@ -61,7 +56,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds + 1,
                 0L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("startTime must be specified"));
     }
@@ -77,7 +72,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 null,
                 0L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("endTime must be specified"));
     }
@@ -93,7 +88,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds - 1,
                 0L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("endTime seconds must be >= startTime seconds"));
     }
@@ -109,7 +104,7 @@ public class QueryHandlerBaseTest extends QueryTestBase {
                 nowSeconds,
                 100L);
         QueryDataRequest request = buildQueryDataRequest(params);
-        ValidationResult result = handler.validateQuerySpecData(request.getQuerySpec());
+        ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
         assertTrue(result.msg.equals("endTime nanos must be > startTime nanos when seconds match"));
     }

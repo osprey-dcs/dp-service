@@ -3,8 +3,9 @@ package com.ospreydcs.dp.service.query.server;
 import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import com.ospreydcs.dp.service.query.handler.QueryHandlerBase;
+import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.interfaces.ResultCursorInterface;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -33,7 +34,7 @@ import static org.mockito.Mockito.mock;
 @RunWith(JUnit4.class)
 public class QueryGrpcTest extends QueryTestBase {
 
-    protected static class TestQueryHandler extends QueryHandlerBase implements QueryHandlerInterface {
+    protected static class TestQueryHandler implements QueryHandlerInterface {
 
         @Override
         public boolean init() {
@@ -57,6 +58,11 @@ public class QueryGrpcTest extends QueryTestBase {
         public boolean stop() {
             System.out.println("handler.fini");
             return true;
+        }
+
+        @Override
+        public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
+            return QueryHandlerUtility.validateQuerySpecData(querySpec);
         }
 
         @Override

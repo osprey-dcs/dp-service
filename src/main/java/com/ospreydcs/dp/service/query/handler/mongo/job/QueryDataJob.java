@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.BucketDocumentResponseDispatcher;
 import io.grpc.stub.StreamObserver;
