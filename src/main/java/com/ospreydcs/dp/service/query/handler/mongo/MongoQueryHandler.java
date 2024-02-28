@@ -25,7 +25,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
-    private MongoQueryClientInterface mongoQueryClient = null;
+    private final MongoQueryClientInterface mongoQueryClient;
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
         this.mongoQueryClient = clientInterface;
