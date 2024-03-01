@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
-import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;

@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
+import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.bson.*;
 import org.apache.logging.log4j.LogManager;

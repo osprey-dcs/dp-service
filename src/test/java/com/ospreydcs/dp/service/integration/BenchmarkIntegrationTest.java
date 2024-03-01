@@ -10,7 +10,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestionDataFrame;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
-import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkStreamingIngestion;

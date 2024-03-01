@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.bson;
+package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;

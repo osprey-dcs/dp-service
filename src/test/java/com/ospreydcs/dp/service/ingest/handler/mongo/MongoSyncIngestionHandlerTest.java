@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
-import com.ospreydcs.dp.service.common.bson.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import org.bson.conversions.Bson;
 import org.junit.*;

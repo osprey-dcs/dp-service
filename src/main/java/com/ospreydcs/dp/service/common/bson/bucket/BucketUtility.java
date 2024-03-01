@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.bson;
+package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 
