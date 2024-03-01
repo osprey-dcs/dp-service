@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.regex.Pattern;
 
-import static com.mongodb.client.model.Aggregates.group;
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Indexes.ascending;
 

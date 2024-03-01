@@ -19,12 +19,14 @@ import org.apache.logging.log4j.Logger;
 
 public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerInterface {
 
+    // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
+    // instance variables
     private final MongoQueryClientInterface mongoQueryClient;
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
@@ -33,6 +35,28 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
 
     public static MongoQueryHandler newMongoSyncQueryHandler() {
         return new MongoQueryHandler(new MongoSyncQueryClient());
+    }
+
+    protected int getNumWorkers_() {
+        return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    @Override
+    protected boolean init_() {
+        logger.trace("init_");
+        if (!mongoQueryClient.init()) {
+            logger.error("error in mongoQueryClient.init()");
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    protected boolean fini_() {
+        if (!mongoQueryClient.fini()) {
+            logger.error("error in mongoQueryClient.fini()");
+        }
+        return true;
     }
 
     @Override
@@ -79,28 +103,6 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         bucketBuilder.setDataColumn(columnBuilder);
 
         return bucketBuilder.build();
-    }
-
-    protected int getNumWorkers_() {
-        return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
-    }
-
-    @Override
-    protected boolean init_() {
-        logger.trace("init_");
-        if (!mongoQueryClient.init()) {
-            logger.error("error in mongoQueryClient.init()");
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    protected boolean fini_() {
-        if (!mongoQueryClient.fini()) {
-            logger.error("error in mongoQueryClient.fini()");
-        }
-        return true;
     }
 
     @Override
