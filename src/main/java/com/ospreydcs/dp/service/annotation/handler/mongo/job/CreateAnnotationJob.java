@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.CreateAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,6 +32,7 @@ public abstract class CreateAnnotationJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
+        this.dispatcher = new CreateAnnotationDispatcher(responseObserver, request);
     }
 
     protected abstract AnnotationDocument generateAnnotationDocument_(CreateAnnotationRequest request);
@@ -39,8 +41,8 @@ public abstract class CreateAnnotationJob extends HandlerJob {
     public void execute() {
         logger.debug("executing CreateAnnotationJob id: {}", this.responseObserver.hashCode());
         AnnotationDocument annotationDocument = generateAnnotationDocument_(request);
-        InsertOneResult result = this.mongoClient.insertAnnotation(annotationDocument);
-//        logger.debug("dispatching CreateAnnotationJob id: {}", this.responseObserver.hashCode());
-//        dispatcher.handleResult();
+        MongoInsertOneResult result = this.mongoClient.insertAnnotation(annotationDocument);
+        logger.debug("dispatching CreateAnnotationJob id: {}", this.responseObserver.hashCode());
+        dispatcher.handleResult(result);
     }
 }

@@ -12,6 +12,7 @@ import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.BsonValue;
 
 public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationServiceImplBase {
 
@@ -65,6 +66,65 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
         final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg, rejectionReason);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static CreateAnnotationResponse createAnnotationResponseError(String msg) {
+
+        final CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.Builder exceptionalResultBuilder =
+                CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.newBuilder();
+        exceptionalResultBuilder.setStatusType(
+                CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.StatusType.STATUS_ERROR);
+        exceptionalResultBuilder.setStatusMessage(msg);
+        exceptionalResultBuilder.build();
+
+        final CreateAnnotationResponse.CreateAnnotationResult.Builder resultBuilder =
+                CreateAnnotationResponse.CreateAnnotationResult.newBuilder();
+        resultBuilder.setExceptionalResult(exceptionalResultBuilder);
+        resultBuilder.build();
+
+        final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
+                .setResponseType(ResponseType.ERROR_RESPONSE)
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setCreateAnnotationResult(resultBuilder)
+                .build();
+
+        return response;
+    }
+
+    public static void sendCreateAnnotationResponseError(
+            String errorMsg, StreamObserver<CreateAnnotationResponse> responseObserver
+    ) {
+        final CreateAnnotationResponse response = createAnnotationResponseError(errorMsg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static CreateAnnotationResponse createAnnotationResponseSuccess(String annotationId) {
+
+        final CreateAnnotationResponse.CreateAnnotationResult.SuccessfulResult.Builder successfulResultBuilder =
+                CreateAnnotationResponse.CreateAnnotationResult.SuccessfulResult.newBuilder();
+        successfulResultBuilder.setAnnotationId(annotationId);
+        successfulResultBuilder.build();
+
+        final CreateAnnotationResponse.CreateAnnotationResult.Builder resultBuilder =
+                CreateAnnotationResponse.CreateAnnotationResult.newBuilder();
+        resultBuilder.setSuccessfulResult(successfulResultBuilder);
+        resultBuilder.build();
+
+        final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
+                .setResponseType(ResponseType.SUMMARY_RESPONSE)
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setCreateAnnotationResult(resultBuilder)
+                .build();
+
+        return response;
+    }
+
+    public static void sendCreateAnnotationResponseSuccess(
+            String annotationId, StreamObserver<CreateAnnotationResponse> responseObserver) {
+        final CreateAnnotationResponse response = createAnnotationResponseSuccess(annotationId);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
