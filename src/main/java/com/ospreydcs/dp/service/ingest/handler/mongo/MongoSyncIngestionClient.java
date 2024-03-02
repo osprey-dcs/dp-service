@@ -25,14 +25,12 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 request.getProviderId(), request.getClientRequestId());
 
         // insert batch of bson data documents to mongodb
-        String msg = "";
-        long recordsInsertedCount = 0;
         InsertManyResult result = null;
         try {
             result = mongoCollectionBuckets.insertMany(dataDocumentBatch); // SILENTLY FAILS IF TsDataBucket DOESN'T HAVE ACCESSOR METHODS FOR ALL INST VARS!
         } catch (MongoException ex) {
             // insertMany exception
-            String errorMsg = "MongoException in insertMany: " + ex.getMessage();
+            final String errorMsg = "MongoException in insertMany: " + ex.getMessage();
             logger.error(errorMsg);
             return new MongoIngestionHandler.IngestionTaskResult(true, errorMsg, null);
         }
@@ -48,14 +46,12 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 requestStatusDocument.getProviderId(), requestStatusDocument.getRequestId());
 
         // insert RequestStatusDocument to mongodb
-        String msg = "";
-        long recordsInsertedCount = 0;
         InsertOneResult result = null;
         try {
             result = mongoCollectionRequestStatus.insertOne(requestStatusDocument); // SILENTLY FAILS IF TsDataBucket DOESN'T HAVE ACCESSOR METHODS FOR ALL INST VARS!
         } catch (MongoException ex) {
             // insertOne exception
-            String errorMsg = "insertRequestStatus MongoException: " + ex.getMessage();
+            final String errorMsg = "insertRequestStatus MongoException: " + ex.getMessage();
             logger.error(errorMsg);
             return null;
         }

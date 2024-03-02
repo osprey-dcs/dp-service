@@ -39,7 +39,7 @@ public abstract class CreateAnnotationJob extends HandlerJob {
     public void execute() {
         logger.debug("executing CreateAnnotationJob id: {}", this.responseObserver.hashCode());
         AnnotationDocument annotationDocument = generateAnnotationDocument_(request);
-//        InsertOneResult result = this.mongoClient.createAnnotation(annotationDocument);
+        InsertOneResult result = this.mongoClient.insertAnnotation(annotationDocument);
 //        logger.debug("dispatching CreateAnnotationJob id: {}", this.responseObserver.hashCode());
 //        dispatcher.handleResult();
     }

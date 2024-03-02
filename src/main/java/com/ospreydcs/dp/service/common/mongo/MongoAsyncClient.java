@@ -4,6 +4,7 @@ import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import org.apache.logging.log4j.LogManager;
@@ -13,12 +14,15 @@ import org.bson.conversions.Bson;
 
 public class MongoAsyncClient extends MongoClientBase {
 
+    // static variables
     private static final Logger LOGGER = LogManager.getLogger();
 
+    // instance variables
     protected MongoClient mongoClient = null;
     protected MongoDatabase mongoDatabase = null;
     protected MongoCollection<BucketDocument> mongoCollectionBuckets = null;
     protected MongoCollection<RequestStatusDocument> mongoCollectionRequestStatus = null;
+    protected MongoCollection<AnnotationDocument> mongoCollectionAnnotations = null;
 
     @Override
     protected boolean initMongoClient(String connectString) {
@@ -56,4 +60,18 @@ public class MongoAsyncClient extends MongoClientBase {
     protected boolean createMongoIndexRequestStatus(Bson fieldNamesBson) {
         mongoCollectionRequestStatus.createIndex(fieldNamesBson);
         return true;
-    }}
+    }
+
+    @Override
+    protected boolean initMongoCollectionAnnotations(String collectionName) {
+        mongoCollectionAnnotations =
+                mongoDatabase.getCollection(collectionName, AnnotationDocument.class);  // creates collection if it doesn't exist
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexAnnotations(Bson fieldNamesBson) {
+        mongoCollectionAnnotations.createIndex(fieldNamesBson);
+        return true;
+    }
+}

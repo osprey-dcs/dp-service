@@ -7,5 +7,5 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 public interface MongoAnnotationClientInterface {
     boolean init();
     boolean fini();
-//    InsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
+    InsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
 }

@@ -17,20 +17,14 @@ import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 public abstract class MongoClientBase {
 
-    // abstract methods
-    protected abstract boolean initMongoClient(String connectString);
-    protected abstract boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry);
-    protected abstract boolean initMongoCollectionBuckets(String collectionName);
-    protected abstract boolean createMongoIndexBuckets(Bson fieldNamesBson);
-    protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
-    protected abstract boolean createMongoIndexRequestStatus(Bson fieldNamesBson);
-
+    // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // constants
     public static final String MONGO_DATABASE_NAME = "dp";
     public static final String COLLECTION_NAME_BUCKETS = "buckets";
     public static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
+    public static final String COLLECTION_NAME_ANNOTATIONS = "annotations";
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
@@ -42,6 +36,16 @@ public abstract class MongoClientBase {
     public static final String DEFAULT_DB_USER = "admin";
     public static final String CFG_KEY_DB_PASSWORD = "MongoClient.dbPassword";
     public static final String DEFAULT_DB_PASSWORD = "admin";
+
+    // abstract methods
+    protected abstract boolean initMongoClient(String connectString);
+    protected abstract boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry);
+    protected abstract boolean initMongoCollectionBuckets(String collectionName);
+    protected abstract boolean createMongoIndexBuckets(Bson fieldNamesBson);
+    protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
+    protected abstract boolean createMongoIndexRequestStatus(Bson fieldNamesBson);
+    protected abstract boolean initMongoCollectionAnnotations(String collectionName);
+    protected abstract boolean createMongoIndexAnnotations(Bson fieldNamesBson);
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -84,21 +88,35 @@ public abstract class MongoClientBase {
         createMongoIndexBuckets(Indexes.ascending(
                 BsonConstants.BSON_KEY_BUCKET_NAME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME, BsonConstants.BSON_KEY_BUCKET_FIRST_TIME));
+                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME, BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS));
+                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME, BsonConstants.BSON_KEY_BUCKET_LAST_TIME));
+                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_BUCKET_LAST_TIME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME, BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
+                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
         return true;
     }
 
     private boolean createMongoIndexesRequestStatus() {
         createMongoIndexRequestStatus(Indexes.ascending(
-                BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID, BsonConstants.BSON_KEY_REQ_STATUS_REQUEST_ID));
+                BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID,
+                BsonConstants.BSON_KEY_REQ_STATUS_REQUEST_ID));
         createMongoIndexRequestStatus(Indexes.ascending(
-                BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID, BsonConstants.BSON_KEY_REQ_STATUS_TIME));
+                BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID,
+                BsonConstants.BSON_KEY_REQ_STATUS_TIME));
+        return true;
+    }
+
+    private boolean createMongoIndexesAnnotations() {
+        createMongoIndexAnnotations(Indexes.ascending(
+                BsonConstants.BSON_KEY_ANNOTATION_TYPE));
         return true;
     }
 
@@ -128,6 +146,10 @@ public abstract class MongoClientBase {
         return COLLECTION_NAME_REQUEST_STATUS;
     }
 
+    protected String getCollectionNameAnnotations() {
+        return COLLECTION_NAME_ANNOTATIONS;
+    }
+
     public boolean init() {
 
         logger.trace("init");
@@ -136,8 +158,10 @@ public abstract class MongoClientBase {
         String databaseName = getMongoDatabaseName();
         String collectionNameBuckets = getCollectionNameBuckets();
         String collectionNameRequestStatus = getCollectionNameRequestStatus();
-        logger.debug("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
-        logger.debug("mongo client init collection names buckets: {} requestStatus: {}", collectionNameBuckets, collectionNameRequestStatus);
+        String collectionNameAnnotations = getCollectionNameAnnotations();
+        logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
+        logger.info("mongo client init collection names buckets: {} requestStatus: {} annotations: {}",
+                collectionNameBuckets, collectionNameRequestStatus, collectionNameAnnotations);
 
         // connect mongo client
         initMongoClient(connectString);
@@ -153,6 +177,9 @@ public abstract class MongoClientBase {
         initMongoCollectionRequestStatus(collectionNameRequestStatus);
         createMongoIndexesRequestStatus();
 
+        // initialize annotations collection
+        initMongoCollectionAnnotations(collectionNameAnnotations);
+        createMongoIndexesAnnotations();
         return true;
     }
 
