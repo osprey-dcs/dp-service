@@ -60,13 +60,13 @@ public class AnnotationValidationUtility {
     public static ValidationResult validateCreateCommentRequest(CreateAnnotationRequest request) {
 
         // validate correct oneof case for details payload
-        if (!request.hasCreateCommentDetails()) {
+        if (!request.hasCommentDetails()) {
             String errorMsg = "CreateAnnotationRequest does not contain CreateCommentDetails";
             return new ValidationResult(true, errorMsg);
         }
 
         // validate details
-        CreateAnnotationRequest.CreateCommentDetails createCommentDetails = request.getCreateCommentDetails();
+        CreateAnnotationRequest.CommentDetails createCommentDetails = request.getCommentDetails();
         String detailsComment = createCommentDetails.getComment();
         if (detailsComment == null || detailsComment.isBlank()) {
             String errorMsg = "CreateAnnotationRequest.CreateCommentDetails.comment is null or empty";

@@ -11,7 +11,7 @@ public class CommentAnnotationDocument extends AnnotationDocument {
     public static CommentAnnotationDocument fromCreateRequest(CreateAnnotationRequest request) {
         CommentAnnotationDocument document = new CommentAnnotationDocument();
         document.setFieldsFromRequest(request);
-        document.setComment(request.getCreateCommentDetails().getComment());
+        document.setComment(request.getCommentDetails().getComment());
         return document;
     }
 

@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.annotation.service;
 
+import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
 import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
@@ -44,17 +45,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
     private static CreateAnnotationResponse createAnnotationResponseReject(
             String msg,
-            RejectionDetails.Reason reason
+            CreateAnnotationResponse.ExceptionalResult.StatusType statusType
     ) {
-        final RejectionDetails rejectionDetails = RejectionDetails.newBuilder()
-                .setReason(reason)
-                .setMessage(msg)
-                .build();
+        final CreateAnnotationResponse.ExceptionalResult exceptionalResult =
+                CreateAnnotationResponse.ExceptionalResult.newBuilder()
+                        .setStatusType(statusType)
+                        .setStatusMessage(msg)
+                        .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectionDetails(rejectionDetails)
+                .setExceptionalResult(exceptionalResult)
                 .build();
 
         return response;
@@ -62,32 +63,25 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
     private static void sendCreateAnnotationResponseReject(
             String errorMsg,
-            RejectionDetails.Reason rejectionReason,
+            CreateAnnotationResponse.ExceptionalResult.StatusType statusType,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg, rejectionReason);
+        final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg, statusType);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
     private static CreateAnnotationResponse createAnnotationResponseError(String msg) {
 
-        final CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.Builder exceptionalResultBuilder =
-                CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.newBuilder();
-        exceptionalResultBuilder.setStatusType(
-                CreateAnnotationResponse.CreateAnnotationResult.ExceptionalResult.StatusType.STATUS_ERROR);
-        exceptionalResultBuilder.setStatusMessage(msg);
-        exceptionalResultBuilder.build();
-
-        final CreateAnnotationResponse.CreateAnnotationResult.Builder resultBuilder =
-                CreateAnnotationResponse.CreateAnnotationResult.newBuilder();
-        resultBuilder.setExceptionalResult(exceptionalResultBuilder);
-        resultBuilder.build();
+        final CreateAnnotationResponse.ExceptionalResult exceptionalResult =
+                CreateAnnotationResponse.ExceptionalResult.newBuilder()
+                        .setStatusType(CreateAnnotationResponse.ExceptionalResult.StatusType.STATUS_ERROR)
+                        .setStatusMessage(msg)
+                        .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseType(ResponseType.ERROR_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setCreateAnnotationResult(resultBuilder)
+                .setExceptionalResult(exceptionalResult)
                 .build();
 
         return response;
@@ -103,20 +97,14 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
     private static CreateAnnotationResponse createAnnotationResponseSuccess(String annotationId) {
 
-        final CreateAnnotationResponse.CreateAnnotationResult.SuccessfulResult.Builder successfulResultBuilder =
-                CreateAnnotationResponse.CreateAnnotationResult.SuccessfulResult.newBuilder();
-        successfulResultBuilder.setAnnotationId(annotationId);
-        successfulResultBuilder.build();
-
-        final CreateAnnotationResponse.CreateAnnotationResult.Builder resultBuilder =
-                CreateAnnotationResponse.CreateAnnotationResult.newBuilder();
-        resultBuilder.setSuccessfulResult(successfulResultBuilder);
-        resultBuilder.build();
+        final CreateAnnotationResponse.SuccessfulResult successfulResult =
+                CreateAnnotationResponse.SuccessfulResult.newBuilder()
+                        .setAnnotationId(annotationId)
+                        .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseType(ResponseType.SUMMARY_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setCreateAnnotationResult(resultBuilder)
+                .setSuccessfulResult(successfulResult)
                 .build();
 
         return response;
@@ -129,13 +117,10 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         responseObserver.onCompleted();
     }
 
-    @Override
-    public void createCommentAnnotation(
+    private void createCommentAnnotation(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
-        logger.debug("id: {} createCommentAnnotation request received", responseObserver.hashCode());
-
         // validate request
         ValidationResult validationResult = AnnotationValidationUtility.validateCreateCommentRequest(request);
         if (validationResult.isError) {
@@ -143,11 +128,40 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     responseObserver.hashCode(),
                     validationResult.msg);
             sendCreateAnnotationResponseReject(
-                    validationResult.msg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+                    validationResult.msg,
+                    CreateAnnotationResponse.ExceptionalResult.StatusType.STATUS_REJECT,
+                    responseObserver);
             return;
         }
 
         // handle request
         handler.handleCreateCommentAnnotationRequest(request, responseObserver);
+    }
+
+    @Override
+    public void createAnnotation(
+            CreateAnnotationRequest request,
+            StreamObserver<CreateAnnotationResponse> responseObserver
+    ) {
+        logger.info("id: {} createAnnotation request received with type: {}",
+                responseObserver.hashCode(), request.getAnnotationTypeDetailsCase().toString());
+
+        // dispatch request based on annotation type
+        switch(request.getAnnotationTypeDetailsCase()) {
+
+            case COMMENTDETAILS -> {
+                createCommentAnnotation(request, responseObserver);
+            }
+            case ANNOTATIONTYPEDETAILS_NOT_SET -> {
+                final String errorMsg = "id: " + responseObserver.hashCode()
+                        + " createAnnotation annotationTypeDetails not specified";
+                logger.debug(errorMsg);
+                sendCreateAnnotationResponseReject(
+                        errorMsg,
+                        CreateAnnotationResponse.ExceptionalResult.StatusType.STATUS_REJECT,
+                        responseObserver);
+                return;
+            }
+        }
     }
 }
