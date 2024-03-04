@@ -52,7 +52,7 @@ public class QueryTableResponseObserver implements StreamObserver<QueryTableResp
             return;
         }
 
-        logger.trace("stream: {} received response type: {}", streamNumber, response.getResponseCase().toString());
+        logger.trace("stream: {} received response type: {}", streamNumber, response.getResultCase().toString());
 
         boolean success = true;
         String msg = "";
