@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import io.grpc.stub.StreamObserver;
@@ -22,7 +23,13 @@ public class DataResponseStreamDispatcher extends BucketDocumentResponseDispatch
             final QueryDataResponse response = super.nextQueryResponseFromCursor(cursor);
 
             if (response != null) {
-                final boolean isError = (response.getResponseType() == ResponseType.ERROR_RESPONSE);
+                boolean isError = false;
+                if (response.hasExceptionalResult()) {
+                    ExceptionalResult exceptionalResult = response.getExceptionalResult();
+                    if (exceptionalResult.getStatusType() == ExceptionalResult.StatusType.STATUS_ERROR) {
+                        isError = true;
+                    }
+                }
                 getResponseObserver().onNext(response);
 
                 if (isError) {

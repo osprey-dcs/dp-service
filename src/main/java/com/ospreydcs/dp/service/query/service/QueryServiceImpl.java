@@ -44,169 +44,59 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
     }
 
-    public static QueryDataResponse queryResponseDataReject(String msg, RejectionDetails.Reason reason) {
-
-        final RejectionDetails rejectionDetails = RejectionDetails.newBuilder()
-                .setReason(reason)
-                .setMessage(msg)
+    private static QueryDataResponse queryDataResponseExceptionalResult(
+            String msg, ExceptionalResult.StatusType statusType
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setStatusType(statusType)
+                .setStatusMessage(msg)
                 .build();
 
         final QueryDataResponse response = QueryDataResponse.newBuilder()
-                .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectionDetails(rejectionDetails)
+                .setExceptionalResult(exceptionalResult)
                 .build();
 
         return response;
     }
 
-    private static QueryDataResponse dataResponseWithResult(
-            QueryDataResponse.QueryResult queryResult, ResponseType responseType
-    ) {
-        return QueryDataResponse.newBuilder()
-                .setResponseType(responseType)
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setQueryResult(queryResult)
-                .build();
-    }
-
-    private static QueryMetadataResponse metadataResponseWithResult(
-            QueryMetadataResponse.QueryResult queryResult, ResponseType responseType
-    ) {
-        return QueryMetadataResponse.newBuilder()
-                .setResponseType(responseType)
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setQueryResult(queryResult)
-                .build();
-    }
-
-    private static QueryStatus queryStatus(
-            String msg, QueryStatus.QueryStatusType statusType
-    ) {
-        QueryStatus.Builder statusBuilder = QueryStatus.newBuilder();
-        statusBuilder.setQueryStatusType(statusType);
-        if (msg != null) {
-            statusBuilder.setStatusMessage(msg);
-        }
-        return statusBuilder.build();
+    public static QueryDataResponse queryResponseDataReject(String msg) {
+        return queryDataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_REJECT);
     }
 
     public static QueryDataResponse queryResponseDataError(String msg) {
-
-        final QueryStatus errorStatus =
-                queryStatus(msg, QueryStatus.QueryStatusType.QUERY_STATUS_ERROR);
-
-        final QueryDataResponse.QueryResult queryResult = QueryDataResponse.QueryResult.newBuilder()
-                .setQueryStatus(errorStatus)
-                .build();
-
-        return dataResponseWithResult(queryResult, ResponseType.ERROR_RESPONSE);
+        return queryDataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_ERROR);
     }
 
     public static QueryDataResponse queryResponseDataEmpty() {
-
-        final QueryStatus emptyStatus =
-                queryStatus(null, QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY);
-
-        final QueryDataResponse.QueryResult queryResult = QueryDataResponse.QueryResult.newBuilder()
-                .setQueryStatus(emptyStatus)
-                .build();
-
-        return dataResponseWithResult(queryResult, ResponseType.STATUS_RESPONSE);
+        return queryDataResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.StatusType.STATUS_EMPTY);
     }
 
     public static QueryDataResponse queryResponseDataNotReady() {
-
-        final QueryStatus emptyStatus =
-                queryStatus(null, QueryStatus.QueryStatusType.QUERY_STATUS_NOT_READY);
-
-        final QueryDataResponse.QueryResult queryResult = QueryDataResponse.QueryResult.newBuilder()
-                .setQueryStatus(emptyStatus)
-                .build();
-
-        return dataResponseWithResult(queryResult, ResponseType.STATUS_RESPONSE);
+        return queryDataResponseExceptionalResult(
+                "cursor not ready for operation", ExceptionalResult.StatusType.STATUS_NOT_READY);
     }
 
-    public static QueryDataResponse queryResponseData(QueryDataResponse.QueryResult.QueryData.Builder queryDataBuilder) {
-
+    public static QueryDataResponse queryResponseData(QueryDataResponse.QueryData.Builder queryDataBuilder) {
         queryDataBuilder.build();
-        final QueryDataResponse.QueryResult queryResult = QueryDataResponse.QueryResult.newBuilder()
+        return QueryDataResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
                 .setQueryData(queryDataBuilder)
                 .build();
-        return dataResponseWithResult(queryResult, ResponseType.DETAIL_RESPONSE);
     }
 
-    public static QueryTableResponse queryResponseTable(QueryTableResponse.QueryResult.TableResult tableResult) {
-
-        final QueryTableResponse.QueryResult queryResult = QueryTableResponse.QueryResult.newBuilder()
-                .setTableResult(tableResult)
-                .build();
-
+    public static QueryTableResponse queryResponseTable(QueryTableResponse.TableResult tableResult) {
         return QueryTableResponse.newBuilder()
-                .setResponseType(ResponseType.DETAIL_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setQueryResult(queryResult)
-                .build();
-    }
-
-    public static QueryMetadataResponse queryResponseMetadataReject(String msg, RejectionDetails.Reason reason) {
-
-        final RejectionDetails rejectionDetails = RejectionDetails.newBuilder()
-                .setReason(reason)
-                .setMessage(msg)
-                .build();
-
-        final QueryMetadataResponse response = QueryMetadataResponse.newBuilder()
-                .setResponseType(ResponseType.REJECT_RESPONSE)
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectionDetails(rejectionDetails)
-                .build();
-
-        return response;
-    }
-
-    public static QueryMetadataResponse queryResponseMetadataError(String msg) {
-
-        final QueryStatus errorStatus =
-                queryStatus(msg, QueryStatus.QueryStatusType.QUERY_STATUS_ERROR);
-
-        final QueryMetadataResponse.QueryResult queryResult = QueryMetadataResponse.QueryResult.newBuilder()
-                .setQueryStatus(errorStatus)
-                .build();
-
-        return metadataResponseWithResult(queryResult, ResponseType.ERROR_RESPONSE);
-    }
-
-    public static QueryMetadataResponse queryResponseMetadataEmpty() {
-
-        final QueryStatus emptyStatus =
-                queryStatus(null, QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY);
-
-        final QueryMetadataResponse.QueryResult queryResult = QueryMetadataResponse.QueryResult.newBuilder()
-                .setQueryStatus(emptyStatus)
-                .build();
-
-        return metadataResponseWithResult(queryResult, ResponseType.STATUS_RESPONSE);
-    }
-
-    public static QueryMetadataResponse queryResponseMetadata(
-            QueryMetadataResponse.QueryResult.MetadataResult metadataResult
-    ) {
-        final QueryMetadataResponse.QueryResult queryResult = QueryMetadataResponse.QueryResult.newBuilder()
-                .setMetadataResult(metadataResult)
-                .build();
-
-        return QueryMetadataResponse.newBuilder()
-                .setResponseType(ResponseType.DETAIL_RESPONSE)
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setQueryResult(queryResult)
+                .setTableResult(tableResult)
                 .build();
     }
 
     public static void sendQueryResponseDataReject(
-            String msg, RejectionDetails.Reason reason, StreamObserver<QueryDataResponse> responseObserver) {
+            String msg, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final QueryDataResponse response = queryResponseDataReject(msg, reason);
+        final QueryDataResponse response = queryResponseDataReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -223,10 +113,49 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseMetadataReject(
-            String msg, RejectionDetails.Reason reason, StreamObserver<QueryMetadataResponse> responseObserver) {
+    private static QueryMetadataResponse queryMetadataResponseExceptionalResult(
+            String msg,
+            ExceptionalResult.StatusType statusType
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setStatusType(statusType)
+                .setStatusMessage(msg)
+                .build();
 
-        final QueryMetadataResponse response = queryResponseMetadataReject(msg, reason);
+        final QueryMetadataResponse response = QueryMetadataResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryMetadataResponse queryResponseMetadataReject(String msg) {
+        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_REJECT);
+    }
+
+    public static QueryMetadataResponse queryResponseMetadataError(String msg) {
+        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_ERROR);
+    }
+
+    public static QueryMetadataResponse queryResponseMetadataEmpty() {
+        return queryMetadataResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.StatusType.STATUS_EMPTY);
+    }
+
+    public static QueryMetadataResponse queryResponseMetadata(
+            QueryMetadataResponse.MetadataResult metadataResult
+    ) {
+        return QueryMetadataResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setMetadataResult(metadataResult)
+                .build();
+    }
+
+    public static void sendQueryResponseMetadataReject(
+            String msg, StreamObserver<QueryMetadataResponse> responseObserver) {
+
+        final QueryMetadataResponse response = queryResponseMetadataReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -246,7 +175,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     public static void sendQueryResponseMetadata(
-            QueryMetadataResponse.QueryResult.MetadataResult metadataResult,
+            QueryMetadataResponse.MetadataResult metadataResult,
             StreamObserver<QueryMetadataResponse> responseObserver
     ) {
         final QueryMetadataResponse response  = queryResponseMetadata(metadataResult);
@@ -260,7 +189,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         // check that query request contains a QuerySpec
         if (!request.hasQuerySpec()) {
             String errorMsg = "QueryRequest does not contain a QuerySpec";
-            sendQueryResponseDataReject(errorMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+            sendQueryResponseDataReject(errorMsg, responseObserver);
             return null;
         }
 
@@ -279,7 +208,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         // send reject if request is invalid
         if (validationResult.isError) {
             String validationMsg = validationResult.msg;
-            sendQueryResponseDataReject(validationMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+            sendQueryResponseDataReject(validationMsg, responseObserver);
             return null;
         }
 
@@ -333,7 +262,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         // check that query request contains a ColumnInfoQuerySpec
         if (!request.hasQuerySpec()) {
             String errorMsg = "QueryDataRequest does not contain a QuerySpec";
-            sendQueryResponseMetadataReject(errorMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+            sendQueryResponseMetadataReject(errorMsg, responseObserver);
             return;
         }
 
@@ -346,19 +275,19 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (querySpec.hasPvNameList()) {
             if (querySpec.getPvNameList().getPvNamesCount() == 0) {
                 String errorMsg = "QuerySpec.pvNameList.pvNames must not be empty";
-                sendQueryResponseMetadataReject(errorMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+                sendQueryResponseMetadataReject(errorMsg, responseObserver);
                 return;
             }
 
         } else if (querySpec.hasPvNamePattern()) {
             if (querySpec.getPvNamePattern().getPattern().isBlank()) {
                 String errorMsg = "QuerySpec.pvNamePattern.pattern must not be empty";
-                sendQueryResponseMetadataReject(errorMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+                sendQueryResponseMetadataReject(errorMsg, responseObserver);
                 return;
             }
         } else {
             String errorMsg = "column info query must specify either list of column names or column name pattern";
-            sendQueryResponseMetadataReject(errorMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON, responseObserver);
+            sendQueryResponseMetadataReject(errorMsg, responseObserver);
             return;
         }
 

@@ -48,16 +48,16 @@ public class MetadataResponseDispatcher extends Dispatcher {
             return;
         }
 
-        QueryMetadataResponse.QueryResult.MetadataResult.Builder metadataResultBuilder =
-                QueryMetadataResponse.QueryResult.MetadataResult.newBuilder();
+        QueryMetadataResponse.MetadataResult.Builder metadataResultBuilder =
+                QueryMetadataResponse.MetadataResult.newBuilder();
         
         while (cursor.hasNext()) {
             // build ColumnInfo grpc object for each document in cursor
             
             final Document columnInfoDocument = cursor.next();
             
-            final QueryMetadataResponse.QueryResult.MetadataResult.PvInfo.Builder pvInfoBuilder =
-                    QueryMetadataResponse.QueryResult.MetadataResult.PvInfo.newBuilder();
+            final QueryMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
+                    QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
             pvInfoBuilder.setPvName((String)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
             pvInfoBuilder.setLastBucketDataType((String)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE));
@@ -89,7 +89,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
         }
 
         // send response and close response stream
-        final QueryMetadataResponse.QueryResult.MetadataResult metadataResult = metadataResultBuilder.build();
+        final QueryMetadataResponse.MetadataResult metadataResult = metadataResultBuilder.build();
         QueryServiceImpl.sendQueryResponseMetadata(metadataResult, this.responseObserver);
     }
 }

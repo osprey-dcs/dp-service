@@ -82,11 +82,11 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return dataTimestampsBuilder.build();
     }
 
-    public static <T> QueryDataResponse.QueryResult.QueryData.DataBucket dataBucketFromDocument(
+    public static <T> QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
             BucketDocument<T> document
     ) {
-        final QueryDataResponse.QueryResult.QueryData.DataBucket.Builder bucketBuilder =
-                QueryDataResponse.QueryResult.QueryData.DataBucket.newBuilder();
+        final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
+                QueryDataResponse.QueryData.DataBucket.newBuilder();
 
         bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
 

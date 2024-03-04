@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.query.service;
 import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.Test;
@@ -43,15 +43,13 @@ public class QueryServiceImplTest extends QueryTestBase {
     public void testQueryResponseReject() {
 
         final String msg = "test";
-        QueryDataResponse response =
-                serviceImpl.queryResponseDataReject(msg, RejectionDetails.Reason.INVALID_REQUEST_REASON);
+        QueryDataResponse response = serviceImpl.queryResponseDataReject(msg);
 
         // check response contains message and reason
-        assertTrue(response.getResponseType() == ResponseType.REJECT_RESPONSE);
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasRejectionDetails());
-        assertTrue(response.getRejectionDetails().getReason() == RejectionDetails.Reason.INVALID_REQUEST_REASON);
-        assertTrue(response.getRejectionDetails().getMessage().equals(msg));
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_REJECT);
+        assertTrue(response.getExceptionalResult().getStatusMessage().equals(msg));
     }
 
     @Test
@@ -60,13 +58,10 @@ public class QueryServiceImplTest extends QueryTestBase {
         final String msg = "error message";
         QueryDataResponse response = serviceImpl.queryResponseDataError(msg);
 
-        assertEquals(ResponseType.ERROR_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasQueryResult());
-        assertTrue(response.getQueryResult().hasQueryStatus());
-        QueryStatus status = response.getQueryResult().getQueryStatus();
-        assertEquals( QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
-        assertTrue(status.getStatusMessage().equals(msg));
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_ERROR);
+        assertTrue(response.getExceptionalResult().getStatusMessage().equals(msg));
     }
 
     @Test
@@ -74,12 +69,9 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         QueryDataResponse response = serviceImpl.queryResponseDataEmpty();
 
-        assertEquals(ResponseType.STATUS_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasQueryResult());
-        assertTrue(response.getQueryResult().hasQueryStatus());
-        QueryStatus status = response.getQueryResult().getQueryStatus();
-        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_EMPTY);
     }
 
     @Test
@@ -87,26 +79,21 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         QueryDataResponse response = serviceImpl.queryResponseDataNotReady();
 
-        assertEquals(ResponseType.STATUS_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasQueryResult());
-        assertTrue(response.getQueryResult().hasQueryStatus());
-        QueryStatus status = response.getQueryResult().getQueryStatus();
-        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_NOT_READY, status.getQueryStatusType());
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_NOT_READY);
     }
 
     @Test
     public void testQueryResponseData() {
 
-        QueryDataResponse.QueryResult.QueryData.Builder resultDataBuilder =
-                QueryDataResponse.QueryResult.QueryData.newBuilder();
+        QueryDataResponse.QueryData.Builder resultDataBuilder =
+                QueryDataResponse.QueryData.newBuilder();
 
         QueryDataResponse response = serviceImpl.queryResponseData(resultDataBuilder);
 
-        assertEquals(ResponseType.DETAIL_RESPONSE, response.getResponseType());
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasQueryResult());
-        assertTrue(response.getQueryResult().hasQueryData());
+        assertTrue(response.hasQueryData());
     }
 
 }

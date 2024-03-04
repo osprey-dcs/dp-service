@@ -213,12 +213,11 @@ public class QueryGrpcTest extends QueryTestBase {
         // examine response
         assertTrue(responseList.size() == 1);
         QueryDataResponse response = responseList.get(0);
-        assertTrue(response.getResponseType() == ResponseType.REJECT_RESPONSE);
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasRejectionDetails());
-        assertTrue(response.getRejectionDetails().getReason() ==
-                RejectionDetails.Reason.INVALID_REQUEST_REASON);
-        assertTrue(response.getRejectionDetails().getMessage().equals("columnName must be specified"));
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() ==
+                ExceptionalResult.StatusType.STATUS_REJECT);
+        assertTrue(response.getExceptionalResult().getStatusMessage().equals("columnName must be specified"));
     }
 
     /**

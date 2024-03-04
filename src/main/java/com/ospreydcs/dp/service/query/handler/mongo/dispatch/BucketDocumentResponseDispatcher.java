@@ -52,14 +52,14 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
     protected QueryDataResponse nextQueryResponseFromCursor(MongoCursor<BucketDocument> cursor) {
 
         // build response from query result cursor
-        QueryDataResponse.QueryResult.QueryData.Builder queryDataBuilder =
-                QueryDataResponse.QueryResult.QueryData.newBuilder();
+        QueryDataResponse.QueryData.Builder queryDataBuilder =
+                QueryDataResponse.QueryData.newBuilder();
 
         int messageSize = 0;
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
-            final QueryDataResponse.QueryResult.QueryData.DataBucket bucket =
+            final QueryDataResponse.QueryData.DataBucket bucket =
                     MongoQueryHandler.dataBucketFromDocument(document);
 
             // determine bucket size and check if too large

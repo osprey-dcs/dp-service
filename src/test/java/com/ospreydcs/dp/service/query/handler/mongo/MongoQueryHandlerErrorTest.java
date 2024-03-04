@@ -2,9 +2,9 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.junit.AfterClass;
@@ -80,12 +80,9 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
         // examine response
         assertEquals(numResponesesExpected, responseList.size());
         QueryDataResponse summaryResponse = responseList.get(0);
-        assertEquals(ResponseType.ERROR_RESPONSE, summaryResponse.getResponseType());
-        assertTrue(summaryResponse.hasQueryResult());
-        assertTrue(summaryResponse.getQueryResult().hasQueryStatus());
-        QueryStatus status = summaryResponse.getQueryResult().getQueryStatus();
-        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_ERROR, status.getQueryStatusType());
-        assertEquals("executeQuery returned null cursor", status.getStatusMessage());
+        assertTrue(summaryResponse.hasExceptionalResult());
+        assertEquals(ExceptionalResult.StatusType.STATUS_ERROR, summaryResponse.getExceptionalResult().getStatusType());
+        assertEquals("executeQuery returned null cursor", summaryResponse.getExceptionalResult().getStatusMessage());
     }
 
 }

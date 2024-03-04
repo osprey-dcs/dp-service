@@ -326,10 +326,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
             assertNotNull(response.getResponseTime() != null);
             assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-            assertTrue(response.hasQueryResult());
-            final QueryDataResponse.QueryResult result = response.getQueryResult();
-            assertTrue(result.hasQueryData());
-            final QueryDataResponse.QueryResult.QueryData queryData = result.getQueryData();
+            assertTrue(response.hasQueryData());
+            final QueryDataResponse.QueryData queryData = response.getQueryData();
 
             responseCount.incrementAndGet();
 
@@ -337,7 +335,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             try {
                 // verify buckets in response
                 assertTrue(queryData.getDataBucketsCount() > 0);
-                for (QueryDataResponse.QueryResult.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (QueryDataResponse.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
 
                     assertTrue(bucket.hasDataColumn());
                     final DataColumn dataColumn = bucket.getDataColumn();
@@ -536,10 +534,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                 // check that message contains a table response
                 assertNotNull(response.getResponseTime() != null);
                 assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-                assertTrue(response.hasQueryResult());
-                final QueryTableResponse.QueryResult queryResult = response.getQueryResult();
-                assertTrue(queryResult.hasTableResult());
-                final QueryTableResponse.QueryResult.TableResult tableResult = queryResult.getTableResult();
+                assertTrue(response.hasTableResult());
+                final QueryTableResponse.TableResult tableResult = response.getTableResult();
                 final List<String> columnNames = params.columnNames;
                 assertEquals(columnNames.size(), tableResult.getDataColumnsCount());
 

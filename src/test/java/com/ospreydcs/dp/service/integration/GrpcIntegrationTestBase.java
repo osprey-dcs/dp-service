@@ -436,7 +436,7 @@ public class GrpcIntegrationTestBase {
         }
     }
 
-    protected QueryTableResponse.QueryResult.TableResult sendQueryDataTable(QueryDataRequest request) {
+    protected QueryTableResponse.TableResult sendQueryDataTable(QueryDataRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
 
@@ -455,11 +455,11 @@ public class GrpcIntegrationTestBase {
             return null;
         } else {
             final QueryTableResponse response = responseObserver.getQueryResponse();
-            return response.getQueryResult().getTableResult();
+            return response.getTableResult();
         }
     }
 
-    protected QueryTableResponse.QueryResult.TableResult queryDataTable(
+    protected QueryTableResponse.TableResult queryDataTable(
             List<String> columnNames, long startSeconds, long startNanos, long endSeconds, long endNanos
     ) {
         final QueryTestBase.QueryDataRequestParams params =
@@ -477,7 +477,7 @@ public class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.QueryResult.TableResult table =
+        final QueryTableResponse.TableResult table =
                 queryDataTable(
                         columnNames,
                         startSeconds,
@@ -511,7 +511,7 @@ public class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<QueryDataResponse.QueryResult.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
 
@@ -533,7 +533,7 @@ public class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<QueryDataResponse.QueryResult.QueryData.DataBucket> queryDataStream(
+    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
             List<String> pvNames,
             long startSeconds,
             long startNanos,
@@ -555,18 +555,18 @@ public class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final List<QueryDataResponse.QueryResult.QueryData.DataBucket> dataBucketList =
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
                 queryDataStream(pvNames, startSeconds, startNanos, endSeconds, endNanos);
 
         // build map of buckets in query response for vallidation
-        Map<String, TimestampMap<QueryDataResponse.QueryResult.QueryData.DataBucket>> responseBucketMap =
+        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap =
                 new TreeMap<>();
-        for (QueryDataResponse.QueryResult.QueryData.DataBucket dataBucket : dataBucketList) {
+        for (QueryDataResponse.QueryData.DataBucket dataBucket : dataBucketList) {
             final String bucketColumnName = dataBucket.getDataColumn().getName();
             final Timestamp bucketStartTimestamp = dataBucket.getDataTimestamps().getSamplingClock().getStartTime();
             final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
             final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
-            TimestampMap<QueryDataResponse.QueryResult.QueryData.DataBucket> columnTimestampMap =
+            TimestampMap<QueryDataResponse.QueryData.DataBucket> columnTimestampMap =
                     responseBucketMap.get(bucketColumnName);
             if (columnTimestampMap == null) {
                 columnTimestampMap = new TimestampMap<>();
@@ -599,7 +599,7 @@ public class GrpcIntegrationTestBase {
                     }
 
                     // find the response bucket corresponding to the expected bucket
-                    final QueryDataResponse.QueryResult.QueryData.DataBucket responseBucket =
+                    final QueryDataResponse.QueryData.DataBucket responseBucket =
                             responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
 
                     assertEquals(
@@ -633,7 +633,7 @@ public class GrpcIntegrationTestBase {
         assertEquals(numBucketsExpected, dataBucketList.size());
     }
 
-    protected List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> sendQueryMetadata(
+    protected List<QueryMetadataResponse.MetadataResult.PvInfo> sendQueryMetadata(
             QueryMetadataRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
@@ -666,7 +666,7 @@ public class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> pvInfoList =
+        final List<QueryMetadataResponse.MetadataResult.PvInfo> pvInfoList =
                 sendQueryMetadata(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
@@ -678,14 +678,14 @@ public class GrpcIntegrationTestBase {
         assertEquals(columnNames.size(), pvInfoList.size());
 
         // build map of column info list for convenience
-        final Map<String, QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> columnInfoMap = new HashMap<>();
-        for (QueryMetadataResponse.QueryResult.MetadataResult.PvInfo columnInfo : pvInfoList) {
+        final Map<String, QueryMetadataResponse.MetadataResult.PvInfo> columnInfoMap = new HashMap<>();
+        for (QueryMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
             columnInfoMap.put(columnInfo.getPvName(), columnInfo);
         }
 
         // check that a column info was received for each name and verify its contents
         for (String columnName : columnNames) {
-            final QueryMetadataResponse.QueryResult.MetadataResult.PvInfo columnInfoForName =
+            final QueryMetadataResponse.MetadataResult.PvInfo columnInfoForName =
                     columnInfoMap.get(columnName);
             assertNotNull(columnInfoForName);
             assertEquals(columnName, columnInfoForName.getPvName());

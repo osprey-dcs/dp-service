@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -53,77 +52,46 @@ public class QueryTableResponseObserver implements StreamObserver<QueryTableResp
             return;
         }
 
-        final String responseType = response.getResponseType().name();
-        logger.trace("stream: {} received response type: {}", streamNumber, responseType);
+        logger.trace("stream: {} received response type: {}", streamNumber, response.getResponseCase().toString());
 
         boolean success = true;
         String msg = "";
 
-        if (response.hasRejectionDetails()) {
+        if (response.hasExceptionalResult()) {
             isError.set(true);
             success = false;
             msg = "stream: " + streamNumber
-                    + " received reject with message: " + response.getRejectionDetails().getMessage();
+                    + " received exception with message: " + response.getExceptionalResult().getStatusMessage();
             logger.error(msg);
 
-        } else if (response.hasQueryResult()) {
+        } else if (response.hasTableResult()) {
 
-            QueryTableResponse.QueryResult report = response.getQueryResult();
+            grpcBytesReceived.getAndAdd(response.getSerializedSize());
+            numResponsesReceived.incrementAndGet();
 
-            if (report.hasTableResult()) {
+            QueryTableResponse.TableResult dataTable = response.getTableResult();
+            int numResultColumns = dataTable.getDataColumnsCount();
+            logger.trace("stream: {} received DataTable numColumns: {}", streamNumber, numResultColumns);
 
-                grpcBytesReceived.getAndAdd(response.getSerializedSize());
-                numResponsesReceived.incrementAndGet();
+            for (DataColumn column : dataTable.getDataColumnsList()) {
+                int dataValuesCount = column.getDataValuesCount();
+                dataValuesReceived.addAndGet(dataValuesCount);
+                dataBytesReceived.addAndGet(dataValuesCount * Double.BYTES);
+                numColumnsReceived.incrementAndGet();
+            }
 
-                QueryTableResponse.QueryResult.TableResult dataTable = report.getTableResult();
-                int numResultColumns = dataTable.getDataColumnsCount();
-                logger.trace("stream: {} received DataTable numColumns: {}", streamNumber, numResultColumns);
-
-                for (DataColumn column : dataTable.getDataColumnsList()) {
-                    int dataValuesCount = column.getDataValuesCount();
-                    dataValuesReceived.addAndGet(dataValuesCount);
-                    dataBytesReceived.addAndGet(dataValuesCount * Double.BYTES);
-                    numColumnsReceived.incrementAndGet();
-                }
-
-                // call hook for subclasses to add validation
-                try {
-                    verifyResponse(response);
-                } catch (AssertionError assertionError) {
-                    if (finishLatch.getCount() > 0) {
-                        System.err.println("stream: " + streamNumber + " assertion error");
-                        assertionError.printStackTrace(System.err);
-                        isError.set(true);
-                        finishLatch.countDown();
-
-                    }
-                    return;
-                }
-
-            } else if (report.hasQueryStatus()) {
-                final QueryStatus status = report.getQueryStatus();
-
-                if (status.getQueryStatusType()
-                        == QueryStatus.QueryStatusType.QUERY_STATUS_ERROR) {
+            // call hook for subclasses to add validation
+            try {
+                verifyResponse(response);
+            } catch (AssertionError assertionError) {
+                if (finishLatch.getCount() > 0) {
+                    System.err.println("stream: " + streamNumber + " assertion error");
+                    assertionError.printStackTrace(System.err);
                     isError.set(true);
-                    success = false;
-                    final String errorMsg = status.getStatusMessage();
-                    msg = "stream: " + streamNumber + " received error response: " + errorMsg;
-                    logger.error(msg);
+                    finishLatch.countDown();
 
-                } else if (status.getQueryStatusType()
-                        == QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY) {
-                    isError.set(true);
-                    success = false;
-                    msg = "stream: " + streamNumber + " query returned no data";
-                    logger.error(msg);
                 }
-
-            } else {
-                isError.set(true);
-                success = false;
-                msg = "stream: " + streamNumber + " received QueryReport with unexpected content";
-                logger.error(msg);
+                return;
             }
 
         } else {

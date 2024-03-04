@@ -63,12 +63,12 @@ public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
         }
     }
 
-    private QueryTableResponse.QueryResult.TableResult tableResultFromMap(
+    private QueryTableResponse.TableResult tableResultFromMap(
             List<String> columnNames, TimestampMap<Map<Integer, DataValue>> tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
-        final QueryTableResponse.QueryResult.TableResult.Builder tableResultBuilder =
-                QueryTableResponse.QueryResult.TableResult.newBuilder();
+        final QueryTableResponse.TableResult.Builder tableResultBuilder =
+                QueryTableResponse.TableResult.newBuilder();
 
         final Map<Integer, DataColumn.Builder> columnBuilderMap = new TreeMap<>();
         for (int i = 0 ; i < columnNames.size() ; ++i) {
@@ -148,7 +148,7 @@ public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
         cursor.close();
 
         // create DataTable for response from temporary data structure
-        final QueryTableResponse.QueryResult.TableResult tableResult = tableResultFromMap(columnNameList, tableValueMap);
+        final QueryTableResponse.TableResult tableResult = tableResultFromMap(columnNameList, tableValueMap);
 
         // create and send response, close response stream
         QueryTableResponse response = QueryServiceImpl.queryResponseTable(tableResult);

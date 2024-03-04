@@ -166,7 +166,7 @@ public class QueryTestBase {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<QueryDataResponse.QueryResult.QueryData.DataBucket> dataBucketList =
+        private final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
                 Collections.synchronizedList(new ArrayList<>());
 
 //        public QueryResponseStreamObserver(int numBucketsExpected) {
@@ -184,7 +184,7 @@ public class QueryTestBase {
 
         public boolean isError() { return isError.get(); }
 
-        public List<QueryDataResponse.QueryResult.QueryData.DataBucket> getDataBucketList() {
+        public List<QueryDataResponse.QueryData.DataBucket> getDataBucketList() {
             return dataBucketList;
         }
 
@@ -194,9 +194,9 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                List<QueryDataResponse.QueryResult.QueryData.DataBucket> responseBucketList =
-                        response.getQueryResult().getQueryData().getDataBucketsList();
-                for (QueryDataResponse.QueryResult.QueryData.DataBucket bucket : responseBucketList) {
+                List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
+                        response.getQueryData().getDataBucketsList();
+                for (QueryDataResponse.QueryData.DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
                 }
             }).start();
@@ -230,7 +230,7 @@ public class QueryTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> pvInfoList =
+        private final List<QueryMetadataResponse.MetadataResult.PvInfo> pvInfoList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -253,7 +253,7 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryMetadataResponse.QueryResult.MetadataResult.PvInfo> getPvInfoList() {
+        public List<QueryMetadataResponse.MetadataResult.PvInfo> getPvInfoList() {
             return pvInfoList;
         }
 
@@ -264,28 +264,18 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
 
-                if (response.hasRejectionDetails()) {
-                    final String errorMsg = "QueryResponseColumnInfoObserver onNext received reject response: "
-                            + response.getRejectionDetails().getMessage();
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "QueryResponseColumnInfoObserver onNext received exception response: "
+                            + response.getExceptionalResult().getStatusMessage();
                     System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                } else if (response.getResponseType() == ResponseType.ERROR_RESPONSE) {
-                    final String errorMsg = "QueryResponseColumnInfoObserver onNext received error response: "
-                            + response.getQueryResult().getQueryStatus().getStatusMessage();
-                    System.err.println();
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
                     return;
                 }
 
-                assertTrue(response.hasQueryResult());
-                final QueryMetadataResponse.QueryResult queryResult = response.getQueryResult();
-                assertTrue(queryResult.hasMetadataResult());
-                final QueryMetadataResponse.QueryResult.MetadataResult metadataResult = queryResult.getMetadataResult();
+                assertTrue(response.hasMetadataResult());
+                final QueryMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
                 assertNotNull(metadataResult);
                 // assertTrue(metadataResult.getPvInfosCount() > 0); - MAYBE ALLOW AN EMPTY RESULT FOR NEGATIVE TEST CASE?
 
@@ -297,8 +287,8 @@ public class QueryTestBase {
                     errorMessageList.add(errorMsg);
 
                 } else {
-                    for (QueryMetadataResponse.QueryResult.MetadataResult.PvInfo pvInfo :
-                            queryResult.getMetadataResult().getPvInfosList()) {
+                    for (QueryMetadataResponse.MetadataResult.PvInfo pvInfo :
+                            response.getMetadataResult().getPvInfosList()) {
                         pvInfoList.add(pvInfo);
                     }
                     finishLatch.countDown();

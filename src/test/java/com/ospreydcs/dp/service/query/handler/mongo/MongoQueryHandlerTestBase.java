@@ -4,9 +4,9 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
+import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.grpc.v1.query.QueryStatus;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
@@ -130,11 +130,9 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         @Override
         public void onNext(QueryDataResponse queryDataResponse) {
             System.out.println("responseObserver.onNext");
-            if (queryDataResponse.getResponseType() != ResponseType.DETAIL_RESPONSE) {
-                System.out.println("unexpected response type: " + queryDataResponse.getResponseType().name());
-                if (queryDataResponse.getResponseType() == ResponseType.ERROR_RESPONSE) {
-                    System.out.println("response error msg: " + queryDataResponse.getQueryResult().getQueryStatus().getStatusMessage());
-                }
+            if (queryDataResponse.hasExceptionalResult()) {
+                System.out.println("exceptional response message: "
+                        + queryDataResponse.getExceptionalResult().getStatusMessage());
                 finishLatch.countDown();
             } else {
                 System.out.println("adding detail response");
@@ -212,15 +210,12 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         // examine response
         assertTrue(responseList.size() == numResponesesExpected);
         QueryDataResponse response = responseList.get(0);
-        assertTrue(response.getResponseType() == ResponseType.STATUS_RESPONSE);
-        assertTrue(response.hasQueryResult());
-        assertTrue(response.getQueryResult().hasQueryStatus());
-        QueryStatus status = response.getQueryResult().getQueryStatus();
-        assertEquals(QueryStatus.QueryStatusType.QUERY_STATUS_EMPTY, status.getQueryStatusType());
+        assertTrue(response.hasExceptionalResult());
+        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_EMPTY);
     }
 
     private static void verifyDataBucket(
-            QueryDataResponse.QueryResult.QueryData.DataBucket bucket,
+            QueryDataResponse.QueryData.DataBucket bucket,
             long bucketStartSeconds,
             long bucketStartNanos,
             long bucketSampleIntervalNanos,
@@ -254,12 +249,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         final int numSamplesPerBucket = 10;
         final long bucketSampleIntervalNanos = 100_000_000L;
         QueryDataResponse dataResponse = responseList.get(0);
-        assertTrue(dataResponse.getResponseType() == ResponseType.DETAIL_RESPONSE);
-        assertTrue(dataResponse.hasQueryResult());
-        assertTrue(dataResponse.getQueryResult().hasQueryData());
-        QueryDataResponse.QueryResult.QueryData queryData = dataResponse.getQueryResult().getQueryData();
+        assertTrue(dataResponse.hasQueryData());
+        QueryDataResponse.QueryData queryData = dataResponse.getQueryData();
         assertEquals(numSamplesPerBucket, queryData.getDataBucketsCount());
-        List<QueryDataResponse.QueryResult.QueryData.DataBucket> bucketList = queryData.getDataBucketsList();
+        List<QueryDataResponse.QueryData.DataBucket> bucketList = queryData.getDataBucketsList();
 
         // check each bucket, 5 for each column
         int secondsIncrement = 0;
