@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.query.server;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.QueryTestBase;
@@ -26,8 +25,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
@@ -215,9 +213,10 @@ public class QueryGrpcTest extends QueryTestBase {
         QueryDataResponse response = responseList.get(0);
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() ==
-                ExceptionalResult.StatusType.STATUS_REJECT);
-        assertTrue(response.getExceptionalResult().getStatusMessage().equals("columnName must be specified"));
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getExceptionalResult().getMessage().equals("columnName must be specified"));
     }
 
     /**

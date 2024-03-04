@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.ingest.server;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
@@ -26,8 +25,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -230,18 +228,16 @@ public class IngestionGrpcTest extends IngestionTestBase {
 
         // send request and examine response
         List<IngestDataResponse> responses = client.sendIngestionRequestStream(requests, 1);
-        assertTrue("size mismatch between lists of requests and responses", responses.size() == requests.size());
+        assertTrue(responses.size() == requests.size());
         IngestDataResponse response = responses.get(0);
-        assertTrue("providerId not set", response.getProviderId() == providerId);
-        assertTrue("requestId not set", response.getClientRequestId().equals(requestId));
-        assertTrue("responseType not set", response.getResponseType() == ResponseType.REJECT_RESPONSE);
-        assertTrue("response time not set", response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set", response.hasRejectionDetails());
-        assertTrue("reject reason not set",
-                response.getRejectionDetails().getReason() == RejectionDetails.Reason.INVALID_REQUEST_REASON);
-        assertTrue(
-                "reject message not set",
-                response.getRejectionDetails().getMessage().equals("name must be specified for all data columns"));
+        assertTrue(response.getProviderId() == providerId);
+        assertTrue(response.getClientRequestId().equals(requestId));
+        assertTrue(response.hasExceptionalResult());
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all data columns"));
     }
 
     /**
@@ -290,17 +286,12 @@ public class IngestionGrpcTest extends IngestionTestBase {
 
         // check ack
         IngestDataResponse ackResponse = responseList.get(0);
-        assertTrue("providerId not set", ackResponse.getProviderId() == providerId);
-        assertTrue("requestId not set", ackResponse.getClientRequestId().equals(requestId));
-        assertTrue("responseType not set", ackResponse.getResponseType() == ResponseType.ACK_RESPONSE);
-        assertTrue("response time not set", ackResponse.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set", ackResponse.hasAckDetails());
-        assertTrue(
-                "num rows not set",
-                ackResponse.getAckDetails().getNumRows() == numSamples);
-        assertTrue(
-                "num columns not set",
-                ackResponse.getAckDetails().getNumColumns() == columnNames.size());
+        assertTrue(ackResponse.getProviderId() == providerId);
+        assertTrue(ackResponse.getClientRequestId().equals(requestId));
+        assertTrue(ackResponse.hasAckResult());
+        assertTrue(ackResponse.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(ackResponse.getAckResult().getNumRows() == numSamples);
+        assertTrue(ackResponse.getAckResult().getNumColumns() == columnNames.size());
     }
 
 //    /**

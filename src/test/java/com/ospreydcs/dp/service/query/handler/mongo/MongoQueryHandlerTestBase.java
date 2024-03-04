@@ -2,9 +2,8 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
-import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -132,7 +131,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             System.out.println("responseObserver.onNext");
             if (queryDataResponse.hasExceptionalResult()) {
                 System.out.println("exceptional response message: "
-                        + queryDataResponse.getExceptionalResult().getStatusMessage());
+                        + queryDataResponse.getExceptionalResult().getMessage());
                 finishLatch.countDown();
             } else {
                 System.out.println("adding detail response");
@@ -211,7 +210,9 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         assertTrue(responseList.size() == numResponesesExpected);
         QueryDataResponse response = responseList.get(0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_EMPTY);
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY,
+                response.getExceptionalResult().getExceptionalResultStatus());
     }
 
     private static void verifyDataBucket(

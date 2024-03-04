@@ -61,7 +61,7 @@ public class QueryTableResponseObserver implements StreamObserver<QueryTableResp
             isError.set(true);
             success = false;
             msg = "stream: " + streamNumber
-                    + " received exception with message: " + response.getExceptionalResult().getStatusMessage();
+                    + " received exception with message: " + response.getExceptionalResult().getMessage();
             logger.error(msg);
 
         } else if (response.hasTableResult()) {

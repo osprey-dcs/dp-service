@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.query.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -45,11 +44,11 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     private static QueryDataResponse queryDataResponseExceptionalResult(
-            String msg, ExceptionalResult.StatusType statusType
+            String msg, ExceptionalResult.ExceptionalResultStatus status
     ) {
         final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
-                .setStatusType(statusType)
-                .setStatusMessage(msg)
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
                 .build();
 
         final QueryDataResponse response = QueryDataResponse.newBuilder()
@@ -61,21 +60,21 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     public static QueryDataResponse queryResponseDataReject(String msg) {
-        return queryDataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_REJECT);
+        return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
     public static QueryDataResponse queryResponseDataError(String msg) {
-        return queryDataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_ERROR);
+        return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
     public static QueryDataResponse queryResponseDataEmpty() {
         return queryDataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.StatusType.STATUS_EMPTY);
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
     }
 
     public static QueryDataResponse queryResponseDataNotReady() {
         return queryDataResponseExceptionalResult(
-                "cursor not ready for operation", ExceptionalResult.StatusType.STATUS_NOT_READY);
+                "cursor not ready for operation", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_NOT_READY);
     }
 
     public static QueryDataResponse queryResponseData(QueryDataResponse.QueryData.Builder queryDataBuilder) {
@@ -115,11 +114,11 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     private static QueryMetadataResponse queryMetadataResponseExceptionalResult(
             String msg,
-            ExceptionalResult.StatusType statusType
+            ExceptionalResult.ExceptionalResultStatus status
     ) {
         final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
-                .setStatusType(statusType)
-                .setStatusMessage(msg)
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
                 .build();
 
         final QueryMetadataResponse response = QueryMetadataResponse.newBuilder()
@@ -131,16 +130,16 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     public static QueryMetadataResponse queryResponseMetadataReject(String msg) {
-        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_REJECT);
+        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
     public static QueryMetadataResponse queryResponseMetadataError(String msg) {
-        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.StatusType.STATUS_ERROR);
+        return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
     public static QueryMetadataResponse queryResponseMetadataEmpty() {
         return queryMetadataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.StatusType.STATUS_EMPTY);
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
     }
 
     public static QueryMetadataResponse queryResponseMetadata(

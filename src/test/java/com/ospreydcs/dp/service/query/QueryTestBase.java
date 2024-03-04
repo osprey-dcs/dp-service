@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.query;
 
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import io.grpc.Status;
@@ -266,7 +265,7 @@ public class QueryTestBase {
 
                 if (response.hasExceptionalResult()) {
                     final String errorMsg = "QueryResponseColumnInfoObserver onNext received exception response: "
-                            + response.getExceptionalResult().getStatusMessage();
+                            + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);

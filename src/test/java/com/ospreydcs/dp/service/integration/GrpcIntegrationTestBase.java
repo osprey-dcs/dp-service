@@ -5,7 +5,6 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.grpc.v1.ingestion.AckDetails;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
@@ -346,10 +345,10 @@ public class GrpcIntegrationTestBase {
         final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
         assertEquals(requestList.size(), responseList.size());
         for (IngestDataResponse response : responseList) {
-            assertTrue(response.hasAckDetails());
-            final AckDetails ackDetails = response.getAckDetails();
-            assertEquals(1, ackDetails.getNumColumns());
-            assertEquals(numSamplesPerBucket, ackDetails.getNumRows());
+            assertTrue(response.hasAckResult());
+            final IngestDataResponse.AckResult ackResult = response.getAckResult();
+            assertEquals(1, ackResult.getNumColumns());
+            assertEquals(numSamplesPerBucket, ackResult.getNumRows());
         }
 
         return new IngestionStreamInfo(bucketInfoMap, valueMap);

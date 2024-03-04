@@ -173,7 +173,8 @@ public class IngestionTestBase {
             requestBuilder.setEventMetadata(EventMetadataBuilder);
         }
 
-        IngestionDataFrame.Builder dataFrameBuilder = IngestionDataFrame.newBuilder();
+        IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
+                = IngestDataRequest.IngestionDataFrame.newBuilder();
         DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
 
         // set list of timestamps if specified

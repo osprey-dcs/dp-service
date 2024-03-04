@@ -1,8 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
-import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -54,7 +53,8 @@ public class DataResponseBidiStreamDispatcher extends BucketDocumentResponseDisp
             if (response != null) {
                 if (response.hasExceptionalResult()) {
                     ExceptionalResult exceptionalResult = response.getExceptionalResult();
-                    if (exceptionalResult.getStatusType() == ExceptionalResult.StatusType.STATUS_ERROR) {
+                    if (exceptionalResult.getExceptionalResultStatus()
+                            == ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR) {
                         isError = true;
                     }
                 }

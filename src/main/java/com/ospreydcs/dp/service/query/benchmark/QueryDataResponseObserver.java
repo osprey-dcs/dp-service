@@ -65,7 +65,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
             isError.set(true);
             success = false;
             msg = "stream: " + streamNumber
-                    + " received exception with message: " + response.getExceptionalResult().getStatusMessage();
+                    + " received exception with message: " + response.getExceptionalResult().getMessage();
             logger.error(msg);
 
         } else if (response.hasQueryData()) {

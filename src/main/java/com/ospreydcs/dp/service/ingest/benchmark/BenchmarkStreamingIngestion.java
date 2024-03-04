@@ -1,10 +1,9 @@
 package com.ospreydcs.dp.service.ingest.benchmark;
 
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionDataFrame;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -27,7 +26,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
         public StreamingIngestionTask(
                 IngestionTaskParams params,
-                IngestionDataFrame.Builder templateDataFrameBuilder,
+                IngestDataRequest.IngestionDataFrame.Builder templateDataFrameBuilder,
                 Channel channel) {
 
             super(params, templateDataFrameBuilder, channel);
@@ -59,7 +58,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
          */
         private IngestionTaskResult sendStreamingIngestionRequest(
                 IngestionTaskParams params,
-                IngestionDataFrame.Builder templateDataTable,
+                IngestDataRequest.IngestionDataFrame.Builder templateDataTable,
                 Channel channel) {
 
             final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
@@ -91,14 +90,15 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 //                responseCount.incrementAndGet();
                     responseLatch.countDown();
 
-                    ResponseType responseType = response.getResponseType();
-                    if (responseType != ResponseType.ACK_RESPONSE) {
+                    if (!response.hasAckResult()) {
                         // unexpected response
-                        if (responseType == ResponseType.REJECT_RESPONSE) {
+                        if (response.getExceptionalResult().getExceptionalResultStatus()
+                                == ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT) {
                             logger.error("received reject with msg: "
-                                    + response.getRejectionDetails().getMessage());
+                                    + response.getExceptionalResult().getMessage());
                         } else {
-                            logger.error("unexpected responseType: " + responseType.getDescriptorForType());
+                            logger.error("unexpected responseType: "
+                                    + response.getExceptionalResult().getExceptionalResultStatus().getDescriptorForType());
                         }
                         responseError[0] = true;
                         finishLatch.countDown();
@@ -106,8 +106,8 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
 
                     } else {
 
-                        int rowCount = response.getAckDetails().getNumRows();
-                        int colCount = response.getAckDetails().getNumColumns();
+                        int rowCount = response.getAckResult().getNumRows();
+                        int colCount = response.getAckResult().getNumColumns();
                         String requestId = response.getClientRequestId();
                         logger.trace("stream: {} received response for requestId: {}", streamNumber, requestId);
 
@@ -292,7 +292,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
     }
 
     protected StreamingIngestionTask newIngestionTask(
-            IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel
+            IngestionTaskParams params, IngestDataRequest.IngestionDataFrame.Builder templateDataTable, Channel channel
     ) {
         return new StreamingIngestionTask(params, templateDataTable, channel);
     }

@@ -116,12 +116,12 @@ public abstract class IngestionBenchmarkBase {
     protected static abstract class IngestionTask implements Callable<IngestionTaskResult> {
 
         protected final IngestionTaskParams params;
-        protected final IngestionDataFrame.Builder templdateDataFrameBuilder;
+        protected final IngestDataRequest.IngestionDataFrame.Builder templdateDataFrameBuilder;
         protected final Channel channel;
 
         public IngestionTask(
                 IngestionTaskParams params,
-                IngestionDataFrame.Builder templdateDataFrameBuilder,
+                IngestDataRequest.IngestionDataFrame.Builder templdateDataFrameBuilder,
                 Channel channel) {
 
             this.params = params;
@@ -147,9 +147,10 @@ public abstract class IngestionBenchmarkBase {
      * @param params
      * @return
      */
-    private static IngestionDataFrame.Builder buildDataTableTemplate(IngestionTaskParams params) {
+    private static IngestDataRequest.IngestionDataFrame.Builder buildDataTableTemplate(IngestionTaskParams params) {
 
-        IngestionDataFrame.Builder dataTableBuilder = IngestionDataFrame.newBuilder();
+        IngestDataRequest.IngestionDataFrame.Builder dataTableBuilder =
+                IngestDataRequest.IngestionDataFrame.newBuilder();
 
         // build list of Data objects (columns), each a list of Datum objects (cell values)
         for (int colIndex = params.firstColumnIndex; colIndex <= params.lastColumnIndex ; colIndex++) {
@@ -171,7 +172,8 @@ public abstract class IngestionBenchmarkBase {
     }
 
     protected static IngestDataRequest prepareIngestionRequest(
-            IngestionDataFrame.Builder dataFrameBuilder, IngestionTaskParams params, Integer secondsOffset) {
+            IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder,
+            IngestionTaskParams params, Integer secondsOffset) {
 
         final int providerId = params.streamNumber;
         final String requestId = String.valueOf(secondsOffset);
@@ -234,7 +236,9 @@ public abstract class IngestionBenchmarkBase {
     }
 
     protected abstract IngestionTask newIngestionTask(
-            IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel);
+            IngestionTaskParams params,
+            IngestDataRequest.IngestionDataFrame.Builder templateDataTable,
+            Channel channel);
 
     /**
      * Executes a multithreaded streaming ingestion scenario with specified properties.
@@ -270,7 +274,7 @@ public abstract class IngestionBenchmarkBase {
             lastColumnIndex = lastColumnIndex + numColumns;
             IngestionTaskParams params = new IngestionTaskParams(
                     startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex);
-            IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
+            IngestDataRequest.IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
             IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
         }

@@ -1,8 +1,7 @@
 package com.ospreydcs.dp.service.ingest.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
@@ -14,6 +13,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class IngestionServiceImplTest extends IngestionTestBase {
@@ -76,15 +76,12 @@ public class IngestionServiceImplTest extends IngestionTestBase {
 
         // test ingestionResponseAck
         IngestDataResponse response = serviceImpl.ingestionResponseAck(request);
-        assertTrue("providerId not set", response.getProviderId() == providerId);
-        assertTrue("requestId not set", response.getClientRequestId().equals(requestId));
-        assertTrue("responseType not set", response.getResponseType() == ResponseType.ACK_RESPONSE);
-        assertTrue("response time not set", response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set", response.hasAckDetails());
-        assertTrue(
-                "num rows not set",
-                response.getAckDetails().getNumRows() == numSamples);
-        assertTrue("num columns not set", response.getAckDetails().getNumColumns() == columnNames.size());
+        assertTrue(response.getProviderId() == providerId);
+        assertTrue(response.getClientRequestId().equals(requestId));
+        assertTrue(response.hasAckResult());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.getAckResult().getNumRows() == numSamples);
+        assertTrue(response.getAckResult().getNumColumns() == columnNames.size());
     }
 
     @Test
@@ -116,22 +113,19 @@ public class IngestionServiceImplTest extends IngestionTestBase {
 
         // test ingestionResponseRejectInvalid
         String msg = "test";
-        IngestDataResponse response =
-                serviceImpl.ingestionResponseReject(request, msg, RejectionDetails.Reason.INVALID_REQUEST_REASON);
-        assertTrue("providerId not set",
-                response.getProviderId() == providerId);
-        assertTrue("requestId not set",
-                response.getClientRequestId().equals(requestId));
-        assertTrue("responseType not set",
-                response.getResponseType() == ResponseType.REJECT_RESPONSE);
-        assertTrue("response time not set",
-                response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue("response details not set",
-                response.hasRejectionDetails());
-        assertTrue("reject reason not set",
-                response.getRejectionDetails().getReason() == RejectionDetails.Reason.INVALID_REQUEST_REASON);
-        assertTrue("reject message not set",
-                response.getRejectionDetails().getMessage().equals(msg));
+        IngestDataResponse response = serviceImpl.ingestionResponseReject(request, msg);
+        assertTrue(response.getProviderId() == providerId);
+        assertTrue(response.getClientRequestId().equals(requestId));
+        assertTrue(response.hasExceptionalResult());
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+        assertTrue(response.hasExceptionalResult());
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getExceptionalResult().getMessage().equals(msg));
     }
 
 }

@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.ingest.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -45,18 +44,17 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     public static IngestDataResponse ingestionResponseReject(
-            IngestDataRequest request, String msg, RejectionDetails.Reason reason) {
+            IngestDataRequest request, String msg) {
 
-        RejectionDetails rejectDetails = RejectionDetails.newBuilder()
-                .setReason(reason)
+        ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
                 .setMessage(msg)
                 .build();
         IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
-                .setResponseType(ResponseType.REJECT_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setRejectionDetails(rejectDetails)
+                .setExceptionalResult(exceptionalResult)
                 .build();
         return response;
     }
@@ -64,16 +62,15 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     public static IngestDataResponse ingestionResponseAck(IngestDataRequest request) {
         int numRows = getNumRequestRows(request);
         int numColumns = request.getIngestionDataFrame().getDataColumnsCount();
-        AckDetails details = AckDetails.newBuilder()
+        IngestDataResponse.AckResult ackResult = IngestDataResponse.AckResult.newBuilder()
                 .setNumRows(numRows)
                 .setNumColumns(numColumns)
                 .build();
         IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
-                .setResponseType(ResponseType.ACK_RESPONSE)
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setAckDetails(details)
+                .setAckResult(ackResult)
                 .build();
         return response;
     }
@@ -155,8 +152,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                         // send error reject
                         validationError = true;
                         validationMsg = validationResult.msg;
-                        IngestDataResponse rejectResponse = ingestionResponseReject(
-                                request, validationMsg, RejectionDetails.Reason.INVALID_REQUEST_REASON);
+                        IngestDataResponse rejectResponse = ingestionResponseReject(request, validationMsg);
                         responseObserver.onNext(rejectResponse);
 
                     } else {

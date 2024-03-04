@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestionDataFrame;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest.IngestionDataFrame;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
@@ -146,8 +146,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     }
 
                     // validate dimensions in ack
-                    assertEquals(this.params.numRows, response.getAckDetails().getNumRows());
-                    assertEquals(this.params.numColumns, response.getAckDetails().getNumColumns());
+                    assertEquals(this.params.numRows, response.getAckResult().getNumRows());
+                    assertEquals(this.params.numColumns, response.getAckResult().getNumColumns());
 
                     // set validation flag for request
                     requestInfo.responseReceived = true;

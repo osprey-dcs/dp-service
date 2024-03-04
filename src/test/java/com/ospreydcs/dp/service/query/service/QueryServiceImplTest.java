@@ -1,9 +1,7 @@
 package com.ospreydcs.dp.service.query.service;
 
-import com.ospreydcs.dp.grpc.v1.common.RejectionDetails;
-import com.ospreydcs.dp.grpc.v1.common.ResponseType;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
@@ -48,8 +46,10 @@ public class QueryServiceImplTest extends QueryTestBase {
         // check response contains message and reason
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_REJECT);
-        assertTrue(response.getExceptionalResult().getStatusMessage().equals(msg));
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getExceptionalResult().getMessage().equals(msg));
     }
 
     @Test
@@ -60,8 +60,10 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_ERROR);
-        assertTrue(response.getExceptionalResult().getStatusMessage().equals(msg));
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getExceptionalResult().getMessage().equals(msg));
     }
 
     @Test
@@ -71,7 +73,9 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_EMPTY);
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY,
+                response.getExceptionalResult().getExceptionalResultStatus());
     }
 
     @Test
@@ -81,7 +85,9 @@ public class QueryServiceImplTest extends QueryTestBase {
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
-        assertTrue(response.getExceptionalResult().getStatusType() == ExceptionalResult.StatusType.STATUS_NOT_READY);
+        assertEquals(
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_NOT_READY,
+                response.getExceptionalResult().getExceptionalResultStatus());
     }
 
     @Test
