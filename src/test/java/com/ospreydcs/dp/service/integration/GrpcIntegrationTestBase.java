@@ -1,8 +1,16 @@
 package com.ospreydcs.dp.service.integration;
 
+import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
+import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
+import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
@@ -28,6 +36,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.junit.ClassRule;
 
+import java.lang.annotation.Annotation;
 import java.time.Instant;
 import java.util.*;
 
@@ -58,6 +67,11 @@ public class GrpcIntegrationTestBase {
     private static QueryServiceImpl queryService;
     private static QueryServiceImpl queryServiceMock;
     protected static ManagedChannel queryChannel;
+
+    // annotation service instance variables
+    private static AnnotationServiceImpl annotationService;
+    private static AnnotationServiceImpl annotationServiceMock;
+    protected static ManagedChannel annotationChannel;
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -219,9 +233,27 @@ public class GrpcIntegrationTestBase {
         // Create a client channel and register for automatic graceful shutdown.
         queryChannel = grpcCleanup.register(
                 InProcessChannelBuilder.forName(queryServerName).directExecutor().build());
+
+        // init annotation service
+        AnnotationHandlerInterface annotationHandler = MongoAnnotationHandler.newMongoSyncAnnotationHandler();
+        annotationService = new AnnotationServiceImpl();
+        if (!annotationService.init(annotationHandler)) {
+            fail("AnnotationServiceImpl.init failed");
+        }
+        annotationServiceMock = mock(AnnotationServiceImpl.class, delegatesTo(annotationService));
+        // Generate a unique in-process server name.
+        String annotationServerName = InProcessServerBuilder.generateName();
+        // Create a server, add service, start, and register for automatic graceful shutdown.
+        grpcCleanup.register(InProcessServerBuilder
+                .forName(annotationServerName).directExecutor().addService(annotationServiceMock).build().start());
+        // Create a client channel and register for automatic graceful shutdown.
+        annotationChannel = grpcCleanup.register(
+                InProcessChannelBuilder.forName(annotationServerName).directExecutor().build());
     }
 
     public static void tearDown() {
+        annotationService.fini();
+        queryService.fini();
         ingestionService.fini();
         mongoClient.fini();
         mongoClient = null;
@@ -736,6 +768,51 @@ public class GrpcIntegrationTestBase {
     ) {
         final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNamePattern);
         sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
+    protected String sendCreateAnnotation(
+            CreateAnnotationRequest request, boolean expectReject, String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(annotationChannel);
+
+        final AnnotationTestBase.CreateAnnotationResponseObserver responseObserver =
+                new AnnotationTestBase.CreateAnnotationResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.createAnnotation(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getAnnotationId();
+    }
+
+    protected void sendAndVerifyCreateCommentAnnotation(
+            AnnotationTestBase.CreateCommentAnnotationParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final CreateAnnotationRequest request =
+                AnnotationTestBase.buildCreateCommentAnnotationRequest(params);
+
+        final String annotationId = sendCreateAnnotation(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertNull(annotationId);
+            return;
+        }
+
+        // TODO: validate response and database contents
     }
 
 }

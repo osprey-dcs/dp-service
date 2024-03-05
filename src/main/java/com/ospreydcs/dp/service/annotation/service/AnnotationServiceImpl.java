@@ -101,7 +101,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
                 .setResponseTime(GrpcUtility.getTimestampNow())
-                .setSuccessfulResult(result)
+                .setCreateAnnotationResult(result)
                 .build();
 
         return response;

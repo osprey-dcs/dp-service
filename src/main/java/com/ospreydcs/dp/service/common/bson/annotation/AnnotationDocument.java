@@ -19,7 +19,12 @@ public abstract class AnnotationDocument {
     private Map<String, String> attributeMap;
     private DataSet dataSet;
 
-    public void setFieldsFromRequest(CreateAnnotationRequest request) {
+    /*
+     * NOTE: This method was renamed from setFieldsFromRequest(), which made the mongo codec thrown an exception
+     * because there was no property "fieldsFromRequest".  I changed the method to not use the bean property getter
+     * method naming convention, and that solved the problem.
+     */
+    public void applyRequestFieldValues(CreateAnnotationRequest request) {
         setAuthorId(request.getAuthorId());
         setTags(request.getTagsList());
         final Map<String, String> attributeMap = new TreeMap<>();
