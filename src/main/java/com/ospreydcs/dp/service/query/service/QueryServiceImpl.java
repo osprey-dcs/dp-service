@@ -13,8 +13,6 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.xml.crypto.Data;
-
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
     // static variables
