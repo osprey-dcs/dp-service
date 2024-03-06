@@ -54,3 +54,16 @@ QueryBenchmark:
 
   # QueryBenchmark.grpcConnectString: String used for gRPC connection to Query Service including "host:port".
   grpcConnectString: "localhost:50052"
+
+# annotationServer: Settings for the annotation server process.
+annotationServer:
+
+  # annotationServer.port: Network port for Annotation Service gRPC.
+  port: 50053
+
+# annotationHandler: Settings for the annotation Service request handler.
+annotationHandler:
+
+  # annotationHandler.numWorkers: Number of worker threads used by the annotation Service request handler.
+  # This parameter might take some tuning on deployments to get the best performance.
+  numWorkers: 7
