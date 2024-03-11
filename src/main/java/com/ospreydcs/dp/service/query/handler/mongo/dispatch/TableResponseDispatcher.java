@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
+public class TableResponseDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -123,9 +124,22 @@ public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
         return tableResultBuilder.build();
     }
 
-    public void handleResult_(MongoCursor<BucketDocument> cursor) {
+    public void handleResult(MongoCursor<BucketDocument> cursor) {
 
-        // we have a non-empty cursor in call from handleResult()
+        // send error response and close response stream if cursor is null
+        if (cursor == null) {
+            final String msg = "executeQuery returned null cursor";
+            logger.error(msg);
+            QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
+            return;
+        }
+
+        // send empty QueryStatus and close response stream if query matched no data
+        if (!cursor.hasNext()) {
+            logger.trace("processQueryRequest: query matched no data, cursor is empty");
+            QueryServiceImpl.sendQueryTableResponseEmpty(this.responseObserver);
+            return;
+        }
 
         // create data structure for creating table
         final TimestampMap<Map<Integer, DataValue>> tableValueMap = new TimestampMap<>();
@@ -151,7 +165,7 @@ public class TableResponseDispatcher extends BucketDocumentResponseDispatcher {
         final QueryTableResponse.TableResult tableResult = tableResultFromMap(columnNameList, tableValueMap);
 
         // create and send response, close response stream
-        QueryTableResponse response = QueryServiceImpl.queryResponseTable(tableResult);
+        QueryTableResponse response = QueryServiceImpl.queryTableResponse(tableResult);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }

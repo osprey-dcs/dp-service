@@ -13,6 +13,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryMetadataJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
+import com.ospreydcs.dp.service.query.handler.mongo.job.QueryTableJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -164,8 +165,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryDataTable(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final TableResponseDispatcher dispatcher = new TableResponseDispatcher(responseObserver, querySpec);
-        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final QueryTableJob job = new QueryTableJob(querySpec, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
 

@@ -41,7 +41,7 @@ public class QueryServiceImplTest extends QueryTestBase {
     public void testQueryResponseReject() {
 
         final String msg = "test";
-        QueryDataResponse response = serviceImpl.queryResponseDataReject(msg);
+        QueryDataResponse response = serviceImpl.queryDataResponseReject(msg);
 
         // check response contains message and reason
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
@@ -56,7 +56,7 @@ public class QueryServiceImplTest extends QueryTestBase {
     public void testQueryResponseError() {
 
         final String msg = "error message";
-        QueryDataResponse response = serviceImpl.queryResponseDataError(msg);
+        QueryDataResponse response = serviceImpl.queryDataResponseError(msg);
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
@@ -69,7 +69,7 @@ public class QueryServiceImplTest extends QueryTestBase {
     @Test
     public void testQueryResponseEmpty() {
 
-        QueryDataResponse response = serviceImpl.queryResponseDataEmpty();
+        QueryDataResponse response = serviceImpl.queryDataResponseEmpty();
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
@@ -81,7 +81,7 @@ public class QueryServiceImplTest extends QueryTestBase {
     @Test
     public void testQueryResponseNotReady() {
 
-        QueryDataResponse response = serviceImpl.queryResponseDataNotReady();
+        QueryDataResponse response = serviceImpl.queryDataResponseNotReady();
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasExceptionalResult());
@@ -96,7 +96,7 @@ public class QueryServiceImplTest extends QueryTestBase {
         QueryDataResponse.QueryData.Builder resultDataBuilder =
                 QueryDataResponse.QueryData.newBuilder();
 
-        QueryDataResponse response = serviceImpl.queryResponseData(resultDataBuilder);
+        QueryDataResponse response = serviceImpl.queryDataResponse(resultDataBuilder);
 
         assertTrue(response.getResponseTime().getEpochSeconds() > 0);
         assertTrue(response.hasQueryData());

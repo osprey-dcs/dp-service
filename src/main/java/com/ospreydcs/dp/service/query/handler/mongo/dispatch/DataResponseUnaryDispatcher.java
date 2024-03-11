@@ -23,12 +23,12 @@ public class DataResponseUnaryDispatcher extends BucketDocumentResponseDispatche
 
         if (response == null) {
             final String msg = "unexpected error building QueryResponse from cursor";
-            QueryServiceImpl.sendQueryResponseDataError(msg, getResponseObserver());
+            QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());
 
         } else if (cursor.hasNext()) {
             // query returned more data than will fit in a single response, so return an error instead of partial data
             final String msg = "query returned more data than will fit in single QueryResponse message";
-            QueryServiceImpl.sendQueryResponseDataError(msg, getResponseObserver());
+            QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());
 
         } else {
             getResponseObserver().onNext(response);

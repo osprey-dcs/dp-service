@@ -39,12 +39,12 @@ public class MetadataResponseDispatcher extends Dispatcher {
             // send error response and close response stream if cursor is null
             final String msg = "column info query returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryResponseMetadataError(msg, this.responseObserver);
+            QueryServiceImpl.sendQueryMetadataResponseError(msg, this.responseObserver);
             return;
         } else if (!cursor.hasNext()) {
             // send empty QueryStatus and close response stream if query matched no data
             logger.trace("column info query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryResponseMetadataEmpty(this.responseObserver);
+            QueryServiceImpl.sendQueryMetadataResponseEmpty(this.responseObserver);
             return;
         }
 
@@ -90,6 +90,6 @@ public class MetadataResponseDispatcher extends Dispatcher {
 
         // send response and close response stream
         final QueryMetadataResponse.MetadataResult metadataResult = metadataResultBuilder.build();
-        QueryServiceImpl.sendQueryResponseMetadata(metadataResult, this.responseObserver);
+        QueryServiceImpl.sendQueryMetadataResponse(metadataResult, this.responseObserver);
     }
 }

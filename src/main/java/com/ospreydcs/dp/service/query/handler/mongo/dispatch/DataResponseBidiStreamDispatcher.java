@@ -43,7 +43,7 @@ public class DataResponseBidiStreamDispatcher extends BucketDocumentResponseDisp
 
             if (this.mongoCursor == null) {
                 // we probably received a "next" request before we finished executing the query and handling initial results
-                final QueryDataResponse statusResponse = QueryServiceImpl.queryResponseDataNotReady();
+                final QueryDataResponse statusResponse = QueryServiceImpl.queryDataResponseNotReady();
                 getResponseObserver().onNext(statusResponse);
                 return;
             }
@@ -63,7 +63,7 @@ public class DataResponseBidiStreamDispatcher extends BucketDocumentResponseDisp
             } else {
                 // this is unexpected so send an error response because it indicates a bug
                 final String msg = "unexpected null response from nextQueryResponseFromCursor";
-                final QueryDataResponse errorResponse = QueryServiceImpl.queryResponseDataError(msg);
+                final QueryDataResponse errorResponse = QueryServiceImpl.queryDataResponseError(msg);
                 getResponseObserver().onNext(errorResponse);
             }
 

@@ -21,7 +21,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     protected static final String REQUEST_STREAM = "queryResponseStream";
     protected static final String REQUEST_CURSOR = "queryResponseCursor";
     protected static final String REQUEST_SINGLE = "queryResponseSingle";
-    protected static final String REQUEST_TABLE = "queryResponseTable";
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
@@ -59,25 +58,25 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public static QueryDataResponse queryResponseDataReject(String msg) {
+    public static QueryDataResponse queryDataResponseReject(String msg) {
         return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
-    public static QueryDataResponse queryResponseDataError(String msg) {
+    public static QueryDataResponse queryDataResponseError(String msg) {
         return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryDataResponse queryResponseDataEmpty() {
+    public static QueryDataResponse queryDataResponseEmpty() {
         return queryDataResponseExceptionalResult(
                 "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
     }
 
-    public static QueryDataResponse queryResponseDataNotReady() {
+    public static QueryDataResponse queryDataResponseNotReady() {
         return queryDataResponseExceptionalResult(
                 "cursor not ready for operation", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_NOT_READY);
     }
 
-    public static QueryDataResponse queryResponseData(QueryDataResponse.QueryData.Builder queryDataBuilder) {
+    public static QueryDataResponse queryDataResponse(QueryDataResponse.QueryData.Builder queryDataBuilder) {
         queryDataBuilder.build();
         return QueryDataResponse.newBuilder()
                 .setResponseTime(GrpcUtility.getTimestampNow())
@@ -85,29 +84,78 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
-    public static QueryTableResponse queryResponseTable(QueryTableResponse.TableResult tableResult) {
+    public static void sendQueryDataResponseReject(
+            String msg, StreamObserver<QueryDataResponse> responseObserver) {
+
+        final QueryDataResponse response = queryDataResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryDataResponseError(String msg, StreamObserver<QueryDataResponse> responseObserver) {
+        final QueryDataResponse errorResponse = queryDataResponseError(msg);
+        responseObserver.onNext(errorResponse);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryDataResponseEmpty(StreamObserver<QueryDataResponse> responseObserver) {
+        final QueryDataResponse summaryResponse = queryDataResponseEmpty();
+        responseObserver.onNext(summaryResponse);
+        responseObserver.onCompleted();
+    }
+
+    private static QueryTableResponse queryTableResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryTableResponse response = QueryTableResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryTableResponse queryTableResponseReject(String msg) {
+        return queryTableResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryTableResponse queryTableResponseError(String msg) {
+        return queryTableResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryTableResponse queryTableResponseEmpty() {
+        return queryTableResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryTableResponse queryTableResponse(QueryTableResponse.TableResult tableResult) {
         return QueryTableResponse.newBuilder()
                 .setResponseTime(GrpcUtility.getTimestampNow())
                 .setTableResult(tableResult)
                 .build();
     }
 
-    public static void sendQueryResponseDataReject(
-            String msg, StreamObserver<QueryDataResponse> responseObserver) {
+    public static void sendQueryTableResponseReject(
+            String msg, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final QueryDataResponse response = queryResponseDataReject(msg);
+        final QueryTableResponse response = queryTableResponseReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseDataError(String msg, StreamObserver<QueryDataResponse> responseObserver) {
-        final QueryDataResponse errorResponse = queryResponseDataError(msg);
+    public static void sendQueryTableResponseError(String msg, StreamObserver<QueryTableResponse> responseObserver) {
+        final QueryTableResponse errorResponse = queryTableResponseError(msg);
         responseObserver.onNext(errorResponse);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseDataEmpty(StreamObserver<QueryDataResponse> responseObserver) {
-        final QueryDataResponse summaryResponse = queryResponseDataEmpty();
+    public static void sendQueryTableResponseEmpty(StreamObserver<QueryTableResponse> responseObserver) {
+        final QueryTableResponse summaryResponse = queryTableResponseEmpty();
         responseObserver.onNext(summaryResponse);
         responseObserver.onCompleted();
     }
@@ -129,20 +177,20 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public static QueryMetadataResponse queryResponseMetadataReject(String msg) {
+    public static QueryMetadataResponse queryMetadataResponseReject(String msg) {
         return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
-    public static QueryMetadataResponse queryResponseMetadataError(String msg) {
+    public static QueryMetadataResponse queryMetadataResponseError(String msg) {
         return queryMetadataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryMetadataResponse queryResponseMetadataEmpty() {
+    public static QueryMetadataResponse queryMetadataResponseEmpty() {
         return queryMetadataResponseExceptionalResult(
                 "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
     }
 
-    public static QueryMetadataResponse queryResponseMetadata(
+    public static QueryMetadataResponse queryMetadataResponse(
             QueryMetadataResponse.MetadataResult metadataResult
     ) {
         return QueryMetadataResponse.newBuilder()
@@ -151,49 +199,42 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
     }
 
-    public static void sendQueryResponseMetadataReject(
+    public static void sendQueryMetadataResponseReject(
             String msg, StreamObserver<QueryMetadataResponse> responseObserver) {
 
-        final QueryMetadataResponse response = queryResponseMetadataReject(msg);
+        final QueryMetadataResponse response = queryMetadataResponseReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseMetadataError(
+    public static void sendQueryMetadataResponseError(
             String msg, StreamObserver<QueryMetadataResponse> responseObserver
     ) {
-        final QueryMetadataResponse response = queryResponseMetadataError(msg);
+        final QueryMetadataResponse response = queryMetadataResponseError(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseMetadataEmpty(StreamObserver<QueryMetadataResponse> responseObserver) {
-        final QueryMetadataResponse response = queryResponseMetadataEmpty();
+    public static void sendQueryMetadataResponseEmpty(StreamObserver<QueryMetadataResponse> responseObserver) {
+        final QueryMetadataResponse response = queryMetadataResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryResponseMetadata(
+    public static void sendQueryMetadataResponse(
             QueryMetadataResponse.MetadataResult metadataResult,
             StreamObserver<QueryMetadataResponse> responseObserver
     ) {
-        final QueryMetadataResponse response  = queryResponseMetadata(metadataResult);
+        final QueryMetadataResponse response  = queryMetadataResponse(metadataResult);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
     protected QueryDataRequest.QuerySpec validateQueryDataRequest(
-            String requestType, QueryDataRequest request, StreamObserver responseObserver) {
-
-        // check that query request contains a QuerySpec
-        if (!request.hasQuerySpec()) {
-            String errorMsg = "QueryRequest does not contain a QuerySpec";
-            sendQueryResponseDataReject(errorMsg, responseObserver);
-            return null;
-        }
-
-        QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
-
+            String requestType, QueryDataRequest request,
+            StreamObserver<QueryDataResponse> responseObserver
+    ) {
+        final QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
         logger.debug("id: {} query request: {} received columnNames: {} startSeconds: {} endSeconds: {}",
                 responseObserver.hashCode(),
                 requestType,
@@ -201,17 +242,35 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 querySpec.getBeginTime().getEpochSeconds(),
                 querySpec.getEndTime().getEpochSeconds());
 
+        ValidationResult validationResult = validateQueryDataRequest(request);
+        if (validationResult.isError) {
+            sendQueryDataResponseReject(validationResult.msg, responseObserver);
+            return null;
+        } else {
+            return querySpec;
+        }
+    }
+
+    protected ValidationResult validateQueryDataRequest(QueryDataRequest request) {
+
+        // check that query request contains a QuerySpec
+        if (!request.hasQuerySpec()) {
+            String errorMsg = "QueryRequest does not contain a QuerySpec";
+            return new ValidationResult(true, errorMsg);
+        }
+
+        QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
+
         // validate request
         ValidationResult validationResult = handler.validateQuerySpecData(querySpec);
 
         // send reject if request is invalid
         if (validationResult.isError) {
             String validationMsg = validationResult.msg;
-            sendQueryResponseDataReject(validationMsg, responseObserver);
-            return null;
+            return new ValidationResult(true, validationMsg);
         }
 
-        return querySpec;
+        return new ValidationResult(false, "");
     }
 
     @Override
@@ -247,8 +306,19 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     @Override
     public void queryDataTable(QueryDataRequest request, StreamObserver<QueryTableResponse> responseObserver) {
 
-        // log and validate request
-        QueryDataRequest.QuerySpec querySpec = validateQueryDataRequest(REQUEST_TABLE, request, responseObserver);
+        final QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
+        logger.debug("queryDataTable request received id: {} columnNames: {} startSeconds: {} endSeconds: {}",
+                responseObserver.hashCode(),
+                querySpec.getPvNamesList(),
+                querySpec.getBeginTime().getEpochSeconds(),
+                querySpec.getEndTime().getEpochSeconds());
+
+        // validate request
+        ValidationResult validationResult = validateQueryDataRequest(request);
+        if (validationResult.isError) {
+            sendQueryTableResponseReject(validationResult.msg, responseObserver);
+            return;
+        }
 
         // handle request
         if (querySpec != null) {
@@ -261,7 +331,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         // check that query request contains a ColumnInfoQuerySpec
         if (!request.hasQuerySpec()) {
             String errorMsg = "QueryDataRequest does not contain a QuerySpec";
-            sendQueryResponseMetadataReject(errorMsg, responseObserver);
+            sendQueryMetadataResponseReject(errorMsg, responseObserver);
             return;
         }
 
@@ -274,19 +344,19 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (querySpec.hasPvNameList()) {
             if (querySpec.getPvNameList().getPvNamesCount() == 0) {
                 String errorMsg = "QuerySpec.pvNameList.pvNames must not be empty";
-                sendQueryResponseMetadataReject(errorMsg, responseObserver);
+                sendQueryMetadataResponseReject(errorMsg, responseObserver);
                 return;
             }
 
         } else if (querySpec.hasPvNamePattern()) {
             if (querySpec.getPvNamePattern().getPattern().isBlank()) {
                 String errorMsg = "QuerySpec.pvNamePattern.pattern must not be empty";
-                sendQueryResponseMetadataReject(errorMsg, responseObserver);
+                sendQueryMetadataResponseReject(errorMsg, responseObserver);
                 return;
             }
         } else {
             String errorMsg = "column info query must specify either list of column names or column name pattern";
-            sendQueryResponseMetadataReject(errorMsg, responseObserver);
+            sendQueryMetadataResponseReject(errorMsg, responseObserver);
             return;
         }
 

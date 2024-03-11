@@ -35,14 +35,14 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryResponseDataError(msg, getResponseObserver());
+            QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());
             return;
         }
 
         // send empty QueryStatus and close response stream if query matched no data
         if (!cursor.hasNext()) {
             logger.trace("processQueryRequest: query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryResponseDataEmpty(getResponseObserver());
+            QueryServiceImpl.sendQueryDataResponseEmpty(getResponseObserver());
             return;
         }
 
@@ -66,7 +66,7 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
             int bucketSerializedSize = bucket.getSerializedSize();
             if (bucketSerializedSize > MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE) {
                 // single bucket is larger than maximum message size, so send error response
-                return QueryServiceImpl.queryResponseDataError(
+                return QueryServiceImpl.queryDataResponseError(
                         "bucket size: " + bucketSerializedSize
                                 + " greater than maximum message size: " + MongoQueryHandler.MAX_GRPC_MESSAGE_SIZE);
             }
@@ -83,7 +83,7 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
 
         if (messageSize > 0) {
             // create response from buckets in result
-            return QueryServiceImpl.queryResponseData(queryDataBuilder);
+            return QueryServiceImpl.queryDataResponse(queryDataBuilder);
         }
 
         return null;
