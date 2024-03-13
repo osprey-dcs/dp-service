@@ -6,6 +6,8 @@ import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import org.bson.Document;
 
+import java.util.Collection;
+
 public interface MongoQueryClientInterface {
 
     boolean init();
@@ -14,4 +16,9 @@ public interface MongoQueryClientInterface {
     MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec);
 
     MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec);
+
+    MongoCursor<Document> executeQueryMetadata(Collection<String> pvNameList);
+
+    MongoCursor<Document> executeQueryMetadata(String pvNamePatternString);
+
 }

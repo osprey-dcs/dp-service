@@ -17,6 +17,7 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.regex.Pattern;
 
@@ -67,19 +68,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 .cursor();
     }
 
-    @Override
-    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec) {
-
-        Bson columnNameFilter;
-        if (querySpec.hasPvNameList()) {
-            columnNameFilter =
-                    in(BsonConstants.BSON_KEY_BUCKET_NAME,
-                            querySpec.getPvNameList().getPvNamesList());
-        } else {
-            final String columnNamePatternString = querySpec.getPvNamePattern().getPattern();
-            final Pattern columnNamePattern = Pattern.compile(columnNamePatternString, Pattern.CASE_INSENSITIVE);
-            columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, columnNamePattern);
-        }
+    private MongoCursor<Document> executeQueryMetadata(Bson columnNameFilter) {
 
         Bson bucketFieldProjection = Projections.fields(Projections.include(
                 BsonConstants.BSON_KEY_BUCKET_NAME,
@@ -130,6 +119,29 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 //        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});
 
         return aggregateIterable.cursor();
+    }
+
+    @Override
+    public MongoCursor<Document> executeQueryMetadata(Collection<String> pvNameList) {
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, pvNameList);
+        return executeQueryMetadata(pvNameFilter);
+    }
+
+    @Override
+    public MongoCursor<Document> executeQueryMetadata(String pvNamePatternString) {
+        final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
+        final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, pvNamePattern);
+        return executeQueryMetadata(pvNameFilter);
+    }
+
+    @Override
+    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec) {
+        Bson columnNameFilter;
+        if (querySpec.hasPvNameList()) {
+            return executeQueryMetadata(querySpec.getPvNameList().getPvNamesList());
+        } else {
+            return executeQueryMetadata(querySpec.getPvNamePattern().getPattern());
+        }
     }
 
 }

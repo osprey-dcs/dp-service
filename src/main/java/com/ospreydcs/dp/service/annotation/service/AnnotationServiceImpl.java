@@ -40,13 +40,11 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
     }
 
-    private static CreateAnnotationResponse createAnnotationResponseReject(
-            String msg,
-            ExceptionalResult.ExceptionalResultStatus status
-    ) {
+    private static CreateAnnotationResponse createAnnotationResponseReject(String msg) {
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
-                        .setExceptionalResultStatus(status)
+                        .setExceptionalResultStatus(
+                                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
                         .setMessage(msg)
                         .build();
 
@@ -58,12 +56,11 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    private static void sendCreateAnnotationResponseReject(
+    public static void sendCreateAnnotationResponseReject(
             String errorMsg,
-            ExceptionalResult.ExceptionalResultStatus statusType,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg, statusType);
+        final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -126,7 +123,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     validationResult.msg);
             sendCreateAnnotationResponseReject(
                     validationResult.msg,
-                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                     responseObserver);
             return;
         }
@@ -155,7 +151,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 logger.debug(errorMsg);
                 sendCreateAnnotationResponseReject(
                         errorMsg,
-                        ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                         responseObserver);
                 return;
             }
