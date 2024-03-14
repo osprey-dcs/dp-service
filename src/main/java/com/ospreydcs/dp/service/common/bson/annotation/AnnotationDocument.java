@@ -47,7 +47,11 @@ public abstract class AnnotationDocument {
                     blockEndSeconds,
                     blockEndNanos,
                     blockPvNames);
+            dataBlocks.add(documentBlock);
         }
+        DataSet documentDataSet = new DataSet();
+        documentDataSet.setDataBlocks(dataBlocks);
+        setDataSet(documentDataSet);
     }
 
     public String getType() {
