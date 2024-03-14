@@ -19,10 +19,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class MongoAnnotationHandler extends QueueHandlerBase implements AnnotationHandlerInterface {
 
@@ -102,7 +99,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     public ValidationResult validateAnnotationRequest(CreateAnnotationRequest request) {
 
         // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
-        final Set<String> uniquePvNames = new HashSet<>();
+        final Set<String> uniquePvNames = new TreeSet<>();
         if (request.getDataSet() == null) {
             return new ValidationResult(true, "CreateAnnotationRequest must contain a DataSet");
         }
