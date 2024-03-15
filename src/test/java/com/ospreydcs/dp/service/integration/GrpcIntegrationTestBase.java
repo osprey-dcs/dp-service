@@ -429,10 +429,13 @@ public class GrpcIntegrationTestBase {
             validationMap.put(columnInfo.columnName, streamInfo);
         }
 
+        // validate database artifacts for this ingestion scenario
+        verifyIngestionDbArtifacts(validationMap);
+
         return validationMap;
     }
 
-    protected void verifyIngestionDbArtifacts(Map<String, IngestionStreamInfo> validationMap) {
+    private void verifyIngestionDbArtifacts(Map<String, IngestionStreamInfo> validationMap) {
 
         for (var columnIngestionStreamInfoEntry : validationMap.entrySet()) {
             final String columnName = columnIngestionStreamInfoEntry.getKey();

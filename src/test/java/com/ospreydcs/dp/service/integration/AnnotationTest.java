@@ -81,15 +81,9 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             }
         }
 
-        Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
-        }
-
-        {
-            // validate database artifacts from ingestion
-            verifyIngestionDbArtifacts(validationMap);
+            ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
         }
 
         {

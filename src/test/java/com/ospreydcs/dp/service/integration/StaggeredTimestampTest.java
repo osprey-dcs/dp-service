@@ -100,11 +100,6 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // validate database artifacts from ingestion
-            verifyIngestionDbArtifacts(validationMap);
-        }
-
-        {
             // send table query for 5-second subset of ingested data,
             // starting one second offset from start of ingestion data
             final int queryNumSeconds = 5;

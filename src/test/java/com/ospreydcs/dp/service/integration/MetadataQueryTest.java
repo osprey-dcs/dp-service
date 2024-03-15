@@ -88,11 +88,6 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // validate database artifacts from ingestion
-            verifyIngestionDbArtifacts(validationMap);
-        }
-
-        {
             // send column info query for list of columns
             List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
             sendAndVerifyQueryMetadata(
