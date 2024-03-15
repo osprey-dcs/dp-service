@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class DataBlock {
 
@@ -9,14 +11,18 @@ public class DataBlock {
 
     private long endTimeSeconds;
     private long endTimeNanos;
-    List<String> pvNames;
+    Set<String> pvNames;
 
-    public DataBlock(long beginTimeSeconds, long beginTimeNanos, long endTimeSeconds, long endTimeNanos, List<String> pvNames) {
+    public DataBlock() {}
+
+    public DataBlock(
+            long beginTimeSeconds, long beginTimeNanos, long endTimeSeconds, long endTimeNanos, List<String> pvNames
+    ) {
         this.beginTimeSeconds = beginTimeSeconds;
         this.beginTimeNanos = beginTimeNanos;
         this.endTimeSeconds = endTimeSeconds;
         this.endTimeNanos = endTimeNanos;
-        this.pvNames = pvNames;
+        this.pvNames = new TreeSet<>(pvNames);
     }
 
     public long getBeginTimeSeconds() {
@@ -51,11 +57,11 @@ public class DataBlock {
         this.endTimeNanos = endTimeNanos;
     }
 
-    public List<String> getPvNames() {
+    public Set<String> getPvNames() {
         return pvNames;
     }
 
-    public void setPvNames(List<String> pvNames) {
+    public void setPvNames(Set<String> pvNames) {
         this.pvNames = pvNames;
     }
 

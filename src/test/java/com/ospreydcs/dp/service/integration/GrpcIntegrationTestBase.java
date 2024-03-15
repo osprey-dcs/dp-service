@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
+import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
@@ -34,6 +35,7 @@ import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
 import org.junit.ClassRule;
 
 import java.lang.annotation.Annotation;
@@ -112,6 +114,24 @@ public class GrpcIntegrationTestBase {
                         logger.info("findRequestStatus providerId: " + providerId
                                 + " requestId: " + requestId
                                 + " retrying");
+                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                    } catch (InterruptedException ex) {
+                        // ignore and just retry
+                    }
+                }
+            }
+            return null;
+        }
+
+        public AnnotationDocument findAnnotation(String annotationId) {
+            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+                List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
+                mongoCollectionAnnotations.find(eq("_id", new ObjectId(annotationId))).into(matchingAnnotations);
+                if (matchingAnnotations.size() > 0) {
+                    return matchingAnnotations.get(0);
+                } else {
+                    try {
+                        logger.info("findAnnotation id: " + annotationId + " retrying");
                         Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
                     } catch (InterruptedException ex) {
                         // ignore and just retry
@@ -812,7 +832,14 @@ public class GrpcIntegrationTestBase {
             return;
         }
 
-        // TODO: validate response and database contents
+        // validate response and database contents
+        assertNotNull(annotationId);
+        assertFalse(annotationId.isBlank());
+        final AnnotationDocument annotationDocument = mongoClient.findAnnotation(annotationId);
+        assertNotNull(annotationDocument);
+        final List<String> requestDiffs = annotationDocument.diffRequest(request);
+        assertNotNull(requestDiffs);
+        assertTrue(requestDiffs.isEmpty());
     }
 
 }

@@ -3,7 +3,6 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
-import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
@@ -62,6 +61,6 @@ public class CreateAnnotationDispatcher extends Dispatcher {
 
         // insert was successful, return a response with the id
         AnnotationServiceImpl.sendCreateAnnotationResponseSuccess(
-                insertOneResult.getInsertedId().toString(), responseObserver);
+                insertOneResult.getInsertedId().asObjectId().getValue().toString(), responseObserver);
     }
 }
