@@ -2,13 +2,12 @@ package com.ospreydcs.dp.service.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
+import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -20,9 +19,13 @@ public class AnnotationTestBase {
 
     public static class CreateAnnotationRequestParams {
         public final int authorId;
+        public final List<String> tags;
+        public final Map<String,String> attributeMap;
         public final AnnotationDataSet dataSet;
-        public CreateAnnotationRequestParams(int authorId, AnnotationDataSet dataSet) {
+        public CreateAnnotationRequestParams(int authorId, List<String> tags, Map<String, String> attributeMap, AnnotationDataSet dataSet) {
             this.authorId = authorId;
+            this.tags = tags;
+            this.attributeMap = attributeMap;
             this.dataSet = dataSet;
         }
     }
@@ -52,8 +55,9 @@ public class AnnotationTestBase {
 
     public static class CreateCommentAnnotationParams extends CreateAnnotationRequestParams {
         public final String comment;
-        public CreateCommentAnnotationParams(int authorId, AnnotationDataSet dataSet, String comment) {
-            super(authorId, dataSet);
+        public CreateCommentAnnotationParams(
+                int authorId, List<String> tags, Map<String, String> attributeMap, AnnotationDataSet dataSet, String comment) {
+            super(authorId, tags, attributeMap, dataSet);
             this.comment = comment;
         }
     }
@@ -87,6 +91,16 @@ public class AnnotationTestBase {
 
         CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
         requestBuilder.setAuthorId(params.authorId);
+        requestBuilder.addAllTags(params.tags);
+
+        for (var attributeEntry : params.attributeMap.entrySet()) {
+            final Attribute attribute = Attribute.newBuilder()
+                    .setName(attributeEntry.getKey())
+                    .setValue(attributeEntry.getValue())
+                    .build();
+            requestBuilder.addAttributes(attribute);
+        }
+
         requestBuilder.setDataSet(dataSetBuilder);
 
         return requestBuilder;

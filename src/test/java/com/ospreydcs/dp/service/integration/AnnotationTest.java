@@ -8,6 +8,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -121,7 +122,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final int authorId = 1;
             final String comment = "negative test case";
             final AnnotationTestBase.CreateCommentAnnotationParams params =
-                    new AnnotationTestBase.CreateCommentAnnotationParams(authorId, dataSet, comment);
+                    new AnnotationTestBase.CreateCommentAnnotationParams(authorId, new ArrayList<>(), new HashMap<>(), dataSet, comment);
 
             sendAndVerifyCreateCommentAnnotation(
                     params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
@@ -137,7 +138,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                 final long second = startSeconds + secondIndex;
 
                 // create data block with pvNames that do exist in archive
-                final List<String> pvNamesValid = List.of("S01-GCC01", "S02-BPM01");
+                final List<String> pvNamesValid = List.of("S01-GCC01", "S01-BPM01");
                 final AnnotationTestBase.AnnotationDataBlock dataBlockValid
                         = new AnnotationTestBase.AnnotationDataBlock(
                         second, startNanos, second, 999_000_000, pvNamesValid);
@@ -148,8 +149,11 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final int authorId = 1;
             final String comment = "positive test case";
+            final List<String> tags = List.of("vacuum", "sensors");
+            final Map<String,String> attributeMap = Map.of("sector", "01", "status", "verified");
             AnnotationTestBase.CreateCommentAnnotationParams params =
-                    new AnnotationTestBase.CreateCommentAnnotationParams(authorId, dataSet, comment);
+                    new AnnotationTestBase.CreateCommentAnnotationParams(
+                            authorId, tags, attributeMap, dataSet, comment);
 
             sendAndVerifyCreateCommentAnnotation(
                     params, false, "");
