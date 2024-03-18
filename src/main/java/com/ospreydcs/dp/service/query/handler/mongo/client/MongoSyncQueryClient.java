@@ -135,12 +135,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec) {
+    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest request) {
         Bson columnNameFilter;
-        if (querySpec.hasPvNameList()) {
-            return executeQueryMetadata(querySpec.getPvNameList().getPvNamesList());
+        if (request.hasPvNameList()) {
+            return executeQueryMetadata(request.getPvNameList().getPvNamesList());
         } else {
-            return executeQueryMetadata(querySpec.getPvNamePattern().getPattern());
+            return executeQueryMetadata(request.getPvNamePattern().getPattern());
         }
     }
 

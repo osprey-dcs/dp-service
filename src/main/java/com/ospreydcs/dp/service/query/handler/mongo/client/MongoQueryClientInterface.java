@@ -15,7 +15,7 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec);
 
-    MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest.QuerySpec querySpec);
+    MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest request);
 
     MongoCursor<Document> executeQueryMetadata(Collection<String> pvNameList);
 

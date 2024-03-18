@@ -34,7 +34,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void columnInfoQueryTest() {
+    public void queryMetadataTest() {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
@@ -88,14 +88,14 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // send column info query for list of columns
+            // send metadata query for list of columns
             List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
             sendAndVerifyQueryMetadata(
                     queryColumnNames, validationMap, false, null);
         }
 
         {
-            // send column info query for column patter matching all "S01" devices
+            // send metadata query for column patter matching all "S01" devices
             String columnNamePattern = "S01";
             List<String> expectedColumnNameMatches =
                     List.of("S01-GCC01", "S01-GCC02", "S01-GCC03", "S01-BPM01", "S01-BPM02", "S01-BPM03");
@@ -132,7 +132,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
                     validationMap,
                     expectedColumnNameMatches,
                     true,
-                    "QuerySpec.pvNamePattern.pattern must not be empty");
+                    "QueryMetadataRequest.pvNamePattern.pattern must not be empty");
         }
 
     }

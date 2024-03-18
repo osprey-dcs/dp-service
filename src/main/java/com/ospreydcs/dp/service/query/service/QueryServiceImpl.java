@@ -328,39 +328,30 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     public void queryMetadata(QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver) {
 
-        // check that query request contains a ColumnInfoQuerySpec
-        if (!request.hasQuerySpec()) {
-            String errorMsg = "QueryDataRequest does not contain a QuerySpec";
-            sendQueryMetadataResponseReject(errorMsg, responseObserver);
-            return;
-        }
-
-        logger.debug("id: {} column info request received", responseObserver.hashCode());
-
-        QueryMetadataRequest.QuerySpec querySpec = request.getQuerySpec();
+        logger.debug("id: {} queryMetadata request received", responseObserver.hashCode());
 
         // validate query spec
         boolean isError = false;
-        if (querySpec.hasPvNameList()) {
-            if (querySpec.getPvNameList().getPvNamesCount() == 0) {
-                String errorMsg = "QuerySpec.pvNameList.pvNames must not be empty";
+        if (request.hasPvNameList()) {
+            if (request.getPvNameList().getPvNamesCount() == 0) {
+                String errorMsg = "QueryMetadataRequest.pvNameList.pvNames must not be empty";
                 sendQueryMetadataResponseReject(errorMsg, responseObserver);
                 return;
             }
 
-        } else if (querySpec.hasPvNamePattern()) {
-            if (querySpec.getPvNamePattern().getPattern().isBlank()) {
-                String errorMsg = "QuerySpec.pvNamePattern.pattern must not be empty";
+        } else if (request.hasPvNamePattern()) {
+            if (request.getPvNamePattern().getPattern().isBlank()) {
+                String errorMsg = "QueryMetadataRequest.pvNamePattern.pattern must not be empty";
                 sendQueryMetadataResponseReject(errorMsg, responseObserver);
                 return;
             }
         } else {
-            String errorMsg = "column info query must specify either list of column names or column name pattern";
+            String errorMsg = "QueryMetadataRequest must specify either pvNameList or pvNamePattern";
             sendQueryMetadataResponseReject(errorMsg, responseObserver);
             return;
         }
 
-        handler.handleQueryMetadata(querySpec, responseObserver);
+        handler.handleQueryMetadata(request, responseObserver);
     }
 
 }

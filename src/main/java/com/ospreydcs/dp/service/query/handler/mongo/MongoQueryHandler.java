@@ -179,12 +179,12 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
 
     @Override
     public void handleQueryMetadata(
-            QueryMetadataRequest.QuerySpec querySpec, StreamObserver<QueryMetadataResponse> responseObserver
+            QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver
     ) {
         final QueryMetadataJob job =
-                new QueryMetadataJob(querySpec, responseObserver, mongoQueryClient);
+                new QueryMetadataJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding getColumnInfo job id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding queryMetadata job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

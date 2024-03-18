@@ -77,17 +77,12 @@ public class QueryTestBase {
 
         QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryMetadataRequest.QuerySpec.Builder specBuilder = QueryMetadataRequest.QuerySpec.newBuilder();
-
-        QueryMetadataRequest.QuerySpec.PvNamePattern.Builder pvNamePatternBuilder =
-                QueryMetadataRequest.QuerySpec.PvNamePattern.newBuilder();
+        QueryMetadataRequest.PvNamePattern.Builder pvNamePatternBuilder =
+                QueryMetadataRequest.PvNamePattern.newBuilder();
         pvNamePatternBuilder.setPattern(columnNamePattern);
         pvNamePatternBuilder.build();
 
-        specBuilder.setPvNamePattern(pvNamePatternBuilder);
-        specBuilder.build();
-
-        requestBuilder.setQuerySpec(specBuilder);
+        requestBuilder.setPvNamePattern(pvNamePatternBuilder);
         return requestBuilder.build();
     }
 
@@ -95,17 +90,12 @@ public class QueryTestBase {
 
         QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryMetadataRequest.QuerySpec.Builder specBuilder = QueryMetadataRequest.QuerySpec.newBuilder();
-
-        QueryMetadataRequest.QuerySpec.PvNameList.Builder pvNameListBuilder =
-                QueryMetadataRequest.QuerySpec.PvNameList.newBuilder();
+        QueryMetadataRequest.PvNameList.Builder pvNameListBuilder =
+                QueryMetadataRequest.PvNameList.newBuilder();
         pvNameListBuilder.addAllPvNames(pvNames);
         pvNameListBuilder.build();
 
-        specBuilder.setPvNameList(pvNameListBuilder);
-        specBuilder.build();
-
-        requestBuilder.setQuerySpec(specBuilder);
+        requestBuilder.setPvNameList(pvNameListBuilder);
         return requestBuilder.build();
     }
 

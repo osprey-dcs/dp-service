@@ -26,5 +26,5 @@ public interface QueryHandlerInterface {
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver);
 
     void handleQueryMetadata(
-            QueryMetadataRequest.QuerySpec spec, StreamObserver<QueryMetadataResponse> responseObserver);
+            QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);
 }

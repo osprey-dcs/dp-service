@@ -22,13 +22,13 @@ public class MetadataResponseDispatcher extends Dispatcher {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryMetadataRequest.QuerySpec querySpec;
+    private final QueryMetadataRequest request;
     private final StreamObserver<QueryMetadataResponse> responseObserver;
 
     public MetadataResponseDispatcher(
-            StreamObserver<QueryMetadataResponse> responseObserver, QueryMetadataRequest.QuerySpec querySpec
+            StreamObserver<QueryMetadataResponse> responseObserver, QueryMetadataRequest request
     ) {
-        this.querySpec = querySpec;
+        this.request = request;
         this.responseObserver = responseObserver;
     }
 

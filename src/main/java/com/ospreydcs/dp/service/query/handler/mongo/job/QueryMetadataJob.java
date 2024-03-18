@@ -17,27 +17,27 @@ public class QueryMetadataJob extends HandlerJob {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryMetadataRequest.QuerySpec querySpec;
+    private final QueryMetadataRequest request;
     private final StreamObserver<QueryMetadataResponse> responseObserver;
     private final MetadataResponseDispatcher dispatcher;
     private final MongoQueryClientInterface mongoClient;
 
     public QueryMetadataJob(
-            QueryMetadataRequest.QuerySpec querySpec,
+            QueryMetadataRequest request,
             StreamObserver<QueryMetadataResponse> responseObserver,
             MongoQueryClientInterface mongoClient
     ) {
-        this.querySpec = querySpec;
+        this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new MetadataResponseDispatcher(responseObserver, querySpec);
+        dispatcher = new MetadataResponseDispatcher(responseObserver, request);
     }
 
     @Override
     public void execute() {
-        logger.debug("executing ColumnInfoQueryJob id: {}", this.responseObserver.hashCode());
-        final MongoCursor<Document> cursor = this.mongoClient.executeQueryMetadata(this.querySpec);
-        logger.debug("dispatching ColumnInfoQueryJob id: {}", this.responseObserver.hashCode());
+        logger.debug("executing QueryMetadataJob id: {}", this.responseObserver.hashCode());
+        final MongoCursor<Document> cursor = this.mongoClient.executeQueryMetadata(this.request);
+        logger.debug("dispatching QueryMetadataJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(cursor);
     }
 }
