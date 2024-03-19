@@ -124,8 +124,8 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesAnnotations() {
-        createMongoIndexAnnotations(Indexes.ascending(
-                BsonConstants.BSON_KEY_ANNOTATION_TYPE));
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TYPE));
+        createMongoIndexAnnotations(Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)); // text index on comment field
         return true;
     }
 

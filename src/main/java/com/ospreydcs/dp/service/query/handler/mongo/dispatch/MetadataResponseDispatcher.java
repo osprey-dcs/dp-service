@@ -37,13 +37,13 @@ public class MetadataResponseDispatcher extends Dispatcher {
         // validate cursor
         if (cursor == null) {
             // send error response and close response stream if cursor is null
-            final String msg = "column info query returned null cursor";
+            final String msg = "metadata query returned null cursor";
             logger.error(msg);
             QueryServiceImpl.sendQueryMetadataResponseError(msg, this.responseObserver);
             return;
         } else if (!cursor.hasNext()) {
             // send empty QueryStatus and close response stream if query matched no data
-            logger.trace("column info query matched no data, cursor is empty");
+            logger.trace("metadata query matched no data, cursor is empty");
             QueryServiceImpl.sendQueryMetadataResponseEmpty(this.responseObserver);
             return;
         }
@@ -52,23 +52,23 @@ public class MetadataResponseDispatcher extends Dispatcher {
                 QueryMetadataResponse.MetadataResult.newBuilder();
         
         while (cursor.hasNext()) {
-            // build ColumnInfo grpc object for each document in cursor
+            // add grpc object for each document in cursor
             
-            final Document columnInfoDocument = cursor.next();
+            final Document metadataDocument = cursor.next();
             
             final QueryMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
-            pvInfoBuilder.setPvName((String)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
-            pvInfoBuilder.setLastBucketDataType((String)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE));
+            pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
+            pvInfoBuilder.setLastBucketDataType((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE));
 
             // set sampling clock details
             final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
-            samplingClockBuilder.setPeriodNanos((Long)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY));
-            samplingClockBuilder.setCount((Integer)columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES));
+            samplingClockBuilder.setPeriodNanos((Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY));
+            samplingClockBuilder.setCount((Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES));
             pvInfoBuilder.setLastSamplingClock(samplingClockBuilder);
             
-            final Date firstTimeDate = (Date) columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
+            final Date firstTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
             final Instant firstTimeInstant = firstTimeDate.toInstant();
             final Timestamp.Builder firstTimeBuilder = Timestamp.newBuilder();
             firstTimeBuilder.setEpochSeconds(firstTimeInstant.getEpochSecond());
@@ -76,7 +76,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
             firstTimeBuilder.build();
             pvInfoBuilder.setFirstTimestamp(firstTimeBuilder);
 
-            final Date lastTimeDate = (Date) columnInfoDocument.get(BsonConstants.BSON_KEY_BUCKET_LAST_TIME);
+            final Date lastTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_LAST_TIME);
             final Instant lastTimeInstant = lastTimeDate.toInstant();
             final Timestamp.Builder lastTimeBuilder = Timestamp.newBuilder();
             lastTimeBuilder.setEpochSeconds(lastTimeInstant.getEpochSecond());

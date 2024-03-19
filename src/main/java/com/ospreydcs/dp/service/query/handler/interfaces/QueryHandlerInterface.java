@@ -27,4 +27,7 @@ public interface QueryHandlerInterface {
 
     void handleQueryMetadata(
             QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);
+
+    void handleQueryAnnotations(
+            QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
 }

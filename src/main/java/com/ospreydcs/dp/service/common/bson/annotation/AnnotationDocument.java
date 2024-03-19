@@ -3,14 +3,21 @@ package com.ospreydcs.dp.service.common.bson.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryAnnotationsResponse;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
+import org.bson.codecs.pojo.annotations.BsonId;
+import org.bson.types.ObjectId;
 
 import java.util.*;
 
 @BsonDiscriminator(key="type")
 public abstract class AnnotationDocument {
 
+    // constants
+    public static final String ANNOTATION_TYPE_COMMENT = "COMMENT";
+
     // instance variables
+    private ObjectId id;
     private String type;
     private Integer authorId;
     private Set<String> tags;
@@ -18,7 +25,9 @@ public abstract class AnnotationDocument {
     private DataSet dataSet;
 
     // abstract methods
-    abstract List<String> diffRequestDetails(CreateAnnotationRequest request);
+    abstract protected List<String> diffRequestDetails(CreateAnnotationRequest request);
+    abstract protected void addAnnotationDetails(
+            QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder responseAnnotation);
 
     /*
      * NOTE: This method was renamed from setFieldsFromRequest(), which made the mongo codec thrown an exception
@@ -145,6 +154,58 @@ public abstract class AnnotationDocument {
 
         return diffs;
     }
+    
+    public QueryAnnotationsResponse.AnnotationsResult.Annotation buildAnnotation() {
+
+        final QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder annotationBuilder =
+                QueryAnnotationsResponse.AnnotationsResult.Annotation.newBuilder();
+
+        // add base annotation fields to response object
+        annotationBuilder.setAnnotationId(this.getId().toString());
+        annotationBuilder.setAuthorId(this.getAuthorId());
+        annotationBuilder.addAllTags(this.getTags());
+        for (var attributeMapEntry : this.getAttributeMap().entrySet()) {
+            final String attributeKey = attributeMapEntry.getKey();
+            final String attributeValue = attributeMapEntry.getValue();
+            Attribute responseAttribute = Attribute.newBuilder()
+                    .setName(attributeKey)
+                    .setValue(attributeValue)
+                    .build();
+            annotationBuilder.addAttributes(responseAttribute);
+        }
+        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
+        for (com.ospreydcs.dp.service.common.bson.annotation.DataBlock documentDataBlock :
+                this.getDataSet().getDataBlocks()
+        ) {
+            Timestamp blockBeginTime = Timestamp.newBuilder()
+                    .setEpochSeconds(documentDataBlock.getBeginTimeSeconds())
+                    .setNanoseconds(documentDataBlock.getBeginTimeNanos())
+                    .build();
+            Timestamp blockEndTime = Timestamp.newBuilder()
+                    .setEpochSeconds(documentDataBlock.getEndTimeSeconds())
+                    .setNanoseconds(documentDataBlock.getEndTimeNanos())
+                    .build();
+            com.ospreydcs.dp.grpc.v1.common.DataBlock responseBlock = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder()
+                    .setBeginTime(blockBeginTime)
+                    .setEndTime(blockEndTime)
+                    .addAllPvNames(documentDataBlock.getPvNames())
+                    .build();
+            dataSetBuilder.addDataBlocks(responseBlock);
+        }
+
+        // add annotation-type-specific details to response
+        addAnnotationDetails(annotationBuilder);
+
+        return annotationBuilder.build();
+    }
+
+    public ObjectId getId() {
+        return id;
+    }
+
+    public void setId(ObjectId id) {
+        this.id = id;
+    }
 
     public String getType() {
         return type;
@@ -185,4 +246,5 @@ public abstract class AnnotationDocument {
     public void setDataSet(DataSet dataSet) {
         this.dataSet = dataSet;
     }
+
 }

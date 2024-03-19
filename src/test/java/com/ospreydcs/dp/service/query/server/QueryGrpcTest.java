@@ -94,6 +94,12 @@ public class QueryGrpcTest extends QueryTestBase {
                 QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver
         ) {
         }
+
+        @Override
+        public void handleQueryAnnotations(
+                QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver
+        ) {
+        }
     }
 
     protected static class TestQueryClient {
