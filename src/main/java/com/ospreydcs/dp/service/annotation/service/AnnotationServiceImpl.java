@@ -137,15 +137,15 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
         logger.info("id: {} createAnnotation request received with type: {}",
-                responseObserver.hashCode(), request.getAnnotationTypeDetailsCase().toString());
+                responseObserver.hashCode(), request.getAnnotationCase().toString());
 
         // dispatch request based on annotation type
-        switch(request.getAnnotationTypeDetailsCase()) {
+        switch(request.getAnnotationCase()) {
 
-            case COMMENTDETAILS -> {
+            case COMMENTANNOTATION -> {
                 createCommentAnnotation(request, responseObserver);
             }
-            case ANNOTATIONTYPEDETAILS_NOT_SET -> {
+            case ANNOTATION_NOT_SET -> {
                 final String errorMsg = "id: " + responseObserver.hashCode()
                         + " createAnnotation annotationTypeDetails not specified";
                 logger.debug(errorMsg);

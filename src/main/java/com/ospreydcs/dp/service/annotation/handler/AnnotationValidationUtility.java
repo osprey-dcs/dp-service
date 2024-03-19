@@ -1,8 +1,9 @@
 package com.ospreydcs.dp.service.annotation.handler;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
-import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.common.CommentAnnotation;
+import com.ospreydcs.dp.grpc.v1.common.DataBlock;
+import com.ospreydcs.dp.grpc.v1.common.DataSet;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 
@@ -60,13 +61,13 @@ public class AnnotationValidationUtility {
     public static ValidationResult validateCreateCommentRequest(CreateAnnotationRequest request) {
 
         // validate correct oneof case for details payload
-        if (!request.hasCommentDetails()) {
+        if (!request.hasCommentAnnotation()) {
             String errorMsg = "CreateAnnotationRequest does not contain CreateCommentDetails";
             return new ValidationResult(true, errorMsg);
         }
 
         // validate details
-        CreateAnnotationRequest.CommentDetails createCommentDetails = request.getCommentDetails();
+        CommentAnnotation createCommentDetails = request.getCommentAnnotation();
         String detailsComment = createCommentDetails.getComment();
         if (detailsComment == null || detailsComment.isBlank()) {
             String errorMsg = "CreateAnnotationRequest.CreateCommentDetails.comment is null or empty";

@@ -15,7 +15,7 @@ public class CommentAnnotationDocument extends AnnotationDocument {
     public static CommentAnnotationDocument fromCreateRequest(CreateAnnotationRequest request) {
         CommentAnnotationDocument document = new CommentAnnotationDocument();
         document.applyRequestFieldValues(request);
-        document.setComment(request.getCommentDetails().getComment());
+        document.setComment(request.getCommentAnnotation().getComment());
         return document;
     }
 
@@ -24,8 +24,8 @@ public class CommentAnnotationDocument extends AnnotationDocument {
         final List<String> diffs = new ArrayList<>();
 
         String requestComment = "";
-        if (request.hasCommentDetails()) {
-            requestComment = request.getCommentDetails().getComment();
+        if (request.hasCommentAnnotation()) {
+            requestComment = request.getCommentAnnotation().getComment();
         }
         if (! Objects.equals(requestComment, this.getComment())) {
             final String msg = "comment mismatch: " + this.getComment() + " expected: " + requestComment;

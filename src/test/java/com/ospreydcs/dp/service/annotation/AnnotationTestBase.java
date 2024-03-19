@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
+import com.ospreydcs.dp.grpc.v1.common.CommentAnnotation;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -64,8 +65,8 @@ public class AnnotationTestBase {
 
     private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(CreateAnnotationRequestParams params) {
 
-        com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
-                = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
+        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
+                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
 
         for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
 
@@ -77,8 +78,8 @@ public class AnnotationTestBase {
             endTimeBuilder.setEpochSeconds(block.endSeconds);
             endTimeBuilder.setNanoseconds(block.endNanos);
 
-            com.ospreydcs.dp.grpc.v1.annotation.DataBlock.Builder dataBlockBuilder
-                    = com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder();
+            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
+                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
             dataBlockBuilder.setBeginTime(beginTimeBuilder);
             dataBlockBuilder.setEndTime(endTimeBuilder);
             dataBlockBuilder.addAllPvNames(block.pvNames);
@@ -110,12 +111,11 @@ public class AnnotationTestBase {
 
         CreateAnnotationRequest.Builder requestBuilder = createAnnotationRequestBuilder(params);
 
-        CreateAnnotationRequest.CommentDetails.Builder commentBuilder
-                = CreateAnnotationRequest.CommentDetails.newBuilder();
+        CommentAnnotation.Builder commentBuilder = CommentAnnotation.newBuilder();
         commentBuilder.setComment(params.comment);
         commentBuilder.build();
 
-        requestBuilder.setCommentDetails(commentBuilder);
+        requestBuilder.setCommentAnnotation(commentBuilder);
         return requestBuilder.build();
     }
 

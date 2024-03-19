@@ -34,7 +34,7 @@ public abstract class AnnotationDocument {
         }
         setAttributeMap(attributeMap);
         final List<DataBlock> dataBlocks = new ArrayList<>();
-        for (com.ospreydcs.dp.grpc.v1.annotation.DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
+        for (com.ospreydcs.dp.grpc.v1.common.DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
             final Timestamp blockBeginTime =  dataBlock.getBeginTime();
             final Timestamp blockEndtime = dataBlock.getEndTime();
             final long blockBeginSeconds = blockBeginTime.getEpochSeconds();
@@ -99,7 +99,7 @@ public abstract class AnnotationDocument {
         }
         for (int blockIndex = 0 ; blockIndex < request.getDataSet().getDataBlocksList().size() ; ++blockIndex) {
 
-            final com.ospreydcs.dp.grpc.v1.annotation.DataBlock requestDataBlock =
+            final com.ospreydcs.dp.grpc.v1.common.DataBlock requestDataBlock =
                     request.getDataSet().getDataBlocksList().get(blockIndex);
             final Timestamp requestBlockBeginTime =  requestDataBlock.getBeginTime();
             final Timestamp requestBlockEndTime = requestDataBlock.getEndTime();
