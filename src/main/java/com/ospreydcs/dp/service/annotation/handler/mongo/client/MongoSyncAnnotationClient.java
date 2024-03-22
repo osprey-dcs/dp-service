@@ -18,7 +18,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         logger.debug(
                 "inserting AnnotationDocument document to mongo author: {} type: {}",
-                annotationDocument.getAuthorId(), annotationDocument.getType());
+                annotationDocument.getOwnerId(), annotationDocument.getType());
 
         // insert AnnotationDocument to mongodb
         InsertOneResult result = null;

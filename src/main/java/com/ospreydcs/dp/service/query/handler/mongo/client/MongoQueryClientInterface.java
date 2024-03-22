@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.query.QueryAnnotationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;

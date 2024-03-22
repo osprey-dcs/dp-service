@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;

@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.common.CommentAnnotation;
-import com.ospreydcs.dp.grpc.v1.query.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.CommentAnnotation;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 import java.util.ArrayList;

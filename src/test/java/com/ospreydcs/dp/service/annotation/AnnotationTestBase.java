@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
-import com.ospreydcs.dp.grpc.v1.common.CommentAnnotation;
+import com.ospreydcs.dp.grpc.v1.annotation.CommentAnnotation;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -65,46 +65,48 @@ public class AnnotationTestBase {
 
     private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(CreateAnnotationRequestParams params) {
 
-        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
-                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
+//        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
+//                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
+//
+//        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
+//
+//            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+//            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
+//            beginTimeBuilder.setNanoseconds(block.beginNanos);
+//
+//            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
+//            endTimeBuilder.setEpochSeconds(block.endSeconds);
+//            endTimeBuilder.setNanoseconds(block.endNanos);
+//
+//            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
+//                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
+//            dataBlockBuilder.setBeginTime(beginTimeBuilder);
+//            dataBlockBuilder.setEndTime(endTimeBuilder);
+//            dataBlockBuilder.addAllPvNames(block.pvNames);
+//            dataBlockBuilder.build();
+//
+//            dataSetBuilder.addDataBlocks(dataBlockBuilder);
+//        }
+//
+//        dataSetBuilder.build();
+//
+//        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+//        requestBuilder.setAuthorId(params.authorId);
+//        requestBuilder.addAllTags(params.tags);
+//
+//        for (var attributeEntry : params.attributeMap.entrySet()) {
+//            final Attribute attribute = Attribute.newBuilder()
+//                    .setName(attributeEntry.getKey())
+//                    .setValue(attributeEntry.getValue())
+//                    .build();
+//            requestBuilder.addAttributes(attribute);
+//        }
+//
+//        requestBuilder.setDataSet(dataSetBuilder);
+//
+//        return requestBuilder;
 
-        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
-
-            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
-            beginTimeBuilder.setNanoseconds(block.beginNanos);
-
-            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
-            endTimeBuilder.setEpochSeconds(block.endSeconds);
-            endTimeBuilder.setNanoseconds(block.endNanos);
-
-            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
-                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
-            dataBlockBuilder.setBeginTime(beginTimeBuilder);
-            dataBlockBuilder.setEndTime(endTimeBuilder);
-            dataBlockBuilder.addAllPvNames(block.pvNames);
-            dataBlockBuilder.build();
-
-            dataSetBuilder.addDataBlocks(dataBlockBuilder);
-        }
-
-        dataSetBuilder.build();
-
-        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
-        requestBuilder.setAuthorId(params.authorId);
-        requestBuilder.addAllTags(params.tags);
-
-        for (var attributeEntry : params.attributeMap.entrySet()) {
-            final Attribute attribute = Attribute.newBuilder()
-                    .setName(attributeEntry.getKey())
-                    .setValue(attributeEntry.getValue())
-                    .build();
-            requestBuilder.addAttributes(attribute);
-        }
-
-        requestBuilder.setDataSet(dataSetBuilder);
-
-        return requestBuilder;
+        return CreateAnnotationRequest.newBuilder();
     }
 
     public static CreateAnnotationRequest buildCreateCommentAnnotationRequest(CreateCommentAnnotationParams params) {

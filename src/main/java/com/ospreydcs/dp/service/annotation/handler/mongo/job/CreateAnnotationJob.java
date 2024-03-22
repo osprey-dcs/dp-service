@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
-import com.mongodb.client.result.InsertOneResult;
-import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;

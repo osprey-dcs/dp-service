@@ -25,7 +25,7 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_ID = "_id";
     public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
     public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
-    public static final String BSON_KEY_ANNOTATION_AUTHOR_ID = "authorId";
+    public static final String BSON_KEY_ANNOTATION_OWNER_ID = "ownerId";
     public static final String BSON_KEY_ANNOTATION_TAGS = "tags";
     public static final String BSON_VALUE_STATUS_SUCCESS = "success";
     public static final String BSON_VALUE_STATUS_REJECTED = "rejected";

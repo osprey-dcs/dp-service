@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.query.server;
 
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.model.ValidationResult;

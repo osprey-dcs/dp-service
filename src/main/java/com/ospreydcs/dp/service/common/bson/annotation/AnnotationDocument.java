@@ -3,9 +3,8 @@ package com.ospreydcs.dp.service.common.bson.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
-import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
 
 import java.util.*;
@@ -19,9 +18,7 @@ public abstract class AnnotationDocument {
     // instance variables
     private ObjectId id;
     private String type;
-    private Integer authorId;
-    private Set<String> tags;
-    private Map<String, String> attributeMap;
+    private String ownerId;
     private DataSet dataSet;
 
     // abstract methods
@@ -35,33 +32,27 @@ public abstract class AnnotationDocument {
      * method naming convention, and that solved the problem.
      */
     public void applyRequestFieldValues(CreateAnnotationRequest request) {
-        setAuthorId(request.getAuthorId());
-        setTags(new TreeSet(request.getTagsList()));
-        final Map<String, String> attributeMap = new TreeMap<>();
-        for (Attribute attribute : request.getAttributesList()) {
-            attributeMap.put(attribute.getName(), attribute.getValue());
-        }
-        setAttributeMap(attributeMap);
+        setOwnerId(request.getOwnerId());
         final List<DataBlock> dataBlocks = new ArrayList<>();
-        for (com.ospreydcs.dp.grpc.v1.common.DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
-            final Timestamp blockBeginTime =  dataBlock.getBeginTime();
-            final Timestamp blockEndtime = dataBlock.getEndTime();
-            final long blockBeginSeconds = blockBeginTime.getEpochSeconds();
-            final long blockBeginNanos = blockBeginTime.getNanoseconds();
-            final long blockEndSeconds = blockEndtime.getEpochSeconds();
-            final long blockEndNanos = blockEndtime.getNanoseconds();
-            List<String> blockPvNames = dataBlock.getPvNamesList();
-            DataBlock documentBlock = new DataBlock(
-                    blockBeginSeconds,
-                    blockBeginNanos,
-                    blockEndSeconds,
-                    blockEndNanos,
-                    blockPvNames);
-            dataBlocks.add(documentBlock);
-        }
-        DataSet documentDataSet = new DataSet();
-        documentDataSet.setDataBlocks(dataBlocks);
-        setDataSet(documentDataSet);
+//        for (com.ospreydcs.dp.grpc.v1.annotation.DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
+//            final Timestamp blockBeginTime =  dataBlock.getBeginTime();
+//            final Timestamp blockEndtime = dataBlock.getEndTime();
+//            final long blockBeginSeconds = blockBeginTime.getEpochSeconds();
+//            final long blockBeginNanos = blockBeginTime.getNanoseconds();
+//            final long blockEndSeconds = blockEndtime.getEpochSeconds();
+//            final long blockEndNanos = blockEndtime.getNanoseconds();
+//            List<String> blockPvNames = dataBlock.getPvNamesList();
+//            DataBlock documentBlock = new DataBlock(
+//                    blockBeginSeconds,
+//                    blockBeginNanos,
+//                    blockEndSeconds,
+//                    blockEndNanos,
+//                    blockPvNames);
+//            dataBlocks.add(documentBlock);
+//        }
+//        DataSet documentDataSet = new DataSet();
+//        documentDataSet.setDataBlocks(dataBlocks);
+//        setDataSet(documentDataSet);
     }
 
     public List<String> diffRequest(CreateAnnotationRequest request) {
@@ -70,87 +61,63 @@ public abstract class AnnotationDocument {
         final List<String> diffs = diffRequestDetails(request);
 
         // diff authorId
-        if (request.getAuthorId() != this.getAuthorId()) {
-            final String msg = "author mismatch: " + this.getAuthorId()
-                    + " expected: " + request.getAuthorId();
+        if (request.getOwnerId() != this.getOwnerId()) {
+            final String msg = "owner mismatch: " + this.getOwnerId()
+                    + " expected: " + request.getOwnerId();
             diffs.add(msg);
         }
 
-        // diff tags
-        final Set<String> requestTagSet = new TreeSet<>(request.getTagsList());
-        if (requestTagSet.size() != this.getTags().size() || ! Objects.equals(requestTagSet, this.getTags())) {
-            final String msg = "tags mismatch: " + this.getTags().toString()
-                    + " expected: " + requestTagSet.toString();
-            diffs.add(msg);
-        }
-
-        // diff attributes
-        if (request.getAttributesList().size() != getAttributeMap().size()) {
-            final String msg = "attributes list size mismatch: " + getAttributeMap().size()
-                    + " expected: " + request.getAttributesList().size();
-            diffs.add(msg);
-        }
-        for (Attribute requestAttribute : request.getAttributesList()) {
-            final String attributeValue = this.getAttributeMap().get(requestAttribute.getName());
-            if (attributeValue == null || ! attributeValue.equals(requestAttribute.getValue())) {
-                final String msg = "attribute key: " + requestAttribute.getName()
-                        + " value mismatch: " + attributeValue
-                        + " expected: " + requestAttribute.getValue();
-                diffs.add(msg);
-            }
-        }
-
-        // diff DataSet
-        if (request.getDataSet().getDataBlocksList().size() != getDataSet().getDataBlocks().size()) {
-            final String msg = "DataSet DataBlocks list size mismatch: " + getDataSet().getDataBlocks().size()
-                    + " expected: " + request.getDataSet().getDataBlocksList().size();
-            diffs.add(msg);
-        }
-        for (int blockIndex = 0 ; blockIndex < request.getDataSet().getDataBlocksList().size() ; ++blockIndex) {
-
-            final com.ospreydcs.dp.grpc.v1.common.DataBlock requestDataBlock =
-                    request.getDataSet().getDataBlocksList().get(blockIndex);
-            final Timestamp requestBlockBeginTime =  requestDataBlock.getBeginTime();
-            final Timestamp requestBlockEndTime = requestDataBlock.getEndTime();
-            final long requestBlockBeginSeconds = requestBlockBeginTime.getEpochSeconds();
-            final long requestBlockBeginNanos = requestBlockBeginTime.getNanoseconds();
-            final long requestBlockEndSeconds = requestBlockEndTime.getEpochSeconds();
-            final long requestBlockEndNanos = requestBlockEndTime.getNanoseconds();
-            Set<String> requestPvNames = new TreeSet<>(requestDataBlock.getPvNamesList());
-
-            final DataBlock dataBlock = this.getDataSet().getDataBlocks().get(blockIndex);
-            if (requestBlockBeginSeconds != dataBlock.getBeginTimeSeconds()) {
-                final String msg = "block beginTime seconds mistmatch: " + dataBlock.getBeginTimeSeconds() 
-                        + " expected: " + requestBlockBeginSeconds;
-                diffs.add(msg);
-            }
-            if (requestBlockBeginNanos != dataBlock.getBeginTimeNanos()) {
-                final String msg = "block beginTime nanos mistmatch: " + dataBlock.getBeginTimeNanos()
-                        + " expected: " + requestBlockBeginNanos;
-                diffs.add(msg);
-            }
-            if (requestBlockEndSeconds != dataBlock.getEndTimeSeconds()) {
-                final String msg = "block endTime seconds mistmatch: " + dataBlock.getEndTimeSeconds()
-                        + " expected: " + requestBlockEndSeconds;
-                diffs.add(msg);
-            }
-            if (requestBlockEndNanos != dataBlock.getEndTimeNanos()) {
-                final String msg = "block endTime nanos mistmatch: " + dataBlock.getEndTimeNanos()
-                        + " expected: " + requestBlockEndNanos;
-                diffs.add(msg);
-            }
-            if (requestPvNames.size() != dataBlock.getPvNames().size()) {
-                final String msg = "block pvNames list size mismatch: " + dataBlock.getPvNames().size()
-                        + " expected: " + requestPvNames.size();
-                diffs.add(msg);
-            }
-            if (!Objects.equals(requestPvNames, dataBlock.getPvNames())) {
-                final String msg = "block pvNames list mismatch: " + dataBlock.getPvNames().toString()
-                        + " expected: " + requestPvNames.toString();
-                diffs.add(msg);
-            }
-
-        }
+//        // diff DataSet
+//        if (request.getDataSet().getDataBlocksList().size() != getDataSet().getDataBlocks().size()) {
+//            final String msg = "DataSet DataBlocks list size mismatch: " + getDataSet().getDataBlocks().size()
+//                    + " expected: " + request.getDataSet().getDataBlocksList().size();
+//            diffs.add(msg);
+//        }
+//        for (int blockIndex = 0 ; blockIndex < request.getDataSet().getDataBlocksList().size() ; ++blockIndex) {
+//
+//            final com.ospreydcs.dp.grpc.v1.common.DataBlock requestDataBlock =
+//                    request.getDataSet().getDataBlocksList().get(blockIndex);
+//            final Timestamp requestBlockBeginTime =  requestDataBlock.getBeginTime();
+//            final Timestamp requestBlockEndTime = requestDataBlock.getEndTime();
+//            final long requestBlockBeginSeconds = requestBlockBeginTime.getEpochSeconds();
+//            final long requestBlockBeginNanos = requestBlockBeginTime.getNanoseconds();
+//            final long requestBlockEndSeconds = requestBlockEndTime.getEpochSeconds();
+//            final long requestBlockEndNanos = requestBlockEndTime.getNanoseconds();
+//            Set<String> requestPvNames = new TreeSet<>(requestDataBlock.getPvNamesList());
+//
+//            final DataBlock dataBlock = this.getDataSet().getDataBlocks().get(blockIndex);
+//            if (requestBlockBeginSeconds != dataBlock.getBeginTimeSeconds()) {
+//                final String msg = "block beginTime seconds mistmatch: " + dataBlock.getBeginTimeSeconds()
+//                        + " expected: " + requestBlockBeginSeconds;
+//                diffs.add(msg);
+//            }
+//            if (requestBlockBeginNanos != dataBlock.getBeginTimeNanos()) {
+//                final String msg = "block beginTime nanos mistmatch: " + dataBlock.getBeginTimeNanos()
+//                        + " expected: " + requestBlockBeginNanos;
+//                diffs.add(msg);
+//            }
+//            if (requestBlockEndSeconds != dataBlock.getEndTimeSeconds()) {
+//                final String msg = "block endTime seconds mistmatch: " + dataBlock.getEndTimeSeconds()
+//                        + " expected: " + requestBlockEndSeconds;
+//                diffs.add(msg);
+//            }
+//            if (requestBlockEndNanos != dataBlock.getEndTimeNanos()) {
+//                final String msg = "block endTime nanos mistmatch: " + dataBlock.getEndTimeNanos()
+//                        + " expected: " + requestBlockEndNanos;
+//                diffs.add(msg);
+//            }
+//            if (requestPvNames.size() != dataBlock.getPvNames().size()) {
+//                final String msg = "block pvNames list size mismatch: " + dataBlock.getPvNames().size()
+//                        + " expected: " + requestPvNames.size();
+//                diffs.add(msg);
+//            }
+//            if (!Objects.equals(requestPvNames, dataBlock.getPvNames())) {
+//                final String msg = "block pvNames list mismatch: " + dataBlock.getPvNames().toString()
+//                        + " expected: " + requestPvNames.toString();
+//                diffs.add(msg);
+//            }
+//
+//        }
 
         return diffs;
     }
@@ -162,18 +129,9 @@ public abstract class AnnotationDocument {
 
         // add base annotation fields to response object
         annotationBuilder.setAnnotationId(this.getId().toString());
-        annotationBuilder.setAuthorId(this.getAuthorId());
-        annotationBuilder.addAllTags(this.getTags());
-        for (var attributeMapEntry : this.getAttributeMap().entrySet()) {
-            final String attributeKey = attributeMapEntry.getKey();
-            final String attributeValue = attributeMapEntry.getValue();
-            Attribute responseAttribute = Attribute.newBuilder()
-                    .setName(attributeKey)
-                    .setValue(attributeValue)
-                    .build();
-            annotationBuilder.addAttributes(responseAttribute);
-        }
-        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
+        annotationBuilder.setOwnerId(this.getOwnerId());
+        com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =
+                com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
         for (com.ospreydcs.dp.service.common.bson.annotation.DataBlock documentDataBlock :
                 this.getDataSet().getDataBlocks()
         ) {
@@ -185,7 +143,8 @@ public abstract class AnnotationDocument {
                     .setEpochSeconds(documentDataBlock.getEndTimeSeconds())
                     .setNanoseconds(documentDataBlock.getEndTimeNanos())
                     .build();
-            com.ospreydcs.dp.grpc.v1.common.DataBlock responseBlock = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder()
+            com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
+                    com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
                     .setBeginTime(blockBeginTime)
                     .setEndTime(blockEndTime)
                     .addAllPvNames(documentDataBlock.getPvNames())
@@ -215,28 +174,12 @@ public abstract class AnnotationDocument {
         this.type = type;
     }
 
-    public Integer getAuthorId() {
-        return authorId;
+    public String getOwnerId() {
+        return ownerId;
     }
 
-    public void setAuthorId(Integer authorId) {
-        this.authorId = authorId;
-    }
-
-    public Set<String> getTags() {
-        return tags;
-    }
-
-    public void setTags(Set<String> tags) {
-        this.tags = tags;
-    }
-
-    public Map<String, String> getAttributeMap() {
-        return attributeMap;
-    }
-
-    public void setAttributeMap(Map<String, String> attributeMap) {
-        this.attributeMap = attributeMap;
+    public void setOwnerId(String ownerId) {
+        this.ownerId = ownerId;
     }
 
     public DataSet getDataSet() {

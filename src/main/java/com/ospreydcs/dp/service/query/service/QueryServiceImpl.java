@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.query.service;
 
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
@@ -430,30 +432,30 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         handler.handleQueryMetadata(request, responseObserver);
     }
 
-    @Override
-    public void queryAnnotations(
-            QueryAnnotationsRequest request,
-            StreamObserver<QueryAnnotationsResponse> responseObserver
-    ) {
-        logger.debug("id: {} queryAnnotations request received", responseObserver.hashCode());
-
-        // validate query
-        switch (request.getCriteriaCase()) {
-
-            case COMMENTCRITERIA -> {
-                QueryAnnotationsRequest.CommentCriteria commentCriteria = request.getCommentCriteria();
-                if (commentCriteria.getCommentText() == null || commentCriteria.getCommentText().isBlank()) {
-                    final String errorMsg = "QueryAnnotationsRequest.CommentCriteria.commentPattern must not be empty";
-                    sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-                }
-            }
-
-            case CRITERIA_NOT_SET -> {
-                final String errorMsg = "QueryAnnotationsRequest.criteria must not be empty";
-                sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-            }
-        }
-
-        handler.handleQueryAnnotations(request, responseObserver);
-    }
+//    @Override
+//    public void queryAnnotations(
+//            QueryAnnotationsRequest request,
+//            StreamObserver<QueryAnnotationsResponse> responseObserver
+//    ) {
+//        logger.debug("id: {} queryAnnotations request received", responseObserver.hashCode());
+//
+//        // validate query
+//        switch (request.getCriteriaCase()) {
+//
+//            case COMMENTCRITERIA -> {
+//                QueryAnnotationsRequest.CommentCriteria commentCriteria = request.getCommentCriteria();
+//                if (commentCriteria.getCommentText() == null || commentCriteria.getCommentText().isBlank()) {
+//                    final String errorMsg = "QueryAnnotationsRequest.CommentCriteria.commentPattern must not be empty";
+//                    sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+//                }
+//            }
+//
+//            case CRITERIA_NOT_SET -> {
+//                final String errorMsg = "QueryAnnotationsRequest.criteria must not be empty";
+//                sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+//            }
+//        }
+//
+//        handler.handleQueryAnnotations(request, responseObserver);
+//    }
 }
