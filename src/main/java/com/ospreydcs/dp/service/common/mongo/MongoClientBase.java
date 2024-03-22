@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.common.mongo;
 import com.mongodb.client.model.Indexes;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
-import com.ospreydcs.dp.service.common.bson.annotation.DataBlock;
-import com.ospreydcs.dp.service.common.bson.annotation.DataSet;
+import com.ospreydcs.dp.service.common.bson.dataset.DocumentDataBlock;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.bson.*;
@@ -28,6 +28,7 @@ public abstract class MongoClientBase {
     public static final String MONGO_DATABASE_NAME = "dp";
     public static final String COLLECTION_NAME_BUCKETS = "buckets";
     public static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
+    public static final String COLLECTION_NAME_DATA_SETS = "dataSets";
     public static final String COLLECTION_NAME_ANNOTATIONS = "annotations";
 
     // configuration
@@ -48,6 +49,8 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexBuckets(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
     protected abstract boolean createMongoIndexRequestStatus(Bson fieldNamesBson);
+    protected abstract boolean initMongoCollectionDataSets(String collectionName);
+    protected abstract boolean createMongoIndexDataSets(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionAnnotations(String collectionName);
     protected abstract boolean createMongoIndexAnnotations(Bson fieldNamesBson);
 
@@ -82,8 +85,8 @@ public abstract class MongoClientBase {
                 RequestStatusDocument.class,
                 AnnotationDocument.class,
                 CommentAnnotationDocument.class,
-                DataSet.class,
-                DataBlock.class
+                DataSetDocument.class,
+                DocumentDataBlock.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -123,6 +126,11 @@ public abstract class MongoClientBase {
         return true;
     }
 
+    private boolean createMongoIndexesDataSets() {
+        createMongoIndexAnnotations(Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)); // text index on comment field
+        return true;
+    }
+
     private boolean createMongoIndexesAnnotations() {
         createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TYPE));
         createMongoIndexAnnotations(Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)); // text index on comment field
@@ -155,6 +163,10 @@ public abstract class MongoClientBase {
         return COLLECTION_NAME_REQUEST_STATUS;
     }
 
+    protected String getCollectionNameDataSets() {
+        return COLLECTION_NAME_DATA_SETS;
+    }
+
     protected String getCollectionNameAnnotations() {
         return COLLECTION_NAME_ANNOTATIONS;
     }
@@ -167,6 +179,7 @@ public abstract class MongoClientBase {
         String databaseName = getMongoDatabaseName();
         String collectionNameBuckets = getCollectionNameBuckets();
         String collectionNameRequestStatus = getCollectionNameRequestStatus();
+        String collectionNameDataSets = getCollectionNameDataSets();
         String collectionNameAnnotations = getCollectionNameAnnotations();
         logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
         logger.info("mongo client init collection names buckets: {} requestStatus: {} annotations: {}",
@@ -186,9 +199,14 @@ public abstract class MongoClientBase {
         initMongoCollectionRequestStatus(collectionNameRequestStatus);
         createMongoIndexesRequestStatus();
 
+        // initialize datasets collection
+        initMongoCollectionDataSets(collectionNameDataSets);
+        createMongoIndexesDataSets();
+
         // initialize annotations collection
         initMongoCollectionAnnotations(collectionNameAnnotations);
         createMongoIndexesAnnotations();
+
         return true;
     }
 

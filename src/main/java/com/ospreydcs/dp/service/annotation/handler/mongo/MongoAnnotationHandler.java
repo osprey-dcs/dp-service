@@ -1,14 +1,12 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
-import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
-import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateCommentAnnotationJob;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateDataSetJob;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -73,6 +71,72 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             logger.error("error in mongoAnnotationClient.fini");
         }
         return true;
+    }
+
+    @Override
+    public void handleCreateDataSetRequest(
+            CreateDataSetRequest request, 
+            StreamObserver<CreateDataSetResponse> responseObserver
+    ) {
+        final CreateDataSetJob job = new CreateDataSetJob(
+                request,
+                responseObserver,
+                mongoAnnotationClient,
+                this);
+
+        logger.debug("adding CreateDataSetJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public ValidationResult validateCreateDataSetRequest(CreateDataSetRequest request) {
+
+        // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
+        final Set<String> uniquePvNames = new TreeSet<>();
+        if (request.getDataSet() == null) {
+            return new ValidationResult(true, "CreateDataSetRequest must contain a DataSet");
+        }
+        final DataSet dataSet = request.getDataSet();
+        final List<DataBlock> dataBlocks = dataSet.getDataBlocksList();
+        if (dataBlocks == null || dataBlocks.isEmpty()) {
+            return new ValidationResult(true, "CreateDataSetRequest.DataSet must contain DataBlocks");
+        }
+        for (DataBlock dataBlock : dataBlocks) {
+            List<String> blockPvNames = dataBlock.getPvNamesList();
+            if (blockPvNames == null || blockPvNames.isEmpty()) {
+                return new ValidationResult(
+                        true, "CreateDataSetRequest.DataSet.DataBlock must contain pvNames");
+            }
+            uniquePvNames.addAll(blockPvNames);
+        }
+
+        // execute metadata query for list of pv names
+        final MongoCursor<Document> pvMetadata = mongoQueryClient.executeQueryMetadata(uniquePvNames);
+        if (pvMetadata == null) {
+            return new ValidationResult(true, "error executing pv metadata query to validate request");
+        }
+
+        // check that metadata is returned for each pv (try to remove each metadata from the set,
+        // and make sure set end up empty)
+        while (pvMetadata.hasNext()) {
+            final Document pvMetadataDocument = pvMetadata.next();
+            final String pvName = (String) pvMetadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME);
+            if (pvName != null) {
+                uniquePvNames.remove(pvName);
+            }
+        }
+
+        // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
+        if (uniquePvNames.isEmpty()) {
+            return new ValidationResult(false, "");
+        } else {
+            return new ValidationResult(true, "no PV metadata found for names: " + uniquePvNames.toString());
+        }
     }
 
     @Override

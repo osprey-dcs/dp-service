@@ -7,10 +7,13 @@ import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.conversions.Bson;
+
+import javax.xml.crypto.Data;
 
 public class MongoAsyncClient extends MongoClientBase {
 
@@ -22,6 +25,7 @@ public class MongoAsyncClient extends MongoClientBase {
     protected MongoDatabase mongoDatabase = null;
     protected MongoCollection<BucketDocument> mongoCollectionBuckets = null;
     protected MongoCollection<RequestStatusDocument> mongoCollectionRequestStatus = null;
+    protected MongoCollection<DataSetDocument> mongoCollectionDataSets = null;
     protected MongoCollection<AnnotationDocument> mongoCollectionAnnotations = null;
 
     @Override
@@ -59,6 +63,19 @@ public class MongoAsyncClient extends MongoClientBase {
     @Override
     protected boolean createMongoIndexRequestStatus(Bson fieldNamesBson) {
         mongoCollectionRequestStatus.createIndex(fieldNamesBson);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionDataSets(String collectionName) {
+        mongoCollectionDataSets =
+                mongoDatabase.getCollection(collectionName, DataSetDocument.class);  // creates collection if it doesn't exist
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexDataSets(Bson fieldNamesBson) {
+        mongoCollectionDataSets.createIndex(fieldNamesBson);
         return true;
     }
 

@@ -1,10 +1,10 @@
-package com.ospreydcs.dp.service.common.bson.annotation;
+package com.ospreydcs.dp.service.common.bson.dataset;
 
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class DataBlock {
+public class DocumentDataBlock {
 
     private long beginTimeSeconds;
     private long beginTimeNanos;
@@ -13,9 +13,9 @@ public class DataBlock {
     private long endTimeNanos;
     Set<String> pvNames;
 
-    public DataBlock() {}
+    public DocumentDataBlock() {}
 
-    public DataBlock(
+    public DocumentDataBlock(
             long beginTimeSeconds, long beginTimeNanos, long endTimeSeconds, long endTimeNanos, List<String> pvNames
     ) {
         this.beginTimeSeconds = beginTimeSeconds;

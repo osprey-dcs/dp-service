@@ -1,9 +1,10 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.service.common.bson.dataset.DocumentDataBlock;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 import org.bson.types.ObjectId;
 
@@ -19,7 +20,7 @@ public abstract class AnnotationDocument {
     private ObjectId id;
     private String type;
     private String ownerId;
-    private DataSet dataSet;
+    private DataSetDocument dataSet;
 
     // abstract methods
     abstract protected List<String> diffRequestDetails(CreateAnnotationRequest request);
@@ -33,7 +34,7 @@ public abstract class AnnotationDocument {
      */
     public void applyRequestFieldValues(CreateAnnotationRequest request) {
         setOwnerId(request.getOwnerId());
-        final List<DataBlock> dataBlocks = new ArrayList<>();
+        final List<DocumentDataBlock> dataBlocks = new ArrayList<>();
 //        for (com.ospreydcs.dp.grpc.v1.annotation.DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
 //            final Timestamp blockBeginTime =  dataBlock.getBeginTime();
 //            final Timestamp blockEndtime = dataBlock.getEndTime();
@@ -132,7 +133,7 @@ public abstract class AnnotationDocument {
         annotationBuilder.setOwnerId(this.getOwnerId());
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =
                 com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
-        for (com.ospreydcs.dp.service.common.bson.annotation.DataBlock documentDataBlock :
+        for (DocumentDataBlock documentDataBlock :
                 this.getDataSet().getDataBlocks()
         ) {
             Timestamp blockBeginTime = Timestamp.newBuilder()
@@ -182,11 +183,11 @@ public abstract class AnnotationDocument {
         this.ownerId = ownerId;
     }
 
-    public DataSet getDataSet() {
+    public DataSetDocument getDataSet() {
         return dataSet;
     }
 
-    public void setDataSet(DataSet dataSet) {
+    public void setDataSet(DataSetDocument dataSet) {
         this.dataSet = dataSet;
     }
 
