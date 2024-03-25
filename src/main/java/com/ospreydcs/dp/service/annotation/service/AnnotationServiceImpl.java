@@ -38,6 +38,108 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
     }
 
+    private static CreateDataSetResponse createDataSetResponseReject(String msg) {
+
+        final ExceptionalResult exceptionalResult =
+                ExceptionalResult.newBuilder()
+                        .setExceptionalResultStatus(
+                                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
+                        .setMessage(msg)
+                        .build();
+
+        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static void sendCreateDataSetResponseReject(
+            String errorMsg,
+            StreamObserver<CreateDataSetResponse> responseObserver
+    ) {
+        final CreateDataSetResponse response = createDataSetResponseReject(errorMsg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static CreateDataSetResponse createDataSetResponseError(String msg) {
+
+        final ExceptionalResult exceptionalResult =
+                ExceptionalResult.newBuilder()
+                        .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                        .setMessage(msg)
+                        .build();
+
+        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static void sendCreateDataSetResponseError(
+            String errorMsg, StreamObserver<CreateDataSetResponse> responseObserver
+    ) {
+        final CreateDataSetResponse response = createDataSetResponseError(errorMsg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static CreateDataSetResponse createDataSetResponseSuccess(String dataSetId) {
+
+        final CreateDataSetResponse.CreateDataSetResult result =
+                CreateDataSetResponse.CreateDataSetResult.newBuilder()
+                        .setDataSetId(dataSetId)
+                        .build();
+
+        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setCreateDataSetResult(result)
+                .build();
+
+        return response;
+    }
+
+    public static void sendCreateDataSetResponseSuccess(
+            String dataSetId, StreamObserver<CreateDataSetResponse> responseObserver
+    ) {
+        final CreateDataSetResponse response = createDataSetResponseSuccess(dataSetId);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void createDataSet(
+            CreateDataSetRequest request,
+            StreamObserver<CreateDataSetResponse> responseObserver
+    ) {
+        logger.info("id: {} createDataSet request received", responseObserver.hashCode());
+
+        final DataSet dataSet = request.getDataSet();
+        if (dataSet == null) {
+            final String errorMsg = "CreateDataSetRequest.dataSet must be specified";
+            sendCreateDataSetResponseReject(errorMsg, responseObserver);
+        }
+
+        // validate DataSet
+        ValidationResult validationResult = AnnotationValidationUtility.validateDataSet(dataSet);
+        if (validationResult.isError) {
+            logger.debug("id: {} CreateDataSetRequest.dataSet validation failed: {}",
+                    responseObserver.hashCode(),
+                    validationResult.msg);
+            sendCreateDataSetResponseReject(
+                    validationResult.msg,
+                    responseObserver);
+            return;
+        }
+
+        // handle request
+        handler.handleCreateDataSetRequest(request, responseObserver);
+    }
+
     private static CreateAnnotationResponse createAnnotationResponseReject(String msg) {
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -137,6 +239,18 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         logger.info("id: {} createAnnotation request received with type: {}",
                 responseObserver.hashCode(), request.getAnnotationCase().toString());
 
+        // perform validation of base annotation details
+        // validate common annotation details
+        final ValidationResult validationResult =
+                AnnotationValidationUtility.validateCreateAnnotationRequestCommon(request);
+        if (validationResult.isError) {
+            logger.debug("id: {} createAnnotation validation failed: ", responseObserver.hashCode(), validationResult.msg);
+            sendCreateAnnotationResponseReject(
+                    validationResult.msg,
+                    responseObserver);
+            return;
+        }
+
         // dispatch request based on annotation type
         switch(request.getAnnotationCase()) {
 
@@ -153,108 +267,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 return;
             }
         }
-    }
-
-    private static CreateDataSetResponse createDataSetResponseReject(String msg) {
-
-        final ExceptionalResult exceptionalResult =
-                ExceptionalResult.newBuilder()
-                        .setExceptionalResultStatus(
-                                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
-                        .setMessage(msg)
-                        .build();
-
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setExceptionalResult(exceptionalResult)
-                .build();
-
-        return response;
-    }
-
-    public static void sendCreateDataSetResponseReject(
-            String errorMsg,
-            StreamObserver<CreateDataSetResponse> responseObserver
-    ) {
-        final CreateDataSetResponse response = createDataSetResponseReject(errorMsg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    private static CreateDataSetResponse createDataSetResponseError(String msg) {
-
-        final ExceptionalResult exceptionalResult =
-                ExceptionalResult.newBuilder()
-                        .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
-                        .setMessage(msg)
-                        .build();
-
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setExceptionalResult(exceptionalResult)
-                .build();
-
-        return response;
-    }
-
-    public static void sendCreateDataSetResponseError(
-            String errorMsg, StreamObserver<CreateDataSetResponse> responseObserver
-    ) {
-        final CreateDataSetResponse response = createDataSetResponseError(errorMsg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    private static CreateDataSetResponse createDataSetResponseSuccess(String dataSetId) {
-
-        final CreateDataSetResponse.CreateDataSetResult result =
-                CreateDataSetResponse.CreateDataSetResult.newBuilder()
-                        .setDataSetId(dataSetId)
-                        .build();
-
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
-                .setCreateDataSetResult(result)
-                .build();
-
-        return response;
-    }
-
-    public static void sendCreateDataSetResponseSuccess(
-            String dataSetId, StreamObserver<CreateDataSetResponse> responseObserver
-    ) {
-        final CreateDataSetResponse response = createDataSetResponseSuccess(dataSetId);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    @Override
-    public void createDataSet(
-            CreateDataSetRequest request,
-            StreamObserver<CreateDataSetResponse> responseObserver
-    ) {
-        logger.info("id: {} createDataSet request received", responseObserver.hashCode());
-        
-        final DataSet dataSet = request.getDataSet();
-        if (dataSet == null) {
-            final String errorMsg = "CreateDataSetRequest.dataSet must be specified";
-            sendCreateDataSetResponseReject(errorMsg, responseObserver);
-        }
-
-        // validate DataSet
-        ValidationResult validationResult = AnnotationValidationUtility.validateDataSet(dataSet);
-        if (validationResult.isError) {
-            logger.debug("id: {} CreateDataSetRequest.dataSet validation failed: {}",
-                    responseObserver.hashCode(),
-                    validationResult.msg);
-            sendCreateDataSetResponseReject(
-                    validationResult.msg,
-                    responseObserver);
-            return;
-        }
-
-        // handle request
-        handler.handleCreateDataSetRequest(request, responseObserver);
     }
 
 }

@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotat
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateCommentAnnotationJob;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateDataSetJob;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -162,48 +163,22 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     public ValidationResult validateAnnotationRequest(CreateAnnotationRequest request) {
 
-        // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
-//        final Set<String> uniquePvNames = new TreeSet<>();
-//        if (request.getDataSet() == null) {
-//            return new ValidationResult(true, "CreateAnnotationRequest must contain a DataSet");
-//        }
-//        final DataSet dataSet = request.getDataSet();
-//        final List<DataBlock> dataBlocks = dataSet.getDataBlocksList();
-//        if (dataBlocks == null || dataBlocks.isEmpty()) {
-//            return new ValidationResult(true, "CreateAnnotationRequest DataSet must contain DataBlocks");
-//        }
-//        for (DataBlock dataBlock : dataBlocks) {
-//            List<String> blockPvNames = dataBlock.getPvNamesList();
-//            if (blockPvNames == null || blockPvNames.isEmpty()) {
-//                return new ValidationResult(true, "DataBlock must contain pvNames");
-//            }
-//            uniquePvNames.addAll(blockPvNames);
-//        }
-//
-//        // execute metadata query for list of pv names
-//        final MongoCursor<Document> pvMetadata = mongoQueryClient.executeQueryMetadata(uniquePvNames);
-//        if (pvMetadata == null) {
-//            return new ValidationResult(true, "error executing pv metadata query to validate request");
-//        }
-//
-//        // check that metadata is returned for each pv (try to remove each metadata from the set,
-//        // and make sure set end up empty)
-//        while (pvMetadata.hasNext()) {
-//            final Document pvMetadataDocument = pvMetadata.next();
-//            final String pvName = (String) pvMetadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME);
-//            if (pvName != null) {
-//                uniquePvNames.remove(pvName);
-//            }
-//        }
-//
-//        // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
-//        if (uniquePvNames.isEmpty()) {
-//            return new ValidationResult(false, "");
-//        } else {
-//            return new ValidationResult(true, "no PV metadata found for names: " + uniquePvNames.toString());
-//        }
+        final String dataSetId = request.getDataSetId();
+        if (dataSetId.isBlank()) {
+            // we've already checked this in the initial request validation, but check again since we'll use id for db lookup
+            final String errorMsg = "CreateAnnotationRequest must specify dataSetId";
+            return new ValidationResult(true, errorMsg);
+        }
 
-        return new ValidationResult(true, "TODO: enable validation");
+        // execute query to retrieve DataSetDocument with specified id
+        final DataSetDocument dataSetDocument = mongoAnnotationClient.findDataSet(dataSetId);
+        if (dataSetDocument == null) {
+            return new ValidationResult(
+                    true,
+                    "no DataSetDocument found with id: " + dataSetId);
+        }
+
+        return new ValidationResult(false, "");
     }
 
 }

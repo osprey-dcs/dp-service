@@ -9,6 +9,8 @@ public interface MongoAnnotationClientInterface {
     boolean init();
     boolean fini();
 
+    DataSetDocument findDataSet(String dataSetId);
+
     MongoInsertOneResult insertDataSet(DataSetDocument dataSetDocument);
 
     MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument);

@@ -45,9 +45,13 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
                 QueryAnnotationsResponse.AnnotationsResult.newBuilder();
 
         while (cursor.hasNext()) {
+
             // add grpc object for each document in cursor
             final AnnotationDocument annotationDocument = cursor.next();
+
+            // TODO: do we need to retrieve the DataSet for the annotation using findDataSet() and pass it as a new parameter to buildAnnotation?
             QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation = annotationDocument.buildAnnotation();
+
             annotationsResultBuilder.addAnnotations(responseAnnotation);
         }
 
