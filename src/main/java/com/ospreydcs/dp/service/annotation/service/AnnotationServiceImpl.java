@@ -10,6 +10,8 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.List;
+
 public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationServiceImplBase {
 
     // static variables
@@ -348,22 +350,45 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     ) {
         logger.debug("id: {} queryAnnotations request received", responseObserver.hashCode());
 
-        // validate query
-//        switch (request.getCriteriaCase()) {
-//
-//            case COMMENTCRITERIA -> {
-//                QueryAnnotationsRequest.CommentCriteria commentCriteria = request.getCommentCriteria();
-//                if (commentCriteria.getCommentText() == null || commentCriteria.getCommentText().isBlank()) {
-//                    final String errorMsg = "QueryAnnotationsRequest.CommentCriteria.commentPattern must not be empty";
-//                    sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-//                }
-//            }
-//
-//            case CRITERIA_NOT_SET -> {
-//                final String errorMsg = "QueryAnnotationsRequest.criteria must not be empty";
-//                sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-//            }
-//        }
+        // check that request contains non-empty list of criteria
+        final List<QueryAnnotationsRequest.QueryAnnotationsCriterion> criterionList = request.getCriteriaList();
+        if (criterionList.size() == 0) {
+            final String errorMsg = "QueryAnnotationsRequest.criteria list must not be empty";
+            sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+        }
+
+        // validate query criteria
+        for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : criterionList) {
+
+            switch (criterion.getCriterionCase()) {
+
+                case OWNERCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion
+                            = criterion.getOwnerCriterion();
+                    if (ownerCriterion.getOwnerId().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.OwnerCriterion ownerId must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                    }
+                }
+
+                case COMMENTCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion
+                            = criterion.getCommentCriterion();
+                    if (commentCriterion.getCommentText().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                    }
+                }
+
+                case CRITERION_NOT_SET -> {
+                    final String errorMsg =
+                            "QueryAnnotationsRequest.criteria criterion case not set";
+                    sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                }
+            }
+        }
 
         handler.handleQueryAnnotations(request, responseObserver);
     }

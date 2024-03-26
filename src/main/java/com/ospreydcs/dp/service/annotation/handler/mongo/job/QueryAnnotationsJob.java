@@ -35,8 +35,10 @@ public class QueryAnnotationsJob extends HandlerJob {
 
     @Override
     public void execute() {
+
         logger.debug("executing QueryAnnotationsJob id: {}", this.responseObserver.hashCode());
         final MongoCursor<AnnotationDocument> cursor = this.mongoClient.executeQueryAnnotations(this.request);
+
         logger.debug("dispatching QueryAnnotationsJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(cursor);
     }

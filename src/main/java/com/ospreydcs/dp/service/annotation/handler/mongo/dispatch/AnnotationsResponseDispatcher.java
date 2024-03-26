@@ -33,7 +33,7 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
         if (cursor == null) {
             // send error response and close response stream if cursor is null
             final String msg = "query returned null cursor";
-            logger.error(msg);
+            logger.debug(msg);
             AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
             return;
         } else if (!cursor.hasNext()) {
