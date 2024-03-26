@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -13,7 +11,6 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
-import com.ospreydcs.dp.service.query.handler.mongo.job.QueryAnnotationsJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryMetadataJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryTableJob;
@@ -188,23 +185,6 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
                 new QueryMetadataJob(request, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryMetadata job id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    @Override
-    public void handleQueryAnnotations(
-            QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver
-    ) {
-        final QueryAnnotationsJob job =
-                new QueryAnnotationsJob(request, responseObserver, mongoQueryClient);
-
-        logger.debug("adding queryAnnotations job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

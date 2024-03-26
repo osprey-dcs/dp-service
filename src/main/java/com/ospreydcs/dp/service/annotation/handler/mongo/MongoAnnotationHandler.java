@@ -13,6 +13,7 @@ import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.QueryAnnotationsJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -179,6 +180,23 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
 
         return new ValidationResult(false, "");
+    }
+
+    @Override
+    public void handleQueryAnnotations(
+            QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver
+    ) {
+        final QueryAnnotationsJob job =
+                new QueryAnnotationsJob(request, responseObserver, mongoQueryClient);
+
+        logger.debug("adding queryAnnotations job id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
     }
 
 }

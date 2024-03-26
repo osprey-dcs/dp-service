@@ -97,11 +97,6 @@ public class QueryGrpcTest extends QueryTestBase {
         ) {
         }
 
-        @Override
-        public void handleQueryAnnotations(
-                QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver
-        ) {
-        }
     }
 
     protected static class TestQueryClient {

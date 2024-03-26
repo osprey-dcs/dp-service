@@ -1,8 +1,9 @@
-package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
+package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -33,11 +34,11 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
             // send error response and close response stream if cursor is null
             final String msg = "query returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+            AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
             return;
         } else if (!cursor.hasNext()) {
             logger.trace("query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryAnnotationsResponseEmpty(this.responseObserver);
+            AnnotationServiceImpl.sendQueryAnnotationsResponseEmpty(this.responseObserver);
             return;
         }
 
@@ -57,7 +58,7 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
 
         // send response and close response stream
         final QueryAnnotationsResponse.AnnotationsResult annotationsResult = annotationsResultBuilder.build();
-        QueryServiceImpl.sendQueryAnnotationsResponse(annotationsResult, this.responseObserver);
+        AnnotationServiceImpl.sendQueryAnnotationsResponse(annotationsResult, this.responseObserver);
     }
     
 }

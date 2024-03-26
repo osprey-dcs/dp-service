@@ -269,4 +269,102 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
     }
 
+    private static QueryAnnotationsResponse queryAnnotationsResponseExceptionalResult(
+            String msg,
+            ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryAnnotationsResponse response = QueryAnnotationsResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryAnnotationsResponse queryAnnotationsResponseReject(String msg) {
+        return queryAnnotationsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryAnnotationsResponse queryAnnotationsResponseError(String msg) {
+        return queryAnnotationsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryAnnotationsResponse queryAnnotationsResponseEmpty() {
+        return queryAnnotationsResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryAnnotationsResponse queryAnnotationsResponse(
+            QueryAnnotationsResponse.AnnotationsResult annotationsResult
+    ) {
+        return QueryAnnotationsResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setAnnotationsResult(annotationsResult)
+                .build();
+    }
+
+    public static void sendQueryAnnotationsResponseReject(
+            String msg, StreamObserver<QueryAnnotationsResponse> responseObserver) {
+
+        final QueryAnnotationsResponse response = queryAnnotationsResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryAnnotationsResponseError(
+            String msg, StreamObserver<QueryAnnotationsResponse> responseObserver
+    ) {
+        final QueryAnnotationsResponse response = queryAnnotationsResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryAnnotationsResponseEmpty(StreamObserver<QueryAnnotationsResponse> responseObserver) {
+        final QueryAnnotationsResponse response = queryAnnotationsResponseEmpty();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryAnnotationsResponse(
+            QueryAnnotationsResponse.AnnotationsResult annotationsResult,
+            StreamObserver<QueryAnnotationsResponse> responseObserver
+    ) {
+        final QueryAnnotationsResponse response  = queryAnnotationsResponse(annotationsResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryAnnotations(
+            QueryAnnotationsRequest request,
+            StreamObserver<QueryAnnotationsResponse> responseObserver
+    ) {
+        logger.debug("id: {} queryAnnotations request received", responseObserver.hashCode());
+
+        // validate query
+//        switch (request.getCriteriaCase()) {
+//
+//            case COMMENTCRITERIA -> {
+//                QueryAnnotationsRequest.CommentCriteria commentCriteria = request.getCommentCriteria();
+//                if (commentCriteria.getCommentText() == null || commentCriteria.getCommentText().isBlank()) {
+//                    final String errorMsg = "QueryAnnotationsRequest.CommentCriteria.commentPattern must not be empty";
+//                    sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+//                }
+//            }
+//
+//            case CRITERIA_NOT_SET -> {
+//                final String errorMsg = "QueryAnnotationsRequest.criteria must not be empty";
+//                sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+//            }
+//        }
+
+        handler.handleQueryAnnotations(request, responseObserver);
+    }
 }

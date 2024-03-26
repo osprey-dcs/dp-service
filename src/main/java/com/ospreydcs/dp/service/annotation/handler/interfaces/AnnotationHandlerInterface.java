@@ -1,9 +1,6 @@
 package com.ospreydcs.dp.service.annotation.handler.interfaces;
 
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
 import io.grpc.stub.StreamObserver;
 
 public interface AnnotationHandlerInterface {
@@ -21,4 +18,6 @@ public interface AnnotationHandlerInterface {
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver);
 
+    void handleQueryAnnotations(
+            QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
 }

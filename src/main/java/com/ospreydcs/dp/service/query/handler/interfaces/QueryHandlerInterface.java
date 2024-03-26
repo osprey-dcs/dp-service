@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.query.handler.interfaces;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
@@ -30,6 +28,4 @@ public interface QueryHandlerInterface {
     void handleQueryMetadata(
             QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);
 
-    void handleQueryAnnotations(
-            QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
 }
