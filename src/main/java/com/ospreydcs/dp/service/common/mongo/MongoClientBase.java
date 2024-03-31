@@ -127,7 +127,7 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesDataSets() {
-        createMongoIndexAnnotations(Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)); // text index on comment field
+        createMongoIndexDataSets(Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)); // text index on comment field
         return true;
     }
 
