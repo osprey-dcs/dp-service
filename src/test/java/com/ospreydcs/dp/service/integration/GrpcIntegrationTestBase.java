@@ -839,7 +839,7 @@ public class GrpcIntegrationTestBase {
         return responseObserver.getDataSetId();
     }
 
-    protected void sendAndVerifyCreateDataSet(
+    protected String sendAndVerifyCreateDataSet(
             AnnotationTestBase.CreateDataSetParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -851,7 +851,7 @@ public class GrpcIntegrationTestBase {
 
         if (expectReject) {
             assertNull(dataSetId);
-            return;
+            return "";
         }
 
         // validate response and database contents
@@ -862,6 +862,8 @@ public class GrpcIntegrationTestBase {
         final List<String> requestDiffs = dataSetDocument.diffRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.isEmpty());
+
+        return dataSetId;
     }
 
     protected String sendCreateAnnotation(

@@ -88,6 +88,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         {
             // createDataSet() negative test - request should be rejected because some PVs don't exist in the archive
+
             final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
 
             // create data block with pvNames that don't exist in archive
@@ -118,6 +119,34 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             sendAndVerifyCreateDataSet(
                     params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
+        }
+
+        String dataSetId = null;
+        {
+            // createDataSet() positive test - should succeed
+
+            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
+
+            // create 5 data blocks for same 2 PVs with one block per second from startSeconds
+            for (int secondIndex = 0 ; secondIndex < 5 ; ++secondIndex) {
+
+                final long second = startSeconds + secondIndex;
+
+                // create data block with pvNames that do exist in archive
+                final List<String> pvNamesValid = List.of("S01-GCC01", "S01-BPM01");
+                final AnnotationTestBase.AnnotationDataBlock dataBlockValid
+                        = new AnnotationTestBase.AnnotationDataBlock(
+                        second, startNanos, second, 999_000_000, pvNamesValid);
+                dataBlocks.add(dataBlockValid);
+            }
+
+            final AnnotationTestBase.AnnotationDataSet dataSet = new AnnotationTestBase.AnnotationDataSet(dataBlocks);
+
+            AnnotationTestBase.CreateDataSetParams params =
+                    new AnnotationTestBase.CreateDataSetParams(dataSet);
+
+            dataSetId = sendAndVerifyCreateDataSet(params, false, "");
+            System.out.println("created dataset with id: " + dataSetId);
         }
 
 //        {
