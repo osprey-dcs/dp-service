@@ -302,5 +302,4 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-
 }

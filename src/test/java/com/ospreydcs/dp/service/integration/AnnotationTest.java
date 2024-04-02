@@ -150,6 +150,19 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
+            // createAnnotation() negative test - request should be rejected because dataSetId not specified.
+
+            final String ownerId = "craigmcc";
+            final String emptyDataSetId = "";
+            final String comment = "negative test case";
+            AnnotationTestBase.CreateCommentAnnotationParams params =
+                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, emptyDataSetId, comment);
+            final String expectedRejectMessage = "CreateAnnotationRequest must specify dataSetId";
+            sendAndVerifyCreateCommentAnnotation(
+                    params, true, expectedRejectMessage);
+        }
+
+        {
             // createAnnotation() positive test - create annotation should succeed using id from test for createDataSet()
 
             final String ownerId = "craigmcc";
@@ -160,44 +173,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             sendAndVerifyCreateCommentAnnotation(
                     params, false, "");
         }
-
-//        {
-//            // negative test - create annotation should be rejected because some PVs don't exist in the archive
-//            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
-//
-//            // create data block with pvNames that don't exist in archive
-//            final List<String> pvNamesInvalid = List.of("pv1", "pv2");
-//            final AnnotationTestBase.AnnotationDataBlock dataBlockInvalid
-//                    = new AnnotationTestBase.AnnotationDataBlock(
-//                            startSeconds, startNanos, startSeconds+1, 0, pvNamesInvalid);
-//            dataBlocks.add(dataBlockInvalid);
-//
-//            // create data block with pvNames that do exist in archive
-//            final List<String> pvNamesValid = List.of("S01-GCC01", "S02-GCC01");
-//            final AnnotationTestBase.AnnotationDataBlock dataBlockValid
-//                    = new AnnotationTestBase.AnnotationDataBlock(
-//                    startSeconds, startNanos, startSeconds+1, 0, pvNamesValid);
-//            dataBlocks.add(dataBlockValid);
-//
-//            // create data block with both pvNames that do and do not exist in archive
-//            final List<String> pvNamesMixed = List.of("S01-BPM01", "pv3");
-//            final AnnotationTestBase.AnnotationDataBlock dataBlockMixed
-//                    = new AnnotationTestBase.AnnotationDataBlock(
-//                    startSeconds, startNanos, startSeconds+1, 0, pvNamesMixed);
-//            dataBlocks.add(dataBlockMixed);
-//
-//            final AnnotationTestBase.AnnotationDataSet dataSet = new AnnotationTestBase.AnnotationDataSet(dataBlocks);
-//
-//            final int authorId = 1;
-//            final String comment = "negative test case";
-//            final AnnotationTestBase.CreateCommentAnnotationParams params =
-//                    new AnnotationTestBase.CreateCommentAnnotationParams(authorId, new ArrayList<>(), new HashMap<>(), dataSet, comment);
-//
-//            sendAndVerifyCreateCommentAnnotation(
-//                    params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
-//        }
-//
-
+        
     }
 
 }
