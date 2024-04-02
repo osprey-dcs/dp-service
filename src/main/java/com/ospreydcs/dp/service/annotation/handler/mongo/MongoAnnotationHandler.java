@@ -187,7 +187,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver
     ) {
         final QueryAnnotationsJob job =
-                new QueryAnnotationsJob(request, responseObserver, mongoQueryClient);
+                new QueryAnnotationsJob(request, responseObserver, mongoAnnotationClient);
 
         logger.debug("adding queryAnnotations job id: {} to queue", responseObserver.hashCode());
 

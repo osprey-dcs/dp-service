@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -20,17 +21,17 @@ public class QueryAnnotationsJob extends HandlerJob {
     private final QueryAnnotationsRequest request;
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
     private final AnnotationsResponseDispatcher dispatcher;
-    private final MongoQueryClientInterface mongoClient;
+    private final MongoAnnotationClientInterface mongoClient;
 
     public QueryAnnotationsJob(
             QueryAnnotationsRequest request,
             StreamObserver<QueryAnnotationsResponse> responseObserver,
-            MongoQueryClientInterface mongoClient
+            MongoAnnotationClientInterface mongoClient
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new AnnotationsResponseDispatcher(responseObserver, request);
+        dispatcher = new AnnotationsResponseDispatcher(responseObserver, request, mongoClient);
     }
 
     @Override

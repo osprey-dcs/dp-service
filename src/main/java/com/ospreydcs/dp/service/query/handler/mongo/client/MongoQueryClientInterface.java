@@ -23,6 +23,4 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<Document> executeQueryMetadata(String pvNamePatternString);
 
-    MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
-
 }

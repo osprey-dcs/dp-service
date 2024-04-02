@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 
+import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
@@ -14,5 +16,7 @@ public interface MongoAnnotationClientInterface {
     MongoInsertOneResult insertDataSet(DataSetDocument dataSetDocument);
 
     MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
+
+    MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
 
 }

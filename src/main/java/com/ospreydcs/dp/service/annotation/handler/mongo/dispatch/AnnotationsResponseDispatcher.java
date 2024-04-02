@@ -3,10 +3,12 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,12 +21,16 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
     // instance variables
     private final QueryAnnotationsRequest request;
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
+    private final MongoAnnotationClientInterface mongoClient;
 
     public AnnotationsResponseDispatcher(
-            StreamObserver<QueryAnnotationsResponse> responseObserver, QueryAnnotationsRequest request
+            StreamObserver<QueryAnnotationsResponse> responseObserver,
+            QueryAnnotationsRequest request,
+            MongoAnnotationClientInterface mongoClient
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
+        this.mongoClient = mongoClient;
     }
 
     public void handleResult(MongoCursor<AnnotationDocument> cursor) {
@@ -42,7 +48,7 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
             return;
         }
 
-        QueryAnnotationsResponse.AnnotationsResult.Builder annotationsResultBuilder =
+        final QueryAnnotationsResponse.AnnotationsResult.Builder annotationsResultBuilder =
                 QueryAnnotationsResponse.AnnotationsResult.newBuilder();
 
         while (cursor.hasNext()) {
@@ -50,9 +56,18 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
             // add grpc object for each document in cursor
             final AnnotationDocument annotationDocument = cursor.next();
 
-            // TODO: do we need to retrieve the DataSet for the annotation using findDataSet() and pass it as a new parameter to buildAnnotation?
-            QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation = annotationDocument.buildAnnotation();
+            // retrieve dataset for annotation
+            final String dataSetId = annotationDocument.getDataSetId();
+            final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
+            if (dataSetDocument == null) {
+                final String msg = "no DataSetDocument found with id: " + dataSetId;
+                logger.debug(msg);
+                AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+            }
 
+            // build grpc response and add to result
+            final QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation =
+                    annotationDocument.buildAnnotation(dataSetDocument);
             annotationsResultBuilder.addAnnotations(responseAnnotation);
         }
 

@@ -75,14 +75,14 @@ public abstract class AnnotationDocument {
         final List<String> diffs = diffRequestDetails(request);
 
         // diff authorId
-        if (request.getOwnerId() != this.getOwnerId()) {
+        if (! Objects.equals(request.getOwnerId(), this.getOwnerId())) {
             final String msg = "ownerId mismatch: " + this.getOwnerId()
                     + " expected: " + request.getOwnerId();
             diffs.add(msg);
         }
 
         // diff dataSetId
-        if (request.getDataSetId() != this.getDataSetId()) {
+        if (! Objects.equals(request.getDataSetId(), this.getDataSetId())) {
             final String msg = "dataSetId mismatch: " + this.getDataSetId()
                     + " expected: " + request.getDataSetId();
             diffs.add(msg);
@@ -91,7 +91,7 @@ public abstract class AnnotationDocument {
         return diffs;
     }
 
-    public QueryAnnotationsResponse.AnnotationsResult.Annotation buildAnnotation() {
+    public QueryAnnotationsResponse.AnnotationsResult.Annotation buildAnnotation(DataSetDocument dataSetDocument) {
 
         final QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder annotationBuilder =
                 QueryAnnotationsResponse.AnnotationsResult.Annotation.newBuilder();
@@ -99,27 +99,28 @@ public abstract class AnnotationDocument {
         // add base annotation fields to response object
         annotationBuilder.setAnnotationId(this.getId().toString());
         annotationBuilder.setOwnerId(this.getOwnerId());
+
+        // add dataset content to response object
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =
                 com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
-
-        // TODO: fix this code to create grpc DataSet from new parameter to this method to pass DataSet object?
-//        for (DocumentDataBlock documentDataBlock : this.getDataSet().getDataBlocks()) {
-//            Timestamp blockBeginTime = Timestamp.newBuilder()
-//                    .setEpochSeconds(documentDataBlock.getBeginTimeSeconds())
-//                    .setNanoseconds(documentDataBlock.getBeginTimeNanos())
-//                    .build();
-//            Timestamp blockEndTime = Timestamp.newBuilder()
-//                    .setEpochSeconds(documentDataBlock.getEndTimeSeconds())
-//                    .setNanoseconds(documentDataBlock.getEndTimeNanos())
-//                    .build();
-//            com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
-//                    com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
-//                            .setBeginTime(blockBeginTime)
-//                            .setEndTime(blockEndTime)
-//                            .addAllPvNames(documentDataBlock.getPvNames())
-//                            .build();
-//            dataSetBuilder.addDataBlocks(responseBlock);
-//        }
+        for (DocumentDataBlock documentDataBlock : dataSetDocument.getDataBlocks()) {
+            Timestamp blockBeginTime = Timestamp.newBuilder()
+                    .setEpochSeconds(documentDataBlock.getBeginTimeSeconds())
+                    .setNanoseconds(documentDataBlock.getBeginTimeNanos())
+                    .build();
+            Timestamp blockEndTime = Timestamp.newBuilder()
+                    .setEpochSeconds(documentDataBlock.getEndTimeSeconds())
+                    .setNanoseconds(documentDataBlock.getEndTimeNanos())
+                    .build();
+            com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
+                    com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
+                            .setBeginTime(blockBeginTime)
+                            .setEndTime(blockEndTime)
+                            .addAllPvNames(documentDataBlock.getPvNames())
+                            .build();
+            dataSetBuilder.addDataBlocks(responseBlock);
+        }
+        annotationBuilder.setDataSet(dataSetBuilder);
 
         // add annotation-type-specific details to response
         addAnnotationDetails(annotationBuilder);
