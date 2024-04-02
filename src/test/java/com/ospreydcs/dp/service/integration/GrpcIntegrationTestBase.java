@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
@@ -10,6 +11,7 @@ import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerI
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
@@ -121,6 +123,24 @@ public class GrpcIntegrationTestBase {
             return null;
         }
 
+        public DataSetDocument findDataSet(String dataSetId) {
+            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+                List<DataSetDocument> matchingDocuments = new ArrayList<>();
+                mongoCollectionDataSets.find(eq("_id", new ObjectId(dataSetId))).into(matchingDocuments);
+                if (matchingDocuments.size() > 0) {
+                    return matchingDocuments.get(0);
+                } else {
+                    try {
+                        logger.info("findDataSet id: " + dataSetId + " retrying");
+                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                    } catch (InterruptedException ex) {
+                        // ignore and just retry
+                    }
+                }
+            }
+            return null;
+        }
+
         public AnnotationDocument findAnnotation(String annotationId) {
             for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
                 List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
@@ -138,6 +158,7 @@ public class GrpcIntegrationTestBase {
             }
             return null;
         }
+
     }
 
     protected static class IngestionColumnInfo {
@@ -789,6 +810,58 @@ public class GrpcIntegrationTestBase {
     ) {
         final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNamePattern);
         sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
+    protected String sendCreateDataSet(
+            CreateDataSetRequest request, boolean expectReject, String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(annotationChannel);
+
+        final AnnotationTestBase.CreateDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.CreateDataSetResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.createDataSet(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getDataSetId();
+    }
+
+    protected void sendAndVerifyCreateDataSet(
+            AnnotationTestBase.CreateDataSetParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final CreateDataSetRequest request =
+                AnnotationTestBase.buildCreateDataSetRequest(params);
+
+        final String dataSetId = sendCreateDataSet(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertNull(dataSetId);
+            return;
+        }
+
+        // validate response and database contents
+        assertNotNull(dataSetId);
+        assertFalse(dataSetId.isBlank());
+        final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
+        assertNotNull(dataSetDocument);
+        final List<String> requestDiffs = dataSetDocument.diffRequest(request);
+        assertNotNull(requestDiffs);
+        assertTrue(requestDiffs.isEmpty());
     }
 
     protected String sendCreateAnnotation(

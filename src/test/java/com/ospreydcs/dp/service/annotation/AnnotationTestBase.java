@@ -1,9 +1,6 @@
 package com.ospreydcs.dp.service.annotation;
 
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
-import com.ospreydcs.dp.grpc.v1.common.Attribute;
-import com.ospreydcs.dp.grpc.v1.annotation.CommentAnnotation;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -17,6 +14,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class AnnotationTestBase {
+
+    public static class CreateDataSetParams {
+        public final AnnotationDataSet dataSet;
+        public CreateDataSetParams(AnnotationDataSet dataSet) {
+            this.dataSet = dataSet;
+        }
+    }
 
     public static class CreateAnnotationRequestParams {
         public final int authorId;
@@ -63,62 +67,96 @@ public class AnnotationTestBase {
         }
     }
 
-    private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(CreateAnnotationRequestParams params) {
+    public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
 
-//        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
-//                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
-//
-//        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
-//
-//            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-//            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
-//            beginTimeBuilder.setNanoseconds(block.beginNanos);
-//
-//            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
-//            endTimeBuilder.setEpochSeconds(block.endSeconds);
-//            endTimeBuilder.setNanoseconds(block.endNanos);
-//
-//            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
-//                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
-//            dataBlockBuilder.setBeginTime(beginTimeBuilder);
-//            dataBlockBuilder.setEndTime(endTimeBuilder);
-//            dataBlockBuilder.addAllPvNames(block.pvNames);
-//            dataBlockBuilder.build();
-//
-//            dataSetBuilder.addDataBlocks(dataBlockBuilder);
-//        }
-//
-//        dataSetBuilder.build();
-//
-//        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
-//        requestBuilder.setAuthorId(params.authorId);
-//        requestBuilder.addAllTags(params.tags);
-//
-//        for (var attributeEntry : params.attributeMap.entrySet()) {
-//            final Attribute attribute = Attribute.newBuilder()
-//                    .setName(attributeEntry.getKey())
-//                    .setValue(attributeEntry.getValue())
-//                    .build();
-//            requestBuilder.addAttributes(attribute);
-//        }
-//
-//        requestBuilder.setDataSet(dataSetBuilder);
-//
-//        return requestBuilder;
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> dataSetIdList = Collections.synchronizedList(new ArrayList<>());
 
-        return CreateAnnotationRequest.newBuilder();
-    }
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
 
-    public static CreateAnnotationRequest buildCreateCommentAnnotationRequest(CreateCommentAnnotationParams params) {
+        public boolean isError() { return isError.get(); }
 
-        CreateAnnotationRequest.Builder requestBuilder = createAnnotationRequestBuilder(params);
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
 
-        CommentAnnotation.Builder commentBuilder = CommentAnnotation.newBuilder();
-        commentBuilder.setComment(params.comment);
-        commentBuilder.build();
+        public String getDataSetId() {
+            if (!dataSetIdList.isEmpty()) {
+                return dataSetIdList.get(0);
+            } else {
+                return null;
+            }
+        }
 
-        requestBuilder.setCommentAnnotation(commentBuilder);
-        return requestBuilder.build();
+        @Override
+        public void onNext(CreateDataSetResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasCreateDataSetResult());
+                final CreateDataSetResponse.CreateDataSetResult result = response.getCreateDataSetResult();
+                assertNotNull(result);
+
+                // flag error if already received a response
+                if (!dataSetIdList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    dataSetIdList.add(result.getDataSetId());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
     }
 
     public static class CreateAnnotationResponseObserver implements StreamObserver<CreateAnnotationResponse> {
@@ -212,5 +250,97 @@ public class AnnotationTestBase {
         public void onCompleted() {
         }
     }
+
+    public static CreateDataSetRequest buildCreateDataSetRequest(CreateDataSetParams params) {
+
+        com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
+                = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
+
+        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
+
+            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
+            beginTimeBuilder.setNanoseconds(block.beginNanos);
+
+            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
+            endTimeBuilder.setEpochSeconds(block.endSeconds);
+            endTimeBuilder.setNanoseconds(block.endNanos);
+
+            com.ospreydcs.dp.grpc.v1.annotation.DataBlock.Builder dataBlockBuilder
+                    = com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder();
+            dataBlockBuilder.setBeginTime(beginTimeBuilder);
+            dataBlockBuilder.setEndTime(endTimeBuilder);
+            dataBlockBuilder.addAllPvNames(block.pvNames);
+            dataBlockBuilder.build();
+
+            dataSetBuilder.addDataBlocks(dataBlockBuilder);
+        }
+
+        dataSetBuilder.build();
+
+        CreateDataSetRequest.Builder requestBuilder = CreateDataSetRequest.newBuilder();
+        requestBuilder.setDataSet(dataSetBuilder);
+
+        return requestBuilder.build();
+    }
+
+    private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(CreateAnnotationRequestParams params) {
+
+//        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
+//                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
+//
+//        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
+//
+//            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+//            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
+//            beginTimeBuilder.setNanoseconds(block.beginNanos);
+//
+//            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
+//            endTimeBuilder.setEpochSeconds(block.endSeconds);
+//            endTimeBuilder.setNanoseconds(block.endNanos);
+//
+//            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
+//                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
+//            dataBlockBuilder.setBeginTime(beginTimeBuilder);
+//            dataBlockBuilder.setEndTime(endTimeBuilder);
+//            dataBlockBuilder.addAllPvNames(block.pvNames);
+//            dataBlockBuilder.build();
+//
+//            dataSetBuilder.addDataBlocks(dataBlockBuilder);
+//        }
+//
+//        dataSetBuilder.build();
+//
+//        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+//        requestBuilder.setAuthorId(params.authorId);
+//        requestBuilder.addAllTags(params.tags);
+//
+//        for (var attributeEntry : params.attributeMap.entrySet()) {
+//            final Attribute attribute = Attribute.newBuilder()
+//                    .setName(attributeEntry.getKey())
+//                    .setValue(attributeEntry.getValue())
+//                    .build();
+//            requestBuilder.addAttributes(attribute);
+//        }
+//
+//        requestBuilder.setDataSet(dataSetBuilder);
+//
+//        return requestBuilder;
+
+        return CreateAnnotationRequest.newBuilder();
+    }
+
+    public static CreateAnnotationRequest buildCreateCommentAnnotationRequest(CreateCommentAnnotationParams params) {
+
+        CreateAnnotationRequest.Builder requestBuilder = createAnnotationRequestBuilder(params);
+
+        CommentAnnotation.Builder commentBuilder = CommentAnnotation.newBuilder();
+        commentBuilder.setComment(params.comment);
+        commentBuilder.build();
+
+        requestBuilder.setCommentAnnotation(commentBuilder);
+        return requestBuilder.build();
+    }
+
 
 }
