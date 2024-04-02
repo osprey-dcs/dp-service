@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,8 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has a dataSetId, it already exists in the database.
         List<DataSetDocument> matchingDocuments = new ArrayList<>();
-        mongoCollectionDataSets.find(eq(BsonConstants.BSON_KEY_DATA_SET_ID, dataSetId)).into(matchingDocuments);
+        mongoCollectionDataSets.find(
+                eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(dataSetId))).into(matchingDocuments);
         if (matchingDocuments.size() > 0) {
             return matchingDocuments.get(0);
         } else {

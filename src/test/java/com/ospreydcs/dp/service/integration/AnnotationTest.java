@@ -149,6 +149,18 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             System.out.println("created dataset with id: " + dataSetId);
         }
 
+        {
+            // createAnnotation() positive test - create annotation should succeed using id from test for createDataSet()
+
+            final String ownerId = "craigmcc";
+            final String comment = "positive test case";
+            AnnotationTestBase.CreateCommentAnnotationParams params =
+                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, dataSetId, comment);
+
+            sendAndVerifyCreateCommentAnnotation(
+                    params, false, "");
+        }
+
 //        {
 //            // negative test - create annotation should be rejected because some PVs don't exist in the archive
 //            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
@@ -185,36 +197,6 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 //                    params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
 //        }
 //
-//        {
-//            // positive test - create annotation should succeed
-//            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
-//
-//            // create 5 data blocks for same 2 PVs with one block per second from startSeconds
-//            for (int secondIndex = 0 ; secondIndex < 5 ; ++secondIndex) {
-//
-//                final long second = startSeconds + secondIndex;
-//
-//                // create data block with pvNames that do exist in archive
-//                final List<String> pvNamesValid = List.of("S01-GCC01", "S01-BPM01");
-//                final AnnotationTestBase.AnnotationDataBlock dataBlockValid
-//                        = new AnnotationTestBase.AnnotationDataBlock(
-//                        second, startNanos, second, 999_000_000, pvNamesValid);
-//                dataBlocks.add(dataBlockValid);
-//            }
-//
-//            final AnnotationTestBase.AnnotationDataSet dataSet = new AnnotationTestBase.AnnotationDataSet(dataBlocks);
-//
-//            final int authorId = 1;
-//            final String comment = "positive test case";
-//            final List<String> tags = List.of("vacuum", "sensors");
-//            final Map<String,String> attributeMap = Map.of("sector", "01", "status", "verified");
-//            AnnotationTestBase.CreateCommentAnnotationParams params =
-//                    new AnnotationTestBase.CreateCommentAnnotationParams(
-//                            authorId, tags, attributeMap, dataSet, comment);
-//
-//            sendAndVerifyCreateCommentAnnotation(
-//                    params, false, "");
-//        }
 
     }
 

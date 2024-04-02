@@ -15,33 +15,6 @@ import static org.junit.Assert.assertTrue;
 
 public class AnnotationTestBase {
 
-    public static class CreateDataSetParams {
-        public final AnnotationDataSet dataSet;
-        public CreateDataSetParams(AnnotationDataSet dataSet) {
-            this.dataSet = dataSet;
-        }
-    }
-
-    public static class CreateAnnotationRequestParams {
-        public final int authorId;
-        public final List<String> tags;
-        public final Map<String,String> attributeMap;
-        public final AnnotationDataSet dataSet;
-        public CreateAnnotationRequestParams(int authorId, List<String> tags, Map<String, String> attributeMap, AnnotationDataSet dataSet) {
-            this.authorId = authorId;
-            this.tags = tags;
-            this.attributeMap = attributeMap;
-            this.dataSet = dataSet;
-        }
-    }
-
-    public static class AnnotationDataSet {
-        public final List<AnnotationDataBlock> dataBuckets;
-        public AnnotationDataSet(List<AnnotationDataBlock> dataBuckets) {
-            this.dataBuckets = dataBuckets;
-        }
-    }
-
     public static class AnnotationDataBlock {
         public final long beginSeconds;
         public final long beginNanos;
@@ -58,11 +31,34 @@ public class AnnotationTestBase {
 
     }
 
+    public static class AnnotationDataSet {
+        public final List<AnnotationDataBlock> dataBuckets;
+        public AnnotationDataSet(List<AnnotationDataBlock> dataBuckets) {
+            this.dataBuckets = dataBuckets;
+        }
+    }
+
+    public static class CreateDataSetParams {
+        public final AnnotationDataSet dataSet;
+        public CreateDataSetParams(AnnotationDataSet dataSet) {
+            this.dataSet = dataSet;
+        }
+    }
+
+    public static class CreateAnnotationRequestParams {
+        public final String ownerId;
+        public final String dataSetId;
+        public CreateAnnotationRequestParams(String ownerId, String dataSetId) {
+            this.ownerId = ownerId;
+            this.dataSetId = dataSetId;
+        }
+    }
+
     public static class CreateCommentAnnotationParams extends CreateAnnotationRequestParams {
         public final String comment;
         public CreateCommentAnnotationParams(
-                int authorId, List<String> tags, Map<String, String> attributeMap, AnnotationDataSet dataSet, String comment) {
-            super(authorId, tags, attributeMap, dataSet);
+                String ownerId, String dataSetId, String comment) {
+            super(ownerId, dataSetId);
             this.comment = comment;
         }
     }
@@ -284,50 +280,14 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(CreateAnnotationRequestParams params) {
+    private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(
+            CreateAnnotationRequestParams params
+    ) {
+        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+        requestBuilder.setOwnerId(params.ownerId);
+        requestBuilder.setDataSetId(params.dataSetId);
 
-//        com.ospreydcs.dp.grpc.v1.common.DataSet.Builder dataSetBuilder
-//                = com.ospreydcs.dp.grpc.v1.common.DataSet.newBuilder();
-//
-//        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
-//
-//            Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-//            beginTimeBuilder.setEpochSeconds(block.beginSeconds);
-//            beginTimeBuilder.setNanoseconds(block.beginNanos);
-//
-//            Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
-//            endTimeBuilder.setEpochSeconds(block.endSeconds);
-//            endTimeBuilder.setNanoseconds(block.endNanos);
-//
-//            com.ospreydcs.dp.grpc.v1.common.DataBlock.Builder dataBlockBuilder
-//                    = com.ospreydcs.dp.grpc.v1.common.DataBlock.newBuilder();
-//            dataBlockBuilder.setBeginTime(beginTimeBuilder);
-//            dataBlockBuilder.setEndTime(endTimeBuilder);
-//            dataBlockBuilder.addAllPvNames(block.pvNames);
-//            dataBlockBuilder.build();
-//
-//            dataSetBuilder.addDataBlocks(dataBlockBuilder);
-//        }
-//
-//        dataSetBuilder.build();
-//
-//        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
-//        requestBuilder.setAuthorId(params.authorId);
-//        requestBuilder.addAllTags(params.tags);
-//
-//        for (var attributeEntry : params.attributeMap.entrySet()) {
-//            final Attribute attribute = Attribute.newBuilder()
-//                    .setName(attributeEntry.getKey())
-//                    .setValue(attributeEntry.getValue())
-//                    .build();
-//            requestBuilder.addAttributes(attribute);
-//        }
-//
-//        requestBuilder.setDataSet(dataSetBuilder);
-//
-//        return requestBuilder;
-
-        return CreateAnnotationRequest.newBuilder();
+        return requestBuilder;
     }
 
     public static CreateAnnotationRequest buildCreateCommentAnnotationRequest(CreateCommentAnnotationParams params) {
