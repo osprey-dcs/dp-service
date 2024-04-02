@@ -173,7 +173,17 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             sendAndVerifyCreateCommentAnnotation(
                     params, false, "");
         }
-        
+
+        {
+            // queryAnnotations() negative test
+
+            final String ownerId = "craigmcc";
+            final String blankCommentText = "";
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+            sendAndVerifyQueryAnnotationsOwnerComment(ownerId, blankCommentText, expectReject, expectedRejectMessage);
+        }
     }
 
 }

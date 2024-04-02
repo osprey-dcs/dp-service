@@ -369,6 +369,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.OwnerCriterion ownerId must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
                     }
                 }
 
@@ -379,6 +380,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
                     }
                 }
 
@@ -386,6 +388,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     final String errorMsg =
                             "QueryAnnotationsRequest.criteria criterion case not set";
                     sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                    return;
                 }
             }
         }

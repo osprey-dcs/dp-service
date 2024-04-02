@@ -247,6 +247,95 @@ public class AnnotationTestBase {
         }
     }
 
+    public static class QueryAnnotationsResponseObserver implements StreamObserver<QueryAnnotationsResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public List<QueryAnnotationsResponse.AnnotationsResult.Annotation> getAnnotationsList() {
+            return annotationsList;
+        }
+
+        @Override
+        public void onNext(QueryAnnotationsResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasAnnotationsResult());
+                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> responseAnnotationList =
+                        response.getAnnotationsResult().getAnnotationsList();
+
+                // flag error if already received a response
+                if (!annotationsList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    annotationsList.addAll(responseAnnotationList);
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
     public static CreateDataSetRequest buildCreateDataSetRequest(CreateDataSetParams params) {
 
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
@@ -299,6 +388,35 @@ public class AnnotationTestBase {
         commentBuilder.build();
 
         requestBuilder.setCommentAnnotation(commentBuilder);
+        return requestBuilder.build();
+    }
+
+    public static QueryAnnotationsRequest buildQueryAnnotationsRequestOwnerComment(String ownerId, String commentText) {
+
+        QueryAnnotationsRequest.Builder requestBuilder = QueryAnnotationsRequest.newBuilder();
+
+        // add owner criteria
+        QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
+                QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
+                        .setOwnerId(ownerId)
+                        .build();
+        QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
+                QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                        .setOwnerCriterion(ownerCriterion)
+                        .build();
+        requestBuilder.addCriteria(ownerQueryAnnotationsCriterion);
+
+        // add comment criteria
+        QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion =
+                QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion.newBuilder()
+                        .setCommentText(commentText)
+                        .build();
+        QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriteria =
+                QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                        .setCommentCriterion(commentCriterion)
+                        .build();
+        requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
+
         return requestBuilder.build();
     }
 

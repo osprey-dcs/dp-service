@@ -1,8 +1,6 @@
 package com.ospreydcs.dp.service.integration;
 
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
@@ -916,6 +914,55 @@ public class GrpcIntegrationTestBase {
         final List<String> requestDiffs = annotationDocument.diffRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.isEmpty());
+    }
+
+    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
+            QueryAnnotationsRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(annotationChannel);
+
+        final AnnotationTestBase.QueryAnnotationsResponseObserver responseObserver =
+                new AnnotationTestBase.QueryAnnotationsResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryAnnotations(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getAnnotationsList();
+    }
+
+    protected void sendAndVerifyQueryAnnotationsOwnerComment(
+            String ownerId,
+            String commentText,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        QueryAnnotationsRequest request =
+                AnnotationTestBase.buildQueryAnnotationsRequestOwnerComment(ownerId, commentText);
+
+        List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
+                sendQueryAnnotations(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertTrue(resultAnnotations.isEmpty());
+            return;
+        }
+
+        // TODO: validate response
     }
 
 }
