@@ -121,32 +121,55 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
         }
 
-        String dataSetId = null;
+        String firstHalfDataSetId = null;
+        String secondHalfDataSetId = null;
         {
-            // createDataSet() positive test - should succeed
+            /*
+             * createDataSet() positive test using pvNames that exist in archive from ingestion scenario above.
+             *
+             * We are going to create two data sets including 5 seconds of data, one set with data blocks for the
+             * first half-second of the 5 seconds and one with blocks for the second half-second.  These will be used
+             * for testing createAnnotation() and queryAnnotations() later in the test.
+             */
 
-            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
+            final List<AnnotationTestBase.AnnotationDataBlock> firstHalfDataBlocks = new ArrayList<>();
+            final List<AnnotationTestBase.AnnotationDataBlock> secondHalfDataBlocks = new ArrayList<>();
 
             // create 5 data blocks for same 2 PVs with one block per second from startSeconds
             for (int secondIndex = 0 ; secondIndex < 5 ; ++secondIndex) {
 
-                final long second = startSeconds + secondIndex;
+                final long currentSecond = startSeconds + secondIndex;
 
-                // create data block with pvNames that do exist in archive
-                final List<String> pvNamesValid = List.of("S01-GCC01", "S01-BPM01");
-                final AnnotationTestBase.AnnotationDataBlock dataBlockValid
-                        = new AnnotationTestBase.AnnotationDataBlock(
-                        second, startNanos, second, 999_000_000, pvNamesValid);
-                dataBlocks.add(dataBlockValid);
+                // create first half data block for current second
+                final List<String> firstHalfPvNames = List.of("S01-GCC01", "S01-BPM01");
+                final AnnotationTestBase.AnnotationDataBlock firstHalfDataBlock = 
+                        new AnnotationTestBase.AnnotationDataBlock(
+                                currentSecond, 0L, currentSecond, 499_000_000L, firstHalfPvNames);
+                firstHalfDataBlocks.add(firstHalfDataBlock);
+
+                // create second half data block for current second
+                final List<String> secondHalfPvNames = List.of("S02-GCC01", "S02-BPM01");
+                final AnnotationTestBase.AnnotationDataBlock secondHalfDataBlock =
+                        new AnnotationTestBase.AnnotationDataBlock(
+                                currentSecond, 500_000_000L, currentSecond, 999_000_000L, secondHalfPvNames);
+                secondHalfDataBlocks.add(secondHalfDataBlock);
             }
 
-            final AnnotationTestBase.AnnotationDataSet dataSet = new AnnotationTestBase.AnnotationDataSet(dataBlocks);
+            // create data set with first half-second blocks
+            final AnnotationTestBase.AnnotationDataSet firstHalfDataSet = 
+                    new AnnotationTestBase.AnnotationDataSet(firstHalfDataBlocks);
+            AnnotationTestBase.CreateDataSetParams firstHalfParams =
+                    new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
+            firstHalfDataSetId = sendAndVerifyCreateDataSet(firstHalfParams, false, "");
+            System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
-            AnnotationTestBase.CreateDataSetParams params =
-                    new AnnotationTestBase.CreateDataSetParams(dataSet);
-
-            dataSetId = sendAndVerifyCreateDataSet(params, false, "");
-            System.out.println("created dataset with id: " + dataSetId);
+            // create data set with second half-second blocks
+            final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
+                    new AnnotationTestBase.AnnotationDataSet(secondHalfDataBlocks);
+            AnnotationTestBase.CreateDataSetParams secondHalfParams =
+                    new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
+            secondHalfDataSetId = sendAndVerifyCreateDataSet(secondHalfParams, false, "");
+            System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 
         {
@@ -162,16 +185,41 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     params, true, expectedRejectMessage);
         }
 
+        List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResultAnnotations = new ArrayList<>();
         {
-            // createAnnotation() positive test - create annotation should succeed using id from test for createDataSet()
+            /*
+             * createAnnotation() positive test
+             *
+             * Create annotations for two different owners, each with two different types of annotations.
+             * We'll save a list of one type of annotation for one of the owners for use in verifying
+             * the queryAnnotations() positive test results.
+             */
 
-            final String ownerId = "craigmcc";
-            final String comment = "positive test case";
-            AnnotationTestBase.CreateCommentAnnotationParams params =
-                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, dataSetId, comment);
+            final String firstHalfBase = "first half: ";
+            final String secondHalfBase = "second half: ";
+            for (String owner : List.of("craigmcc", "allenck")) {
+                for (int commentNumber : List.of(1, 2, 3, 4, 5)) {
+                    
+                    // create annotation for first half data set
+                    final String firstHalfComment = firstHalfBase + commentNumber;
+                    AnnotationTestBase.CreateCommentAnnotationParams firstHalfParams =
+                            new AnnotationTestBase.CreateCommentAnnotationParams(
+                                    owner, firstHalfDataSetId, firstHalfComment);
+                    sendAndVerifyCreateCommentAnnotation(
+                            firstHalfParams, false, "");
+                    if (owner.equals("craigmcc")) {
+                        expectedQueryResultAnnotations.add(firstHalfParams);
+                    }
 
-            sendAndVerifyCreateCommentAnnotation(
-                    params, false, "");
+                    // create annotation for second half data set
+                    final String secondHalfComment = secondHalfBase + commentNumber;
+                    AnnotationTestBase.CreateCommentAnnotationParams secondHalfParams =
+                            new AnnotationTestBase.CreateCommentAnnotationParams(
+                                    owner, secondHalfDataSetId, secondHalfComment);
+                    sendAndVerifyCreateCommentAnnotation(
+                            secondHalfParams, false, "");
+                }
+            }
         }
 
         {
