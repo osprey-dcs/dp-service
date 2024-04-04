@@ -99,6 +99,7 @@ public abstract class AnnotationDocument {
         // add base annotation fields to response object
         annotationBuilder.setAnnotationId(this.getId().toString());
         annotationBuilder.setOwnerId(this.getOwnerId());
+        annotationBuilder.setDataSetId(this.getDataSetId());
 
         // add dataset content to response object
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =

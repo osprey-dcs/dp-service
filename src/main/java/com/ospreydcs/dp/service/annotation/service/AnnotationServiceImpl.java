@@ -348,7 +348,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             QueryAnnotationsRequest request,
             StreamObserver<QueryAnnotationsResponse> responseObserver
     ) {
-        logger.debug("id: {} queryAnnotations request received", responseObserver.hashCode());
+        logger.info("id: {} queryAnnotations request received", responseObserver.hashCode());
 
         // check that request contains non-empty list of criteria
         final List<QueryAnnotationsRequest.QueryAnnotationsCriterion> criterionList = request.getCriteriaList();

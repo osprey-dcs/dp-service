@@ -230,7 +230,28 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
-            sendAndVerifyQueryAnnotationsOwnerComment(ownerId, blankCommentText, expectReject, expectedRejectMessage);
+            sendAndVerifyQueryAnnotationsOwnerComment(
+                    ownerId, blankCommentText, expectReject, expectedRejectMessage, new ArrayList<>());
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test
+             *
+             * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
+             * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
+             * interval, and 5 annotations for the second half second of that interval.
+             *
+             * The queryAnnotations() test will retrieve annotations for one of the owners for the first half data set,
+             * and confirm that only the appropriate 5 annotations are retrieved.
+             */
+
+            final String ownerId = "craigmcc";
+            final String commentText = "first";
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+            sendAndVerifyQueryAnnotationsOwnerComment(
+                    ownerId, commentText, expectReject, expectedRejectMessage, expectedQueryResultAnnotations);
         }
     }
 

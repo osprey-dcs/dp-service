@@ -32,9 +32,9 @@ public class AnnotationTestBase {
     }
 
     public static class AnnotationDataSet {
-        public final List<AnnotationDataBlock> dataBuckets;
-        public AnnotationDataSet(List<AnnotationDataBlock> dataBuckets) {
-            this.dataBuckets = dataBuckets;
+        public final List<AnnotationDataBlock> dataBlocks;
+        public AnnotationDataSet(List<AnnotationDataBlock> dataBlocks) {
+            this.dataBlocks = dataBlocks;
         }
     }
 
@@ -341,7 +341,7 @@ public class AnnotationTestBase {
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
                 = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
 
-        for (AnnotationDataBlock block : params.dataSet.dataBuckets) {
+        for (AnnotationDataBlock block : params.dataSet.dataBlocks) {
 
             Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
             beginTimeBuilder.setEpochSeconds(block.beginSeconds);
