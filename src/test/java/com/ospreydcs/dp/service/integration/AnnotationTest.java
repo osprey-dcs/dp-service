@@ -1,5 +1,9 @@
 package com.ospreydcs.dp.service.integration;
 
+import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -7,10 +11,10 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class AnnotationTest extends GrpcIntegrationTestBase {
 
@@ -40,50 +44,56 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         final int providerId = INGESTION_PROVIDER_ID;
 
-        final List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
-
-        // create data for 10 sectors, each containing 3 gauges and 3 bpms
-        for (int sectorIndex = 1 ; sectorIndex <= 10 ; ++sectorIndex) {
-            final String sectorName = String.format("S%02d", sectorIndex);
-
-            // create columns for 3 gccs in each sector
-            for (int gccIndex = 1 ; gccIndex <= 3 ; ++ gccIndex) {
-                final String gccName = sectorName + "-" + String.format("GCC%02d", gccIndex);
-                final String requestIdBase = gccName + "-";
-                final long interval = 100_000_000L;
-                final int numBuckets = 10;
-                final int numSecondsPerBucket = 1;
-                final IngestionColumnInfo columnInfoTenths =
-                        new IngestionColumnInfo(
-                                gccName,
-                                requestIdBase,
-                                interval,
-                                numBuckets,
-                                numSecondsPerBucket);
-                ingestionColumnInfoList.add(columnInfoTenths);
-            }
-
-            // create columns for 3 bpms in each sector
-            for (int bpmIndex = 1 ; bpmIndex <= 3 ; ++ bpmIndex) {
-                final String bpmName = sectorName + "-" + String.format("BPM%02d", bpmIndex);
-                final String requestIdBase = bpmName + "-";
-                final long interval = 100_000_000L;
-                final int numBuckets = 10;
-                final int numSecondsPerBucket = 1;
-                final IngestionColumnInfo columnInfoTenths =
-                        new IngestionColumnInfo(
-                                bpmName,
-                                requestIdBase,
-                                interval,
-                                numBuckets,
-                                numSecondsPerBucket);
-                ingestionColumnInfoList.add(columnInfoTenths);
-            }
-        }
-
+        Map<String, IngestionStreamInfo> ingestionStreamInfoMap = null;
         {
-            // perform ingestion for specified list of columns
-            ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+            // run ingestion scenario
+
+            final List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
+
+            // create data for 10 sectors, each containing 3 gauges and 3 bpms
+            for (int sectorIndex = 1; sectorIndex <= 10; ++sectorIndex) {
+                final String sectorName = String.format("S%02d", sectorIndex);
+
+                // create columns for 3 gccs in each sector
+                for (int gccIndex = 1; gccIndex <= 3; ++gccIndex) {
+                    final String gccName = sectorName + "-" + String.format("GCC%02d", gccIndex);
+                    final String requestIdBase = gccName + "-";
+                    final long interval = 100_000_000L;
+                    final int numBuckets = 10;
+                    final int numSecondsPerBucket = 1;
+                    final IngestionColumnInfo columnInfoTenths =
+                            new IngestionColumnInfo(
+                                    gccName,
+                                    requestIdBase,
+                                    interval,
+                                    numBuckets,
+                                    numSecondsPerBucket);
+                    ingestionColumnInfoList.add(columnInfoTenths);
+                }
+
+                // create columns for 3 bpms in each sector
+                for (int bpmIndex = 1; bpmIndex <= 3; ++bpmIndex) {
+                    final String bpmName = sectorName + "-" + String.format("BPM%02d", bpmIndex);
+                    final String requestIdBase = bpmName + "-";
+                    final long interval = 100_000_000L;
+                    final int numBuckets = 10;
+                    final int numSecondsPerBucket = 1;
+                    final IngestionColumnInfo columnInfoTenths =
+                            new IngestionColumnInfo(
+                                    bpmName,
+                                    requestIdBase,
+                                    interval,
+                                    numBuckets,
+                                    numSecondsPerBucket);
+                    ingestionColumnInfoList.add(columnInfoTenths);
+                }
+            }
+
+            {
+                // perform ingestion for specified list of columns
+                ingestionStreamInfoMap =
+                        ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+            }
         }
 
         {
@@ -123,6 +133,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         String firstHalfDataSetId = null;
         String secondHalfDataSetId = null;
+        AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams = null;
+        AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams = null;
         {
             /*
              * createDataSet() positive test using pvNames that exist in archive from ingestion scenario above.
@@ -158,17 +170,17 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             // create data set with first half-second blocks
             final AnnotationTestBase.AnnotationDataSet firstHalfDataSet = 
                     new AnnotationTestBase.AnnotationDataSet(firstHalfDataBlocks);
-            AnnotationTestBase.CreateDataSetParams firstHalfParams =
+            firstHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
-            firstHalfDataSetId = sendAndVerifyCreateDataSet(firstHalfParams, false, "");
+            firstHalfDataSetId = sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(secondHalfDataBlocks);
-            AnnotationTestBase.CreateDataSetParams secondHalfParams =
+            secondHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
-            secondHalfDataSetId = sendAndVerifyCreateDataSet(secondHalfParams, false, "");
+            secondHalfDataSetId = sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 
@@ -234,6 +246,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     ownerId, blankCommentText, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
+        List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
         {
             /*
              * queryAnnotations() positive test
@@ -250,9 +263,56 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String commentText = "first";
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
-            sendAndVerifyQueryAnnotationsOwnerComment(
+            annotationsQueryResult = sendAndVerifyQueryAnnotationsOwnerComment(
                     ownerId, commentText, expectReject, expectedRejectMessage, expectedQueryResultAnnotations);
         }
+
+        {
+            /*
+             * query data test using result of queryAnnotations()
+             *
+             * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
+             * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
+             * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
+             * pvNames and that each bucket has the expected begin time.
+             */
+
+            for (QueryAnnotationsResponse.AnnotationsResult.Annotation queryResultAnnotation : annotationsQueryResult) {
+
+                for (DataBlock queryResultBlock : queryResultAnnotation.getDataSet().getDataBlocksList()) {
+
+                    final List<String> queryPvNames = queryResultBlock.getPvNamesList();
+                    final long queryBeginSeconds = queryResultBlock.getBeginTime().getEpochSeconds();
+                    final long queryBeginNanos = queryResultBlock.getBeginTime().getNanoseconds();
+                    final long queryEndSeconds = queryResultBlock.getEndTime().getEpochSeconds();
+                    final long queryEndNanos = queryResultBlock.getEndTime().getNanoseconds();
+
+                    final int numBucketsExpected = 2;
+
+                    final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
+                            queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
+                    assertEquals(numBucketsExpected, queryResultBuckets.size());
+                    for (String pvName : queryPvNames) {
+                        boolean foundPvBucket = false;
+                        QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
+                        for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
+                            if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
+                                foundPvBucket = true;
+                                matchingResponseBucket = responseBucket;
+                                break;
+                            }
+                        }
+                        assertTrue(foundPvBucket);
+                        final Timestamp matchingBucketTimestamp =
+                                matchingResponseBucket.getDataTimestamps().getSamplingClock().getStartTime();
+                        assertEquals(queryBeginSeconds, matchingBucketTimestamp.getEpochSeconds());
+                        assertEquals(queryBeginNanos, matchingBucketTimestamp.getNanoseconds());
+                    }
+
+                }
+            }
+        }
+
     }
 
 }

@@ -953,7 +953,7 @@ public class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationsList();
     }
 
-    protected void sendAndVerifyQueryAnnotationsOwnerComment(
+    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotationsOwnerComment(
             String ownerId,
             String commentText,
             boolean expectReject,
@@ -968,7 +968,7 @@ public class GrpcIntegrationTestBase {
 
         if (expectReject) {
             assertTrue(resultAnnotations.isEmpty());
-            return;
+            return new ArrayList<>();
         }
 
         // validate response
@@ -1014,6 +1014,8 @@ public class GrpcIntegrationTestBase {
                 assertTrue(responseBlockFound);
             }
         }
+
+        return resultAnnotations;
     }
 
 }
