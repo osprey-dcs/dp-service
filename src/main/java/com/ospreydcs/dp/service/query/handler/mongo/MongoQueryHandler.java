@@ -89,8 +89,10 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
                 QueryDataResponse.QueryData.DataBucket.newBuilder();
 
+        // add data timestamps
         bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
 
+        // add data values
         final DataColumn.Builder columnBuilder = DataColumn.newBuilder();
         columnBuilder.setName(document.getColumnName());
 //        addBucketDataToColumn(document, columnBuilder);
@@ -102,6 +104,36 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         }
         columnBuilder.build();
         bucketBuilder.setDataColumn(columnBuilder);
+
+        // add attributes
+        if (document.getAttributeMap() != null) {
+            for (var documentAttributeMapEntry : document.getAttributeMap().entrySet()) {
+                final String documentAttributeKey = documentAttributeMapEntry.getKey();
+                final String documentAttributeValue = documentAttributeMapEntry.getValue();
+                final Attribute responseAttribute = Attribute.newBuilder()
+                        .setName(documentAttributeKey)
+                        .setValue(documentAttributeValue)
+                        .build();
+                bucketBuilder.addAttributes(responseAttribute);
+            }
+        }
+
+        // add event metadata
+        if (
+                (document.getEventDescription() != null && ! document.getEventDescription().isBlank())
+                        || (document.getEventSeconds() > 0)
+                        || (document.getEventNanos() > 0)
+        ) {
+            Timestamp responseEventStartTimestamp = Timestamp.newBuilder()
+                    .setEpochSeconds(document.getEventSeconds())
+                    .setNanoseconds(document.getEventNanos())
+                    .build();
+            EventMetadata responseEventMetadata = EventMetadata.newBuilder()
+                    .setDescription(document.getEventDescription())
+                    .setStartTimestamp(responseEventStartTimestamp)
+                    .build();
+            bucketBuilder.setEventMetadata(responseEventMetadata);
+        }
 
         return bucketBuilder.build();
     }
