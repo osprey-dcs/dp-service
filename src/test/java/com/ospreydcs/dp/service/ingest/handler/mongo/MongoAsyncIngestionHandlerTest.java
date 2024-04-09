@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 import com.mongodb.reactivestreams.client.FindPublisher;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import org.bson.conversions.Bson;
 import org.junit.*;
 import org.junit.runners.MethodSorters;
@@ -62,6 +63,10 @@ public class MongoAsyncIngestionHandlerTest extends MongoIngestionHandlerTestBas
      */
     @BeforeClass
     public static void setUp() throws Exception {
+
+        // Use test db client to set database name globally to "dp-test" and remove that database if it already exists
+        MongoTestClient.prepareTestDatabase();
+
         TestAsyncClient testClient = new TestAsyncClient();
         MongoIngestionHandler handler = new MongoIngestionHandler(testClient);
         setUp(handler, testClient);

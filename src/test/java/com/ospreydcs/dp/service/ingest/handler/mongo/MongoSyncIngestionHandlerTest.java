@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import org.bson.conversions.Bson;
 import org.junit.*;
 
@@ -54,6 +55,10 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
      */
     @BeforeClass
     public static void setUp() throws Exception {
+
+        // Use test db client to set database name globally to "dp-test" and remove that database if it already exists
+        MongoTestClient.prepareTestDatabase();
+
         TestSyncClient testClient = new TestSyncClient();
         MongoIngestionHandler handler = new MongoIngestionHandler(testClient);
         setUp(handler, testClient);

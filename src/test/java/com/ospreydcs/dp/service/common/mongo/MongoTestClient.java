@@ -16,13 +16,13 @@ import java.util.List;
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 
-public class SyncMongoTestClient extends MongoSyncClient {
+public class MongoTestClient extends MongoSyncClient {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // constants
-    private static final String MONGO_TEST_DATABASE_NAME = "dp-test";
+    public static final String MONGO_TEST_DATABASE_NAME = "dp-test";
     private static final int MONGO_FIND_RETRY_COUNT = 300;
     private static final int MONGO_FIND_RETRY_INTERVAL_MILLIS = 100;
 
@@ -30,6 +30,7 @@ public class SyncMongoTestClient extends MongoSyncClient {
     public boolean init() {
 
         // override the default database name globally
+        logger.info("overriding db name globally to: {}", MONGO_TEST_DATABASE_NAME);
         MongoClientBase.setMongoDatabaseName(MONGO_TEST_DATABASE_NAME);
 
         // init so we have database client for dropping existing db
@@ -42,8 +43,14 @@ public class SyncMongoTestClient extends MongoSyncClient {
     }
 
     public void dropTestDatabase() {
+        logger.info("dropping database: {}", MONGO_TEST_DATABASE_NAME);
         MongoDatabase database = this.mongoClient.getDatabase(MONGO_TEST_DATABASE_NAME);
         database.drop();
+    }
+
+    public static void prepareTestDatabase() {
+        MongoTestClient testClient = new MongoTestClient();
+        testClient.init();
     }
 
     public BucketDocument findBucket(String id) {

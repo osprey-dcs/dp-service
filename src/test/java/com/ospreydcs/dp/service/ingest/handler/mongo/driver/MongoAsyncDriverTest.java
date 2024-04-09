@@ -7,6 +7,7 @@ import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
+import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
 import org.bson.Document;
 import org.junit.AfterClass;
@@ -27,9 +28,14 @@ public class MongoAsyncDriverTest {
 
     @BeforeClass
     public static void setUp() throws Exception {
+
         System.out.println("setUp");
+
+        // Use test db client to set database name globally to "dp-test" and remove that database if it already exists
+        MongoTestClient.prepareTestDatabase();
+
         mongoClient = MongoClients.create(MongoClientBase.getMongoConnectString());
-        mongoDatabase = mongoClient.getDatabase(MongoClientBase.MONGO_DATABASE_NAME);
+        mongoDatabase = mongoClient.getDatabase(MongoTestClient.MONGO_TEST_DATABASE_NAME);
     }
 
     @AfterClass

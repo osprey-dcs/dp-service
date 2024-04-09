@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -44,6 +45,10 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {
+
+        // Use test db client to set database name globally to "dp-test" and remove that database if it already exists
+        MongoTestClient.prepareTestDatabase();
+
         ErrorTestClient testClient = new ErrorTestClient();
         MongoQueryHandler handler = new MongoQueryHandler(testClient);
         setUp(handler, testClient);
