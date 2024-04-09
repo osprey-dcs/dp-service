@@ -23,6 +23,7 @@ public abstract class MongoClientBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
+    private static String mongoDatabaseName = null;
 
     // constants
     public static final String MONGO_DATABASE_NAME = "dp";
@@ -151,8 +152,20 @@ public abstract class MongoClientBase {
         return connectString;
     }
 
-    protected String getMongoDatabaseName() {
-        return MONGO_DATABASE_NAME;
+    protected static String getMongoDatabaseName() {
+        if (mongoDatabaseName == null) {
+            return MONGO_DATABASE_NAME;
+        } else {
+            return mongoDatabaseName;
+        }
+    }
+
+    protected static void setMongoDatabaseName(String databaseName) {
+        if (databaseName.isBlank()) {
+            logger.error("setDatabaseName specified database name is empty");
+        } else {
+            mongoDatabaseName = databaseName;
+        }
     }
 
     protected String getCollectionNameBuckets() {

@@ -16,7 +16,8 @@ import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
-import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
+import com.ospreydcs.dp.service.common.mongo.SyncMongoTestClient;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
@@ -32,20 +33,16 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.conversions.Bson;
-import org.bson.types.ObjectId;
 import org.junit.ClassRule;
 
 import java.time.Instant;
 import java.util.*;
 
-import static com.mongodb.client.model.Filters.and;
-import static com.mongodb.client.model.Filters.eq;
 import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-public class GrpcIntegrationTestBase {
+public abstract class GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -55,7 +52,7 @@ public class GrpcIntegrationTestBase {
      */
     @ClassRule
     public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
-    protected static IntegrationTestMongoClient mongoClient;
+    protected static SyncMongoTestClient mongoClient;
 
     // ingestion service instance variables
     private static IngestionServiceImpl ingestionService;
@@ -78,88 +75,6 @@ public class GrpcIntegrationTestBase {
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
-    }
-
-    protected static class IntegrationTestMongoClient extends MongoSyncClient {
-
-        private static final int MONGO_FIND_RETRY_COUNT = 300;
-        private static final int MONGO_FIND_RETRY_INTERVAL_MILLIS = 100;
-
-        public BucketDocument findBucket(String id) {
-            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-                List<BucketDocument> matchingBuckets = new ArrayList<>();
-                mongoCollectionBuckets.find(eq("_id", id)).into(matchingBuckets);
-                if (matchingBuckets.size() > 0) {
-                    return matchingBuckets.get(0);
-                } else {
-                    try {
-                        logger.info("findBucket id: " + id + " retrying");
-                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                    } catch (InterruptedException ex) {
-                        // ignore and just retry
-                    }
-                }
-            }
-            return null;
-        }
-
-        public RequestStatusDocument findRequestStatus(Integer providerId, String requestId) {
-            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount) {
-                List<RequestStatusDocument> matchingDocuments = new ArrayList<>();
-                Bson filter = and(eq("providerId", providerId), eq("requestId", requestId));
-                mongoCollectionRequestStatus.find(filter).into(matchingDocuments);
-                if (matchingDocuments.size() > 0) {
-                    return matchingDocuments.get(0);
-                } else {
-                    try {
-                        logger.info("findRequestStatus providerId: " + providerId
-                                + " requestId: " + requestId
-                                + " retrying");
-                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                    } catch (InterruptedException ex) {
-                        // ignore and just retry
-                    }
-                }
-            }
-            return null;
-        }
-
-        public DataSetDocument findDataSet(String dataSetId) {
-            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-                List<DataSetDocument> matchingDocuments = new ArrayList<>();
-                mongoCollectionDataSets.find(eq("_id", new ObjectId(dataSetId))).into(matchingDocuments);
-                if (matchingDocuments.size() > 0) {
-                    return matchingDocuments.get(0);
-                } else {
-                    try {
-                        logger.info("findDataSet id: " + dataSetId + " retrying");
-                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                    } catch (InterruptedException ex) {
-                        // ignore and just retry
-                    }
-                }
-            }
-            return null;
-        }
-
-        public AnnotationDocument findAnnotation(String annotationId) {
-            for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-                List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
-                mongoCollectionAnnotations.find(eq("_id", new ObjectId(annotationId))).into(matchingAnnotations);
-                if (matchingAnnotations.size() > 0) {
-                    return matchingAnnotations.get(0);
-                } else {
-                    try {
-                        logger.info("findAnnotation id: " + annotationId + " retrying");
-                        Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                    } catch (InterruptedException ex) {
-                        // ignore and just retry
-                    }
-                }
-            }
-            return null;
-        }
-
     }
 
     protected static class IngestionColumnInfo {
@@ -239,7 +154,7 @@ public class GrpcIntegrationTestBase {
     public static void setUp() throws Exception {
 
         // init the mongo client interface for db verification
-        mongoClient = new IntegrationTestMongoClient();
+        mongoClient = new SyncMongoTestClient();
         mongoClient.init();
 
         // init ingestion service
