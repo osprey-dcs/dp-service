@@ -481,14 +481,15 @@ public abstract class GrpcIntegrationTestBase {
                         endNanos);
 
         // validate table contents
-        final List<Timestamp> timestampList = table.getDataTimestamps().getTimestampList().getTimestampsList();
+        final List<Timestamp> timestampList =
+                table.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
         assertEquals(numRowsExpected, timestampList.size());
-        assertEquals(columnNames.size(), table.getDataColumnsCount());
+        assertEquals(columnNames.size(), table.getColumnTable().getDataColumnsCount());
         int rowIndex = 0;
         for (Timestamp timestamp : timestampList) {
             final long timestampSeconds = timestamp.getEpochSeconds();
             final long timestampNanos = timestamp.getNanoseconds();
-            for (DataColumn dataColumn : table.getDataColumnsList()) {
+            for (DataColumn dataColumn : table.getColumnTable().getDataColumnsList()) {
                 // get column name and value from query result
                 String columnName = dataColumn.getName();
                 Double columnDataValue = dataColumn.getDataValues(rowIndex).getDoubleValue();

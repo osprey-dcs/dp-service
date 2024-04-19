@@ -116,11 +116,13 @@ public class TableResponseDispatcher extends Dispatcher {
         timestampListBuilder.build();
         final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
         dataTimestampsBuilder.setTimestampList(timestampListBuilder).build();
-        tableResultBuilder.setDataTimestamps(dataTimestampsBuilder);
+        QueryTableResponse.ColumnTable.Builder columnTableBuilder = QueryTableResponse.ColumnTable.newBuilder();
+        columnTableBuilder.setDataTimestamps(dataTimestampsBuilder);
         for (DataColumn.Builder dataColumnBuilder : columnBuilderMap.values()) {
             dataColumnBuilder.build();
-            tableResultBuilder.addDataColumns(dataColumnBuilder);
+            columnTableBuilder.addDataColumns(dataColumnBuilder);
         }
+        tableResultBuilder.setColumnTable(columnTableBuilder.build());
         return tableResultBuilder.build();
     }
 
