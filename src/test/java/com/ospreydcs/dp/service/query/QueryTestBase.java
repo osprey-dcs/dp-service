@@ -12,8 +12,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class QueryTestBase {
 
@@ -39,7 +38,35 @@ public class QueryTestBase {
             this.endTimeNanos = endTimeNanos;
         }
     }
-    
+
+    public static class QueryTableRequestParams {
+
+        QueryTableRequest.TableResultFormat tableResultFormat = null;
+        public List<String> pvNameList = null;
+        public String pvNamePattern = null;
+        public Long startTimeSeconds = null;
+        public Long startTimeNanos = null;
+        public Long endTimeSeconds = null;
+        public Long endTimeNanos = null;
+
+        public QueryTableRequestParams(
+                QueryTableRequest.TableResultFormat tableResultFormat,
+                List<String> pvNameList,
+                String pvNamePattern,
+                Long startTimeSeconds,
+                Long startTimeNanos,
+                Long endTimeSeconds,
+                Long endTimeNanos) {
+
+            this.pvNameList = pvNameList;
+            this.pvNamePattern = pvNamePattern;
+            this.startTimeSeconds = startTimeSeconds;
+            this.startTimeNanos = startTimeNanos;
+            this.endTimeSeconds = endTimeSeconds;
+            this.endTimeNanos = endTimeNanos;
+        }
+    }
+
     public static QueryDataRequest buildQueryDataRequest(QueryDataRequestParams params) {
         
         // build API query request from params
@@ -73,12 +100,48 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
+    public static QueryTableRequest buildQueryTableRequest(QueryTableRequestParams params) {
+
+        QueryTableRequest.Builder requestBuilder = QueryTableRequest.newBuilder();
+
+        if (params.pvNameList != null && !params.pvNameList.isEmpty()) {
+            PvNameList pvNameList = PvNameList.newBuilder()
+                    .addAllPvNames(params.pvNameList)
+                    .build();
+            requestBuilder.setPvNameList(pvNameList);
+        } else if (params.pvNamePattern != null && !params.pvNamePattern.isBlank()) {
+            PvNamePattern pvNamePattern = PvNamePattern.newBuilder()
+                    .setPattern(params.pvNamePattern)
+                    .build();
+            requestBuilder.setPvNamePattern(pvNamePattern);
+        } else {
+            fail("no pvName params specified (list of pattern)");
+        }
+
+        if (params.startTimeSeconds != null) {
+            final Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
+            beginTimeBuilder.setEpochSeconds(params.startTimeSeconds);
+            if (params.startTimeNanos != null) beginTimeBuilder.setNanoseconds(params.startTimeNanos);
+            beginTimeBuilder.build();
+            requestBuilder.setBeginTime(beginTimeBuilder);
+        }
+
+        if (params.endTimeSeconds != null) {
+            final Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
+            endTimeBuilder.setEpochSeconds(params.endTimeSeconds);
+            if (params.endTimeNanos != null) endTimeBuilder.setNanoseconds(params.endTimeNanos);
+            endTimeBuilder.build();
+            requestBuilder.setEndTime(endTimeBuilder);
+        }
+
+        return requestBuilder.build();
+    }
+
     public static QueryMetadataRequest buildQueryMetadataRequest(String columnNamePattern) {
 
         QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryMetadataRequest.PvNamePattern.Builder pvNamePatternBuilder =
-                QueryMetadataRequest.PvNamePattern.newBuilder();
+        PvNamePattern.Builder pvNamePatternBuilder = PvNamePattern.newBuilder();
         pvNamePatternBuilder.setPattern(columnNamePattern);
         pvNamePatternBuilder.build();
 
@@ -90,8 +153,7 @@ public class QueryTestBase {
 
         QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
 
-        QueryMetadataRequest.PvNameList.Builder pvNameListBuilder =
-                QueryMetadataRequest.PvNameList.newBuilder();
+        PvNameList.Builder pvNameListBuilder = PvNameList.newBuilder();
         pvNameListBuilder.addAllPvNames(pvNames);
         pvNameListBuilder.build();
 

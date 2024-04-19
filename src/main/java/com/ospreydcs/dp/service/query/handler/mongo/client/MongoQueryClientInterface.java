@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import org.bson.Document;
@@ -16,6 +17,8 @@ public interface MongoQueryClientInterface {
     boolean fini();
 
     MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec);
+
+    MongoCursor<BucketDocument> executeQueryTable(QueryTableRequest request);
 
     MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest request);
 

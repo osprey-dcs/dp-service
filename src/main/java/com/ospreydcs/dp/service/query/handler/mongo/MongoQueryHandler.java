@@ -65,6 +65,11 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return QueryHandlerUtility.validateQuerySpecData(querySpec);
     }
 
+    @Override
+    public ValidationResult validateQueryTableRequest(QueryTableRequest request) {
+        return QueryHandlerUtility.validateQueryTableRequest(request);
+    }
+
     public static DataTimestamps dataTimestampsForBucket(BucketDocument document) {
 
         final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
@@ -194,10 +199,10 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryDataTable(
-            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver) {
+    public void handleQueryTable(
+            QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final QueryTableJob job = new QueryTableJob(querySpec, responseObserver, mongoQueryClient);
+        final QueryTableJob job = new QueryTableJob(request, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
 

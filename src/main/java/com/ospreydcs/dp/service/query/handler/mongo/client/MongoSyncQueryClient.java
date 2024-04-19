@@ -8,6 +8,7 @@ import com.mongodb.client.model.Projections;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -31,6 +32,38 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private static final Logger logger = LogManager.getLogger();
 
+    private MongoCursor<BucketDocument> executeBucketDocumentQuery(
+            Bson columnNameFilter,
+            long startTimeSeconds,
+            long startTimeNanos,
+            long endTimeSeconds,
+            long endTimeNanos
+    ) {
+        final Bson endTimeFilter =
+                or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
+                        and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
+                                lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
+        final Bson startTimeFilter =
+                or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
+                        and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
+                                gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
+        final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
+
+        logger.debug("executing query columns: " + columnNameFilter
+                + " startSeconds: " + startTimeSeconds
+                + " endSeconds: " + endTimeSeconds);
+
+        return mongoCollectionBuckets
+                .find(filter)
+                .sort(ascending(
+                        BsonConstants.BSON_KEY_BUCKET_NAME,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
+                ))
+                .cursor();
+    }
+
+    @Override
     public MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec) {
 
         // snippet to get query plan
@@ -44,28 +77,37 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
         final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, querySpec.getPvNamesList());
-        final Bson endTimeFilter =
-                or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                        lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
-        final Bson startTimeFilter =
-                or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-                        and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-                                gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
-        final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
+        return executeBucketDocumentQuery(
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+    }
 
-        logger.debug("executing query columns: " + querySpec.getPvNamesList()
-                + " startSeconds: " + startTimeSeconds
-                + " endSeconds: " + endTimeSeconds);
+    @Override
+    public MongoCursor<BucketDocument> executeQueryTable(QueryTableRequest request) {
+        
+        final long startTimeSeconds = request.getBeginTime().getEpochSeconds();
+        final long startTimeNanos = request.getBeginTime().getNanoseconds();
+        final long endTimeSeconds = request.getEndTime().getEpochSeconds();
+        final long endTimeNanos = request.getEndTime().getNanoseconds();
 
-        return mongoCollectionBuckets
-                .find(filter)
-                .sort(ascending(
-                        BsonConstants.BSON_KEY_BUCKET_NAME,
-                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
-                ))
-                .cursor();
+        // create name filter using either list of pv names, or pv name pattern
+        Bson columnNameFilter = null;
+        switch (request.getPvNameSpecCase()) {
+            case PVNAMELIST -> {
+                columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, request.getPvNameList().getPvNamesList());
+            }
+            case PVNAMEPATTERN -> {
+                final Pattern pvNamePattern = Pattern.compile(
+                        request.getPvNamePattern().getPattern(), Pattern.CASE_INSENSITIVE);
+                columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, pvNamePattern);
+            }
+            case PVNAMESPEC_NOT_SET -> {
+                return null;
+            }
+        }
+
+        // execute query
+        return executeBucketDocumentQuery(
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
 
     private MongoCursor<Document> executeQueryMetadata(Bson columnNameFilter) {

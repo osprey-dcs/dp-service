@@ -13,6 +13,8 @@ public interface QueryHandlerInterface {
 
     ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec);
 
+    ValidationResult validateQueryTableRequest(QueryTableRequest request);
+
     void handleQueryDataStream(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver);
 
@@ -22,8 +24,8 @@ public interface QueryHandlerInterface {
     void handleQueryData(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver);
 
-    void handleQueryDataTable(
-            QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver);
+    void handleQueryTable(
+            QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver);
 
     void handleQueryMetadata(
             QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);

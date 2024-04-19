@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
@@ -24,14 +24,14 @@ public class TableResponseDispatcher extends Dispatcher {
 
     // instance variables
     private final StreamObserver<QueryTableResponse> responseObserver;
-    private final QueryDataRequest.QuerySpec querySpec;
+    private final QueryTableRequest request;
 
     public TableResponseDispatcher(
             StreamObserver<QueryTableResponse> responseObserver,
-            QueryDataRequest.QuerySpec querySpec
+            QueryTableRequest request
     ) {
         this.responseObserver = responseObserver;
-        this.querySpec = querySpec;
+        this.request = request;
     }
 
     private static <T> void addBucketToTable(
@@ -80,10 +80,10 @@ public class TableResponseDispatcher extends Dispatcher {
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
         // add data values to column builders, filter by specified time range
-        final long beginSeconds = this.querySpec.getBeginTime().getEpochSeconds();
-        final long beginNanos = this.querySpec.getBeginTime().getNanoseconds();
-        final long endSeconds = this.querySpec.getEndTime().getEpochSeconds();
-        final long endNanos = this.querySpec.getEndTime().getNanoseconds();
+        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
+        final long beginNanos = this.request.getBeginTime().getNanoseconds();
+        final long endSeconds = this.request.getEndTime().getEpochSeconds();
+        final long endNanos = this.request.getEndTime().getNanoseconds();
         for (var secondEntry : tableValueMap.entrySet()) {
             final long second = secondEntry.getKey();
             if (second < beginSeconds || second > endSeconds) {

@@ -424,7 +424,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected QueryTableResponse.TableResult sendQueryDataTable(QueryDataRequest request) {
+    protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
 
@@ -434,7 +434,7 @@ public abstract class GrpcIntegrationTestBase {
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.queryDataTable(request, responseObserver);
+            asyncStub.queryTable(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -447,16 +447,23 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected QueryTableResponse.TableResult queryDataTable(
-            List<String> columnNames, long startSeconds, long startNanos, long endSeconds, long endNanos
+    protected QueryTableResponse.TableResult queryTable(
+            List<String> pvNames, long startSeconds, long startNanos, long endSeconds, long endNanos
     ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(columnNames, startSeconds, startNanos, endSeconds, endNanos);
-        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
-        return sendQueryDataTable(request);
+        final QueryTestBase.QueryTableRequestParams params =
+                new QueryTestBase.QueryTableRequestParams(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
+                        pvNames,
+                        null,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+        final QueryTableRequest request = QueryTestBase.buildQueryTableRequest(params);
+        return sendQueryTable(request);
     }
 
-    protected void sendAndVerifyQueryDataTable(
+    protected void sendAndVerifyQueryTable(
             int numRowsExpected,
             List<String> columnNames,
             long startSeconds,
@@ -466,7 +473,7 @@ public abstract class GrpcIntegrationTestBase {
             Map<String, IngestionStreamInfo> validationMap
     ) {
         final QueryTableResponse.TableResult table =
-                queryDataTable(
+                queryTable(
                         columnNames,
                         startSeconds,
                         startNanos,

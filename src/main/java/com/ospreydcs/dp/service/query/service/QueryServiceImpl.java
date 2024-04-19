@@ -306,26 +306,21 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     @Override
-    public void queryDataTable(QueryDataRequest request, StreamObserver<QueryTableResponse> responseObserver) {
+    public void queryTable(QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
-        logger.debug("queryDataTable request received id: {} columnNames: {} startSeconds: {} endSeconds: {}",
-                responseObserver.hashCode(),
-                querySpec.getPvNamesList(),
-                querySpec.getBeginTime().getEpochSeconds(),
-                querySpec.getEndTime().getEpochSeconds());
+        logger.debug("queryTable request received id: {}",
+                responseObserver.hashCode());
 
         // validate request
-        ValidationResult validationResult = validateQueryDataRequest(request);
+        ValidationResult validationResult = handler.validateQueryTableRequest(request);
+
+        // send reject if request is invalid
         if (validationResult.isError) {
-            sendQueryTableResponseReject(validationResult.msg, responseObserver);
-            return;
+            String validationMsg = validationResult.msg;
+            sendQueryTableResponseReject(validationMsg, responseObserver);
         }
 
-        // handle request
-        if (querySpec != null) {
-            handler.handleQueryDataTable(querySpec, responseObserver);
-        }
+        handler.handleQueryTable(request, responseObserver);
     }
 
     @Override

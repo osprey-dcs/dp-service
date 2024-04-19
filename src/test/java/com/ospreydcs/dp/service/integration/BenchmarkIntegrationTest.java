@@ -514,82 +514,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         }
     }
 
-    private static class IntegrationTestQueryResponseTableApp extends BenchmarkQueryDataTable {
-
-        private static class IntegrationTestQueryResponseTableTask
-                extends BenchmarkQueryDataTable.QueryResponseTableTask {
-
-            public IntegrationTestQueryResponseTableTask(Channel channel, QueryDataRequestTaskParams params) {
-                super(channel, params);
-            }
-
-            @Override
-            protected void onRequest(QueryDataRequest request) {
-                // nothing to do for validating requests since we are maintaining a data structure with request info
-            }
-
-            @Override
-            protected void onResponse(QueryTableResponse response) {
-
-                // check that message contains a table response
-                assertNotNull(response.getResponseTime() != null);
-                assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-                assertTrue(response.hasTableResult());
-                final QueryTableResponse.TableResult tableResult = response.getTableResult();
-                final List<String> columnNames = params.columnNames;
-                assertEquals(columnNames.size(), tableResult.getDataColumnsCount());
-
-                // validate timestamp list
-                long secondsCurrent = params.startSeconds;
-                long nanosCurrent = 0L;
-                final List<Timestamp> timestampList =
-                        tableResult.getDataTimestamps().getTimestampList().getTimestampsList();
-
-                for (Timestamp timestamp : timestampList) {
-
-                    final long timestampSeconds = timestamp.getEpochSeconds();
-                    final long timestampNanos = timestamp.getNanoseconds();
-                    assertEquals(secondsCurrent, timestampSeconds);
-                    assertEquals(nanosCurrent, timestampNanos);
-
-                    nanosCurrent = nanosCurrent + 1_000_000;
-                    if (nanosCurrent == 1_000_000_000L) {
-                        // increment seconds if we hit a billion nanos
-                        nanosCurrent = 0;
-                        secondsCurrent = secondsCurrent + 1;
-                    }
-                }
-
-                // validate columns
-                int valueIndex = 0;
-                for (DataColumn dataColumn : tableResult.getDataColumnsList()) {
-                    assertTrue(columnNames.contains(dataColumn.getName()));
-                    for (DataValue dataValue : dataColumn.getDataValuesList()) {
-                        final double expectedValue = valueIndex + (double) valueIndex / INGESTION_NUM_ROWS;
-                        assertEquals(expectedValue, dataValue.getDoubleValue(), 0.0);
-                        valueIndex = valueIndex + 1;
-                        if (valueIndex == 1000) {
-                            // column values start over at 0 every second (every 1000 values)
-                            valueIndex = 0;
-                        }
-                    }
-                }
-            }
-
-            @Override
-            protected void onCompleted() {
-                // nothing to do when task completes since we only receive a single response and have already validated it
-            }
-        }
-
-        @Override
-        protected IntegrationTestQueryResponseTableTask newQueryTask(
-                Channel channel, QueryDataRequestTaskParams params
-        ) {
-            return new IntegrationTestQueryResponseTableTask(channel, params);
-        }
-    }
-
     protected static class IntegrationTestQueryGrpcClient {
 
         // instance variables
@@ -665,28 +589,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
         }
 
-        private void runQueryResponseTableScenario() {
-
-            System.out.println();
-            System.out.println("========== running queryResponseTable scenario ==========");
-            System.out.println("number of PVs: " + QUERY_TABLE_NUM_PVS);
-            System.out.println("number of PVs per request: " + QUERY_TABLE_NUM_PVS_PER_REQUEST);
-            System.out.println("number of threads: " + QUERY_NUM_THREADS);
-
-            final long startSeconds = configMgr().getConfigLong(
-                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
-                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
-
-            IntegrationTestQueryResponseTableApp queryResponseTableApp =
-                    new IntegrationTestQueryResponseTableApp();
-            BenchmarkScenarioResult scenarioResult = queryResponseTableApp.queryScenario(
-                    channel, QUERY_TABLE_NUM_PVS, QUERY_TABLE_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
-            assertTrue(scenarioResult.success);
-
-            System.out.println("========== queryResponseTable scenario completed ==========");
-            System.out.println();
-        }
-
     }
 
     @BeforeClass
@@ -725,9 +627,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // run and verify single response query api scenario
         queryGrpcClient.runQueryResponseSingleScenario();
-
-        // run and verify table response query api scenario
-        queryGrpcClient.runQueryResponseTableScenario();
     }
 
 }

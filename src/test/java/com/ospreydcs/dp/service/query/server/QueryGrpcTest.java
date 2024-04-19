@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.query.server;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -66,6 +64,11 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
+        public ValidationResult validateQueryTableRequest(QueryTableRequest request) {
+            return QueryHandlerUtility.validateQueryTableRequest(request);
+        }
+
+        @Override
         public void handleQueryDataStream(
                 QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver
         ) {
@@ -86,8 +89,8 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
-        public void handleQueryDataTable(
-                QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryTableResponse> responseObserver
+        public void handleQueryTable(
+                QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver
         ) {
         }
 
