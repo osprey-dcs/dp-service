@@ -16,7 +16,6 @@ public abstract class QueueHandlerBase {
     protected static final int TIMEOUT_SECONDS = 60;
     protected static final int MAX_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
-    public static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
 
     // instance variables
     protected ExecutorService executorService = null;
