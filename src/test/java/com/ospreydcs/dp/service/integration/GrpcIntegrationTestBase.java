@@ -72,6 +72,11 @@ public abstract class GrpcIntegrationTestBase {
     protected static Map<String, AnnotationTestBase.CreateDataSetParams> dataSetParamsMap = new TreeMap<>();
     protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> requestParamsMap = new HashMap<>();
 
+    // constants
+    private static final int INGESTION_PROVIDER_ID = 1;
+    public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
+    public static final Long DEFAULT_START_SECONDS = 1698767462L;
+
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
     }
@@ -424,6 +429,62 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
+    protected Map<String, IngestionStreamInfo> simpleIngestionScenario() {
+
+        final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        final long startNanos = 0L;
+        final int providerId = INGESTION_PROVIDER_ID;
+
+        List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
+
+        // create data for 10 sectors, each containing 3 gauges and 3 bpms
+        for (int sectorIndex = 1 ; sectorIndex <= 10 ; ++sectorIndex) {
+            final String sectorName = String.format("S%02d", sectorIndex);
+
+            // create columns for 3 gccs in each sector
+            for (int gccIndex = 1 ; gccIndex <= 3 ; ++ gccIndex) {
+                final String gccName = sectorName + "-" + String.format("GCC%02d", gccIndex);
+                final String requestIdBase = gccName + "-";
+                final long interval = 100_000_000L;
+                final int numBuckets = 10;
+                final int numSecondsPerBucket = 1;
+                final IngestionColumnInfo columnInfoTenths =
+                        new IngestionColumnInfo(
+                                gccName,
+                                requestIdBase,
+                                interval,
+                                numBuckets,
+                                numSecondsPerBucket);
+                ingestionColumnInfoList.add(columnInfoTenths);
+            }
+
+            // create columns for 3 bpms in each sector
+            for (int bpmIndex = 1 ; bpmIndex <= 3 ; ++ bpmIndex) {
+                final String bpmName = sectorName + "-" + String.format("BPM%02d", bpmIndex);
+                final String requestIdBase = bpmName + "-";
+                final long interval = 100_000_000L;
+                final int numBuckets = 10;
+                final int numSecondsPerBucket = 1;
+                final IngestionColumnInfo columnInfoTenths =
+                        new IngestionColumnInfo(
+                                bpmName,
+                                requestIdBase,
+                                interval,
+                                numBuckets,
+                                numSecondsPerBucket);
+                ingestionColumnInfoList.add(columnInfoTenths);
+            }
+        }
+
+        Map<String, IngestionStreamInfo> validationMap = null;
+        {
+            // perform ingestion for specified list of columns
+            validationMap = ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+        }
+
+        return validationMap;
+    }
+
     protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
@@ -449,7 +510,8 @@ public abstract class GrpcIntegrationTestBase {
 
     protected QueryTableResponse.TableResult queryTable(
             QueryTableRequest.TableResultFormat format,
-            List<String> pvNames,
+            List<String> pvNameList,
+            String pvNamePattern,
             long startSeconds,
             long startNanos,
             long endSeconds,
@@ -458,8 +520,8 @@ public abstract class GrpcIntegrationTestBase {
         final QueryTestBase.QueryTableRequestParams params =
                 new QueryTestBase.QueryTableRequestParams(
                         format,
-                        pvNames,
-                        null,
+                        pvNameList,
+                        pvNamePattern,
                         startSeconds,
                         startNanos,
                         endSeconds,
@@ -468,34 +530,21 @@ public abstract class GrpcIntegrationTestBase {
         return sendQueryTable(request);
     }
 
-    protected void sendAndVerifyQueryTableColumn(
+    private void verifyQueryTableColumnResult(
+            QueryTableResponse.TableResult tableResult,
             int numRowsExpected,
-            List<String> columnNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            List<String> pvNameList,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.TableResult table =
-                queryTable(
-                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
-                        columnNames,
-                        startSeconds,
-                        startNanos,
-                        endSeconds,
-                        endNanos);
-
-        // validate table contents
         final List<Timestamp> timestampList =
-                table.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
+                tableResult.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
         assertEquals(numRowsExpected, timestampList.size());
-        assertEquals(columnNames.size(), table.getColumnTable().getDataColumnsCount());
+        assertEquals(pvNameList.size(), tableResult.getColumnTable().getDataColumnsCount());
         int rowIndex = 0;
         for (Timestamp timestamp : timestampList) {
             final long timestampSeconds = timestamp.getEpochSeconds();
             final long timestampNanos = timestamp.getNanoseconds();
-            for (DataColumn dataColumn : table.getColumnTable().getDataColumnsList()) {
+            for (DataColumn dataColumn : tableResult.getColumnTable().getDataColumnsList()) {
                 // get column name and value from query result
                 String columnName = dataColumn.getName();
                 Double columnDataValue = dataColumn.getDataValues(rowIndex).getDoubleValue();
@@ -511,6 +560,53 @@ public abstract class GrpcIntegrationTestBase {
             }
             rowIndex = rowIndex + 1;
         }
+    }
+
+    protected void sendAndVerifyQueryTablePvNameListColumnResult(
+            int numRowsExpected,
+            List<String> pvNameList,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final QueryTableResponse.TableResult tableResult =
+                queryTable(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
+                        pvNameList,
+                        null,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+
+        // validate query result contents in tableResult
+        verifyQueryTableColumnResult(tableResult, numRowsExpected, pvNameList, validationMap);
+    }
+
+    protected void sendAndVerifyQueryTablePvNamePatternColumnResult(
+            int numRowsExpected,
+            String pvNamePattern,
+            List<String> expectedPvNameMatches,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final QueryTableResponse.TableResult tableResult =
+                queryTable(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
+                        null,
+                        pvNamePattern,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+
+        // validate query result contents in tableResult
+        verifyQueryTableColumnResult(tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
