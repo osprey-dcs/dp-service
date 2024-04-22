@@ -72,11 +72,17 @@ public class QueryHandlerUtility {
 
         } else if (request.hasPvNamePattern()) {
             if (request.getPvNamePattern().getPattern().isBlank()) {
-                final String errorMsg = "QueryMetadataRequest.pvNamePattern.pattern must not be empty";
+                final String errorMsg = "QueryTableRequest.pvNamePattern.pattern must not be empty";
                 return new ValidationResult(true, errorMsg);
             }
         } else {
-            final String errorMsg = "QueryMetadataRequest must specify either pvNameList or pvNamePattern";
+            final String errorMsg = "QueryTableRequest must specify either pvNameList or pvNamePattern";
+            return new ValidationResult(true, errorMsg);
+        }
+
+        // validate that output format is specified
+        if (request.getFormat() == null) {
+            final String errorMsg = "QueryTableRequest must specify format";
             return new ValidationResult(true, errorMsg);
         }
 
