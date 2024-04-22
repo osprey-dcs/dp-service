@@ -173,13 +173,14 @@ public class TableResponseDispatcher extends Dispatcher {
                 // create map for row's data, keys are column names, values are column values
                 final QueryTableResponse.RowMapTable.DataRow.Builder dataRowBuilder =
                         QueryTableResponse.RowMapTable.DataRow.newBuilder();
+                final Map<String, DataValue> rowDataValueMap = new TreeMap<>();
 
                 // set value for timestamp column
                 final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
                 final DataValue timestampDataValue = DataValue.newBuilder()
                         .setTimestampValue(timestamp)
                         .build();
-                dataRowBuilder.getColumnValuesMap().put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
+                rowDataValueMap.put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
 
                 // add map entry for each data column value
                 int columnIndex = 0;
@@ -188,12 +189,13 @@ public class TableResponseDispatcher extends Dispatcher {
                     if (columnDataValue == null) {
                         columnDataValue = DataValue.newBuilder().build();
                     }
-                    dataRowBuilder.getColumnValuesMap().put(columnName, columnDataValue);
+                    rowDataValueMap.put(columnName, columnDataValue);
 
                     columnIndex = columnIndex + 1;
                 }
 
-                // add row to result
+                // add value map to row, add row to result
+                dataRowBuilder.putAllColumnValues(rowDataValueMap);
                 rowMapTableBuilder.addRows(dataRowBuilder.build());
             }
         }
@@ -255,11 +257,6 @@ public class TableResponseDispatcher extends Dispatcher {
             }
             case TABLE_FORMAT_ROW_MAP -> {
                 tableResult = rowMapTableResultFromMap(columnNameList, tableValueMap);
-            }
-            case TABLE_FORMAT_ROW_LIST -> {
-                QueryServiceImpl.sendQueryTableResponseError(
-                        "TABLE_FORMAT_ROW_LIST not yet supported", this.responseObserver);
-                return;
             }
             case UNRECOGNIZED -> {
                 QueryServiceImpl.sendQueryTableResponseError(

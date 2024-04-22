@@ -80,12 +80,6 @@ public class QueryHandlerUtility {
             return new ValidationResult(true, errorMsg);
         }
 
-        // validate that output format is specified
-        if (request.getFormat() == null) {
-            final String errorMsg = "QueryTableRequest must specify format";
-            return new ValidationResult(true, errorMsg);
-        }
-
         return validateDataQueryTimeRange(request.getBeginTime(), request.getEndTime());
     }
 

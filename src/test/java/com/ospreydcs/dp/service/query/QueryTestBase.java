@@ -44,8 +44,8 @@ public class QueryTestBase {
         QueryTableRequest.TableResultFormat tableResultFormat = null;
         public List<String> pvNameList = null;
         public String pvNamePattern = null;
-        public Long startTimeSeconds = null;
-        public Long startTimeNanos = null;
+        public Long beginTimeSeconds = null;
+        public Long beginTimeNanos = null;
         public Long endTimeSeconds = null;
         public Long endTimeNanos = null;
 
@@ -53,15 +53,16 @@ public class QueryTestBase {
                 QueryTableRequest.TableResultFormat tableResultFormat,
                 List<String> pvNameList,
                 String pvNamePattern,
-                Long startTimeSeconds,
-                Long startTimeNanos,
+                Long beginTimeSeconds,
+                Long beginTimeNanos,
                 Long endTimeSeconds,
                 Long endTimeNanos) {
 
+            this.tableResultFormat = tableResultFormat;
             this.pvNameList = pvNameList;
             this.pvNamePattern = pvNamePattern;
-            this.startTimeSeconds = startTimeSeconds;
-            this.startTimeNanos = startTimeNanos;
+            this.beginTimeSeconds = beginTimeSeconds;
+            this.beginTimeNanos = beginTimeNanos;
             this.endTimeSeconds = endTimeSeconds;
             this.endTimeNanos = endTimeNanos;
         }
@@ -104,6 +105,12 @@ public class QueryTestBase {
 
         QueryTableRequest.Builder requestBuilder = QueryTableRequest.newBuilder();
 
+        // set format
+        if (params.tableResultFormat != null) {
+            requestBuilder.setFormat(params.tableResultFormat);
+        }
+
+        // set pvNameList or PvNamePattern
         if (params.pvNameList != null && !params.pvNameList.isEmpty()) {
             PvNameList pvNameList = PvNameList.newBuilder()
                     .addAllPvNames(params.pvNameList)
@@ -118,14 +125,16 @@ public class QueryTestBase {
             fail("no pvName params specified (list of pattern)");
         }
 
-        if (params.startTimeSeconds != null) {
+        // set begin time
+        if (params.beginTimeSeconds != null) {
             final Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-            beginTimeBuilder.setEpochSeconds(params.startTimeSeconds);
-            if (params.startTimeNanos != null) beginTimeBuilder.setNanoseconds(params.startTimeNanos);
+            beginTimeBuilder.setEpochSeconds(params.beginTimeSeconds);
+            if (params.beginTimeNanos != null) beginTimeBuilder.setNanoseconds(params.beginTimeNanos);
             beginTimeBuilder.build();
             requestBuilder.setBeginTime(beginTimeBuilder);
         }
 
+        // set end time
         if (params.endTimeSeconds != null) {
             final Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
             endTimeBuilder.setEpochSeconds(params.endTimeSeconds);

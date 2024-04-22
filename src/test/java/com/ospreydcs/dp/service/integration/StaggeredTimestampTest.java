@@ -111,7 +111,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
 
             final int numRowsExpected = 12 * queryNumSeconds;
 
-            sendAndVerifyQueryTable(
+            sendAndVerifyQueryTableColumn(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,

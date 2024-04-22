@@ -448,11 +448,16 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected QueryTableResponse.TableResult queryTable(
-            List<String> pvNames, long startSeconds, long startNanos, long endSeconds, long endNanos
+            QueryTableRequest.TableResultFormat format,
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos
     ) {
         final QueryTestBase.QueryTableRequestParams params =
                 new QueryTestBase.QueryTableRequestParams(
-                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
+                        format,
                         pvNames,
                         null,
                         startSeconds,
@@ -463,7 +468,7 @@ public abstract class GrpcIntegrationTestBase {
         return sendQueryTable(request);
     }
 
-    protected void sendAndVerifyQueryTable(
+    protected void sendAndVerifyQueryTableColumn(
             int numRowsExpected,
             List<String> columnNames,
             long startSeconds,
@@ -474,6 +479,7 @@ public abstract class GrpcIntegrationTestBase {
     ) {
         final QueryTableResponse.TableResult table =
                 queryTable(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
                         columnNames,
                         startSeconds,
                         startNanos,
