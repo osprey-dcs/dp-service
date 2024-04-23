@@ -29,7 +29,7 @@ public class TableResponseDispatcher extends Dispatcher {
     private final QueryTableRequest request;
 
     // constants
-    private final String TABLE_RESULT_TIMESTAMP_COLUMN_NAME = "timestamp";
+    public static final String TABLE_RESULT_TIMESTAMP_COLUMN_NAME = "timestamp";
 
     public TableResponseDispatcher(
             StreamObserver<QueryTableResponse> responseObserver,

@@ -91,5 +91,31 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryEndNanos,
                     validationMap);
         }
+
+        {
+            // test table query API with pvNameList and row-oriented result
+
+            // send table query for 5-second subset of ingested data,
+            // starting one second offset from start of ingestion data
+            final int queryNumSeconds = 5;
+            final long queryStartSeconds = startSeconds + 1;
+            final long queryStartNanos = 0;
+            final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
+            final long queryEndNanos = 0;
+            final List<String> queryColumnNames = List.of("S01-GCC01", "S02-BPM02");
+
+            // 5 buckets each with 10 rows for each PV, timestamps are aligned
+            final int numRowsExpected = 10 * 5;
+
+            sendAndVerifyQueryTablePvNameListRowResult(
+                    numRowsExpected,
+                    queryColumnNames,
+                    queryStartSeconds,
+                    queryStartNanos,
+                    queryEndSeconds,
+                    queryEndNanos,
+                    validationMap);
+        }
+
     }
 }

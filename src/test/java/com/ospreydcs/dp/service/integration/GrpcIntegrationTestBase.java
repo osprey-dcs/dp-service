@@ -24,6 +24,7 @@ import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.TableResponseDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
@@ -536,6 +537,9 @@ public abstract class GrpcIntegrationTestBase {
             List<String> pvNameList,
             Map<String, IngestionStreamInfo> validationMap
     ) {
+        // check table is correct format
+        assertTrue(tableResult.hasColumnTable());
+
         final List<Timestamp> timestampList =
                 tableResult.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
         assertEquals(numRowsExpected, timestampList.size());
@@ -607,6 +611,134 @@ public abstract class GrpcIntegrationTestBase {
 
         // validate query result contents in tableResult
         verifyQueryTableColumnResult(tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
+    }
+
+    private void verifyQueryTableRowResult(
+            QueryTableResponse.TableResult tableResult,
+            int numRowsExpected,
+            List<String> pvNameList,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        // check table is correct format
+        assertTrue(tableResult.hasRowMapTable());
+        final QueryTableResponse.RowMapTable resultRowMapTable = tableResult.getRowMapTable();
+
+        // verify result column names matches list of pv names plus timestamp column
+        final List<String> resultColumnNamesList = resultRowMapTable.getColumnNamesList();
+        assertTrue(resultColumnNamesList.contains(TableResponseDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME));
+        for (String columnName : pvNameList) {
+            assertTrue(resultColumnNamesList.contains(columnName));
+        }
+        assertEquals(pvNameList.size() + 1, resultColumnNamesList.size());
+
+        // verify correct number of data rows
+        assertEquals(numRowsExpected, resultRowMapTable.getRowsCount());
+
+        // verify data row content
+        for (QueryTableResponse.RowMapTable.DataRow resultDataRow : resultRowMapTable.getRowsList()) {
+            final Map<String, DataValue> resultRowValueMap = resultDataRow.getColumnValuesMap();
+
+            // check that map keys are present for each column
+            assertEquals(resultColumnNamesList.size(), resultRowValueMap.keySet().size());
+            for (String resultColumnName : resultColumnNamesList) {
+                assertTrue(resultRowValueMap.containsKey(resultColumnName));
+            }
+
+            // get timestamp column value for row
+            final DataValue resultRowTimestampDataValue =
+                    resultRowValueMap.get(TableResponseDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME);
+            assertTrue(resultRowTimestampDataValue.hasTimestampValue());
+            final Timestamp resultRowTimestamp = resultRowTimestampDataValue.getTimestampValue();
+
+            // verify value for each column in row
+            for (String columnName : pvNameList) {
+                final DataValue resultColumnDataValue = resultRowValueMap.get(columnName);
+                assertTrue(resultColumnDataValue.hasDoubleValue());
+                double resultColumnDoubleValue = resultColumnDataValue.getDoubleValue();
+                final TimestampMap<Double> columnValueMap = validationMap.get(columnName).valueMap;
+                final Double expectedColumnDoubleValue = columnValueMap.get(
+                        resultRowTimestamp.getEpochSeconds(), resultRowTimestamp.getNanoseconds());
+                if (expectedColumnDoubleValue != null) {
+                    assertEquals(expectedColumnDoubleValue, resultColumnDoubleValue, 0.0);
+                } else {
+                    assertEquals(0.0, resultColumnDoubleValue, 0.0);
+                }
+            }
+        }
+
+
+
+//        final List<Timestamp> timestampList =
+//                tableResult.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
+//        assertEquals(numRowsExpected, timestampList.size());
+//        assertEquals(pvNameList.size(), tableResult.getColumnTable().getDataColumnsCount());
+//        int rowIndex = 0;
+//        for (Timestamp timestamp : timestampList) {
+//            final long timestampSeconds = timestamp.getEpochSeconds();
+//            final long timestampNanos = timestamp.getNanoseconds();
+//            for (DataColumn dataColumn : tableResult.getColumnTable().getDataColumnsList()) {
+//                // get column name and value from query result
+//                String columnName = dataColumn.getName();
+//                Double columnDataValue = dataColumn.getDataValues(rowIndex).getDoubleValue();
+//
+//                // get expected value from validation map
+//                final TimestampMap<Double> columnValueMap = validationMap.get(columnName).valueMap;
+//                Double expectedColumnDataValue = columnValueMap.get(timestampSeconds, timestampNanos);
+//                if (expectedColumnDataValue != null) {
+//                    assertEquals(expectedColumnDataValue, columnDataValue, 0.0);
+//                } else {
+//                    assertEquals(0.0, columnDataValue, 0.0);
+//                }
+//            }
+//            rowIndex = rowIndex + 1;
+//        }
+    }
+
+    protected void sendAndVerifyQueryTablePvNameListRowResult(
+            int numRowsExpected,
+            List<String> pvNameList,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final QueryTableResponse.TableResult tableResult =
+                queryTable(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_ROW_MAP,
+                        pvNameList,
+                        null,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+
+        // validate query result contents in tableResult
+        verifyQueryTableRowResult(tableResult, numRowsExpected, pvNameList, validationMap);
+    }
+
+    protected void sendAndVerifyQueryTablePvNamePatternRowResult(
+            int numRowsExpected,
+            String pvNamePattern,
+            List<String> expectedPvNameMatches,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
+        final QueryTableResponse.TableResult tableResult =
+                queryTable(
+                        QueryTableRequest.TableResultFormat.TABLE_FORMAT_ROW_MAP,
+                        null,
+                        pvNamePattern,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos);
+
+        // validate query result contents in tableResult
+        verifyQueryTableRowResult(tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
