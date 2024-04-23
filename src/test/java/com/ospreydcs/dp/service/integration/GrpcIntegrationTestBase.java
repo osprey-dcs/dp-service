@@ -509,29 +509,13 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected QueryTableResponse.TableResult queryTable(
-            QueryTableRequest.TableResultFormat format,
-            List<String> pvNameList,
-            String pvNamePattern,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos
-    ) {
-        final QueryTestBase.QueryTableRequestParams params =
-                new QueryTestBase.QueryTableRequestParams(
-                        format,
-                        pvNameList,
-                        pvNamePattern,
-                        startSeconds,
-                        startNanos,
-                        endSeconds,
-                        endNanos);
+    protected QueryTableResponse.TableResult queryTable(QueryTestBase.QueryTableRequestParams params) {
         final QueryTableRequest request = QueryTestBase.buildQueryTableRequest(params);
         return sendQueryTable(request);
     }
 
     private void verifyQueryTableColumnResult(
+            QueryTestBase.QueryTableRequestParams params,
             QueryTableResponse.TableResult tableResult,
             int numRowsExpected,
             List<String> pvNameList,
@@ -548,6 +532,15 @@ public abstract class GrpcIntegrationTestBase {
         for (Timestamp timestamp : timestampList) {
             final long timestampSeconds = timestamp.getEpochSeconds();
             final long timestampNanos = timestamp.getNanoseconds();
+
+            // check that timestamp is in query time range
+            assertTrue(
+                    (timestampSeconds > params.beginTimeSeconds)
+                            || (timestampSeconds == params.beginTimeSeconds && timestampNanos >= params.beginTimeNanos));
+            assertTrue(
+                    (timestampSeconds < params.endTimeSeconds)
+                            || (timestampSeconds == params.endTimeSeconds && timestampNanos <= params.endTimeNanos));
+
             for (DataColumn dataColumn : tableResult.getColumnTable().getDataColumnsList()) {
                 // get column name and value from query result
                 String columnName = dataColumn.getName();
@@ -575,8 +568,8 @@ public abstract class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.TableResult tableResult =
-                queryTable(
+        final QueryTestBase.QueryTableRequestParams params =
+                new QueryTestBase.QueryTableRequestParams(
                         QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
                         pvNameList,
                         null,
@@ -584,9 +577,10 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
+        final QueryTableResponse.TableResult tableResult = queryTable(params);
 
         // validate query result contents in tableResult
-        verifyQueryTableColumnResult(tableResult, numRowsExpected, pvNameList, validationMap);
+        verifyQueryTableColumnResult(params, tableResult, numRowsExpected, pvNameList, validationMap);
     }
 
     protected void sendAndVerifyQueryTablePvNamePatternColumnResult(
@@ -599,8 +593,8 @@ public abstract class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.TableResult tableResult =
-                queryTable(
+        final QueryTestBase.QueryTableRequestParams params =
+                new QueryTestBase.QueryTableRequestParams(
                         QueryTableRequest.TableResultFormat.TABLE_FORMAT_COLUMN,
                         null,
                         pvNamePattern,
@@ -608,12 +602,14 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
+        final QueryTableResponse.TableResult tableResult = queryTable(params);
 
         // validate query result contents in tableResult
-        verifyQueryTableColumnResult(tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
+        verifyQueryTableColumnResult(params, tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
     private void verifyQueryTableRowResult(
+            QueryTestBase.QueryTableRequestParams params,
             QueryTableResponse.TableResult tableResult,
             int numRowsExpected,
             List<String> pvNameList,
@@ -650,6 +646,16 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(resultRowTimestampDataValue.hasTimestampValue());
             final Timestamp resultRowTimestamp = resultRowTimestampDataValue.getTimestampValue();
 
+            // check that timestamp is in query time range
+            final long resultRowSeconds = resultRowTimestamp.getEpochSeconds();
+            final long resultRowNanos = resultRowTimestamp.getNanoseconds();
+            assertTrue(
+                    (resultRowSeconds > params.beginTimeSeconds)
+                            || (resultRowSeconds == params.beginTimeSeconds && resultRowNanos >= params.beginTimeNanos));
+            assertTrue(
+                    (resultRowSeconds < params.endTimeSeconds)
+                            || (resultRowSeconds == params.endTimeSeconds && resultRowNanos <= params.endTimeNanos));
+
             // verify value for each column in row
             for (String columnName : pvNameList) {
                 final DataValue resultColumnDataValue = resultRowValueMap.get(columnName);
@@ -665,33 +671,6 @@ public abstract class GrpcIntegrationTestBase {
                 }
             }
         }
-
-
-
-//        final List<Timestamp> timestampList =
-//                tableResult.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
-//        assertEquals(numRowsExpected, timestampList.size());
-//        assertEquals(pvNameList.size(), tableResult.getColumnTable().getDataColumnsCount());
-//        int rowIndex = 0;
-//        for (Timestamp timestamp : timestampList) {
-//            final long timestampSeconds = timestamp.getEpochSeconds();
-//            final long timestampNanos = timestamp.getNanoseconds();
-//            for (DataColumn dataColumn : tableResult.getColumnTable().getDataColumnsList()) {
-//                // get column name and value from query result
-//                String columnName = dataColumn.getName();
-//                Double columnDataValue = dataColumn.getDataValues(rowIndex).getDoubleValue();
-//
-//                // get expected value from validation map
-//                final TimestampMap<Double> columnValueMap = validationMap.get(columnName).valueMap;
-//                Double expectedColumnDataValue = columnValueMap.get(timestampSeconds, timestampNanos);
-//                if (expectedColumnDataValue != null) {
-//                    assertEquals(expectedColumnDataValue, columnDataValue, 0.0);
-//                } else {
-//                    assertEquals(0.0, columnDataValue, 0.0);
-//                }
-//            }
-//            rowIndex = rowIndex + 1;
-//        }
     }
 
     protected void sendAndVerifyQueryTablePvNameListRowResult(
@@ -703,8 +682,8 @@ public abstract class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.TableResult tableResult =
-                queryTable(
+        final QueryTestBase.QueryTableRequestParams params =
+                new QueryTestBase.QueryTableRequestParams(
                         QueryTableRequest.TableResultFormat.TABLE_FORMAT_ROW_MAP,
                         pvNameList,
                         null,
@@ -712,9 +691,10 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
+        final QueryTableResponse.TableResult tableResult = queryTable(params);
 
         // validate query result contents in tableResult
-        verifyQueryTableRowResult(tableResult, numRowsExpected, pvNameList, validationMap);
+        verifyQueryTableRowResult(params, tableResult, numRowsExpected, pvNameList, validationMap);
     }
 
     protected void sendAndVerifyQueryTablePvNamePatternRowResult(
@@ -727,8 +707,8 @@ public abstract class GrpcIntegrationTestBase {
             long endNanos,
             Map<String, IngestionStreamInfo> validationMap
     ) {
-        final QueryTableResponse.TableResult tableResult =
-                queryTable(
+        final QueryTestBase.QueryTableRequestParams params =
+                new QueryTestBase.QueryTableRequestParams(
                         QueryTableRequest.TableResultFormat.TABLE_FORMAT_ROW_MAP,
                         null,
                         pvNamePattern,
@@ -736,9 +716,10 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
+        final QueryTableResponse.TableResult tableResult = queryTable(params);
 
         // validate query result contents in tableResult
-        verifyQueryTableRowResult(tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
+        verifyQueryTableRowResult(params, tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
