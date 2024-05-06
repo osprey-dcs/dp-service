@@ -1,38 +1,48 @@
-# Data Platform Overview
+# dp-service
 
 This repo is part of the Data Platform project.  The Data Platform consists of services for capturing and providing access to data captured from a particle accelerator facility.  The [data-platform repo](https://github.com/osprey-dcs/data-platform) provides a project overview and links to the various project componnents, as well as an installer for running the latest version.
 
-This repo includes Java implementations of the Data Platform services described in the [data-platform project repo](https://github.com/osprey-dcs/data-platform).
+This dp-service repo contains Java implementations of the Data Platform services, including Ingestion, Query, and Annotation Services.  The Ingestion Service provides a variety of APIs for use in capturing data to the archive with a focus on the performance required to handle the data rates in an accelerator facility.  The Query Service provides APIs for retrieving raw time-series data for use in machine learning applications, and higher-level APIs for retrieving tabular time-series data as well as for querying metadata and annotations in the archive.  The Annotation Service provides APIs for annotating the data in the archive.
 
-The service APIs are built using [gRPC](https://grpc.io/docs/what-is-grpc/introduction/) for both interface definition and message interchange.  The latest gRPC proto files for the service APIs are contained and documented in the [dp-grpc repo](https://github.com/osprey-dcs/dp-grpc).  Using gRPC, client applications can be built to interact with the Data Platform services using practically any programming language.
 
-The [dp-support repo](https://github.com/osprey-dcs/dp-support) includes a set of utilities for managing the processes comprising the Data Platform ecosystem.
+## User Documentation
 
-The [dp-web-app repo](https://github.com/osprey-dcs/dp-web-app) contains a JavaScript web application that utilizes the Data Platform Query Service to navigate the archive.
-
-# dp-service
-
-The dp-service repo includes two service implementations, an Ingestion Service and a Query Service.  The Ingestion Service provides a variety of APIs for use in capturing data to the archive with a focus on the performance required to handle the data rates in an accelerator facility.  The Query Service provides APIs for retrieving raw time-series data for use in machine learning applications, and higher-level APIs for retrieving tabular time-series data as well as for querying metadata and annotations in the archive.
-
-Additional user-oriented and developer-oriented documentation for the dp-service repo is provided below.
-
-# User Documentation
-
-## Service configuration options
-
-Options for configuring Data Platform services are desribed in more detail in [the configuration documentation](./doc/configuration.md).
-
-## Running services and applications
+### Running services and applications
 
 Notes for running the services and applications are linked [here](doc/running.md).
 
-# Developer Documentation
+### Service configuration options
 
-This section contains links to developer-oriented documentation with details about various parts of the dp-service repository.
+Options for configuring Data Platform services are desribed in more detail in [the configuration documentation](./doc/configuration.md).
 
-TODO: documentation of service framework, performance benchmark applications, and integration tests coming soon!
 
-## Ingestion service
+## Technical Details
 
-* [initial ingestion service implementation](doc/ingestion.md)
-* [refactoring of ingestion service](doc/refactor.md)
+The [Data Platform Technical Overview](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md) contains details about the Data Platform Service implementations including the following sections:
+
+### dp-service patterns and frameworks
+* [overview of key classes](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#31-dp-service-patterns-and-frameworks)
+* [gRPC server](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#311-grpc-server)
+* [service request handling framework](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#312-service-request-handling-framework)
+* [handling for bidirectional streaming API methods](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#313-handling-for-bidirectional-streaming-api-methods)
+* [MongoDB interface](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#314-mongodb-interface)
+* [configuration](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#315-configuration)
+* [performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#316-performance-benchmarking)
+  * [ingestion service performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#ingestion-service-performance-benchmarking)
+  * [query service performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#query-service-performance-benchmarking)
+* [regression testing](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#317-regression-testing)
+  * [ConfigurationManager tests](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#configurationmanager-tests)
+  * [test database utilities](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#test-database-utilities)
+  * [ingestion service tests](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#ingestion-service-tests)
+  * [query service tests](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#query-service-tests)
+  * [annotation service tests](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#annotation-service-tests)
+* [integration testing](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#318-integration-testing)
+  * [benchmark integration test](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#benchmark-integration-test)
+
+### dp-service MongoDB schema and data flow
+
+* [database schema and data flow](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#32-dp-service-mongodb-schema-and-data-flow)
+  * [buckets](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#buckets)
+  * [requestStatus](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#requeststatus)
+  * [dataSets](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#datasets)
+  * [annotations](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#annotations)
