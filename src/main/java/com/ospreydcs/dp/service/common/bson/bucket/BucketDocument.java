@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -13,8 +12,7 @@ import java.util.Map;
  *
  * NOTE: DATABASE CODE LIKE insertMany SILENTLY FAILS IF AN INSTANCE VARIABLE IS ADDED WITHOUT ACCESSOR METHODS!!!
  */
-@BsonDiscriminator(key="dataType")
-public abstract class BucketDocument<T> {
+public class BucketDocument {
     private String id;
     private String columnName;
     private Date firstTime;
@@ -26,13 +24,13 @@ public abstract class BucketDocument<T> {
     private long sampleFrequency;
     private int numSamples;
     private String dataType;
-    private List<T> columnDataList;
+    private List<DataValue> columnDataList;
     private Map<String, String> attributeMap;
     private long eventSeconds;
     private long eventNanos;
     private String eventDescription;
 
-    public abstract void addColumnDataValue(T dataValue, DataValue.Builder valueBuilder);
+//    public abstract void addColumnDataValue(T dataValue, DataValue.Builder valueBuilder);
 
     public String getId() {
         return id;
@@ -106,17 +104,17 @@ public abstract class BucketDocument<T> {
         this.dataType = dataType;
     }
 
-    public void setColumnDataList(List<T> columnDataList) {
+    public void setColumnDataList(List<DataValue> columnDataList) {
         this.columnDataList = columnDataList;
     }
 
-    public List<T> getColumnDataList() { return this.columnDataList; }
+    public List<DataValue> getColumnDataList() { return this.columnDataList; }
 
     public void initColumnDataList() {
-        this.columnDataList = new ArrayList<T>();
+        this.columnDataList = new ArrayList<>();
     }
 
-    public void addColumnData(T data) {
+    public void addColumnData(DataValue data) {
         this.columnDataList.add(data);
     }
 

@@ -142,99 +142,18 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
         // create BSON document for each column
         final List<DataColumn> columns = request.getIngestionDataFrame().getDataColumnsList();
         for (DataColumn column : columns) {
-//            final BucketDocument bucket = new BucketDocument(); // ALL NEW FIELDS MUST HAVE ACCESSOR METHODS OR CODEC SILENTLY FAILS!
             final String columnName = column.getName();
             final String documentId = columnName + "-" + firstTimestampSeconds + "-" + firstTimestampNanos;
 
-            // determine data type for column, create appropriate bucket subtype and add column data to it
-            // PS this code is ugly, but we need the switch statement to create the correct subtype and
-            // to know what method to call on datum to get the value.  The code below could be moved to other
-            // places (like utility method on bucket subtype) but in the end it would need to do the same thing.
-            BucketDocument bucket = null;
-            boolean first = true;
-            DataValue.ValueCase columnDataType = null;
-            for (DataValue datum : column.getDataValuesList()) {
+            // serialize: column.toByteString()
+            // deserialize: column.getParserForType().parseFrom(ByteString)
 
-                // use data type of first element to set expected data type for column
-                if (first) {
-                    columnDataType = datum.getValueCase();
-                } else {
-                    if (datum.getValueCase() != columnDataType) {
-                        String errorMsg = "provider: " + request.getProviderId()
-                                + " request: " + request.getClientRequestId()
-                                + " column: " + columnName
-                                + " data type mismatch: " + datum.getValueCase().name()
-                                + " expected: " + columnDataType.name();
-                        logger.debug(errorMsg);
-                        throw new DpIngestionException(errorMsg);
-                    }
-                }
+            // serialize: column.writeTo(OutputStream)
+            // deserialize: column.getParserForType().parseFrom(InputStream)
 
-                boolean unhandledDataType = false;
-                switch (datum.getValueCase()) {
-
-                    case STRINGVALUE -> {
-                        if (first) {
-                            bucket = new StringBucketDocument();
-                            bucket.initColumnDataList();
-                        }
-//                        ((StringBucketDocument) bucket).addColumnData(datum.getStringValue());
-                        bucket.addColumnData(datum.getStringValue());
-                    }
-                    case DOUBLEVALUE -> {
-                        if (first) {
-                            bucket = new DoubleBucketDocument();
-                            bucket.initColumnDataList();
-                        }
-                        bucket.addColumnData(datum.getDoubleValue());
-                    }
-                    case LONGVALUE -> {
-                        if (first) {
-                            bucket = new LongBucketDocument();
-                            bucket.initColumnDataList();
-                        }
-                        bucket.addColumnData(datum.getLongValue());
-                    }
-                    case BOOLEANVALUE -> {
-                        if (first) {
-                            bucket = new BooleanBucketDocument();
-                            bucket.initColumnDataList();
-                        }
-                        bucket.addColumnData(datum.getBooleanValue());
-                    }
-                    case ARRAYVALUE -> {
-                        unhandledDataType = true;
-                    }
-                    case BYTEARRAYVALUE -> {
-                        unhandledDataType = true;
-                    }
-                    case IMAGEVALUE -> {
-                        unhandledDataType = true;
-                    }
-                    case STRUCTUREVALUE -> {
-                        unhandledDataType = true;
-                    }
-                    case VALUE_NOT_SET -> {
-                        String errorMsg = "provider: " + request.getProviderId()
-                                + " request: " + request.getClientRequestId()
-                                + " column: " + columnName
-                                + " data type not specified (DataValue.valueOneof)";
-                        logger.debug(errorMsg);
-                        throw new DpIngestionException(errorMsg);
-                    }
-                }
-                if (unhandledDataType) {
-                    String errorMsg = "provider: " + request.getProviderId()
-                            + " request: " + request.getClientRequestId()
-                            + " column: " + columnName
-                            + " unhandled data type: " + columnDataType.name();
-                    logger.debug(errorMsg);
-                    throw new DpIngestionException(errorMsg);
-                }
-
-                first = false;
-            }
-
+            BucketDocument bucket = new BucketDocument();
+            bucket.initColumnDataList();
+            bucket.setColumnDataList(column.getDataValuesList());
             bucket.setId(documentId);
             bucket.setColumnName(columnName);
             bucket.setFirstTime(firstTimestampDate);
