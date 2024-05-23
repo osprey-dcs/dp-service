@@ -189,10 +189,23 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final String ownerId = "craigmcc";
             final String emptyDataSetId = "";
-            final String comment = "negative test case";
+            final String comment = "negative test case - unspecified dataset id";
             AnnotationTestBase.CreateCommentAnnotationParams params =
                     new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, emptyDataSetId, comment);
             final String expectedRejectMessage = "CreateAnnotationRequest must specify dataSetId";
+            sendAndVerifyCreateCommentAnnotation(
+                    params, true, expectedRejectMessage);
+        }
+
+        {
+            // createAnnotation() negative test - request should be rejected because specified dataset doesn't exist
+
+            final String ownerId = "craigmcc";
+            final String invalidDataSetId = "junk12345";
+            final String comment = "negative test case - invalid dataset id";
+            AnnotationTestBase.CreateCommentAnnotationParams params =
+                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, invalidDataSetId, comment);
+            final String expectedRejectMessage = "no DataSetDocument found with id";
             sendAndVerifyCreateCommentAnnotation(
                     params, true, expectedRejectMessage);
         }

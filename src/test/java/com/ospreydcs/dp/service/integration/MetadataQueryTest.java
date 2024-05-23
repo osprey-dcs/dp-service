@@ -49,7 +49,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // send metadata query for column patter matching all "S01" devices
+            // send metadata query for column pattern matching all "S01" devices
             final String columnNamePattern = "S01";
             final List<String> expectedColumnNameMatches =
                     List.of("S01-GCC01", "S01-GCC02", "S01-GCC03", "S01-BPM01", "S01-BPM02", "S01-BPM03");
@@ -62,7 +62,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // send column info query for column patter matching all "GCC02" devices
+            // send metadata query for column pattern matching all "GCC02" devices
             final String columnNamePattern = "GCC02";
             final List<String> expectedColumnNameMatches = new ArrayList<>();
             for (int i = 1 ; i <= 10 ; ++i) {
@@ -78,7 +78,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // test rejected column info query
+            // test rejected metadata query due to blank PV name pattern
             final String columnNamePattern = ""; // send a blank string for name pattern
             final List<String> expectedColumnNameMatches = new ArrayList<>();
             sendAndVerifyQueryMetadata(

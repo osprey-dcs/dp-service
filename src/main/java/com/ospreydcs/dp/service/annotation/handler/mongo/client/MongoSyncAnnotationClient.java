@@ -34,8 +34,16 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has a dataSetId, it already exists in the database.
         List<DataSetDocument> matchingDocuments = new ArrayList<>();
-        mongoCollectionDataSets.find(
-                eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(dataSetId))).into(matchingDocuments);
+
+        // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
+        try {
+            mongoCollectionDataSets.find(
+                    eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(dataSetId))).into(matchingDocuments);
+        } catch (Exception ex) {
+            logger.error("findDataSet: mongo exception in find(): {}", ex.getMessage());
+            return null;
+        }
+
         if (matchingDocuments.size() > 0) {
             return matchingDocuments.get(0);
         } else {
