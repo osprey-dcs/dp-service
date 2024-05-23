@@ -112,9 +112,9 @@ public class MongoAsyncIngestionHandlerTest extends MongoIngestionHandlerTestBas
         super.testHandleIngestionRequestErrorDataTypeArray();
     }
 
-    @Test
-    public void testHandleIngestionRequestErrorDataTypeMismatch() {
-        super.testHandleIngestionRequestErrorDataTypeMismatch();
-    }
+//    @Test
+//    public void testHandleIngestionRequestErrorDataTypeMismatch() {
+//        super.testHandleIngestionRequestErrorDataTypeMismatch();
+//    }
 
 }

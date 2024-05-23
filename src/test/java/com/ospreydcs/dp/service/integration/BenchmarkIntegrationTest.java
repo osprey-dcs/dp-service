@@ -189,8 +189,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertEquals(
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 999000000L)),
                             bucketDocument.getLastTime());
-                    // TODO: why does getDataType() return null? can't find any details about it
-                    //  assertEquals("DOUBLE", bucketDocument.getDataType());
                     assertEquals("calibration test", bucketDocument.getEventDescription());
                     assertEquals(params.startSeconds, bucketDocument.getEventSeconds());
                     assertEquals(0, bucketDocument.getEventNanos());
@@ -198,9 +196,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
                     assertEquals(params.numRows, bucketDocument.readDataColumnContent().getDataValuesList().size());
                     // verify each value
+                    DataColumn dataColumn = bucketDocument.readDataColumnContent();
                     for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
                         final double expectedValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
-// TODO                        assertEquals(expectedValue, bucketDocument.getColumnDataList().get(valIndex));
+                        assertEquals(expectedValue, dataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
                     }
                     dbBucketCount.incrementAndGet();
                 }

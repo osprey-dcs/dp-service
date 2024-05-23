@@ -144,14 +144,44 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                     bucket.getLastSeconds() == lastSeconds);
             assertTrue("unexpected value for lastNanos: " + bucket.getLastNanos() + ": " + lastNanos,
                     bucket.getLastNanos() == lastNanos);
-// TODO            assertTrue("columnDataList mismatch",
-//                    bucket.getColumnDataList().equals(columnDataList));
-//            // compare column data values to expected
-//            DataColumn dataColumn = bucket.readDataColumnContent();
-//            int dataValueIndex = 0;
-//            for (Object columnValue : columnDataList) {
-//                assertEquals((Double) columnValue, dataColumn.getDataValues(dataValueIndex).getDoubleValue(), 0.0);
-//            }
+
+            // compare column data values to expected
+            DataColumn dataColumn = bucket.readDataColumnContent();
+            int dataValueIndex = 0;
+            for (Object columnValue : columnDataList) {
+                if (columnValue instanceof Double) {
+                    assertEquals((Double) columnValue, dataColumn.getDataValues(dataValueIndex).getDoubleValue(), 0.0);
+                } else if (columnValue instanceof Long) {
+                    assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getLongValue());
+                } else if (columnValue instanceof String) {
+                    assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getStringValue());
+                } else if (columnValue instanceof Boolean) {
+                    assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getBooleanValue());
+                } else if (columnValue instanceof List) {
+                    int rowIndex = 0;
+                    List listDataValue = (List) columnValue;
+                    Object firstListValue = listDataValue.get(rowIndex);
+                    if (firstListValue instanceof Double) {
+                        // compare array of values to expected
+                        for (Double doubleValue : (List<Double>) listDataValue) {
+                            assertEquals(
+                                    (Double) listDataValue.get(rowIndex),
+                                    dataColumn
+                                            .getDataValues(dataValueIndex)
+                                            .getArrayValue()
+                                            .getDataValues(rowIndex)
+                                            .getDoubleValue(),
+                                    0.0);
+                            rowIndex = rowIndex + 1;
+                        }
+                    }
+                } else {
+                    fail("unexpected data value type: " + columnValue.getClass().getCanonicalName());
+                }
+
+                dataValueIndex = dataValueIndex + 1;
+            }
+
             assertTrue("unexpected value for sampleFrequency: " + bucket.getSampleFrequency(),
                     bucket.getSampleFrequency() == sampleIntervalNanos);
             assertTrue("unexpected value for numSamples: " + bucket.getNumSamples(),
@@ -470,12 +500,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
         HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
-        assertTrue("error flag is not set", result.isError);
-        verifyFailedRequest(
-                params,
-                BsonConstants.BSON_VALUE_STATUS_ERROR,
-                "unhandled data type: ARRAYVALUE",
-                true);
+        assertFalse(result.isError);
+        verifySuccessfulRequest(params);
     }
 
     /**
