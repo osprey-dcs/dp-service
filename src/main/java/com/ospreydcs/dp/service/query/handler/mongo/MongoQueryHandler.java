@@ -98,11 +98,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
 
         // add data values
-        final DataColumn.Builder columnBuilder = DataColumn.newBuilder();
-        columnBuilder.setName(document.getColumnName());
-        columnBuilder.addAllDataValues(document.getColumnDataList());
-        columnBuilder.build();
-        bucketBuilder.setDataColumn(columnBuilder);
+        DataColumn dataColumn = document.readDataColumnContent();
+        bucketBuilder.setDataColumn(dataColumn);
 
         // add attributes
         if (document.getAttributeMap() != null) {

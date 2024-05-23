@@ -417,13 +417,17 @@ public abstract class GrpcIntegrationTestBase {
                             Date.from(Instant.ofEpochSecond(
                                     requestBucketInfo.endSeconds, requestBucketInfo.endNanos)),
                             bucketDocument.getLastTime());
-                    assertEquals(requestBucketInfo.numValues, bucketDocument.getColumnDataList().size());
+                    assertEquals(requestBucketInfo.numValues, bucketDocument.readDataColumnContent().getDataValuesList().size());
                     // verify each value
+                    DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
                     for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
                         Object expectedValue = requestBucketInfo.dataValues.get(valIndex);
                         assertTrue(expectedValue instanceof Double);
                         final double expectedValueDouble = (Double) expectedValue;
-                        assertEquals(expectedValueDouble, bucketDocument.getColumnDataList().get(valIndex));
+                        assertEquals(
+                                expectedValueDouble,
+                                bucketDataColumn.getDataValues(valIndex).getDoubleValue(),
+                                0.0);
                     }
                 }
             }

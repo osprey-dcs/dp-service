@@ -1,10 +1,10 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,13 +24,11 @@ public class BucketDocument {
     private long sampleFrequency;
     private int numSamples;
     private String dataType;
-    private List<DataValue> columnDataList;
+    private byte[] dataColumnContent = null;
     private Map<String, String> attributeMap;
     private long eventSeconds;
     private long eventNanos;
     private String eventDescription;
-
-//    public abstract void addColumnDataValue(T dataValue, DataValue.Builder valueBuilder);
 
     public String getId() {
         return id;
@@ -104,18 +102,28 @@ public class BucketDocument {
         this.dataType = dataType;
     }
 
-    public void setColumnDataList(List<DataValue> columnDataList) {
-        this.columnDataList = columnDataList;
+    public byte[] getDataColumnContent() {
+        return this.dataColumnContent;
     }
 
-    public List<DataValue> getColumnDataList() { return this.columnDataList; }
-
-    public void initColumnDataList() {
-        this.columnDataList = new ArrayList<>();
+    public void setDataColumnContent(byte[] content){
+        this.dataColumnContent = content;
     }
 
-    public void addColumnData(DataValue data) {
-        this.columnDataList.add(data);
+    public void writeDataColumnContent(DataColumn dataColumn) {
+        this.dataColumnContent = dataColumn.toByteArray();
+    }
+
+    public DataColumn readDataColumnContent() {
+        if (dataColumnContent == null) {
+            return null;
+        } else {
+            try {
+                return DataColumn.parseFrom(dataColumnContent);
+            } catch (InvalidProtocolBufferException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public long getSampleFrequency() {

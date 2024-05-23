@@ -7,7 +7,6 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -46,7 +45,7 @@ public class TableResponseDispatcher extends Dispatcher {
         long second = bucket.getFirstSeconds();
         long nano = bucket.getFirstNanos();
         final long delta = bucket.getSampleFrequency();
-        for (DataValue value : bucket.getColumnDataList()) {
+        for (DataValue value : bucket.readDataColumnContent().getDataValuesList()) {
 
             // generate DataValue object from column data value
             dataValueSize = dataValueSize + value.getSerializedSize();

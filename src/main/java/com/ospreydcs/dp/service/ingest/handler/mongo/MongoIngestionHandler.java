@@ -7,7 +7,6 @@ import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
@@ -152,8 +151,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             // deserialize: column.getParserForType().parseFrom(InputStream)
 
             BucketDocument bucket = new BucketDocument();
-            bucket.initColumnDataList();
-            bucket.setColumnDataList(column.getDataValuesList());
+            bucket.writeDataColumnContent(column);
             bucket.setId(documentId);
             bucket.setColumnName(columnName);
             bucket.setFirstTime(firstTimestampDate);
