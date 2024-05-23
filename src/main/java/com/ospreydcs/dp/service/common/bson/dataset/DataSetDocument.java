@@ -10,7 +10,16 @@ import java.util.*;
 public class DataSetDocument {
 
     // instance variables
+    private String description;
     private List<DocumentDataBlock> dataBlocks;
+
+    public String getDescription() {
+        return this.description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
 
     public List<DocumentDataBlock> getDataBlocks() {
         return dataBlocks;
@@ -27,6 +36,7 @@ public class DataSetDocument {
     }
 
     public void applyRequest(CreateDataSetRequest request) {
+
         final List<DocumentDataBlock> dataBlocks = new ArrayList<>();
         for (DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
             final Timestamp blockBeginTime =  dataBlock.getBeginTime();
@@ -45,11 +55,20 @@ public class DataSetDocument {
             dataBlocks.add(documentBlock);
         }
         this.setDataBlocks(dataBlocks);
+
+        this.setDescription(request.getDataSet().getDescription());
     }
 
     public List<String> diffRequest(CreateDataSetRequest request) {
 
         final List<String> diffs = new ArrayList<>();
+
+        // diff description
+        if (! Objects.equals(request.getDataSet().getDescription(), this.getDescription())) {
+            final String msg =
+                    "description: " + request.getDataSet().getDescription() + " mismatch: " + this.getDescription();
+            diffs.add(msg);
+        }
 
         // diff DataSet
         if (request.getDataSet().getDataBlocksList().size() != getDataBlocks().size()) {

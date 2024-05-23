@@ -32,8 +32,10 @@ public class AnnotationTestBase {
     }
 
     public static class AnnotationDataSet {
+        public final String description;
         public final List<AnnotationDataBlock> dataBlocks;
-        public AnnotationDataSet(List<AnnotationDataBlock> dataBlocks) {
+        public AnnotationDataSet(String description, List<AnnotationDataBlock> dataBlocks) {
+            this.description = description;
             this.dataBlocks = dataBlocks;
         }
     }
@@ -360,6 +362,8 @@ public class AnnotationTestBase {
 
             dataSetBuilder.addDataBlocks(dataBlockBuilder);
         }
+
+        dataSetBuilder.setDescription(params.dataSet.description);
 
         dataSetBuilder.build();
 

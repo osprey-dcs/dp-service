@@ -13,10 +13,16 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateDataSet(DataSet dataSet) {
 
+        // DataSet must include description
+        if (dataSet.getDescription() == null || dataSet.getDescription().isBlank()) {
+            final String errorMsg = "DataSet description must be specified";
+            return new ValidationResult(true, errorMsg);
+        }
+
         // DataSet must contain one or more DataBlocks
         final List<DataBlock> requestDataBlocks = dataSet.getDataBlocksList();
         if (requestDataBlocks.isEmpty()) {
-            final String errorMsg = "DataSet must not be empty";
+            final String errorMsg = "DataSet must include one or more data blocks";
             return new ValidationResult(true, errorMsg);
         }
 

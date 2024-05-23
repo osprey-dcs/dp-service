@@ -999,7 +999,7 @@ public abstract class GrpcIntegrationTestBase {
         assertNotNull(dataSetDocument);
         final List<String> requestDiffs = dataSetDocument.diffRequest(request);
         assertNotNull(requestDiffs);
-        assertTrue(requestDiffs.isEmpty());
+        assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
         this.dataSetParamsMap.put(dataSetId, params);
 
