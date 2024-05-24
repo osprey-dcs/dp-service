@@ -22,6 +22,7 @@ public class BsonConstants {
     public static final String BSON_KEY_REQ_STATUS_REQUEST_ID = "requestId";
     public static final String BSON_KEY_REQ_STATUS_TIME = "updateTime";
     public static final String BSON_KEY_DATA_SET_ID = "_id";
+    public static final String BSON_KEY_DATA_SET_OWNER_ID = "ownerId";
     public static final String BSON_KEY_DATA_SET_DESCRIPTION = "description";
     public static final String BSON_KEY_ANNOTATION_TYPE = "type";
     public static final String BSON_KEY_ANNOTATION_ID = "_id";

@@ -8,12 +8,11 @@ import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class AnnotationsResponseDispatcher extends Dispatcher {
+public class QueryAnnotationsResponseDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -23,7 +22,7 @@ public class AnnotationsResponseDispatcher extends Dispatcher {
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
     private final MongoAnnotationClientInterface mongoClient;
 
-    public AnnotationsResponseDispatcher(
+    public QueryAnnotationsResponseDispatcher(
             StreamObserver<QueryAnnotationsResponse> responseObserver,
             QueryAnnotationsRequest request,
             MongoAnnotationClientInterface mongoClient

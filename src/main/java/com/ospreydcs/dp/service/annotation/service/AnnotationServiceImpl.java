@@ -142,6 +142,131 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         handler.handleCreateDataSetRequest(request, responseObserver);
     }
 
+    private static QueryDataSetsResponse queryDataSetsResponseExceptionalResult(
+            String msg,
+            ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryDataSetsResponse response = QueryDataSetsResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryDataSetsResponse queryDataSetsResponseReject(String msg) {
+        return queryDataSetsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryDataSetsResponse queryDataSetsResponseError(String msg) {
+        return queryDataSetsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryDataSetsResponse queryDataSetsResponseEmpty() {
+        return queryDataSetsResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryDataSetsResponse queryDataSetsResponse(
+            QueryDataSetsResponse.DataSetsResult dataSetsResult
+    ) {
+        return QueryDataSetsResponse.newBuilder()
+                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setDataSetsResult(dataSetsResult)
+                .build();
+    }
+
+    public static void sendQueryDataSetsResponseReject(
+            String msg, StreamObserver<QueryDataSetsResponse> responseObserver) {
+
+        final QueryDataSetsResponse response = queryDataSetsResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryDataSetsResponseError(
+            String msg, StreamObserver<QueryDataSetsResponse> responseObserver
+    ) {
+        final QueryDataSetsResponse response = queryDataSetsResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryDataSetsResponseEmpty(StreamObserver<QueryDataSetsResponse> responseObserver) {
+        final QueryDataSetsResponse response = queryDataSetsResponseEmpty();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryDataSetsResponse(
+            QueryDataSetsResponse.DataSetsResult dataSetsResult,
+            StreamObserver<QueryDataSetsResponse> responseObserver
+    ) {
+        final QueryDataSetsResponse response  = queryDataSetsResponse(dataSetsResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryDataSets(
+            QueryDataSetsRequest request,
+            StreamObserver<QueryDataSetsResponse> responseObserver
+    ) {
+        logger.info("id: {} queryDataSets request received", responseObserver.hashCode());
+
+        // check that request contains non-empty list of criteria
+        final List<QueryDataSetsRequest.QueryDataSetsCriterion> criterionList = request.getCriteriaList();
+        if (criterionList.size() == 0) {
+            final String errorMsg = "QueryDataSetsRequest.criteria list must not be empty";
+            sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+        }
+
+        // validate query criteria
+        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : criterionList) {
+
+            switch (criterion.getCriterionCase()) {
+
+                case OWNERCRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion
+                            = criterion.getOwnerCriterion();
+                    if (ownerCriterion.getOwnerId().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.OwnerCriterion ownerId must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case DESCRIPTIONCRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion descriptionCriterion
+                            = criterion.getDescriptionCriterion();
+                    if (descriptionCriterion.getDescriptionText().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.DescriptionCriterion descriptionText must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case CRITERION_NOT_SET -> {
+                    final String errorMsg =
+                            "QueryDataSetsRequest.criteria criterion case not set";
+                    sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                    return;
+                }
+            }
+        }
+
+        handler.handleQueryDataSets(request, responseObserver);
+    }
+
     private static CreateAnnotationResponse createAnnotationResponseReject(String msg) {
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()

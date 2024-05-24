@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.common.mongo;
 import com.mongodb.client.model.Indexes;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
-import com.ospreydcs.dp.service.common.bson.dataset.DocumentDataBlock;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
@@ -87,7 +87,7 @@ public abstract class MongoClientBase {
                 AnnotationDocument.class,
                 CommentAnnotationDocument.class,
                 DataSetDocument.class,
-                DocumentDataBlock.class
+                DataBlockDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();

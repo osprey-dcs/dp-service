@@ -5,9 +5,9 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -70,6 +70,76 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         return new MongoInsertOneResult(isError, errorMsg, result);
 
+    }
+
+    @Override
+    public MongoCursor<DataSetDocument> executeQueryDataSets(QueryDataSetsRequest request) {
+
+        // create query filter from request search criteria
+        final List<Bson> globalFilterList = new ArrayList<>();
+        final List<Bson> criteriaFilterList = new ArrayList<>();
+
+        final List<QueryDataSetsRequest.QueryDataSetsCriterion> criterionList = request.getCriteriaList();
+        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : criterionList) {
+            switch (criterion.getCriterionCase()) {
+
+                case OWNERCRITERION -> {
+                    // update ownerFilter from OwnerCriterion
+                    final String ownerId = criterion.getOwnerCriterion().getOwnerId();
+                    if (! ownerId.isBlank()) {
+                        Bson ownerFilter = Filters.eq(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID, ownerId);
+                        globalFilterList.add(ownerFilter);
+                    }
+                }
+
+                case DESCRIPTIONCRITERION -> {
+                    final String descriptionText = criterion.getDescriptionCriterion().getDescriptionText();
+                    if (! descriptionText.isBlank()) {
+                        final Bson descriptionFilter = Filters.text(descriptionText);
+                        criteriaFilterList.add(descriptionFilter);
+                    }
+                }
+
+                case CRITERION_NOT_SET -> {
+                    // shouldn't happen since validation checks for this, but...
+                    logger.error("executeQueryDataSets unexpected error criterion case not set");
+                }
+            }
+        }
+
+        if (globalFilterList.isEmpty() && criteriaFilterList.isEmpty()) {
+            // shouldn't happen since validation checks for this, but...
+            logger.debug("no search criteria specified in QueryDataSetsRequest filter");
+            return null;
+        }
+
+        // create global filter to be combined with and operator (default matches all Annotations)
+        Bson globalFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
+        if (globalFilterList.size() > 0) {
+            globalFilter = and(globalFilterList);
+        }
+
+        // create criteria filter to be combined with or operator (default matches all Annotations)
+        Bson criteriaFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
+        if (criteriaFilterList.size() > 0) {
+            criteriaFilter = or(criteriaFilterList);
+        }
+
+        // combine global filter with criteria filter using and operator
+        final Bson queryFilter = and(globalFilter, criteriaFilter);
+
+        logger.debug("executing queryDataSets filter: " + queryFilter.toString());
+
+        final MongoCursor<DataSetDocument> resultCursor = mongoCollectionDataSets
+                .find(queryFilter)
+                .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID))
+                .cursor();
+
+        if (resultCursor == null) {
+            logger.error("executeQueryDataSets received null cursor from mongodb.find");
+        }
+
+        return resultCursor;
     }
 
     @Override

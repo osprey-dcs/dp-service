@@ -14,6 +14,8 @@ public interface AnnotationHandlerInterface {
             CreateDataSetRequest request,
             StreamObserver<CreateDataSetResponse> responseObserver);
 
+    void handleQueryDataSets(QueryDataSetsRequest request, StreamObserver<QueryDataSetsResponse> responseObserver);
+
     void handleCreateCommentAnnotationRequest(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver);

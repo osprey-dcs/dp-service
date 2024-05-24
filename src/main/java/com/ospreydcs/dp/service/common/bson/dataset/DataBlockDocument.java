@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class DocumentDataBlock {
+public class DataBlockDocument {
 
     private long beginTimeSeconds;
     private long beginTimeNanos;
@@ -13,9 +13,9 @@ public class DocumentDataBlock {
     private long endTimeNanos;
     Set<String> pvNames;
 
-    public DocumentDataBlock() {}
+    public DataBlockDocument() {}
 
-    public DocumentDataBlock(
+    public DataBlockDocument(
             long beginTimeSeconds, long beginTimeNanos, long endTimeSeconds, long endTimeNanos, List<String> pvNames
     ) {
         this.beginTimeSeconds = beginTimeSeconds;

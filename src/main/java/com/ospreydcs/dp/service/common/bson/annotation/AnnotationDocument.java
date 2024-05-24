@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.common.bson.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
-import com.ospreydcs.dp.service.common.bson.dataset.DocumentDataBlock;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 import org.bson.types.ObjectId;
@@ -104,20 +104,20 @@ public abstract class AnnotationDocument {
         // add dataset content to response object
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =
                 com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
-        for (DocumentDataBlock documentDataBlock : dataSetDocument.getDataBlocks()) {
+        for (DataBlockDocument dataBlockDocument : dataSetDocument.getDataBlocks()) {
             Timestamp blockBeginTime = Timestamp.newBuilder()
-                    .setEpochSeconds(documentDataBlock.getBeginTimeSeconds())
-                    .setNanoseconds(documentDataBlock.getBeginTimeNanos())
+                    .setEpochSeconds(dataBlockDocument.getBeginTimeSeconds())
+                    .setNanoseconds(dataBlockDocument.getBeginTimeNanos())
                     .build();
             Timestamp blockEndTime = Timestamp.newBuilder()
-                    .setEpochSeconds(documentDataBlock.getEndTimeSeconds())
-                    .setNanoseconds(documentDataBlock.getEndTimeNanos())
+                    .setEpochSeconds(dataBlockDocument.getEndTimeSeconds())
+                    .setNanoseconds(dataBlockDocument.getEndTimeNanos())
                     .build();
             com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
                     com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
                             .setBeginTime(blockBeginTime)
                             .setEndTime(blockEndTime)
-                            .addAllPvNames(documentDataBlock.getPvNames())
+                            .addAllPvNames(dataBlockDocument.getPvNames())
                             .build();
             dataSetBuilder.addDataBlocks(responseBlock);
         }

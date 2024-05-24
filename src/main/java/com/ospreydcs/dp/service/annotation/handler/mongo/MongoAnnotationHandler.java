@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateCommentAnnotationJob;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateDataSetJob;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.QueryDataSetsJob;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
@@ -87,6 +88,24 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 this);
 
         logger.debug("adding CreateDataSetJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQueryDataSets(
+            QueryDataSetsRequest request,
+            StreamObserver<QueryDataSetsResponse> responseObserver
+    ) {
+        final QueryDataSetsJob job =
+                new QueryDataSetsJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding queryDataSets job id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
