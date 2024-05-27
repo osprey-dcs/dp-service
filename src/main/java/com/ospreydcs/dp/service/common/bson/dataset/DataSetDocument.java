@@ -73,6 +73,7 @@ public class DataSetDocument {
         }
         this.setDataBlocks(dataBlocks);
 
+        this.setOwnerId(request.getDataSet().getOwnerId());
         this.setDescription(request.getDataSet().getDescription());
     }
 
@@ -148,6 +149,7 @@ public class DataSetDocument {
         // add base dataset fields to response object
         dataSetBuilder.setDataSetId(this.getId().toString());
         dataSetBuilder.setOwnerId(this.getOwnerId());
+        dataSetBuilder.setDescription(this.getDescription());
 
         // add dataset content to response object
         for (DataBlockDocument dataBlockDocument : dataSetDocument.getDataBlocks()) {

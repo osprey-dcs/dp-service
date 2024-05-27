@@ -32,9 +32,11 @@ public class AnnotationTestBase {
     }
 
     public static class AnnotationDataSet {
+        public final String ownerId;
         public final String description;
         public final List<AnnotationDataBlock> dataBlocks;
-        public AnnotationDataSet(String description, List<AnnotationDataBlock> dataBlocks) {
+        public AnnotationDataSet(String ownerId, String description, List<AnnotationDataBlock> dataBlocks) {
+            this.ownerId = ownerId;
             this.description = description;
             this.dataBlocks = dataBlocks;
         }
@@ -132,6 +134,95 @@ public class AnnotationTestBase {
 
                 } else {
                     dataSetIdList.add(result.getDataSetId());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static class QueryDataSetsResponseObserver implements StreamObserver<QueryDataSetsResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<DataSet> dataSetsList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public List<DataSet> getDataSetsList() {
+            return dataSetsList;
+        }
+
+        @Override
+        public void onNext(QueryDataSetsResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasDataSetsResult());
+                List<DataSet> responseDataSetsList =
+                        response.getDataSetsResult().getDataSetsList();
+
+                // flag error if already received a response
+                if (!dataSetsList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    dataSetsList.addAll(responseDataSetsList);
                     finishLatch.countDown();
                 }
             }).start();
@@ -364,11 +455,43 @@ public class AnnotationTestBase {
         }
 
         dataSetBuilder.setDescription(params.dataSet.description);
+        dataSetBuilder.setOwnerId(params.dataSet.ownerId);
 
         dataSetBuilder.build();
 
         CreateDataSetRequest.Builder requestBuilder = CreateDataSetRequest.newBuilder();
         requestBuilder.setDataSet(dataSetBuilder);
+
+        return requestBuilder.build();
+    }
+
+    public static QueryDataSetsRequest buildQueryDataSetsRequestOwnerDescription(
+            String ownerId, 
+            String descriptionText
+    ) {
+        QueryDataSetsRequest.Builder requestBuilder = QueryDataSetsRequest.newBuilder();
+
+        // add owner criteria
+        QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion =
+                QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion.newBuilder()
+                        .setOwnerId(ownerId)
+                        .build();
+        QueryDataSetsRequest.QueryDataSetsCriterion ownerQueryDataSetsCriterion =
+                QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                        .setOwnerCriterion(ownerCriterion)
+                        .build();
+        requestBuilder.addCriteria(ownerQueryDataSetsCriterion);
+
+        // add description criteria
+        QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion descriptionCriterion =
+                QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion.newBuilder()
+                        .setDescriptionText(descriptionText)
+                        .build();
+        QueryDataSetsRequest.QueryDataSetsCriterion descriptionQueryDataSetsCriterion =
+                QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                        .setDescriptionCriterion(descriptionCriterion)
+                        .build();
+        requestBuilder.addCriteria(descriptionQueryDataSetsCriterion);
 
         return requestBuilder.build();
     }

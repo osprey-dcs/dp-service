@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
@@ -108,9 +109,10 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     startSeconds, startNanos, startSeconds+1, 0, pvNamesValid);
             dataBlocks.add(dataBlockValid);
 
+            final String ownerId = "craigmcc";
             final String unspecifiedDescription = "";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(unspecifiedDescription, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(ownerId, unspecifiedDescription, dataBlocks);
 
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
@@ -145,9 +147,10 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     startSeconds, startNanos, startSeconds+1, 0, pvNamesMixed);
             dataBlocks.add(dataBlockMixed);
 
+            final String ownerId = "craigmcc";
             final String description = "negative test, PVs don't exist in archive";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(description, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(ownerId, description, dataBlocks);
 
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
@@ -192,10 +195,12 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                 secondHalfDataBlocks.add(secondHalfDataBlock);
             }
 
+            final String ownerId = "craigmcc";
+
             // create data set with first half-second blocks
             final String firstHalfDescription = "first half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet firstHalfDataSet = 
-                    new AnnotationTestBase.AnnotationDataSet(firstHalfDescription, firstHalfDataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(ownerId, firstHalfDescription, firstHalfDataBlocks);
             firstHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
             firstHalfDataSetId = sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
@@ -204,11 +209,44 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             // create data set with second half-second blocks
             final String secondHalfDescription = "second half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
-                    new AnnotationTestBase.AnnotationDataSet(secondHalfDescription, secondHalfDataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(ownerId, secondHalfDescription, secondHalfDataBlocks);
             secondHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
             secondHalfDataSetId = sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
+        }
+
+        {
+            // queryDataSets() negative test - rejected because descriptionText is empty
+
+            final String ownerId = "craigmcc";
+            final String blankDescriptionText = "";
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "QueryDataSetsRequest.criteria.DescriptionCriterion descriptionText must be specified";
+            sendAndVerifyQueryDataSetsOwnerDescription(
+                    ownerId, blankDescriptionText, expectReject, expectedRejectMessage, new ArrayList<>());
+        }
+
+        {
+            /*
+             * queryDataSets() positive test
+             *
+             * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
+             * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
+             * interval, and 5 annotations for the second half second of that interval.
+             *
+             * The queryAnnotations() test will retrieve annotations for one of the owners for the first half data set,
+             * and confirm that only the appropriate 5 annotations are retrieved.
+             */
+
+            final String ownerId = "craigmcc";
+            final String descriptionText = "first";
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(firstHalfDataSetParams);
+            sendAndVerifyQueryDataSetsOwnerDescription(
+                    ownerId, descriptionText, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
         {

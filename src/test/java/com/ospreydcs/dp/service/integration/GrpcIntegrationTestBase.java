@@ -70,8 +70,9 @@ public abstract class GrpcIntegrationTestBase {
     protected static ManagedChannel annotationChannel;
 
     // validation instance variables
-    protected static Map<String, AnnotationTestBase.CreateDataSetParams> dataSetParamsMap = new TreeMap<>();
-    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> requestParamsMap = new HashMap<>();
+    protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
+    protected static Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
+    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap = new HashMap<>();
 
     // constants
     private static final int INGESTION_PROVIDER_ID = 1;
@@ -1001,9 +1002,101 @@ public abstract class GrpcIntegrationTestBase {
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
-        this.dataSetParamsMap.put(dataSetId, params);
+        this.createDataSetIdParamsMap.put(dataSetId, params);
+        this.createDataSetParamsIdMap.put(params, dataSetId);
 
         return dataSetId;
+    }
+
+    protected List<DataSet> sendQueryDataSets(
+            QueryDataSetsRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(annotationChannel);
+
+        final AnnotationTestBase.QueryDataSetsResponseObserver responseObserver =
+                new AnnotationTestBase.QueryDataSetsResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryDataSets(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getDataSetsList();
+    }
+
+    protected List<DataSet> sendAndVerifyQueryDataSetsOwnerDescription(
+            String ownerId,
+            String descriptionText,
+            boolean expectReject,
+            String expectedRejectMessage,
+            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResult
+    ) {
+        final QueryDataSetsRequest request =
+                AnnotationTestBase.buildQueryDataSetsRequestOwnerDescription(ownerId, descriptionText);
+
+        final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertTrue(resultDataSets.isEmpty());
+            return new ArrayList<>();
+        }
+
+        // validate response
+
+        assertEquals(expectedQueryResult.size(), resultDataSets.size());
+
+        // find each expected result in actual result list and match field values against request
+        for (AnnotationTestBase.CreateDataSetParams requestParams : expectedQueryResult) {
+            boolean found = false;
+            DataSet foundDataSet = null;
+            for (DataSet resultDataSet : resultDataSets) {
+                if (requestParams.dataSet.description.equals(resultDataSet.getDescription())) {
+                    found = true;
+                    foundDataSet = resultDataSet;
+                    break;
+                }
+            }
+            assertTrue(found);
+            assertNotNull(foundDataSet);
+            final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
+            assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
+            assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
+
+            // compare data blocks from result with request
+            final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet;
+            assertEquals(requestDataSet.dataBlocks.size(), foundDataSet.getDataBlocksCount());
+            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
+                boolean responseBlockFound = false;
+                for (DataBlock responseBlock : foundDataSet.getDataBlocksList()) {
+                    if (
+                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
+                    ) {
+                        responseBlockFound = true;
+                        break;
+                    }
+                }
+                assertTrue(responseBlockFound);
+            }
+        }
+
+        return resultDataSets;
     }
 
     protected String sendCreateAnnotation(
@@ -1058,7 +1151,7 @@ public abstract class GrpcIntegrationTestBase {
         assertTrue(requestDiffs.isEmpty());
 
         // save annotationId to map for use in validating queryAnnotations() result
-        this.requestParamsMap.put(params, annotationId);
+        this.createAnnotationParamsIdMap.put(params, annotationId);
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
@@ -1123,14 +1216,14 @@ public abstract class GrpcIntegrationTestBase {
             }
             assertTrue(found);
             assertNotNull(foundAnnotation);
-            final String expectedAnnotationId = this.requestParamsMap.get(requestParams);
+            final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getAnnotationId()));
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
             assertTrue(requestParams.dataSetId.equals(foundAnnotation.getDataSetId()));
 
             // compare dataset content from result with what was requested when creating dataset
             final AnnotationTestBase.CreateDataSetParams dataSetRequestParams =
-                    this.dataSetParamsMap.get(requestParams.dataSetId);
+                    this.createDataSetIdParamsMap.get(requestParams.dataSetId);
             final AnnotationTestBase.AnnotationDataSet requestDataSet = dataSetRequestParams.dataSet;
             final DataSet responseDataSet = foundAnnotation.getDataSet();
             assertEquals(requestDataSet.dataBlocks.size(), responseDataSet.getDataBlocksCount());

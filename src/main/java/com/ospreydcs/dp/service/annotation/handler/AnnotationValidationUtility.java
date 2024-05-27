@@ -13,6 +13,12 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateDataSet(DataSet dataSet) {
 
+        // DataSet must include ownerId
+        if (dataSet.getOwnerId() == null || dataSet.getOwnerId().isBlank()) {
+            final String errorMsg = "DataSet ownerId must be specified";
+            return new ValidationResult(true, errorMsg);
+        }
+
         // DataSet must include description
         if (dataSet.getDescription() == null || dataSet.getDescription().isBlank()) {
             final String errorMsg = "DataSet description must be specified";
