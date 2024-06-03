@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -174,6 +175,29 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
                 pvIndex = pvIndex + 1;
             }
+
+            // perform query for single pv and verify results
+            final List<String> queryPvNames = Arrays.asList("array_pv_01");
+            final DataColumn requestColumn = dataColumnList.get(0);
+            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
+            assertEquals(queryPvNames.size(), queryBuckets.size());
+            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            assertEquals(
+                    startSeconds,
+                    responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getEpochSeconds());
+            assertEquals(
+                    startNanos,
+                    responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getNanoseconds());
+            assertEquals(
+                    samplePeriod,
+                    responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
+            assertEquals(
+                    numSamples,
+                    responseBucket.getDataTimestamps().getSamplingClock().getCount());
+            assertEquals(
+                    requestColumn,
+                    responseBucket.getDataColumn());
         }
     }
 }
