@@ -457,7 +457,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     /**
      * Tests that array data is not handled and leads to error status in mongo.
      */
-    public void testHandleIngestionRequestErrorDataTypeArray() {
+    public void testHandleIngestionRequestSuccessArray() {
 
         // assemble IngestionRequest
         int providerId = 1;
