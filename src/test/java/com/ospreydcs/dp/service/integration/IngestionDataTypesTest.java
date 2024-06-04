@@ -1,12 +1,8 @@
 package com.ospreydcs.dp.service.integration;
 
-import com.ospreydcs.dp.grpc.v1.common.Array;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.apache.logging.log4j.LogManager;
@@ -15,11 +11,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 import static org.junit.Assert.*;
 
@@ -32,6 +24,40 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
     private static final int INGESTION_PROVIDER_ID = 1;
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
+
+    protected static class ArrayDataValueModel {
+        public final List<List<String>> array2D;
+        public ArrayDataValueModel(List<List<String>> array2D) {
+            this.array2D = array2D;
+        }
+    }
+    
+    protected static class StructureDataValueModel {
+        public final String stringField;
+        public final Boolean booleanField;
+        public final Double doubleField;
+        public final Integer integerField;
+        public final Long timestampSeconds;
+        public final Long timestampNanos;
+        public final List<List<String>> array2D;
+        public StructureDataValueModel(
+                String stringField,
+                Boolean booleanField,
+                Double doubleField,
+                Integer integerField,
+                Long timestampSeconds,
+                Long timestampNanos,
+                List<List<String>> array2D
+        ) {
+            this.stringField = stringField;
+            this.booleanField = booleanField;
+            this.doubleField = doubleField;
+            this.integerField = integerField;
+            this.timestampSeconds = timestampSeconds;
+            this.timestampNanos = timestampNanos;
+            this.array2D = array2D;
+        }        
+    }
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -50,8 +76,10 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
         final long startNanos = 0L;
         final int providerId = INGESTION_PROVIDER_ID;
 
+        List<DataColumn> arrayDataColumnList = null;
+        Map<DataColumn, List<ArrayDataValueModel>> arrayValidationMap = null;
         {
-            // ingest 2D array
+            // ingest 2D array data
 
             // create IngestionRequestParams
             final String requestId = "request-1";
@@ -79,20 +107,27 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
                             null);
 
             // build list of DataColumns
-            final List<DataColumn> dataColumnList = new ArrayList<>();
+            arrayDataColumnList = new ArrayList<>(pvNames.size());
+            arrayValidationMap = new HashMap<>(pvNames.size());
             for(int colIndex = 0 ; colIndex < numPvs ; ++colIndex) {
 
                 final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 final String pvName = pvNames.get(colIndex);
                 dataColumnBuilder.setName(pvName);
 
+                final List<ArrayDataValueModel> dataValueModelList = new ArrayList<>();
+
                 for (int rowIndex = 0 ; rowIndex < numSamples ; ++rowIndex) {
                     final DataValue.Builder outerArrayValueBuilder = DataValue.newBuilder();
                     final Array.Builder outerArrayBuilder = Array.newBuilder();
 
+                    final List<List<String>> array2D = new ArrayList<>();
+
                     for (int arrayValueIndex = 0 ; arrayValueIndex < 5 ; ++arrayValueIndex) {
                         final DataValue.Builder innerArrayValueBuilder = DataValue.newBuilder();
                         final Array.Builder innerArrayBuilder = Array.newBuilder();
+
+                        final List<String> array1D = new ArrayList<>();
 
                         for (int arrayElementIndex = 0 ; arrayElementIndex < 5 ; ++arrayElementIndex) {
                             final String arrayElementValueString =
@@ -100,85 +135,65 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
                             final DataValue arrayElementValue =
                                     DataValue.newBuilder().setStringValue(arrayElementValueString).build();
                             innerArrayBuilder.addDataValues(arrayElementValue);
+                            array1D.add(arrayElementValueString);
                         }
 
                         innerArrayBuilder.build();
                         innerArrayValueBuilder.setArrayValue(innerArrayBuilder);
                         innerArrayValueBuilder.build();
                         outerArrayBuilder.addDataValues(innerArrayValueBuilder);
+                        array2D.add(array1D);
                     }
 
                     outerArrayBuilder.build();
                     outerArrayValueBuilder.setArrayValue(outerArrayBuilder);
                     outerArrayValueBuilder.build();
                     dataColumnBuilder.addDataValues(outerArrayValueBuilder);
+                    final ArrayDataValueModel arrayDataValueModel = new ArrayDataValueModel(array2D);
+                    dataValueModelList.add(arrayDataValueModel);
                 }
 
-                dataColumnList.add(dataColumnBuilder.build());
+                DataColumn dataColumn = dataColumnBuilder.build();
+                arrayDataColumnList.add(dataColumn);
+                arrayValidationMap.put(dataColumn, dataValueModelList);
             }
 
             // build request
-            final IngestDataRequest ingestionRequest = IngestionTestBase.buildIngestionRequest(params, dataColumnList);
-            final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
+            final IngestDataRequest ingestionRequest =
+                    IngestionTestBase.buildIngestionRequest(params, arrayDataColumnList);
 
             // send request
-            final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
-            assertEquals(requestList.size(), responseList.size());
-            for (IngestDataResponse response : responseList) {
-                assertTrue(response.hasAckResult());
-                final IngestDataResponse.AckResult ackResult = response.getAckResult();
-                assertEquals(numPvs, ackResult.getNumColumns());
-                assertEquals(numSamples, ackResult.getNumRows());
-            }
+            final List<BucketDocument> bucketDocumentList=
+                    sendAndVerifyIngestDataStream(params, ingestionRequest, arrayDataColumnList);
 
-            // verify database contents
+            // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
+            // bucket document by sendAndVerifyIngestDataStream() is probably sufficient, but checking that the
+            // data values are as expected
+            int columnIndex = 0;
+            for (BucketDocument bucketDocument : bucketDocumentList) {
 
-            // validate RequestStatusDocument - sent one request that creates 5 buckets, one for each column
-            final RequestStatusDocument statusDocument =
-                    mongoClient.findRequestStatus(providerId, requestId);
-            assertEquals(numPvs, statusDocument.getIdsCreated().size());
-            final List<String> expectedBucketIds = new ArrayList<>();
-            for (String pvName : pvNames) {
-                final String expectedBucketId = pvName + "-" + startSeconds + "-" + startNanos;
-                assertTrue(statusDocument.getIdsCreated().contains(expectedBucketId));
-                expectedBucketIds.add(expectedBucketId);
-            }
+                final DataColumn requestColumn = arrayDataColumnList.get(columnIndex);
+                final DataColumn bucketColumn = bucketDocument.readDataColumnContent();
+                final List<ArrayDataValueModel> requestValueModelList = arrayValidationMap.get(requestColumn);
+                assertEquals(requestValueModelList.size(), bucketColumn.getDataValuesCount());
 
-            // validate BucketDocument for each column
-            int pvIndex = 0;
-            for (String expectedBucketId : expectedBucketIds) {
+                int rowIndex = 0;
+                for (ArrayDataValueModel arrayDataValueModel : requestValueModelList) {
+                    final List<List<String>> array2D = arrayDataValueModel.array2D;
+                    final DataValue bucketValue = bucketColumn.getDataValues(rowIndex);
+                    assertTrue(bucketValue.hasArrayValue());
+                    final Array bucketArray = bucketValue.getArrayValue();
+                    verify2DArray(array2D, bucketArray);
 
-                final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
+                    rowIndex = rowIndex + 1;
+                }
 
-                assertNotNull(bucketDocument);
-                final String pvName = pvNames.get(pvIndex);
-                assertEquals(pvName, bucketDocument.getColumnName());
-                assertEquals(expectedBucketId, bucketDocument.getId());
-                assertEquals(numSamples, bucketDocument.getNumSamples());
-                assertEquals(samplePeriod, bucketDocument.getSampleFrequency());
-                assertEquals(startSeconds, bucketDocument.getFirstSeconds());
-                assertEquals(startNanos, bucketDocument.getFirstNanos());
-                assertEquals(
-                        Date.from(Instant.ofEpochSecond(startSeconds, startNanos)),
-                        bucketDocument.getFirstTime());
-                assertEquals(endSeconds, bucketDocument.getLastSeconds());
-                assertEquals(endNanos, bucketDocument.getLastNanos());
-                assertEquals(
-                        Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
-                        bucketDocument.getLastTime());
-                assertEquals(numSamples, bucketDocument.readDataColumnContent().getDataValuesList().size());
-
-                // compare data value vectors
-                final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
-                final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
-                assertEquals(requestDataColumn, bucketDataColumn); // this appears to compare individual values
-
-                pvIndex = pvIndex + 1;
+                columnIndex = columnIndex + 1;
             }
 
             // perform query for single pv and verify results
             final List<String> queryPvNames = Arrays.asList("array_pv_01");
-            final DataColumn requestColumn = dataColumnList.get(0);
+            final DataColumn requestColumn = arrayDataColumnList.get(0);
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
                     queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
             assertEquals(queryPvNames.size(), queryBuckets.size());
@@ -198,6 +213,273 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
             assertEquals(
                     requestColumn,
                     responseBucket.getDataColumn());
+        }
+
+        {
+            // ingest structure data
+
+            final String ARRAY_MEMBER = "array2D";
+            final String STRING_MEMBER = "string";
+            final String STRING_VALUE = "junk";
+            final String BOOLEAN_MEMBER = "boolean";
+            final boolean BOOLEAN_VALUE = false;
+            final String DOUBLE_MEMBER = "double";
+            final double DOUBLE_VALUE = 3.14;
+            final String INTEGER_MEMBER = "integer";
+            final int INTEGER_VALUE = 42;
+            final String TIMESTAMP_MEMBER = "timestamp";
+            final String STRUCTURE_MEMBER = "structure";
+
+            // create IngestionRequestParams
+            final String requestId = "request-2";
+            final List<String> pvNames = Arrays.asList(
+                    "structure_pv_01", "structure_pv_02", "structure_pv_03", "structure_pv_04", "structure_pv_05");
+            final int numPvs = pvNames.size();
+            final int numSamples = 5;
+            final long samplePeriod = 1_000_000_000L / numSamples;
+            final long endSeconds = startSeconds;
+            final long endNanos = samplePeriod * (numSamples - 1);
+            final IngestionTestBase.IngestionRequestParams params =
+                    new IngestionTestBase.IngestionRequestParams(
+                            providerId,
+                            requestId,
+                            null,
+                            null,
+                            null,
+                            null,
+                            startSeconds,
+                            startNanos,
+                            samplePeriod,
+                            numSamples,
+                            pvNames,
+                            null,
+                            null);
+
+            // build list of DataColumns
+            final List<DataColumn> dataColumnList = new ArrayList<>();
+            Map<DataColumn, List<StructureDataValueModel>> validationMap = new HashMap<>(pvNames.size());
+            for (int colIndex = 0; colIndex < numPvs; ++colIndex) {
+
+                final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+                final String pvName = pvNames.get(colIndex);
+                dataColumnBuilder.setName(pvName);
+
+                final List<StructureDataValueModel> dataValueModelList = new ArrayList<>();
+
+                for (int rowIndex = 0; rowIndex < numSamples; ++rowIndex) {
+
+                    // create structure for row
+                    final DataValue.Builder structureValueBuilder = DataValue.newBuilder();
+                    final Structure.Builder structureBuilder = Structure.newBuilder();
+                    
+                    // add some scalars string, bool, double
+
+                    final DataValue stringDataValue = DataValue.newBuilder().setStringValue(STRING_VALUE).build();
+                    final Structure.Field stringField =
+                            Structure.Field.newBuilder().setName(STRING_MEMBER).setValue(stringDataValue).build();
+                    structureBuilder.addFields(stringField);
+
+                    final DataValue booleanDataValue = DataValue.newBuilder().setBooleanValue(BOOLEAN_VALUE).build();
+                    final Structure.Field booleanField =
+                            Structure.Field.newBuilder().setName(BOOLEAN_MEMBER).setValue(booleanDataValue).build();
+                    structureBuilder.addFields(booleanField);
+
+                    final DataValue doubleDataValue = DataValue.newBuilder().setDoubleValue(DOUBLE_VALUE).build();
+                    final Structure.Field doubleField =
+                            Structure.Field.newBuilder().setName(DOUBLE_MEMBER).setValue(doubleDataValue).build();
+                    structureBuilder.addFields(doubleField);
+
+                    // add nested structure with integer and timestamp
+                    
+                    final DataValue.Builder nestedStructureValueBuilder = DataValue.newBuilder();
+                    final Structure.Builder nestedStructureBuilder = Structure.newBuilder();
+
+                    final DataValue integerDataValue = DataValue.newBuilder().setIntValue(INTEGER_VALUE).build();
+                    final Structure.Field integerField =
+                            Structure.Field.newBuilder().setName(INTEGER_MEMBER).setValue(integerDataValue).build();
+                    nestedStructureBuilder.addFields(integerField);
+
+                    final Timestamp timestamp = Timestamp.newBuilder()
+                            .setEpochSeconds(startSeconds)
+                            .setNanoseconds(startNanos)
+                            .build();
+                    final DataValue timestampDataValue = DataValue.newBuilder().setTimestampValue(timestamp).build();
+                    final Structure.Field timestampField =
+                            Structure.Field.newBuilder().setName(TIMESTAMP_MEMBER).setValue(timestampDataValue).build();
+                    nestedStructureBuilder.addFields(timestampField);
+
+                    nestedStructureBuilder.build();
+                    nestedStructureValueBuilder.setStructureValue(nestedStructureBuilder);
+                    nestedStructureValueBuilder.build();
+
+                    final Structure.Field nestedStructureField = Structure.Field.newBuilder()
+                            .setName(STRUCTURE_MEMBER)
+                            .setValue(nestedStructureValueBuilder)
+                            .build();
+                    structureBuilder.addFields(nestedStructureField);
+
+                    // add image
+
+                    // get array from array ingestion DataColumn list and add to structure
+                    final DataColumn arrayDataColumn = arrayDataColumnList.get(colIndex);
+                    DataValue arrayDataValue = arrayDataColumn.getDataValues(rowIndex);
+                    List<List<String>> array2D = arrayValidationMap.get(arrayDataColumn).get(rowIndex).array2D;
+                    assertTrue(arrayDataValue.hasArrayValue());
+                    Structure.Field arrayField =
+                            Structure.Field.newBuilder().setName(ARRAY_MEMBER).setValue(arrayDataValue).build();
+                    structureBuilder.addFields(arrayField);
+
+                    structureBuilder.build();
+                    structureValueBuilder.setStructureValue(structureBuilder);
+                    dataColumnBuilder.addDataValues(structureValueBuilder.build());
+
+                    // create value model for column value (for later validation)
+                    final StructureDataValueModel structureDataValueModel =
+                            new StructureDataValueModel(
+                                    STRING_VALUE,
+                                    BOOLEAN_VALUE,
+                                    DOUBLE_VALUE,
+                                    INTEGER_VALUE,
+                                    startSeconds,
+                                    startNanos,
+                                    array2D);
+                    dataValueModelList.add(structureDataValueModel);
+                }
+
+                DataColumn dataColumn = dataColumnBuilder.build();
+                dataColumnList.add(dataColumn);
+                validationMap.put(dataColumn, dataValueModelList);
+            }
+
+            // build request
+            final IngestDataRequest ingestionRequest =
+                    IngestionTestBase.buildIngestionRequest(params, dataColumnList);
+
+            // send request
+            final List<BucketDocument> bucketDocumentList =
+                    sendAndVerifyIngestDataStream(params, ingestionRequest, dataColumnList);
+
+            // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
+            // bucket document by sendAndVerifyIngestDataStream() is probably sufficient, but checking that the
+            // data values are as expected
+            int columnIndex = 0;
+            for (BucketDocument bucketDocument : bucketDocumentList) {
+
+                final DataColumn requestColumn = dataColumnList.get(columnIndex);
+                final DataColumn bucketColumn = bucketDocument.readDataColumnContent();
+                final List<StructureDataValueModel> requestValueModelList = validationMap.get(requestColumn);
+                assertEquals(requestValueModelList.size(), bucketColumn.getDataValuesCount());
+
+                int rowIndex = 0;
+                for (StructureDataValueModel structureDataValueModel : requestValueModelList) {
+
+                    // confirm DataValue is structure
+                    final DataValue bucketValue = bucketColumn.getDataValues(rowIndex);
+                    assertTrue(bucketValue.hasStructureValue());
+                    final Structure bucketStructure = bucketValue.getStructureValue();
+
+                    for (Structure.Field bucketStructureField : bucketStructure.getFieldsList()) {
+                        // iterate structure fields, dispatching by field name
+                        final String bucketStructureFieldName = bucketStructureField.getName();
+                        final DataValue bucketStructureFieldDataValue = bucketStructureField.getValue();
+
+                        switch (bucketStructureFieldName) {
+
+                            case STRING_MEMBER:
+                                assertTrue(bucketStructureFieldDataValue.hasStringValue());
+                                assertEquals(
+                                        structureDataValueModel.stringField,
+                                        bucketStructureFieldDataValue.getStringValue());
+                                break;
+
+                            case BOOLEAN_MEMBER:
+                                assertTrue(bucketStructureFieldDataValue.hasBooleanValue());
+                                assertEquals(
+                                        structureDataValueModel.booleanField,
+                                        bucketStructureFieldDataValue.getBooleanValue());
+                                break;
+
+                            case DOUBLE_MEMBER:
+                                assertTrue(bucketStructureFieldDataValue.hasDoubleValue());
+                                assertEquals(
+                                        structureDataValueModel.doubleField,
+                                        bucketStructureFieldDataValue.getDoubleValue(),
+                                        0.0);
+                                break;
+
+                            case STRUCTURE_MEMBER:
+                                assertTrue(bucketStructureFieldDataValue.hasStructureValue());
+                                final Structure nestedBucketStructure =
+                                        bucketStructureFieldDataValue.getStructureValue();
+                                for (Structure.Field nestedStructureField : nestedBucketStructure.getFieldsList()) {
+
+                                    final String nestedStructureFieldName = nestedStructureField.getName();
+                                    final DataValue nestedStructureFieldDataValue = nestedStructureField.getValue();
+
+                                    if (nestedStructureFieldName.equals(INTEGER_MEMBER)) {
+                                        assertEquals(
+                                                (int) structureDataValueModel.integerField,
+                                                nestedStructureFieldDataValue.getIntValue());
+
+                                    } else if (nestedStructureFieldName.equals(TIMESTAMP_MEMBER)) {
+                                        assertTrue(nestedStructureFieldDataValue.hasTimestampValue());
+                                        final Timestamp timestamp =
+                                                nestedStructureFieldDataValue.getTimestampValue();
+                                        assertEquals(
+                                                (long) structureDataValueModel.timestampSeconds,
+                                                timestamp.getEpochSeconds());
+                                        assertEquals(
+                                                (long) structureDataValueModel.timestampNanos,
+                                                timestamp.getNanoseconds());
+                                    } else {
+                                        fail("unexpected nested structure field name: " + nestedStructureFieldName);
+                                    }
+                                }
+                                break;
+
+                            case ARRAY_MEMBER:
+                                final List<List<String>> array2D = structureDataValueModel.array2D;
+                                assertTrue(bucketStructureFieldDataValue.hasArrayValue());
+                                final Array bucketArray = bucketStructureFieldDataValue.getArrayValue();
+                                verify2DArray(array2D, bucketArray);
+                                break;
+
+                            default:
+                                fail("unexpected structure field name: " + bucketStructureFieldName);
+                                break;
+                        }
+                    }
+
+                    rowIndex = rowIndex + 1;
+                }
+
+                columnIndex = columnIndex + 1;
+            }
+        }
+    }
+
+    private void verify2DArray(List<List<String>> array2D, Array bucketArray) {
+        assertEquals(array2D.size(), bucketArray.getDataValuesCount());
+        final List<DataValue> bucketArrayValues = bucketArray.getDataValuesList();
+
+        int arrayIndex = 0;
+        for (List<String> array1D : array2D) {
+            final DataValue bucketArray1DValue = bucketArrayValues.get(arrayIndex);
+            assertTrue(bucketArray1DValue.hasArrayValue());
+            final Array bucketArray1D = bucketArray1DValue.getArrayValue();
+            assertEquals(array1D.size(), bucketArray1D.getDataValuesCount());
+
+            int elementIndex = 0;
+            for (String array1DElement : array1D) {
+                final DataValue bucketArray1DElementValue = bucketArray1D.getDataValues(elementIndex);
+                assertTrue(bucketArray1DElementValue.hasStringValue());
+                final String bucketArray1DElement = bucketArray1DElementValue.getStringValue();
+                assertEquals(array1DElement, bucketArray1DElement);
+
+                elementIndex = elementIndex + 1;
+            }
+
+            arrayIndex = arrayIndex + 1;
         }
     }
 }

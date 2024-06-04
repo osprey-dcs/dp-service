@@ -248,6 +248,82 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
+    protected List<BucketDocument> sendAndVerifyIngestDataStream(
+            IngestionTestBase.IngestionRequestParams params,
+            IngestDataRequest ingestionRequest,
+            List<DataColumn> dataColumnList
+    ) {
+
+        // send request
+        final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
+        final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
+
+        // check response
+        final int numPvs = params.columnNames.size();
+        assertEquals(requestList.size(), responseList.size());
+        for (IngestDataResponse response : responseList) {
+            assertTrue(response.hasAckResult());
+            final IngestDataResponse.AckResult ackResult = response.getAckResult();
+            assertEquals(numPvs, ackResult.getNumColumns());
+            assertEquals((int)params.samplingClockCount, ackResult.getNumRows());
+        }
+
+        // verify database contents
+
+        // validate RequestStatusDocument
+        final RequestStatusDocument statusDocument =
+                mongoClient.findRequestStatus(params.providerId, params.requestId);
+        assertEquals(numPvs, statusDocument.getIdsCreated().size());
+        final List<String> expectedBucketIds = new ArrayList<>();
+        for (String pvName : params.columnNames) {
+            final String expectedBucketId =
+                    pvName + "-" + params.samplingClockStartSeconds + "-" + params.samplingClockStartNanos;
+            assertTrue(statusDocument.getIdsCreated().contains(expectedBucketId));
+            expectedBucketIds.add(expectedBucketId);
+        }
+
+        // validate BucketDocument for each column
+        int pvIndex = 0;
+        final List<BucketDocument> bucketDocumentList = new ArrayList<>(dataColumnList.size());
+        for (String expectedBucketId : expectedBucketIds) {
+
+            final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
+            bucketDocumentList.add(bucketDocument);
+
+            assertNotNull(bucketDocument);
+            final String pvName = params.columnNames.get(pvIndex);
+            assertEquals(pvName, bucketDocument.getColumnName());
+            assertEquals(expectedBucketId, bucketDocument.getId());
+            assertEquals((int)params.samplingClockCount, bucketDocument.getNumSamples());
+            assertEquals((long)params.samplingClockPeriodNanos, bucketDocument.getSampleFrequency());
+            assertEquals((long)params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
+            assertEquals((long)params.samplingClockStartNanos, bucketDocument.getFirstNanos());
+            assertEquals(
+                    Date.from(Instant.ofEpochSecond(
+                            params.samplingClockStartSeconds, params.samplingClockStartNanos)),
+                    bucketDocument.getFirstTime());
+            final long endSeconds = params.samplingClockStartSeconds;
+            final long endNanos = params.samplingClockPeriodNanos * (params.samplingClockCount - 1);
+            assertEquals(endSeconds, bucketDocument.getLastSeconds());
+            assertEquals(endNanos, bucketDocument.getLastNanos());
+            assertEquals(
+                    Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
+                    bucketDocument.getLastTime());
+            assertEquals(
+                    (int)params.samplingClockCount,
+                    bucketDocument.readDataColumnContent().getDataValuesList().size());
+
+            // compare data value vectors
+            final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
+            final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
+            assertEquals(requestDataColumn, bucketDataColumn); // this appears to compare individual values
+
+            pvIndex = pvIndex + 1;
+        }
+
+        return bucketDocumentList;
+    }
+
     protected IngestionStreamInfo ingestDataStream(
             long startSeconds,
             long startNanos,
