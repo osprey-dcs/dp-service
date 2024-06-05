@@ -198,21 +198,7 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
                     queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
-            assertEquals(
-                    startSeconds,
-                    responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getEpochSeconds());
-            assertEquals(
-                    startNanos,
-                    responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getNanoseconds());
-            assertEquals(
-                    samplePeriod,
-                    responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
-            assertEquals(
-                    numSamples,
-                    responseBucket.getDataTimestamps().getSamplingClock().getCount());
-            assertEquals(
-                    requestColumn,
-                    responseBucket.getDataColumn());
+            verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
 
         {
@@ -455,6 +441,15 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
                 columnIndex = columnIndex + 1;
             }
+
+            // perform query for single pv and verify results
+            final List<String> queryPvNames = Arrays.asList("structure_pv_01");
+            final DataColumn requestColumn = dataColumnList.get(0);
+            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
+            assertEquals(queryPvNames.size(), queryBuckets.size());
+            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
     }
 
@@ -481,5 +476,30 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
             arrayIndex = arrayIndex + 1;
         }
+    }
+
+    private void verifyDataBucket(
+            QueryDataResponse.QueryData.DataBucket responseBucket,
+            DataColumn requestColumn,
+            long startSeconds,
+            long startNanos,
+            long samplePeriod,
+            int numSamples
+    ) {
+        assertEquals(
+                startSeconds,
+                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getEpochSeconds());
+        assertEquals(
+                startNanos,
+                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getNanoseconds());
+        assertEquals(
+                samplePeriod,
+                responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
+        assertEquals(
+                numSamples,
+                responseBucket.getDataTimestamps().getSamplingClock().getCount());
+        assertEquals(
+                requestColumn,
+                responseBucket.getDataColumn());
     }
 }
