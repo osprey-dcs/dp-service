@@ -147,8 +147,10 @@ public class IngestionTestBase {
      * @param params
      * @return
      */
-    public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params, List<DataColumn> dataColumnList) {
-
+    public static IngestDataRequest buildIngestionRequest(
+            IngestionRequestParams params,
+            List<DataColumn> dataColumnList
+    ) {
         IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
 
         if (params.providerId != null) {

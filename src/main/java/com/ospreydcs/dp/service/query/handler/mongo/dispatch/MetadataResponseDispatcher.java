@@ -60,7 +60,10 @@ public class MetadataResponseDispatcher extends Dispatcher {
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
             pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
-            pvInfoBuilder.setLastBucketDataType((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE));
+            String lastDataType = (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE);
+            if (lastDataType != null) {
+                pvInfoBuilder.setLastBucketDataType(lastDataType);
+            }
 
             // set sampling clock details
             final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();

@@ -88,8 +88,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return dataTimestampsBuilder.build();
     }
 
-    public static <T> QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
-            BucketDocument<T> document
+    public static QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
+            BucketDocument document
     ) {
         final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
                 QueryDataResponse.QueryData.DataBucket.newBuilder();
@@ -98,17 +98,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
 
         // add data values
-        final DataColumn.Builder columnBuilder = DataColumn.newBuilder();
-        columnBuilder.setName(document.getColumnName());
-//        addBucketDataToColumn(document, columnBuilder);
-        for (T dataValue: document.getColumnDataList()) {
-            final DataValue.Builder valueBuilder = DataValue.newBuilder();
-            document.addColumnDataValue(dataValue, valueBuilder);
-            valueBuilder.build();
-            columnBuilder.addDataValues(valueBuilder);
-        }
-        columnBuilder.build();
-        bucketBuilder.setDataColumn(columnBuilder);
+        DataColumn dataColumn = document.readDataColumnContent();
+        bucketBuilder.setDataColumn(dataColumn);
 
         // add attributes
         if (document.getAttributeMap() != null) {

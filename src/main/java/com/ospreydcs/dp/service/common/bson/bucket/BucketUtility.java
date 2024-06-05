@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 
 import java.util.ArrayList;
@@ -40,8 +42,7 @@ public class BucketUtility {
             for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
                 String columnName = columnNameBase + columnIndex;
                 String documentId = columnName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
-                DoubleBucketDocument bucket = new DoubleBucketDocument();
-                bucket.initColumnDataList();
+                BucketDocument bucket = new BucketDocument();
                 bucket.setId(documentId);
                 bucket.setColumnName(columnName);
                 bucket.setFirstTime(firstTimeDate);
@@ -53,10 +54,14 @@ public class BucketUtility {
                 bucket.setSampleFrequency(sampleFrequency);
                 bucket.setNumSamples(numSamplesPerBucket);
                 // fill bucket with specified number of data values
+                DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+                dataColumnBuilder.setName(columnName);
                 for (int samplesIndex = 0 ; samplesIndex < numSamplesPerBucket ; samplesIndex++) {
-                    double dataValue = samplesIndex;
-                    bucket.addColumnData(dataValue);
+                    double doubleValue = samplesIndex;
+                    DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
+                    dataColumnBuilder.addDataValues(dataValue);
                 }
+                bucket.writeDataColumnContent(dataColumnBuilder.build());
                 bucketList.add(bucket);
             }
 

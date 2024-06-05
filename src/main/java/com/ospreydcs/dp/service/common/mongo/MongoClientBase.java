@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
@@ -79,10 +80,7 @@ public abstract class MongoClientBase {
         // be explicitly registered here.
         CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(
                 BucketDocument.class,
-                DoubleBucketDocument.class,
-                BooleanBucketDocument.class,
-                LongBucketDocument.class,
-                StringBucketDocument.class,
+                DataValue.class,
                 RequestStatusDocument.class,
                 AnnotationDocument.class,
                 CommentAnnotationDocument.class,

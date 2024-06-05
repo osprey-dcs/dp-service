@@ -7,7 +7,6 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -39,20 +38,17 @@ public class TableResponseDispatcher extends Dispatcher {
         this.request = request;
     }
 
-    private static <T> int addBucketToTable(
-            int columnIndex, BucketDocument<T> bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
+    private static int addBucketToTable(
+            int columnIndex, BucketDocument bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
     ) {
         int dataValueSize = 0;
         long second = bucket.getFirstSeconds();
         long nano = bucket.getFirstNanos();
         final long delta = bucket.getSampleFrequency();
-        for (T value : bucket.getColumnDataList()) {
+        for (DataValue value : bucket.readDataColumnContent().getDataValuesList()) {
 
             // generate DataValue object from column data value
-            final DataValue.Builder valueBuilder = DataValue.newBuilder();
-            bucket.addColumnDataValue(value, valueBuilder);
-            final DataValue dataValue = valueBuilder.build();
-            dataValueSize = dataValueSize + dataValue.getSerializedSize();
+            dataValueSize = dataValueSize + value.getSerializedSize();
 
             // add to table data structure
             Map<Integer, DataValue> nanoValueMap = tableValueMap.get(second, nano);
@@ -60,7 +56,7 @@ public class TableResponseDispatcher extends Dispatcher {
                 nanoValueMap = new TreeMap<>();
                 tableValueMap.put(second, nano, nanoValueMap);
             }
-            nanoValueMap.put(columnIndex, dataValue);
+            nanoValueMap.put(columnIndex, value);
 
             // increment nanos, and increment seconds if nanos rolled over one billion
             nano = nano + delta;

@@ -1,11 +1,10 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import org.bson.codecs.pojo.annotations.BsonDiscriminator;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -13,8 +12,7 @@ import java.util.Map;
  *
  * NOTE: DATABASE CODE LIKE insertMany SILENTLY FAILS IF AN INSTANCE VARIABLE IS ADDED WITHOUT ACCESSOR METHODS!!!
  */
-@BsonDiscriminator(key="dataType")
-public abstract class BucketDocument<T> {
+public class BucketDocument {
     private String id;
     private String columnName;
     private Date firstTime;
@@ -26,13 +24,11 @@ public abstract class BucketDocument<T> {
     private long sampleFrequency;
     private int numSamples;
     private String dataType;
-    private List<T> columnDataList;
+    private byte[] dataColumnContent = null;
     private Map<String, String> attributeMap;
     private long eventSeconds;
     private long eventNanos;
     private String eventDescription;
-
-    public abstract void addColumnDataValue(T dataValue, DataValue.Builder valueBuilder);
 
     public String getId() {
         return id;
@@ -106,18 +102,28 @@ public abstract class BucketDocument<T> {
         this.dataType = dataType;
     }
 
-    public void setColumnDataList(List<T> columnDataList) {
-        this.columnDataList = columnDataList;
+    public byte[] getDataColumnContent() {
+        return this.dataColumnContent;
     }
 
-    public List<T> getColumnDataList() { return this.columnDataList; }
-
-    public void initColumnDataList() {
-        this.columnDataList = new ArrayList<T>();
+    public void setDataColumnContent(byte[] content){
+        this.dataColumnContent = content;
     }
 
-    public void addColumnData(T data) {
-        this.columnDataList.add(data);
+    public void writeDataColumnContent(DataColumn dataColumn) {
+        this.dataColumnContent = dataColumn.toByteArray();
+    }
+
+    public DataColumn readDataColumnContent() {
+        if (dataColumnContent == null) {
+            return null;
+        } else {
+            try {
+                return DataColumn.parseFrom(dataColumnContent);
+            } catch (InvalidProtocolBufferException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public long getSampleFrequency() {

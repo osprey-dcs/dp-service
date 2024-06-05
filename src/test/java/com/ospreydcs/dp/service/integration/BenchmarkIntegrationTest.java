@@ -3,13 +3,11 @@ package com.ospreydcs.dp.service.integration;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest.IngestionDataFrame;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
@@ -27,7 +25,6 @@ import org.junit.runners.JUnit4;
 
 import java.time.Instant;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -192,18 +189,17 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertEquals(
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 999000000L)),
                             bucketDocument.getLastTime());
-                    // TODO: why does getDataType() return null? can't find any details about it
-                    //  assertEquals("DOUBLE", bucketDocument.getDataType());
                     assertEquals("calibration test", bucketDocument.getEventDescription());
                     assertEquals(params.startSeconds, bucketDocument.getEventSeconds());
                     assertEquals(0, bucketDocument.getEventNanos());
                     assertTrue(bucketDocument.getAttributeMap().get("sector").equals("07"));
                     assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
-                    assertEquals(params.numRows, bucketDocument.getColumnDataList().size());
+                    assertEquals(params.numRows, bucketDocument.readDataColumnContent().getDataValuesList().size());
                     // verify each value
+                    DataColumn dataColumn = bucketDocument.readDataColumnContent();
                     for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
                         final double expectedValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
-                        assertEquals(expectedValue, bucketDocument.getColumnDataList().get(valIndex));
+                        assertEquals(expectedValue, dataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
                     }
                     dbBucketCount.incrementAndGet();
                 }
