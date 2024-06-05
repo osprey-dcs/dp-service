@@ -55,6 +55,7 @@ public class BucketUtility {
                 bucket.setNumSamples(numSamplesPerBucket);
                 // fill bucket with specified number of data values
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+                dataColumnBuilder.setName(columnName);
                 for (int samplesIndex = 0 ; samplesIndex < numSamplesPerBucket ; samplesIndex++) {
                     double doubleValue = samplesIndex;
                     DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
