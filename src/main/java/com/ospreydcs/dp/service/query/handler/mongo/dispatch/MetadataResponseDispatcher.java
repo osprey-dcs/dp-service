@@ -60,7 +60,14 @@ public class MetadataResponseDispatcher extends Dispatcher {
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
             pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
-            String lastDataType = (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE);
+
+            final Integer lastDataTypeCase =
+                    (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE);
+            if (lastDataTypeCase != null) {
+                pvInfoBuilder.setLastBucketDataTypeCase(lastDataTypeCase);
+            }
+
+            final String lastDataType = (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE);
             if (lastDataType != null) {
                 pvInfoBuilder.setLastBucketDataType(lastDataType);
             }

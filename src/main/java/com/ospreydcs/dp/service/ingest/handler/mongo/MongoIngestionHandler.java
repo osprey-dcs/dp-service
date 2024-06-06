@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
@@ -154,6 +155,9 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             bucket.writeDataColumnContent(column);
             bucket.setId(documentId);
             bucket.setColumnName(columnName);
+            final DataValue.ValueCase dataValueCase = column.getDataValues(0).getValueCase();
+            bucket.setDataTypeCase(dataValueCase.getNumber());
+            bucket.setDataType(dataValueCase.name());
             bucket.setFirstTime(firstTimestampDate);
             bucket.setFirstSeconds(firstTimestampSeconds);
             bucket.setFirstNanos(firstTimestampNanos);

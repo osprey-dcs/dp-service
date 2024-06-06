@@ -23,6 +23,7 @@ public class BucketDocument {
     private long lastNanos;
     private long sampleFrequency;
     private int numSamples;
+    private int dataTypeCase;
     private String dataType;
     private byte[] dataColumnContent = null;
     private Map<String, String> attributeMap;
@@ -92,6 +93,14 @@ public class BucketDocument {
 
     public void setLastNanos(long lastNanos) {
         this.lastNanos = lastNanos;
+    }
+
+    public int getDataTypeCase() {
+        return this.dataTypeCase;
+    }
+
+    public void setDataTypeCase(int dataTypeCase) {
+        this.dataTypeCase = dataTypeCase;
     }
 
     public String getDataType() {

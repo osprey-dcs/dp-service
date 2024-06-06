@@ -10,6 +10,7 @@ public class BsonConstants {
     public static final String BSON_KEY_BUCKET_LAST_TIME = "lastTime";
     public static final String BSON_KEY_BUCKET_LAST_TIME_SECS = "lastSeconds";
     public static final String BSON_KEY_BUCKET_LAST_TIME_NANOS = "lastNanos";
+    public static final String BSON_KEY_BUCKET_DATA_TYPE_CASE = "dataTypeCase";
     public static final String BSON_KEY_BUCKET_DATA_TYPE = "dataType";
     public static final String BSON_KEY_BUCKET_EVENT_DESCRIPTION = "eventDescription";
     public static final String BSON_KEY_BUCKET_EVENT_SECONDS = "eventSeconds";

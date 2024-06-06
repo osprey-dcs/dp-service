@@ -116,6 +116,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 BsonConstants.BSON_KEY_BUCKET_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
+                BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
                 BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY
@@ -138,6 +139,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_NAME,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_NAME),
+                                        Accumulators.last(
+                                                BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE),
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE),

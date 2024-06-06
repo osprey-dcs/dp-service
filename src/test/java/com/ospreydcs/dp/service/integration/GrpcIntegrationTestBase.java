@@ -981,7 +981,8 @@ public abstract class GrpcIntegrationTestBase {
                     columnInfoMap.get(columnName);
             assertNotNull(columnInfoForName);
             assertEquals(columnName, columnInfoForName.getPvName());
-//            assertEquals("DOUBLE", columnInfoForName.getLastBucketDataType());
+            assertEquals(8, columnInfoForName.getLastBucketDataTypeCase());
+            assertEquals("DOUBLEVALUE", columnInfoForName.getLastBucketDataType());
 
             // iterate through validationMap to get info for first and last bucket for column
             IngestionBucketInfo firstBucketInfo = null;

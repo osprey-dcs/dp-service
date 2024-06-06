@@ -578,7 +578,18 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
+    }
 
+    @Test
+    public void dataValueCaseTest() {
+        DataValue dv = DataValue.newBuilder().setDoubleValue(12.34).build();
+        DataValue.ValueCase vc = dv.getValueCase();
+        assertEquals(8, vc.getNumber());
+        assertEquals("DOUBLEVALUE", vc.name());
+
+        vc = DataValue.ValueCase.ARRAYVALUE;
+        assertEquals(10, vc.getNumber());
+        assertEquals("ARRAYVALUE", vc.name());
     }
 
     private void verify2DArray(List<List<String>> array2D, Array bucketArray) {
