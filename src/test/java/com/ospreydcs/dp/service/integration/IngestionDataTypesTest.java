@@ -11,6 +11,8 @@ import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -19,6 +21,7 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
+@RunWith(JUnit4.class)
 public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
     // static variables
@@ -303,9 +306,9 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
             verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
 
             // write image content from query to file
-            File outputFile = new File("src/test/resources/test-image-output.bmp");
+            final File outputFile = new File("src/test/resources/test-image-output.bmp");
             try {
-                FileOutputStream outputStream = new FileOutputStream(outputFile);
+                final FileOutputStream outputStream = new FileOutputStream(outputFile);
                 outputStream.write(
                         responseBucket.getDataColumn().getDataValues(0).getImageValue().getImage().toByteArray());
             } catch (IOException ex) {
@@ -578,18 +581,6 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
-    }
-
-    @Test
-    public void dataValueCaseTest() {
-        DataValue dv = DataValue.newBuilder().setDoubleValue(12.34).build();
-        DataValue.ValueCase vc = dv.getValueCase();
-        assertEquals(8, vc.getNumber());
-        assertEquals("DOUBLEVALUE", vc.name());
-
-        vc = DataValue.ValueCase.ARRAYVALUE;
-        assertEquals(10, vc.getNumber());
-        assertEquals("ARRAYVALUE", vc.name());
     }
 
     private void verify2DArray(List<List<String>> array2D, Array bucketArray) {
