@@ -18,7 +18,7 @@ import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
+import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.query.QueryTestBase;

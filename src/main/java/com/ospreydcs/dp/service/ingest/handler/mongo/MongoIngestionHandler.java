@@ -13,7 +13,7 @@ import com.ospreydcs.dp.service.common.bson.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
-import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
+import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.model.DataTimestampsModel;
@@ -372,7 +372,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
         return new HandlerIngestionResult(isError, errorMsg);
     }
 
-    public void onNext(HandlerIngestionRequest handlerIngestionRequest) {
+    public void handleIngestDataStream(HandlerIngestionRequest handlerIngestionRequest) {
 
         logger.debug(
                 "adding IngestionRequest to queue provider: {} request: {}",

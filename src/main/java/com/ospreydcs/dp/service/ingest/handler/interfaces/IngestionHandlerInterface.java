@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.ingest.handler;
+package com.ospreydcs.dp.service.ingest.handler.interfaces;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -10,5 +10,5 @@ public interface IngestionHandlerInterface {
     boolean start();
     boolean stop();
     ValidationResult validateIngestionRequest(IngestDataRequest request);
-    void onNext(HandlerIngestionRequest request);
+    void handleIngestDataStream(HandlerIngestionRequest request);
 }

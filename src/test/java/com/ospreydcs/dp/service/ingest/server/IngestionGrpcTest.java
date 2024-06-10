@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerBase;
-import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
+import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.Channel;
@@ -60,7 +60,7 @@ public class IngestionGrpcTest extends IngestionTestBase {
         }
 
         @Override
-        public void onNext(HandlerIngestionRequest request) {
+        public void handleIngestDataStream(HandlerIngestionRequest request) {
             System.out.println("handler.onNext handling requestId: " + request.request.getClientRequestId());
         }
     }

@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
-import com.ospreydcs.dp.service.ingest.handler.IngestionHandlerInterface;
+import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -164,7 +164,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                     // handle the request, even if rejected
                     HandlerIngestionRequest handlerIngestionRequest =
                             new HandlerIngestionRequest(request, responseObserver, validationError, validationMsg);
-                    handler.onNext(handlerIngestionRequest);
+                    handler.handleIngestDataStream(handlerIngestionRequest);
 
                     // decrement pending request count and signal if we are finished
                     decrementPendingRequestCountAndSignalFinish();
