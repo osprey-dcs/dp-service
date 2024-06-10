@@ -29,6 +29,8 @@ public class BucketDocument {
     private long eventStartSeconds;
     private long eventStartNanos;
     private String eventDescription;
+    private int providerId;
+    private String clientRequestId;
 
     public String getId() {
         return id;
@@ -180,5 +182,21 @@ public class BucketDocument {
 
     public void setEventDescription(String eventDescription) {
         this.eventDescription = eventDescription;
+    }
+
+    public int getProviderId() {
+        return providerId;
+    }
+
+    public void setProviderId(int providerId) {
+        this.providerId = providerId;
+    }
+
+    public String getClientRequestId() {
+        return clientRequestId;
+    }
+
+    public void setClientRequestId(String clientRequestId) {
+        this.clientRequestId = clientRequestId;
     }
 }

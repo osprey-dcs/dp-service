@@ -188,6 +188,8 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             bucket.setEventDescription(eventDescription);
             bucket.setEventStartSeconds(eventStartSeconds);
             bucket.setEventStartNanos(eventStartNanos);
+            bucket.setProviderId(request.getProviderId());
+            bucket.setClientRequestId(request.getClientRequestId());
 
             bucketList.add(bucket);
         }
