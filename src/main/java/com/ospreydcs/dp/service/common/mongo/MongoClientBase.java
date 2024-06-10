@@ -97,19 +97,19 @@ public abstract class MongoClientBase {
 
     private boolean createMongoIndexesBuckets() {
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME));
+                BsonConstants.BSON_KEY_PV_NAME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME));
         createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
         return true;

@@ -146,7 +146,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         // and make sure set end up empty)
         while (pvMetadata.hasNext()) {
             final Document pvMetadataDocument = pvMetadata.next();
-            final String pvName = (String) pvMetadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME);
+            final String pvName = (String) pvMetadataDocument.get(BsonConstants.BSON_KEY_PV_NAME);
             if (pvName != null) {
                 uniquePvNames.remove(pvName);
             }

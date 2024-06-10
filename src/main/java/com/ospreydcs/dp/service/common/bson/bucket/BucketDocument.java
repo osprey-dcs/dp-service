@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 
@@ -14,21 +13,21 @@ import java.util.Map;
  */
 public class BucketDocument {
     private String id;
-    private String columnName;
+    private String pvName;
     private Date firstTime;
     private long firstSeconds;
     private long firstNanos;
     private Date lastTime;
     private long lastSeconds;
     private long lastNanos;
-    private long sampleFrequency;
-    private int numSamples;
+    private long samplePeriod;
+    private int sampleCount;
     private int dataTypeCase;
     private String dataType;
-    private byte[] dataColumnContent = null;
+    private byte[] dataColumnBytes = null;
     private Map<String, String> attributeMap;
-    private long eventSeconds;
-    private long eventNanos;
+    private long eventStartSeconds;
+    private long eventStartNanos;
     private String eventDescription;
 
     public String getId() {
@@ -39,12 +38,12 @@ public class BucketDocument {
         this.id = id;
     }
 
-    public String getColumnName() {
-        return columnName;
+    public String getPvName() {
+        return pvName;
     }
 
-    public void setColumnName(String columnName) {
-        this.columnName = columnName;
+    public void setPvName(String pvName) {
+        this.pvName = pvName;
     }
 
     public Date getFirstTime() {
@@ -111,44 +110,44 @@ public class BucketDocument {
         this.dataType = dataType;
     }
 
-    public byte[] getDataColumnContent() {
-        return this.dataColumnContent;
+    public byte[] getDataColumnBytes() {
+        return this.dataColumnBytes;
     }
 
-    public void setDataColumnContent(byte[] content){
-        this.dataColumnContent = content;
+    public void setDataColumnBytes(byte[] content){
+        this.dataColumnBytes = content;
     }
 
     public void writeDataColumnContent(DataColumn dataColumn) {
-        this.dataColumnContent = dataColumn.toByteArray();
+        this.dataColumnBytes = dataColumn.toByteArray();
     }
 
     public DataColumn readDataColumnContent() {
-        if (dataColumnContent == null) {
+        if (dataColumnBytes == null) {
             return null;
         } else {
             try {
-                return DataColumn.parseFrom(dataColumnContent);
+                return DataColumn.parseFrom(dataColumnBytes);
             } catch (InvalidProtocolBufferException e) {
                 throw new RuntimeException(e);
             }
         }
     }
 
-    public long getSampleFrequency() {
-        return sampleFrequency;
+    public long getSamplePeriod() {
+        return samplePeriod;
     }
 
-    public void setSampleFrequency(long sampleFrequency) {
-        this.sampleFrequency = sampleFrequency;
+    public void setSamplePeriod(long samplePeriod) {
+        this.samplePeriod = samplePeriod;
     }
 
-    public int getNumSamples() {
-        return numSamples;
+    public int getSampleCount() {
+        return sampleCount;
     }
 
-    public void setNumSamples(int numSamples) {
-        this.numSamples = numSamples;
+    public void setSampleCount(int sampleCount) {
+        this.sampleCount = sampleCount;
     }
 
     public Map<String, String> getAttributeMap() {
@@ -159,20 +158,20 @@ public class BucketDocument {
         this.attributeMap = attributeMap;
     }
 
-    public long getEventSeconds() {
-        return eventSeconds;
+    public long getEventStartSeconds() {
+        return eventStartSeconds;
     }
 
-    public void setEventSeconds(long eventSeconds) {
-        this.eventSeconds = eventSeconds;
+    public void setEventStartSeconds(long eventStartSeconds) {
+        this.eventStartSeconds = eventStartSeconds;
     }
 
-    public long getEventNanos() {
-        return eventNanos;
+    public long getEventStartNanos() {
+        return eventStartNanos;
     }
 
-    public void setEventNanos(long eventNanos) {
-        this.eventNanos = eventNanos;
+    public void setEventStartNanos(long eventStartNanos) {
+        this.eventStartNanos = eventStartNanos;
     }
 
     public String getEventDescription() {

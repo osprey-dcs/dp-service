@@ -80,8 +80,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         final Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
         final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
         samplingClockBuilder.setStartTime(startTime);
-        samplingClockBuilder.setPeriodNanos(document.getSampleFrequency());
-        samplingClockBuilder.setCount(document.getNumSamples());
+        samplingClockBuilder.setPeriodNanos(document.getSamplePeriod());
+        samplingClockBuilder.setCount(document.getSampleCount());
         samplingClockBuilder.build();
 
         dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
@@ -117,12 +117,12 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         // add event metadata
         if (
                 (document.getEventDescription() != null && ! document.getEventDescription().isBlank())
-                        || (document.getEventSeconds() > 0)
-                        || (document.getEventNanos() > 0)
+                        || (document.getEventStartSeconds() > 0)
+                        || (document.getEventStartNanos() > 0)
         ) {
             Timestamp responseEventStartTimestamp = Timestamp.newBuilder()
-                    .setEpochSeconds(document.getEventSeconds())
-                    .setNanoseconds(document.getEventNanos())
+                    .setEpochSeconds(document.getEventStartSeconds())
+                    .setNanoseconds(document.getEventStartNanos())
                     .build();
             EventMetadata responseEventMetadata = EventMetadata.newBuilder()
                     .setDescription(document.getEventDescription())

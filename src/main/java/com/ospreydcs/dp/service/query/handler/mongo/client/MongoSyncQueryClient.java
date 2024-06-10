@@ -5,12 +5,10 @@ import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
-import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
@@ -18,15 +16,12 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Indexes.ascending;
-import static com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument.ANNOTATION_TYPE_COMMENT;
 
 public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryClientInterface {
 
@@ -56,7 +51,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         return mongoCollectionBuckets
                 .find(filter)
                 .sort(ascending(
-                        BsonConstants.BSON_KEY_BUCKET_NAME,
+                        BsonConstants.BSON_KEY_PV_NAME,
                         BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                         BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
                 ))
@@ -76,7 +71,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = querySpec.getEndTime().getEpochSeconds();
         final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
-        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, querySpec.getPvNamesList());
+        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, querySpec.getPvNamesList());
         return executeBucketDocumentQuery(
                 columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
@@ -93,12 +88,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         Bson columnNameFilter = null;
         switch (request.getPvNameSpecCase()) {
             case PVNAMELIST -> {
-                columnNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, request.getPvNameList().getPvNamesList());
+                columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, request.getPvNameList().getPvNamesList());
             }
             case PVNAMEPATTERN -> {
                 final Pattern pvNamePattern = Pattern.compile(
                         request.getPvNamePattern().getPattern(), Pattern.CASE_INSENSITIVE);
-                columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, pvNamePattern);
+                columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
             }
             case PVNAMESPEC_NOT_SET -> {
                 return null;
@@ -113,17 +108,17 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     private MongoCursor<Document> executeQueryMetadata(Bson columnNameFilter) {
 
         Bson bucketFieldProjection = Projections.fields(Projections.include(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
-                BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES,
-                BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY
+                BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
+                BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD
         ));
 
         Bson bucketSort = ascending(
-                BsonConstants.BSON_KEY_BUCKET_NAME,
+                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
 
         logger.debug("executing getColumnInfo query: {}", columnNameFilter.toString());
@@ -135,10 +130,10 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                 Aggregates.project(bucketFieldProjection),
                                 Aggregates.sort(bucketSort),
                                 Aggregates.group(
-                                        "$columnName",
+                                        "$" + BsonConstants.BSON_KEY_PV_NAME,
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_NAME,
-                                                "$" + BsonConstants.BSON_KEY_BUCKET_NAME),
+                                                BsonConstants.BSON_KEY_PV_NAME,
+                                                "$" + BsonConstants.BSON_KEY_PV_NAME),
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE),
@@ -146,11 +141,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES,
-                                                "$" + BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES),
+                                                BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY,
-                                                "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY),
+                                                BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD),
                                         Accumulators.first(
                                                 // save the first time of the first document in group to the firstTime field
                                                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
@@ -169,14 +164,14 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     @Override
     public MongoCursor<Document> executeQueryMetadata(Collection<String> pvNameList) {
-        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_BUCKET_NAME, pvNameList);
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
         return executeQueryMetadata(pvNameFilter);
     }
 
     @Override
     public MongoCursor<Document> executeQueryMetadata(String pvNamePatternString) {
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
-        final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_BUCKET_NAME, pvNamePattern);
+        final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
         return executeQueryMetadata(pvNameFilter);
     }
 

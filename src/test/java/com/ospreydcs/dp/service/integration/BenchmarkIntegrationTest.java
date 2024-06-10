@@ -175,10 +175,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             statusDocument.getIdsCreated().contains(bucketId));
                     BucketDocument bucketDocument = mongoClient.findBucket(bucketId);
                     assertNotNull("bucketId: " + bucketId, bucketDocument);
-                    assertEquals(columnName, bucketDocument.getColumnName());
+                    assertEquals(columnName, bucketDocument.getPvName());
                     assertEquals(bucketId, bucketDocument.getId());
-                    assertEquals(params.numRows, bucketDocument.getNumSamples());
-                    assertEquals(1000000, bucketDocument.getSampleFrequency());
+                    assertEquals(params.numRows, bucketDocument.getSampleCount());
+                    assertEquals(1000000, bucketDocument.getSamplePeriod());
                     assertEquals(requestInfo.startSeconds, bucketDocument.getFirstSeconds());
                     assertEquals(0, bucketDocument.getFirstNanos());
                     assertEquals(
@@ -190,15 +190,15 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 999000000L)),
                             bucketDocument.getLastTime());
                     assertEquals("calibration test", bucketDocument.getEventDescription());
-                    assertEquals(params.startSeconds, bucketDocument.getEventSeconds());
-                    assertEquals(0, bucketDocument.getEventNanos());
+                    assertEquals(params.startSeconds, bucketDocument.getEventStartSeconds());
+                    assertEquals(0, bucketDocument.getEventStartNanos());
                     assertTrue(bucketDocument.getAttributeMap().get("sector").equals("07"));
                     assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
                     assertEquals(params.numRows, bucketDocument.readDataColumnContent().getDataValuesList().size());
                     // verify each value
                     DataColumn dataColumn = bucketDocument.readDataColumnContent();
-                    for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
-                        final double expectedValue = valIndex + (double) valIndex / bucketDocument.getNumSamples();
+                    for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
+                        final double expectedValue = valIndex + (double) valIndex / bucketDocument.getSampleCount();
                         assertEquals(expectedValue, dataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
                     }
                     dbBucketCount.incrementAndGet();

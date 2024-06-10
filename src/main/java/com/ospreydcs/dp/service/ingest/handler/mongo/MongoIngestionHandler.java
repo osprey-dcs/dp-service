@@ -142,8 +142,8 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
         // create BSON document for each column
         final List<DataColumn> columns = request.getIngestionDataFrame().getDataColumnsList();
         for (DataColumn column : columns) {
-            final String columnName = column.getName();
-            final String documentId = columnName + "-" + firstTimestampSeconds + "-" + firstTimestampNanos;
+            final String pvName = column.getName();
+            final String documentId = pvName + "-" + firstTimestampSeconds + "-" + firstTimestampNanos;
 
             // serialize: column.toByteString()
             // deserialize: column.getParserForType().parseFrom(ByteString)
@@ -154,7 +154,7 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             BucketDocument bucket = new BucketDocument();
             bucket.writeDataColumnContent(column);
             bucket.setId(documentId);
-            bucket.setColumnName(columnName);
+            bucket.setPvName(pvName);
             final DataValue.ValueCase dataValueCase = column.getDataValues(0).getValueCase();
             bucket.setDataTypeCase(dataValueCase.getNumber());
             bucket.setDataType(dataValueCase.name());
@@ -164,14 +164,14 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
             bucket.setLastTime(lastTimestampDate);
             bucket.setLastSeconds(lastTimestampSeconds);
             bucket.setLastNanos(lastTimestampNanos);
-            bucket.setSampleFrequency(timeSpecModel.getSamplePeriodNanos());
-            bucket.setNumSamples(timeSpecModel.getSampleCount());
+            bucket.setSamplePeriod(timeSpecModel.getSamplePeriodNanos());
+            bucket.setSampleCount(timeSpecModel.getSampleCount());
 
             // add metadata
             Map<String, String> attributeMap = new TreeMap<>();
             String eventDescription = "";
-            long eventSeconds = 0;
-            long eventNanos = 0;
+            long eventStartSeconds = 0;
+            long eventStartNanos = 0;
             for (Attribute attribute : request.getAttributesList()) {
                 attributeMap.put(attribute.getName(), attribute.getValue());
             }
@@ -180,14 +180,14 @@ public class MongoIngestionHandler extends IngestionHandlerBase implements Inges
                     eventDescription = request.getEventMetadata().getDescription();
                 }
                 if (request.getEventMetadata().hasStartTimestamp()) {
-                    eventSeconds = request.getEventMetadata().getStartTimestamp().getEpochSeconds();
-                    eventNanos = request.getEventMetadata().getStartTimestamp().getNanoseconds();
+                    eventStartSeconds = request.getEventMetadata().getStartTimestamp().getEpochSeconds();
+                    eventStartNanos = request.getEventMetadata().getStartTimestamp().getNanoseconds();
                 }
             }
             bucket.setAttributeMap(attributeMap);
             bucket.setEventDescription(eventDescription);
-            bucket.setEventSeconds(eventSeconds);
-            bucket.setEventNanos(eventNanos);
+            bucket.setEventStartSeconds(eventStartSeconds);
+            bucket.setEventStartNanos(eventStartNanos);
 
             bucketList.add(bucket);
         }

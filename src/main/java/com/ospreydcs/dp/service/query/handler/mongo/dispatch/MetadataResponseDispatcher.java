@@ -59,7 +59,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
             final QueryMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
-            pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NAME));
+            pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_PV_NAME));
 
             final Integer lastDataTypeCase =
                     (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE);
@@ -74,8 +74,8 @@ public class MetadataResponseDispatcher extends Dispatcher {
 
             // set sampling clock details
             final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
-            samplingClockBuilder.setPeriodNanos((Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_FREQUENCY));
-            samplingClockBuilder.setCount((Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_NUM_SAMPLES));
+            samplingClockBuilder.setPeriodNanos((Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD));
+            samplingClockBuilder.setCount((Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT));
             pvInfoBuilder.setLastSamplingClock(samplingClockBuilder);
             
             final Date firstTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);

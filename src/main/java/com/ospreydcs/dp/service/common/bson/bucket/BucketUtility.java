@@ -22,8 +22,8 @@ public class BucketUtility {
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         final double sampleRate = 1.0 / numSamplesPerSecond;
-        final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
-        final long sampleFrequency = round(sampleRate * 1_000_000_000L);
+        final int sampleCount = numSamplesPerSecond * numSecondsPerBucket;
+        final long samplePeriod = round(sampleRate * 1_000_000_000L);
 
         long firstTimeSeconds = firstSeconds;
         long firstTimeNanos = 0L;
@@ -40,23 +40,23 @@ public class BucketUtility {
 
             // create a bucket document for each column in the batch
             for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
-                String columnName = columnNameBase + columnIndex;
-                String documentId = columnName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
+                String pvName = columnNameBase + columnIndex;
+                String documentId = pvName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
                 BucketDocument bucket = new BucketDocument();
                 bucket.setId(documentId);
-                bucket.setColumnName(columnName);
+                bucket.setPvName(pvName);
                 bucket.setFirstTime(firstTimeDate);
                 bucket.setFirstSeconds(firstTimeSeconds);
                 bucket.setFirstNanos(firstTimeNanos);
                 bucket.setLastTime(lastTimeDate);
                 bucket.setLastSeconds(lastTimeSeconds);
                 bucket.setLastNanos(lastTimeNanos);
-                bucket.setSampleFrequency(sampleFrequency);
-                bucket.setNumSamples(numSamplesPerBucket);
+                bucket.setSamplePeriod(samplePeriod);
+                bucket.setSampleCount(sampleCount);
                 // fill bucket with specified number of data values
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
-                dataColumnBuilder.setName(columnName);
-                for (int samplesIndex = 0 ; samplesIndex < numSamplesPerBucket ; samplesIndex++) {
+                dataColumnBuilder.setName(pvName);
+                for (int samplesIndex = 0 ; samplesIndex < sampleCount ; samplesIndex++) {
                     double doubleValue = samplesIndex;
                     DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
                     dataColumnBuilder.addDataValues(dataValue);

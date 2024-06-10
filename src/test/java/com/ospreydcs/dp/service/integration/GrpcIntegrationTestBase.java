@@ -293,10 +293,10 @@ public abstract class GrpcIntegrationTestBase {
 
             assertNotNull(bucketDocument);
             final String pvName = params.columnNames.get(pvIndex);
-            assertEquals(pvName, bucketDocument.getColumnName());
+            assertEquals(pvName, bucketDocument.getPvName());
             assertEquals(expectedBucketId, bucketDocument.getId());
-            assertEquals((int)params.samplingClockCount, bucketDocument.getNumSamples());
-            assertEquals((long)params.samplingClockPeriodNanos, bucketDocument.getSampleFrequency());
+            assertEquals((int)params.samplingClockCount, bucketDocument.getSampleCount());
+            assertEquals((long)params.samplingClockPeriodNanos, bucketDocument.getSamplePeriod());
             assertEquals((long)params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
             assertEquals((long)params.samplingClockStartNanos, bucketDocument.getFirstNanos());
             assertEquals(
@@ -478,10 +478,10 @@ public abstract class GrpcIntegrationTestBase {
                     // validate bucket in database
                     BucketDocument bucketDocument = mongoClient.findBucket(bucketId);
                     assertNotNull("bucketId: " + bucketId, bucketDocument);
-                    assertEquals(columnName, bucketDocument.getColumnName());
+                    assertEquals(columnName, bucketDocument.getPvName());
                     assertEquals(bucketId, bucketDocument.getId());
-                    assertEquals(requestBucketInfo.numValues, bucketDocument.getNumSamples());
-                    assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSampleFrequency());
+                    assertEquals(requestBucketInfo.numValues, bucketDocument.getSampleCount());
+                    assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSamplePeriod());
                     assertEquals(requestBucketInfo.startSeconds, bucketDocument.getFirstSeconds());
                     assertEquals(requestBucketInfo.startNanos, bucketDocument.getFirstNanos());
                     assertEquals(
@@ -497,7 +497,7 @@ public abstract class GrpcIntegrationTestBase {
                     assertEquals(requestBucketInfo.numValues, bucketDocument.readDataColumnContent().getDataValuesList().size());
                     // verify each value
                     DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
-                    for (int valIndex = 0 ; valIndex < bucketDocument.getNumSamples() ; ++valIndex) {
+                    for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
                         Object expectedValue = requestBucketInfo.dataValues.get(valIndex);
                         assertTrue(expectedValue instanceof Double);
                         final double expectedValueDouble = (Double) expectedValue;

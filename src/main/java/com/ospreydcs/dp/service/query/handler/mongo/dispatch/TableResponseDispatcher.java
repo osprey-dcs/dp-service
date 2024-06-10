@@ -44,7 +44,7 @@ public class TableResponseDispatcher extends Dispatcher {
         int dataValueSize = 0;
         long second = bucket.getFirstSeconds();
         long nano = bucket.getFirstNanos();
-        final long delta = bucket.getSampleFrequency();
+        final long delta = bucket.getSamplePeriod();
         for (DataValue value : bucket.readDataColumnContent().getDataValuesList()) {
 
             // generate DataValue object from column data value
@@ -227,10 +227,10 @@ public class TableResponseDispatcher extends Dispatcher {
         while (cursor.hasNext()) {
             // add buckets to table data structure
             final BucketDocument bucket = cursor.next();
-            int columnIndex = columnNameList.indexOf(bucket.getColumnName());
+            int columnIndex = columnNameList.indexOf(bucket.getPvName());
             if (columnIndex == -1) {
                 // add column to list and get index
-                columnNameList.add(bucket.getColumnName());
+                columnNameList.add(bucket.getPvName());
                 columnIndex = columnNameList.size() - 1;
             }
             int bucketDataSize = addBucketToTable(columnIndex, bucket, tableValueMap);

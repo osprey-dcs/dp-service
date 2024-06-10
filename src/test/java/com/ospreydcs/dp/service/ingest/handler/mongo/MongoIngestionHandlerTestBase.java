@@ -134,8 +134,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                     bucket != null);
             assertTrue("bucket id missing from idsCreated list in status document: " + id,
                     statusDocument.getIdsCreated().contains(id));
-            assertTrue("unexpected value for columnName: " + bucket.getColumnName(),
-                    bucket.getColumnName().equals(columnName));
+            assertTrue("unexpected value for columnName: " + bucket.getPvName(),
+                    bucket.getPvName().equals(columnName));
             assertTrue("unexpected value for firstSeconds: " + bucket.getFirstSeconds(),
                     bucket.getFirstSeconds() == firstSeconds);
             assertTrue("unexpected value for firstNanos: " + bucket.getFirstNanos(),
@@ -182,16 +182,16 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 dataValueIndex = dataValueIndex + 1;
             }
 
-            assertTrue("unexpected value for sampleFrequency: " + bucket.getSampleFrequency(),
-                    bucket.getSampleFrequency() == sampleIntervalNanos);
-            assertTrue("unexpected value for numSamples: " + bucket.getNumSamples(),
-                    bucket.getNumSamples() == numSamples);
+            assertTrue("unexpected value for sampleFrequency: " + bucket.getSamplePeriod(),
+                    bucket.getSamplePeriod() == sampleIntervalNanos);
+            assertTrue("unexpected value for numSamples: " + bucket.getSampleCount(),
+                    bucket.getSampleCount() == numSamples);
             assertTrue("attributeMap mismatch",
                     bucket.getAttributeMap().equals(params.attributes));
-            assertTrue("unexpected value for eventSeconds: " + bucket.getEventSeconds(),
-                    bucket.getEventSeconds() == firstSeconds);
-            assertTrue("unexpected value for eventNanos: " + bucket.getEventNanos(),
-                    bucket.getEventNanos() == firstNanos);
+            assertTrue("unexpected value for eventSeconds: " + bucket.getEventStartSeconds(),
+                    bucket.getEventStartSeconds() == firstSeconds);
+            assertTrue("unexpected value for eventNanos: " + bucket.getEventStartNanos(),
+                    bucket.getEventStartNanos() == firstNanos);
             assertTrue("unexpected value for eventDescription: " + bucket.getEventDescription(),
                     bucket.getEventDescription().equals(params.eventDescription));
 
