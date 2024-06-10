@@ -10,13 +10,13 @@ public interface AnnotationHandlerInterface {
     boolean start();
     boolean stop();
 
-    void handleCreateDataSetRequest(
+    void handleCreateDataSet(
             CreateDataSetRequest request,
             StreamObserver<CreateDataSetResponse> responseObserver);
 
     void handleQueryDataSets(QueryDataSetsRequest request, StreamObserver<QueryDataSetsResponse> responseObserver);
 
-    void handleCreateCommentAnnotationRequest(
+    void handleCreateCommentAnnotation(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver);
 

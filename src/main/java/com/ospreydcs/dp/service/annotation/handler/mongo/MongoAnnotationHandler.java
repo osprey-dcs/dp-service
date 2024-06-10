@@ -77,7 +77,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateDataSetRequest(
+    public void handleCreateDataSet(
             CreateDataSetRequest request, 
             StreamObserver<CreateDataSetResponse> responseObserver
     ) {
@@ -161,7 +161,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateCommentAnnotationRequest(
+    public void handleCreateCommentAnnotation(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {

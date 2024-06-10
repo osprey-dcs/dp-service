@@ -139,7 +139,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         // handle request
-        handler.handleCreateDataSetRequest(request, responseObserver);
+        handler.handleCreateDataSet(request, responseObserver);
     }
 
     private static QueryDataSetsResponse queryDataSetsResponseExceptionalResult(
@@ -355,7 +355,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         // handle request
-        handler.handleCreateCommentAnnotationRequest(request, responseObserver);
+        handler.handleCreateCommentAnnotation(request, responseObserver);
     }
 
     @Override
