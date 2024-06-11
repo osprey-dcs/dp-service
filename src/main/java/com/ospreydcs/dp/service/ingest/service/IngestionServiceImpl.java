@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import io.grpc.stub.StreamObserver;
@@ -144,7 +145,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 } else {
 
                     // validate request, send error response for invalid request
-                    ValidationResult validationResult = handler.validateIngestionRequest(request);
+                    ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
                     boolean validationError = false;
                     String validationMsg = "";
 

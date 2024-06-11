@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -248,12 +249,14 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse("error flag is set", result.isError);
         verifySuccessfulRequest(params);
 
         // now test sending duplicate request
-        result = handler.handleIngestionRequest(handlerIngestionRequest);
+        job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        result = job.handleIngestionRequest(handlerIngestionRequest);
         assertTrue(
                 "isError not set",
                 result.isError);
@@ -311,7 +314,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         null,
                         true,
                         rejectMsg); // force request to be marked as reject
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertTrue("error flag not set", result.isError);
         verifyFailedRequest(params, BsonConstants.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
     }
@@ -357,7 +361,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse("error flag is set", result.isError);
         verifySuccessfulRequest(params);
     }
@@ -403,7 +408,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse("error flag is set", result.isError);
         verifySuccessfulRequest(params);
     }
@@ -449,7 +455,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse("error flag is set", result.isError);
         verifySuccessfulRequest(params);
     }
@@ -499,7 +506,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse(result.isError);
         verifySuccessfulRequest(params);
     }
@@ -555,7 +563,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // send request and examine responses
         HandlerIngestionRequest handlerIngestionRequest =
                 new HandlerIngestionRequest(request, null, false, "");
-        HandlerIngestionResult result = handler.handleIngestionRequest(handlerIngestionRequest);
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertTrue("error flag is not set", result.isError);
         verifyFailedRequest(
                 params,

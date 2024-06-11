@@ -12,12 +12,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class IngestionHandlerBaseTest extends IngestionTestBase {
-
-    private TestIngestionHandler handler = new TestIngestionHandler();
-
-    protected static class TestIngestionHandler extends IngestionHandlerBase {
-    }
+public class IngestionValidationUtilityTest extends IngestionTestBase {
 
     @Test
     public void testValidateRequestUnspecifiedRequestTime() {
@@ -43,7 +38,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         values);
         params.setRequestTime(false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("requestTime must be specified"));
     }
@@ -70,7 +65,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("providerId must be specified"));
     }
@@ -97,7 +92,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("clientRequestId must be specified"));
     }
@@ -129,7 +124,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertEquals("only SamplingClock is currently supported for IngestDataRequest.ingestionDataFrame.dataTimestamps.value", result.msg);
     }
@@ -157,7 +152,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertEquals(
                 result.msg,
@@ -188,7 +183,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         null);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("columns list cannot be empty"));
     }
@@ -220,7 +215,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.contains("mismatch numValues:"));
     }
@@ -251,7 +246,7 @@ public class IngestionHandlerBaseTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = handler.validateIngestionRequest(request);
+        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("name must be specified for all data columns"));
     }

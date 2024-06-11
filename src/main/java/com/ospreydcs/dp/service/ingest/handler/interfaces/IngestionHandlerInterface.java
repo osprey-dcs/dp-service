@@ -9,6 +9,5 @@ public interface IngestionHandlerInterface {
     boolean fini();
     boolean start();
     boolean stop();
-    ValidationResult validateIngestionRequest(IngestDataRequest request);
     void handleIngestDataStream(HandlerIngestionRequest request);
 }

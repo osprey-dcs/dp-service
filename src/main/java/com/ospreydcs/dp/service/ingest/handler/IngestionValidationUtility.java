@@ -5,9 +5,9 @@ import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 
-public abstract class IngestionHandlerBase {
+public class IngestionValidationUtility {
 
-    public ValidationResult validateIngestionRequest(IngestDataRequest request) {
+    public static ValidationResult validateIngestionRequest(IngestDataRequest request) {
 
         boolean isError = false;
         String statusMsg = "";

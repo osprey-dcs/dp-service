@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,7 +18,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
     private static final Logger logger = LogManager.getLogger();
 
     @Override
-    public MongoIngestionHandler.IngestionTaskResult insertBatch(
+    public IngestionTaskResult insertBatch(
             IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 
         logger.debug(
@@ -32,10 +33,10 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
             // insertMany exception
             final String errorMsg = "MongoException in insertMany: " + ex.getMessage();
             logger.error(errorMsg);
-            return new MongoIngestionHandler.IngestionTaskResult(true, errorMsg, null);
+            return new IngestionTaskResult(true, errorMsg, null);
         }
 
-        return new MongoIngestionHandler.IngestionTaskResult(false, null, result);
+        return new IngestionTaskResult(false, null, result);
     }
 
     @Override
