@@ -8,21 +8,13 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.*;
 
 import static org.junit.Assert.*;
 
-@RunWith(JUnit4.class)
-public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
+public abstract class IngestionDataTypesTestBase extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -66,17 +58,12 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
         }        
     }
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
-    }
+    protected abstract List<BucketDocument> sendAndVerifyIngestionRpc_(
+            IngestionTestBase.IngestionRequestParams params,
+            IngestDataRequest ingestionRequest,
+            List<DataColumn> dataColumnList
+    );
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
-    }
-
-    @Test
     public void ingestionDataTypesTest() {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
@@ -172,10 +159,10 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList=
-                    sendAndVerifyIngestDataStream(params, ingestionRequest, arrayDataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest, arrayDataColumnList);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
-            // bucket document by sendAndVerifyIngestDataStream() is probably sufficient, but checking that the
+            // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
             // data values are as expected
             int columnIndex = 0;
             for (BucketDocument bucketDocument : bucketDocumentList) {
@@ -273,10 +260,10 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList=
-                    sendAndVerifyIngestDataStream(params, ingestionRequest, dataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest, dataColumnList);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
-            // bucket document by sendAndVerifyIngestDataStream() is probably sufficient, but checking that the
+            // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
             // data values are as expected
             int columnIndex = 0;
             for (BucketDocument bucketDocument : bucketDocumentList) {
@@ -466,10 +453,10 @@ public class IngestionDataTypesTest extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList =
-                    sendAndVerifyIngestDataStream(params, ingestionRequest, dataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest, dataColumnList);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
-            // bucket document by sendAndVerifyIngestDataStream() is probably sufficient, but checking that the
+            // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
             // data values are as expected
             int columnIndex = 0;
             for (BucketDocument bucketDocument : bucketDocumentList) {

@@ -272,16 +272,12 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<BucketDocument> sendAndVerifyIngestDataStream(
+    private List<BucketDocument> verifyIngestionHandling(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest,
-            List<DataColumn> dataColumnList
+            List<DataColumn> dataColumnList,
+            List<IngestDataRequest> requestList,
+            List<IngestDataResponse> responseList
     ) {
-
-        // send request
-        final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
-        final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
-
         // check response
         final int numPvs = params.columnNames.size();
         assertEquals(requestList.size(), responseList.size());
@@ -346,6 +342,29 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return bucketDocumentList;
+    }
+
+    protected List<BucketDocument> sendAndVerifyIngestData(
+            IngestionTestBase.IngestionRequestParams params,
+            IngestDataRequest ingestionRequest,
+            List<DataColumn> dataColumnList
+    ) {
+        final IngestDataResponse response = sendIngestData(ingestionRequest);
+        final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
+        final List<IngestDataResponse> responseList = Arrays.asList(response);
+        return verifyIngestionHandling(params, dataColumnList, requestList, responseList);
+    }
+
+    protected List<BucketDocument> sendAndVerifyIngestDataStream(
+            IngestionTestBase.IngestionRequestParams params,
+            IngestDataRequest ingestionRequest,
+            List<DataColumn> dataColumnList
+    ) {
+
+        // send request
+        final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
+        final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
+        return verifyIngestionHandling(params, dataColumnList, requestList, responseList);
     }
 
     protected IngestionStreamInfo ingestDataStream(
