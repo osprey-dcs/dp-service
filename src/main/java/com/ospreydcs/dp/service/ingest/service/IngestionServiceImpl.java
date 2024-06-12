@@ -47,11 +47,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     public static IngestDataResponse ingestionResponseReject(
             IngestDataRequest request, String msg) {
 
-        ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
                 .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
                 .setMessage(msg)
                 .build();
-        IngestDataResponse response = IngestDataResponse.newBuilder()
+        final IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseTime(GrpcUtility.getTimestampNow())
@@ -61,13 +61,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     public static IngestDataResponse ingestionResponseAck(IngestDataRequest request) {
-        int numRows = getNumRequestRows(request);
-        int numColumns = request.getIngestionDataFrame().getDataColumnsCount();
-        IngestDataResponse.AckResult ackResult = IngestDataResponse.AckResult.newBuilder()
+        final int numRows = getNumRequestRows(request);
+        final int numColumns = request.getIngestionDataFrame().getDataColumnsCount();
+        final IngestDataResponse.AckResult ackResult = IngestDataResponse.AckResult.newBuilder()
                 .setNumRows(numRows)
                 .setNumColumns(numColumns)
                 .build();
-        IngestDataResponse response = IngestDataResponse.newBuilder()
+        final IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
                 .setResponseTime(GrpcUtility.getTimestampNow())
@@ -97,14 +97,26 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     @Override
+    public void ingestData(IngestDataRequest request, StreamObserver<IngestDataResponse> responseObserver) {
+
+        logger.debug(
+                "ingestData providerId: {} requestId: {}",
+                request.getProviderId(), request.getClientRequestId());
+
+        // handle ingestion request
+        handleIngestionRequest(request, responseObserver);
+
+    }
+
+    @Override
     public StreamObserver<IngestDataRequest> ingestDataStream(StreamObserver<IngestDataResponse> responseObserver) {
 
         return new StreamObserver<IngestDataRequest>() {
 
-            Instant t0 = Instant.now();
-            AtomicBoolean closeRequested = new AtomicBoolean(false);
-            AtomicInteger pendingRequestCount = new AtomicInteger(0);
-            CountDownLatch pendingRequestLatch = new CountDownLatch(1);
+            final Instant t0 = Instant.now();
+            final AtomicBoolean closeRequested = new AtomicBoolean(false);
+            final AtomicInteger pendingRequestCount = new AtomicInteger(0);
+            final CountDownLatch pendingRequestLatch = new CountDownLatch(1);
 
             private void decrementPendingRequestCountAndSignalFinish() {
                 logger.trace("decrementPendingRequestCountAndSignalFinish");
@@ -120,15 +132,15 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             @Override
             public void onNext(IngestDataRequest request) {
 
-                int providerId = request.getProviderId();
-                String requestId = request.getClientRequestId();
+                final int providerId = request.getProviderId();
+                final String requestId = request.getClientRequestId();
 
                 logger.debug(
                         "id: {} streamingIngestion.onNext providerId: {} requestId: {}",
                         this.hashCode(), providerId, requestId);
 
                 // add to pending request count, even if we might reject it, to avoid potential race conditions
-                int pendingRequestCountValue = pendingRequestCount.incrementAndGet();
+                pendingRequestCount.incrementAndGet();
 
                 if (closeRequested.get()) {
 
@@ -143,29 +155,8 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                     return;
 
                 } else {
-
-                    // validate request, send error response for invalid request
-                    ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
-                    boolean validationError = false;
-                    String validationMsg = "";
-
-                    if (validationResult.isError) {
-                        // send error reject
-                        validationError = true;
-                        validationMsg = validationResult.msg;
-                        IngestDataResponse rejectResponse = ingestionResponseReject(request, validationMsg);
-                        responseObserver.onNext(rejectResponse);
-
-                    } else {
-                        // send ack response
-                        IngestDataResponse ackResponse = ingestionResponseAck(request);
-                        responseObserver.onNext(ackResponse);
-                    }
-
-                    // handle the request, even if rejected
-                    HandlerIngestionRequest handlerIngestionRequest =
-                            new HandlerIngestionRequest(request, responseObserver, validationError, validationMsg);
-                    handler.handleIngestDataStream(handlerIngestionRequest);
+                    // handle ingestion request
+                    handleIngestionRequest(request, responseObserver);
 
                     // decrement pending request count and signal if we are finished
                     decrementPendingRequestCountAndSignalFinish();
@@ -180,7 +171,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             @Override
             public void onCompleted() {
 
-                Instant t1 = Instant.now();
+                final Instant t1 = Instant.now();
 
                 // mark stream as closed and wait for pending requests to complete
                 closeRequested.set(true);
@@ -198,13 +189,41 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 // close the response stream
                 responseObserver.onCompleted();
 
-                long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
-                double dtSeconds = dtMillis / 1_000.0;
+                final long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+                final double dtSeconds = dtMillis / 1_000.0;
                 logger.debug(
                         "id: {} streamingIngestion.onCompleted seconds: {}",
                         this.hashCode(), dtSeconds);
             }
         };
+    }
+
+    private void handleIngestionRequest(
+            IngestDataRequest request,
+            StreamObserver<IngestDataResponse> responseObserver
+    ) {
+        // validate request, send error response for invalid request
+        final ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
+        boolean validationError = false;
+        String validationMsg = "";
+
+        if (validationResult.isError) {
+            // send error reject
+            validationError = true;
+            validationMsg = validationResult.msg;
+            final IngestDataResponse rejectResponse = ingestionResponseReject(request, validationMsg);
+            responseObserver.onNext(rejectResponse);
+
+        } else {
+            // send ack response
+            final IngestDataResponse ackResponse = ingestionResponseAck(request);
+            responseObserver.onNext(ackResponse);
+        }
+
+        // handle the request, even if rejected
+        final HandlerIngestionRequest handlerIngestionRequest =
+                new HandlerIngestionRequest(request, responseObserver, validationError, validationMsg);
+        handler.handleIngestDataStream(handlerIngestionRequest);
     }
 
 }
