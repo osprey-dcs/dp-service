@@ -221,6 +221,29 @@ public abstract class GrpcIntegrationTestBase {
         ingestionServiceMock = null;
     }
 
+    protected IngestDataResponse sendIngestData(IngestDataRequest request) {
+
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(ingestionChannel);
+
+        final IngestionTestBase.IngestionResponseObserver responseObserver =
+                new IngestionTestBase.IngestionResponseObserver(1);
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.ingestData(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return null;
+        } else {
+            return responseObserver.getResponseList().get(0);
+        }
+    }
+
     protected List<IngestDataResponse> sendIngestDataStream(List<IngestDataRequest> requestList) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =

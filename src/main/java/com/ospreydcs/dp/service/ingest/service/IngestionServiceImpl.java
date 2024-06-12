@@ -106,6 +106,8 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         // handle ingestion request
         handleIngestionRequest(request, responseObserver);
 
+        // close response stream, this is a unary single-response rpc
+        responseObserver.onCompleted();
     }
 
     @Override
