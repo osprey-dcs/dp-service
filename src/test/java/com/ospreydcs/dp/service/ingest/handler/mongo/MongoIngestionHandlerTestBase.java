@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -112,42 +113,35 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     private void verifySuccessfulRequest(IngestionRequestParams params) {
 
         // get status document
-        RequestStatusDocument statusDocument =
+        final RequestStatusDocument statusDocument =
                 findRequestStatus(
                         params.providerId, params.requestId, BsonConstants.BSON_VALUE_STATUS_SUCCESS);
 
         // check bucket in database for each column in request
-        long firstSeconds = params.samplingClockStartSeconds;
-        long firstNanos = params.samplingClockStartNanos;
-        long sampleIntervalNanos = params.samplingClockPeriodNanos;
-        int numSamples = params.samplingClockCount;
-        Instant startInstant = Instant.ofEpochSecond(firstSeconds, firstNanos);
+        final long firstSeconds = params.samplingClockStartSeconds;
+        final long firstNanos = params.samplingClockStartNanos;
+        final long sampleIntervalNanos = params.samplingClockPeriodNanos;
+        final int numSamples = params.samplingClockCount;
+        final Instant startInstant = Instant.ofEpochSecond(firstSeconds, firstNanos);
         int columnIndex = 0;
         for (String columnName : params.columnNames) {
-            String id = columnName + "-" + firstSeconds + "-" + firstNanos;
-            List<Object> columnDataList = params.values.get(columnIndex);
-            Instant lastInstant =
+            final String id = columnName + "-" + firstSeconds + "-" + firstNanos;
+            final List<Object> columnDataList = params.values.get(columnIndex);
+            final Instant lastInstant =
                     startInstant.plusNanos(sampleIntervalNanos * (numSamples - 1));
-            long lastSeconds = lastInstant.getEpochSecond();
-            long lastNanos = lastInstant.getNano();
-            BucketDocument bucket = clientTestInterface.findBucketWithId(id);
-            assertTrue("no bucket found with id: " + id,
-                    bucket != null);
-            assertTrue("bucket id missing from idsCreated list in status document: " + id,
-                    statusDocument.getIdsCreated().contains(id));
-            assertTrue("unexpected value for columnName: " + bucket.getPvName(),
-                    bucket.getPvName().equals(columnName));
-            assertTrue("unexpected value for firstSeconds: " + bucket.getFirstSeconds(),
-                    bucket.getFirstSeconds() == firstSeconds);
-            assertTrue("unexpected value for firstNanos: " + bucket.getFirstNanos(),
-                    bucket.getFirstNanos() == firstNanos);
-            assertTrue("unexpected value for lastSeconds: " + bucket.getLastSeconds(),
-                    bucket.getLastSeconds() == lastSeconds);
-            assertTrue("unexpected value for lastNanos: " + bucket.getLastNanos() + ": " + lastNanos,
-                    bucket.getLastNanos() == lastNanos);
+            final long lastSeconds = lastInstant.getEpochSecond();
+            final long lastNanos = lastInstant.getNano();
+            final BucketDocument bucket = clientTestInterface.findBucketWithId(id);
+            assertTrue(bucket != null);
+            assertTrue(statusDocument.getIdsCreated().contains(id));
+            assertTrue(bucket.getPvName().equals(columnName));
+            assertTrue(bucket.getFirstSeconds() == firstSeconds);
+            assertTrue(bucket.getFirstNanos() == firstNanos);
+            assertTrue(bucket.getLastSeconds() == lastSeconds);
+            assertTrue(bucket.getLastNanos() == lastNanos);
 
             // compare column data values to expected
-            DataColumn dataColumn = bucket.readDataColumnContent();
+            final DataColumn dataColumn = bucket.readDataColumnContent();
             int dataValueIndex = 0;
             for (Object columnValue : columnDataList) {
                 if (columnValue instanceof Double) {
@@ -160,8 +154,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                     assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getBooleanValue());
                 } else if (columnValue instanceof List) {
                     int rowIndex = 0;
-                    List listDataValue = (List) columnValue;
-                    Object firstListValue = listDataValue.get(rowIndex);
+                    final List listDataValue = (List) columnValue;
+                    final Object firstListValue = listDataValue.get(rowIndex);
                     if (firstListValue instanceof Double) {
                         // compare array of values to expected
                         for (Double doubleValue : (List<Double>) listDataValue) {
@@ -183,29 +177,21 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 dataValueIndex = dataValueIndex + 1;
             }
 
-            assertTrue("unexpected value for sampleFrequency: " + bucket.getSamplePeriod(),
-                    bucket.getSamplePeriod() == sampleIntervalNanos);
-            assertTrue("unexpected value for numSamples: " + bucket.getSampleCount(),
-                    bucket.getSampleCount() == numSamples);
-            assertTrue("attributeMap mismatch",
-                    bucket.getAttributeMap().equals(params.attributes));
-            assertTrue("unexpected value for eventSeconds: " + bucket.getEventStartSeconds(),
-                    bucket.getEventStartSeconds() == firstSeconds);
-            assertTrue("unexpected value for eventNanos: " + bucket.getEventStartNanos(),
-                    bucket.getEventStartNanos() == firstNanos);
-            assertTrue("unexpected value for eventDescription: " + bucket.getEventDescription(),
-                    bucket.getEventDescription().equals(params.eventDescription));
+            assertTrue(bucket.getSamplePeriod() == sampleIntervalNanos);
+            assertTrue(bucket.getSampleCount() == numSamples);
+            assertTrue(bucket.getAttributeMap().equals(params.attributes));
+            final EventMetadataDocument eventMetadataDocument = bucket.getEventMetadata();
+            assertTrue(eventMetadataDocument.getDescription().equals(params.eventDescription));
+            assertTrue(eventMetadataDocument.getStartSeconds() == firstSeconds);
+            assertTrue(eventMetadataDocument.getStartNanos() == firstNanos);
 
             columnIndex = columnIndex + 1;
         }
 
         // check database contents for request status (success) document
-        assertTrue("idsCreated list size mismatch: " + statusDocument.getIdsCreated().size(),
-                statusDocument.getIdsCreated().size() == params.columnNames.size());
-        assertTrue("null updateTime value",
-                statusDocument.getUpdateTime() != null);
-        assertTrue("non-empty msg: " + statusDocument.getMsg(),
-                statusDocument.getMsg().isEmpty());
+        assertTrue(statusDocument.getIdsCreated().size() == params.columnNames.size());
+        assertTrue(statusDocument.getUpdateTime() != null);
+        assertTrue(statusDocument.getMsg().isEmpty());
     }
 
     public void testHandleIngestionRequestSuccessFloat() {

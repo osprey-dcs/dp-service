@@ -10,6 +10,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -203,6 +204,8 @@ public class IngestDataJob extends HandlerJob {
             String eventDescription = "";
             long eventStartSeconds = 0;
             long eventStartNanos = 0;
+            long eventStopSeconds = 0;
+            long eventStopNanos = 0;
             for (Attribute attribute : request.getAttributesList()) {
                 attributeMap.put(attribute.getName(), attribute.getValue());
             }
@@ -214,11 +217,19 @@ public class IngestDataJob extends HandlerJob {
                     eventStartSeconds = request.getEventMetadata().getStartTimestamp().getEpochSeconds();
                     eventStartNanos = request.getEventMetadata().getStartTimestamp().getNanoseconds();
                 }
+                if (request.getEventMetadata().hasStopTimestamp()) {
+                    eventStopSeconds = request.getEventMetadata().getStopTimestamp().getEpochSeconds();
+                    eventStopNanos = request.getEventMetadata().getStopTimestamp().getNanoseconds();
+                }
             }
             bucket.setAttributeMap(attributeMap);
-            bucket.setEventDescription(eventDescription);
-            bucket.setEventStartSeconds(eventStartSeconds);
-            bucket.setEventStartNanos(eventStartNanos);
+            EventMetadataDocument eventMetadataDocument = new EventMetadataDocument();
+            eventMetadataDocument.setDescription(eventDescription);
+            eventMetadataDocument.setStartSeconds(eventStartSeconds);
+            eventMetadataDocument.setStartNanos(eventStartNanos);
+            eventMetadataDocument.setStopSeconds(eventStopSeconds);
+            eventMetadataDocument.setStopNanos(eventStopNanos);
+            bucket.setEventMetadata(eventMetadataDocument);
             bucket.setProviderId(request.getProviderId());
             bucket.setClientRequestId(request.getClientRequestId());
 

@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -115,18 +116,21 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         }
 
         // add event metadata
-        if (
-                (document.getEventDescription() != null && ! document.getEventDescription().isBlank())
-                        || (document.getEventStartSeconds() > 0)
-                        || (document.getEventStartNanos() > 0)
-        ) {
+        if (document.getEventMetadata() != null) {
+            final EventMetadataDocument eventMetadataDocument = document.getEventMetadata();
+
             Timestamp responseEventStartTimestamp = Timestamp.newBuilder()
-                    .setEpochSeconds(document.getEventStartSeconds())
-                    .setNanoseconds(document.getEventStartNanos())
+                    .setEpochSeconds(eventMetadataDocument.getStartSeconds())
+                    .setNanoseconds(eventMetadataDocument.getStartNanos())
+                    .build();
+            Timestamp responseEventStopTimestamp = Timestamp.newBuilder()
+                    .setEpochSeconds(eventMetadataDocument.getStopSeconds())
+                    .setNanoseconds(eventMetadataDocument.getStopNanos())
                     .build();
             EventMetadata responseEventMetadata = EventMetadata.newBuilder()
-                    .setDescription(document.getEventDescription())
+                    .setDescription(eventMetadataDocument.getDescription())
                     .setStartTimestamp(responseEventStartTimestamp)
+                    .setStopTimestamp(responseEventStopTimestamp)
                     .build();
             bucketBuilder.setEventMetadata(responseEventMetadata);
         }

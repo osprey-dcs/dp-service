@@ -20,15 +20,13 @@ public class BucketDocument {
     private Date lastTime;
     private long lastSeconds;
     private long lastNanos;
+    private EventMetadataDocument eventMetadata;
     private long samplePeriod;
     private int sampleCount;
     private int dataTypeCase;
     private String dataType;
     private byte[] dataColumnBytes = null;
     private Map<String, String> attributeMap;
-    private long eventStartSeconds;
-    private long eventStartNanos;
-    private String eventDescription;
     private int providerId;
     private String clientRequestId;
 
@@ -96,6 +94,14 @@ public class BucketDocument {
         this.lastNanos = lastNanos;
     }
 
+    public EventMetadataDocument getEventMetadata() {
+        return eventMetadata;
+    }
+
+    public void setEventMetadata(EventMetadataDocument eventMetadata) {
+        this.eventMetadata = eventMetadata;
+    }
+
     public int getDataTypeCase() {
         return this.dataTypeCase;
     }
@@ -158,30 +164,6 @@ public class BucketDocument {
 
     public void setAttributeMap(Map<String, String> attributeMap) {
         this.attributeMap = attributeMap;
-    }
-
-    public long getEventStartSeconds() {
-        return eventStartSeconds;
-    }
-
-    public void setEventStartSeconds(long eventStartSeconds) {
-        this.eventStartSeconds = eventStartSeconds;
-    }
-
-    public long getEventStartNanos() {
-        return eventStartNanos;
-    }
-
-    public void setEventStartNanos(long eventStartNanos) {
-        this.eventStartNanos = eventStartNanos;
-    }
-
-    public String getEventDescription() {
-        return eventDescription;
-    }
-
-    public void setEventDescription(String eventDescription) {
-        this.eventDescription = eventDescription;
     }
 
     public int getProviderId() {
