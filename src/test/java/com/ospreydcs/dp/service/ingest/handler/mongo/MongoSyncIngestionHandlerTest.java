@@ -73,14 +73,20 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
         MongoIngestionHandlerTestBase.tearDown();
     }
 
-    @Test
-    public void testHandleIngestionRequestSuccessFloat() {
-        super.testHandleIngestionRequestSuccessFloat();
-    }
+// TODO: this is commented out until we decide if we want to enforce data types for pvs.
+//    @Test
+//    public void testHandleIngestionRequestErrorDataTypeMismatch() {
+//        super.testHandleIngestionRequestErrorDataTypeMismatch();
+//    }
 
     @Test
     public void testHandleIngestionRequestReject() {
         super.testHandleIngestionRequestReject();
+    }
+
+    @Test
+    public void testHandleIngestionRequestSuccessFloat() {
+        super.testHandleIngestionRequestSuccessFloat();
     }
 
     @Test
@@ -102,10 +108,5 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
     public void testHandleIngestionRequestSuccessArray() {
         super.testHandleIngestionRequestSuccessArray();
     }
-
-//    @Test
-//    public void testHandleIngestionRequestErrorDataTypeMismatch() {
-//        super.testHandleIngestionRequestErrorDataTypeMismatch();
-//    }
 
 }

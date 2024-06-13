@@ -182,8 +182,10 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
             assertTrue(bucket.getAttributeMap().equals(params.attributes));
             final EventMetadataDocument eventMetadataDocument = bucket.getEventMetadata();
             assertTrue(eventMetadataDocument.getDescription().equals(params.eventDescription));
-            assertTrue(eventMetadataDocument.getStartSeconds() == firstSeconds);
-            assertTrue(eventMetadataDocument.getStartNanos() == firstNanos);
+            assertTrue(eventMetadataDocument.getStartSeconds() == params.eventStartSeconds);
+            assertTrue(eventMetadataDocument.getStartNanos() == params.eventStartNanos);
+            assertTrue(eventMetadataDocument.getStopSeconds() == params.eventStopSeconds);
+            assertTrue(eventMetadataDocument.getStopNanos() == params.eventStopNanos);
 
             columnIndex = columnIndex + 1;
         }
@@ -192,64 +194,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         assertTrue(statusDocument.getIdsCreated().size() == params.columnNames.size());
         assertTrue(statusDocument.getUpdateTime() != null);
         assertTrue(statusDocument.getMsg().isEmpty());
-    }
-
-    public void testHandleIngestionRequestSuccessFloat() {
-
-        // assemble IngestionRequest
-        int providerId = 1;
-        String requestId = "request-1";
-        String pvName = "pv_01";
-        List<String> columnNames = Arrays.asList(pvName);
-        double value1 = 12.34;
-        double value2 = 42.00;
-        List<Object> columnDataList = Arrays.asList(value1, value2);
-        List<List<Object>> values = Arrays.asList(columnDataList);
-        Map<String, String> attributes = Map.of("subsystem", "vacuum", "sector", "42");
-        String eventDescription = "calibration test";
-        long firstSeconds = Instant.now().getEpochSecond();
-        long firstNanos = 0L;
-        long sampleIntervalNanos = 1_000_000L;
-        int numSamples = 2;
-        IngestionRequestParams params =
-                new IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        firstSeconds,
-                        firstNanos,
-                        sampleIntervalNanos,
-                        numSamples,
-                        columnNames,
-                        IngestionDataType.DOUBLE,
-                        values,
-                        attributes,
-                        eventDescription,
-                        firstSeconds,
-                        firstNanos, null, null);
-        IngestDataRequest request = buildIngestionRequest(params);
-
-        // send request and examine responses
-        HandlerIngestionRequest handlerIngestionRequest =
-                new HandlerIngestionRequest(request, null, false, "");
-        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
-        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
-        assertFalse("error flag is set", result.isError);
-        verifySuccessfulRequest(params);
-
-        // now test sending duplicate request
-        job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
-        result = job.handleIngestionRequest(handlerIngestionRequest);
-        assertTrue(
-                "isError not set",
-                result.isError);
-        assertTrue("message not set", result.message.contains("duplicate key error"));
-        verifyFailedRequest(
-                params, BsonConstants.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
-
     }
 
     public void testHandleIngestionRequestReject() {
@@ -288,7 +232,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos, null, null);
+                        firstNanos,
+                        null,
+                        null);
         params.setRequestTime(false); // this would cause a reject for missing request time, but we aren't really validating the request
         IngestDataRequest request = buildIngestionRequest(params);
 
@@ -304,6 +250,129 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertTrue("error flag not set", result.isError);
         verifyFailedRequest(params, BsonConstants.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
+    }
+
+    /**
+     * Tests data type mismatch for column values.
+     */
+    public void testHandleIngestionRequestErrorDataTypeMismatch() {
+
+        // assemble IngestionRequest
+        int providerId = 1;
+        String requestId = "request-8";
+        String pvName = "pv_08";
+        List<String> columnNames = Arrays.asList(pvName);
+        Map<String, String> attributes = Map.of("subsystem", "vacuum", "sector", "42");
+        String eventDescription = "calibration test";
+        long firstSeconds = Instant.now().getEpochSecond();
+        long firstNanos = 0L;
+        long sampleIntervalNanos = 1_000_000L;
+        int numSamples = 2;
+        IngestionRequestParams params =
+                new IngestionRequestParams(
+                        providerId,
+                        requestId,
+                        null,
+                        null,
+                        null,
+                        null,
+                        firstSeconds,
+                        firstNanos,
+                        sampleIntervalNanos,
+                        numSamples,
+                        columnNames,
+                        IngestionDataType.ARRAY_DOUBLE,
+                        null, // don't set any column values, we're going to override
+                        attributes,
+                        eventDescription,
+                        firstSeconds,
+                        firstNanos,
+                        null,
+                        null);
+
+        // override the column data with both string and float data, to trigger mismatch exception
+        List<DataColumn> dataColumnList = new ArrayList<>();
+        DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+        dataColumnBuilder.setName(pvName);
+        DataValue stringValue = DataValue.newBuilder().setStringValue("junk").build();
+        dataColumnBuilder.addDataValues(stringValue);
+        DataValue doubleValue = DataValue.newBuilder().setDoubleValue(12.34).build();
+        dataColumnBuilder.addDataValues(doubleValue);
+        dataColumnList.add(dataColumnBuilder.build());
+
+        IngestDataRequest request = buildIngestionRequest(params, dataColumnList);
+
+        // send request and examine responses
+        HandlerIngestionRequest handlerIngestionRequest =
+                new HandlerIngestionRequest(request, null, false, "");
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
+        assertTrue("error flag is not set", result.isError);
+        verifyFailedRequest(
+                params,
+                BsonConstants.BSON_VALUE_STATUS_ERROR,
+                "data type mismatch: DOUBLEVALUE expected: STRINGVALUE",
+                true);
+    }
+
+    public void testHandleIngestionRequestSuccessFloat() {
+
+        // assemble IngestionRequest
+        int providerId = 1;
+        String requestId = "request-1";
+        String pvName = "pv_01";
+        List<String> columnNames = Arrays.asList(pvName);
+        double value1 = 12.34;
+        double value2 = 42.00;
+        List<Object> columnDataList = Arrays.asList(value1, value2);
+        List<List<Object>> values = Arrays.asList(columnDataList);
+        Map<String, String> attributes = Map.of("subsystem", "vacuum", "sector", "42");
+        String eventDescription = "calibration test";
+        long firstSeconds = Instant.now().getEpochSecond();
+        long firstNanos = 0L;
+        long sampleIntervalNanos = 1_000_000L;
+        int numSamples = 2;
+        IngestionRequestParams params =
+                new IngestionRequestParams(
+                        providerId,
+                        requestId,
+                        null,
+                        null,
+                        null,
+                        null,
+                        firstSeconds,
+                        firstNanos,
+                        sampleIntervalNanos,
+                        numSamples,
+                        columnNames,
+                        IngestionDataType.DOUBLE,
+                        values,
+                        attributes,
+                        eventDescription,
+                        firstSeconds,
+                        firstNanos,
+                        firstSeconds + 1,
+                        firstNanos + 999_000_000L);
+        IngestDataRequest request = buildIngestionRequest(params);
+
+        // send request and examine responses
+        HandlerIngestionRequest handlerIngestionRequest =
+                new HandlerIngestionRequest(request, null, false, "");
+        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
+        assertFalse("error flag is set", result.isError);
+        verifySuccessfulRequest(params);
+
+        // now test sending duplicate request
+        job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
+        result = job.handleIngestionRequest(handlerIngestionRequest);
+        assertTrue(
+                "isError not set",
+                result.isError);
+        assertTrue("message not set", result.message.contains("duplicate key error"));
+        verifyFailedRequest(
+                params, BsonConstants.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
+
     }
 
     public void testHandleIngestionRequestSuccessString() {
@@ -341,7 +410,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos, null, null);
+                        firstNanos,
+                        firstSeconds + 1,
+                        firstNanos + 999_000_000L);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -388,7 +459,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos, null, null);
+                        firstNanos,
+                        firstSeconds + 1,
+                        firstNanos + 999_000_000L);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -435,7 +508,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos, null, null);
+                        firstNanos,
+                        firstSeconds + 1,
+                        firstNanos + 999_000_000L);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -486,7 +561,9 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         attributes,
                         eventDescription,
                         firstSeconds,
-                        firstNanos, null, null);
+                        firstNanos,
+                        firstSeconds + 1,
+                        firstNanos + 999_000_000L);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -496,67 +573,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertFalse(result.isError);
         verifySuccessfulRequest(params);
-    }
-
-    /**
-     * Tests data type mismatch for column values.
-     */
-    public void testHandleIngestionRequestErrorDataTypeMismatch() {
-
-        // assemble IngestionRequest
-        int providerId = 1;
-        String requestId = "request-8";
-        String pvName = "pv_08";
-        List<String> columnNames = Arrays.asList(pvName);
-        Map<String, String> attributes = Map.of("subsystem", "vacuum", "sector", "42");
-        String eventDescription = "calibration test";
-        long firstSeconds = Instant.now().getEpochSecond();
-        long firstNanos = 0L;
-        long sampleIntervalNanos = 1_000_000L;
-        int numSamples = 2;
-        IngestionRequestParams params =
-                new IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        firstSeconds,
-                        firstNanos,
-                        sampleIntervalNanos,
-                        numSamples,
-                        columnNames,
-                        IngestionDataType.ARRAY_DOUBLE,
-                        null, // don't set any column values, we're going to override
-                        attributes,
-                        eventDescription,
-                        firstSeconds,
-                        firstNanos, null, null);
-
-        // override the column data with both string and float data, to trigger mismatch exception
-        List<DataColumn> dataColumnList = new ArrayList<>();
-        DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
-        dataColumnBuilder.setName(pvName);
-        DataValue stringValue = DataValue.newBuilder().setStringValue("junk").build();
-        dataColumnBuilder.addDataValues(stringValue);
-        DataValue doubleValue = DataValue.newBuilder().setDoubleValue(12.34).build();
-        dataColumnBuilder.addDataValues(doubleValue);
-        dataColumnList.add(dataColumnBuilder.build());
-
-        IngestDataRequest request = buildIngestionRequest(params, dataColumnList);
-
-        // send request and examine responses
-        HandlerIngestionRequest handlerIngestionRequest =
-                new HandlerIngestionRequest(request, null, false, "");
-        IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
-        HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
-        assertTrue("error flag is not set", result.isError);
-        verifyFailedRequest(
-                params,
-                BsonConstants.BSON_VALUE_STATUS_ERROR,
-                "data type mismatch: DOUBLEVALUE expected: STRINGVALUE",
-                true);
     }
 
 }

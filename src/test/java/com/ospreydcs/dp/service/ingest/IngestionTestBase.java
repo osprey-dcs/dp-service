@@ -163,18 +163,6 @@ public class IngestionTestBase {
             requestBuilder.setRequestTime(GrpcUtility.getTimestampNow());
         }
 
-        // set event description if snapshotTimestamp specified
-        if (params.snapshotStartTimestampSeconds != null) {
-            EventMetadata.Builder EventMetadataBuilder = EventMetadata.newBuilder();
-            final Timestamp.Builder snapshotTimestampBuilder = Timestamp.newBuilder();
-            snapshotTimestampBuilder.setEpochSeconds(params.snapshotStartTimestampSeconds);
-            if (params.snapshotStartTimestampNanos != null) snapshotTimestampBuilder.setNanoseconds(params.snapshotStartTimestampNanos);
-            snapshotTimestampBuilder.build();
-            EventMetadataBuilder.setStartTimestamp(snapshotTimestampBuilder);
-            EventMetadataBuilder.build();
-            requestBuilder.setEventMetadata(EventMetadataBuilder);
-        }
-
         IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
                 = IngestDataRequest.IngestionDataFrame.newBuilder();
         DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
@@ -293,15 +281,27 @@ public class IngestionTestBase {
             }
 
             if (params.eventStartSeconds != null || params.eventStartNanos != null) {
-                Timestamp.Builder eventTimeBuilder = Timestamp.newBuilder();
+                Timestamp.Builder eventStartTimeBuilder = Timestamp.newBuilder();
                 if (params.eventStartSeconds != null) {
-                    eventTimeBuilder.setEpochSeconds(params.eventStartSeconds);
+                    eventStartTimeBuilder.setEpochSeconds(params.eventStartSeconds);
                 }
                 if (params.eventStartNanos != null) {
-                    eventTimeBuilder.setNanoseconds(params.eventStartNanos);
+                    eventStartTimeBuilder.setNanoseconds(params.eventStartNanos);
                 }
-                eventTimeBuilder.build();
-                eventMetadataBuilder.setStartTimestamp(eventTimeBuilder);
+                eventStartTimeBuilder.build();
+                eventMetadataBuilder.setStartTimestamp(eventStartTimeBuilder);
+            }
+
+            if (params.eventStopSeconds != null || params.eventStopNanos != null) {
+                Timestamp.Builder eventStopTimeBuilder = Timestamp.newBuilder();
+                if (params.eventStopSeconds != null) {
+                    eventStopTimeBuilder.setEpochSeconds(params.eventStopSeconds);
+                }
+                if (params.eventStopNanos != null) {
+                    eventStopTimeBuilder.setNanoseconds(params.eventStopNanos);
+                }
+                eventStopTimeBuilder.build();
+                eventMetadataBuilder.setStopTimestamp(eventStopTimeBuilder);
             }
 
             eventMetadataBuilder.build();
