@@ -71,24 +71,6 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return QueryHandlerUtility.validateQueryTableRequest(request);
     }
 
-    public static DataTimestamps dataTimestampsForBucket(BucketDocument document) {
-
-        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
-
-        // TODO: determine whether to use explicit timestamp list if BucketDocument contains non-empty list,
-        // otherwise use SamplingClock as currently implemented...
-
-        final Timestamp startTime = GrpcUtility.timestampFromSeconds(document.getFirstSeconds(), document.getFirstNanos());
-        final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
-        samplingClockBuilder.setStartTime(startTime);
-        samplingClockBuilder.setPeriodNanos(document.getSamplePeriod());
-        samplingClockBuilder.setCount(document.getSampleCount());
-        samplingClockBuilder.build();
-
-        dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
-        return dataTimestampsBuilder.build();
-    }
-
     public static QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
             BucketDocument document
     ) {
@@ -96,7 +78,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
                 QueryDataResponse.QueryData.DataBucket.newBuilder();
 
         // add data timestamps
-        bucketBuilder.setDataTimestamps(dataTimestampsForBucket(document));
+        DataTimestamps dataTimestamps = document.readDataTimestampsContent();
+        bucketBuilder.setDataTimestamps(dataTimestamps);
 
         // add data values
         DataColumn dataColumn = document.readDataColumnContent();

@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
 
 import java.util.ArrayList;
@@ -33,16 +32,16 @@ public class BucketUtility {
 
         for (int batchIndex = 0 ; batchIndex < numBucketsPerColumn ; batchIndex++) {
 
-            Date firstTimeDate =
+            final Date firstTimeDate =
                     GrpcUtility.dateFromTimestamp(GrpcUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos));
-            Date lastTimeDate =
+            final Date lastTimeDate =
                     GrpcUtility.dateFromTimestamp(GrpcUtility.timestampFromSeconds(lastTimeSeconds, lastTimeNanos));
 
             // create a bucket document for each column in the batch
             for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
-                String pvName = columnNameBase + columnIndex;
-                String documentId = pvName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
-                BucketDocument bucket = new BucketDocument();
+                final String pvName = columnNameBase + columnIndex;
+                final String documentId = pvName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
+                final BucketDocument bucket = new BucketDocument();
                 bucket.setId(documentId);
                 bucket.setPvName(pvName);
                 bucket.setFirstTime(firstTimeDate);
@@ -53,15 +52,27 @@ public class BucketUtility {
                 bucket.setLastNanos(lastTimeNanos);
                 bucket.setSamplePeriod(samplePeriod);
                 bucket.setSampleCount(sampleCount);
+
                 // fill bucket with specified number of data values
-                DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+                final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(pvName);
                 for (int samplesIndex = 0 ; samplesIndex < sampleCount ; samplesIndex++) {
-                    double doubleValue = samplesIndex;
-                    DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
+                    final double doubleValue = samplesIndex;
+                    final DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
                     dataColumnBuilder.addDataValues(dataValue);
                 }
                 bucket.writeDataColumnContent(dataColumnBuilder.build());
+
+                // set DataTimestamps in bucket
+                final Timestamp startTime = GrpcUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos);
+                final SamplingClock samplingClock = SamplingClock.newBuilder()
+                        .setStartTime(startTime)
+                        .setPeriodNanos(samplePeriod)
+                        .setCount(sampleCount)
+                        .build();
+                DataTimestamps dataTimestamps = DataTimestamps.newBuilder().setSamplingClock(samplingClock).build();
+                bucket.writeDataTimestampsContent(dataTimestamps);
+
                 bucketList.add(bucket);
             }
 

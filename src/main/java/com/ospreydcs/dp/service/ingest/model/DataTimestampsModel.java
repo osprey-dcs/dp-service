@@ -52,7 +52,7 @@ public class DataTimestampsModel {
         if (samplingClock != null) {
             return samplingClock.getPeriodNanos();
         } else {
-            return null;
+            return 0L;
         }
     }
 
@@ -60,7 +60,7 @@ public class DataTimestampsModel {
         if (samplingClock != null) {
             return samplingClock.getCount();
         } else {
-            return null;
+            return timestampList.size();
         }
     }
 

@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 
 import java.util.Date;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class BucketDocument {
     private int dataTypeCase;
     private String dataType;
     private byte[] dataColumnBytes = null;
+    private byte[] dataTimestampsBytes = null;
     private Map<String, String> attributeMap;
     private int providerId;
     private String clientRequestId;
@@ -136,6 +138,30 @@ public class BucketDocument {
         } else {
             try {
                 return DataColumn.parseFrom(dataColumnBytes);
+            } catch (InvalidProtocolBufferException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+    
+    public byte[] getDataTimestampsBytes() {
+        return dataTimestampsBytes;
+    }
+
+    public void setDataTimestampsBytes(byte[] dataTimestampsBytes) {
+        this.dataTimestampsBytes = dataTimestampsBytes;
+    }
+
+    public void writeDataTimestampsContent(DataTimestamps dataTimestamps) {
+        this.dataTimestampsBytes = dataTimestamps.toByteArray();
+    }
+
+    public DataTimestamps readDataTimestampsContent() {
+        if (dataTimestampsBytes == null) {
+            return null;
+        } else {
+            try {
+                return DataTimestamps.parseFrom(dataTimestampsBytes);
             } catch (InvalidProtocolBufferException e) {
                 throw new RuntimeException(e);
             }

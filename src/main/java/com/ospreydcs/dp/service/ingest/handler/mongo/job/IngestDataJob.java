@@ -177,14 +177,9 @@ public class IngestDataJob extends HandlerJob {
             final String pvName = column.getName();
             final String documentId = pvName + "-" + firstTimestampSeconds + "-" + firstTimestampNanos;
 
-            // serialize: column.toByteString()
-            // deserialize: column.getParserForType().parseFrom(ByteString)
-
-            // serialize: column.writeTo(OutputStream)
-            // deserialize: column.getParserForType().parseFrom(InputStream)
-
             BucketDocument bucket = new BucketDocument();
             bucket.writeDataColumnContent(column);
+            bucket.writeDataTimestampsContent(request.getIngestionDataFrame().getDataTimestamps());
             bucket.setId(documentId);
             bucket.setPvName(pvName);
             final DataValue.ValueCase dataValueCase = column.getDataValues(0).getValueCase();
