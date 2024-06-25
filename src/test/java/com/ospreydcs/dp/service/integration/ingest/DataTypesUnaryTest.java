@@ -1,9 +1,10 @@
-package com.ospreydcs.dp.service.integration;
+package com.ospreydcs.dp.service.integration.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -13,7 +14,7 @@ import org.junit.runners.JUnit4;
 import java.util.List;
 
 @RunWith(JUnit4.class)
-public class IngestionDataTypesUnaryTest extends IngestionDataTypesTestBase {
+public class DataTypesUnaryTest extends DataTypesTestBase {
 
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,

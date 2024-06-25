@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.integration;
+package com.ospreydcs.dp.service.integration.ingest;
 
 import com.google.protobuf.ByteString;
 import com.ospreydcs.dp.grpc.v1.common.*;
@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +15,7 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
-public abstract class IngestionDataTypesTestBase extends GrpcIntegrationTestBase {
+public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

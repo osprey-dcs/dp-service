@@ -272,7 +272,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    private List<BucketDocument> verifyIngestionHandling(
+    protected List<BucketDocument> verifyIngestionHandling(
             IngestionTestBase.IngestionRequestParams params,
             List<DataColumn> dataColumnList,
             List<IngestDataRequest> requestList,
@@ -298,7 +298,7 @@ public abstract class GrpcIntegrationTestBase {
         for (String pvName : params.columnNames) {
             final String expectedBucketId =
                     pvName + "-" + params.samplingClockStartSeconds + "-" + params.samplingClockStartNanos;
-            assertTrue(statusDocument.getIdsCreated().contains(expectedBucketId));
+            assertTrue(expectedBucketId, statusDocument.getIdsCreated().contains(expectedBucketId));
             expectedBucketIds.add(expectedBucketId);
         }
 
@@ -314,24 +314,66 @@ public abstract class GrpcIntegrationTestBase {
             final String pvName = params.columnNames.get(pvIndex);
             assertEquals(pvName, bucketDocument.getPvName());
             assertEquals(expectedBucketId, bucketDocument.getId());
-            assertEquals((int)params.samplingClockCount, bucketDocument.getSampleCount());
-            assertEquals((long)params.samplingClockPeriodNanos, bucketDocument.getSamplePeriod());
-            assertEquals((long)params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
-            assertEquals((long)params.samplingClockStartNanos, bucketDocument.getFirstNanos());
+
+            // check bucket start times
+            assertEquals((long) params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
+            assertEquals((long) params.samplingClockStartNanos, bucketDocument.getFirstNanos());
             assertEquals(
                     Date.from(Instant.ofEpochSecond(
                             params.samplingClockStartSeconds, params.samplingClockStartNanos)),
                     bucketDocument.getFirstTime());
-            final long endSeconds = params.samplingClockStartSeconds;
-            final long endNanos = params.samplingClockPeriodNanos * (params.samplingClockCount - 1);
+
+            // check sample count params
+            assertEquals((int) params.samplingClockCount, bucketDocument.getSampleCount());
+            assertEquals(
+                    (int) params.samplingClockCount,
+                    bucketDocument.readDataColumnContent().getDataValuesList().size());
+
+            // check DataTimestamps (TimestampsList or SamplingClock depending on request)
+            final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
+            long endSeconds = 0L;
+            long endNanos = 0L;
+
+            if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
+                // check explicit TimestampsList
+
+                // check sample period
+                assertEquals(0L, bucketDocument.getSamplePeriod());
+
+                // compare list of timestamps in bucket vs. params
+                assertTrue(bucketDataTimestamps.hasTimestampList());
+                final List<Timestamp> bucketTimestampList = bucketDataTimestamps.getTimestampList().getTimestampsList();
+                assertEquals(params.timestampsSecondsList.size(), bucketTimestampList.size());
+                assertEquals(params.timestampNanosList.size(), bucketTimestampList.size());
+                for (int timestampIndex = 0 ; timestampIndex < bucketTimestampList.size() ; ++timestampIndex) {
+                    final Timestamp bucketTimestamp = bucketTimestampList.get(timestampIndex);
+                    final long requestSeconds = params.timestampsSecondsList.get(timestampIndex);
+                    final long requestNanos = params.timestampNanosList.get(timestampIndex);
+                    assertEquals(requestSeconds, bucketTimestamp.getEpochSeconds());
+                    assertEquals(requestNanos, bucketTimestamp.getNanoseconds());
+                }
+
+                // determine expected bucket end times
+                endSeconds = params.timestampsSecondsList.get(params.timestampsSecondsList.size() - 1);
+                endNanos = params.timestampNanosList.get(params.timestampNanosList.size() - 1);
+
+            } else {
+                // check SamplingClock parameters
+
+                // check sample period
+                assertEquals((long) params.samplingClockPeriodNanos, bucketDocument.getSamplePeriod());
+
+                // determine expected bucket end times
+                endSeconds = params.samplingClockStartSeconds;
+                endNanos = params.samplingClockPeriodNanos * (params.samplingClockCount - 1);
+            }
+
+            // check bucket end times against expected values determined above
             assertEquals(endSeconds, bucketDocument.getLastSeconds());
             assertEquals(endNanos, bucketDocument.getLastNanos());
             assertEquals(
                     Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
                     bucketDocument.getLastTime());
-            assertEquals(
-                    (int)params.samplingClockCount,
-                    bucketDocument.readDataColumnContent().getDataValuesList().size());
 
             // compare data value vectors
             final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
@@ -342,6 +384,10 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return bucketDocumentList;
+    }
+
+    private void verifyBucketTimeParameters(int count, long period, long startSeconds, long startNanos, long endSeconds, long endNanos) {
+
     }
 
     protected List<BucketDocument> sendAndVerifyIngestData(

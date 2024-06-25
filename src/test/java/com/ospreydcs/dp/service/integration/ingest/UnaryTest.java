@@ -1,9 +1,10 @@
-package com.ospreydcs.dp.service.integration;
+package com.ospreydcs.dp.service.integration.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -15,7 +16,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class IngestionUnaryTest extends GrpcIntegrationTestBase {
+public class UnaryTest extends GrpcIntegrationTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {

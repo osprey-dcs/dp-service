@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.integration;
+package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;

@@ -34,12 +34,6 @@ public class IngestionValidationUtility {
             isError = true;
             statusMsg = "clientRequestId must be specified";
 
-        } else if (!request.getIngestionDataFrame().getDataTimestamps().hasSamplingClock()) {
-            // currently only SamplingClock is supported for time spec
-            isError = true;
-            statusMsg = "only SamplingClock is currently supported for "
-                            + "IngestDataRequest.ingestionDataFrame.dataTimestamps.value";
-
         } else if (numRequestRows == 0) {
             // check that time spec specifies number of rows for request
             isError = true;

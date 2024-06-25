@@ -167,10 +167,12 @@ public class IngestionTestBase {
                 = IngestDataRequest.IngestionDataFrame.newBuilder();
         DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
 
-        // set list of timestamps if specified
+        // set DataTimestamps for request
         if (params.timestampsSecondsList != null) {
-            assertTrue("timestampNanosList must be specified when timestampSecondsList is provided", params.timestampNanosList != null);
-            assertTrue("size of timestampSecondsList and timestampNanosList must match", params.timestampsSecondsList.size() == params.timestampNanosList.size());
+            // use explicit timestamp list in DataTimestamps if specified in params
+
+            assertTrue(params.timestampNanosList != null);
+            assertTrue(params.timestampsSecondsList.size() == params.timestampNanosList.size());
             TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
             for (int i = 0; i < params.timestampsSecondsList.size(); i++) {
                 long seconds = params.timestampsSecondsList.get(i);
@@ -185,10 +187,10 @@ public class IngestionTestBase {
             dataTimestampsBuilder.setTimestampList(timestampListBuilder);
             dataTimestampsBuilder.build();
             dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
-        }
 
-        // set timestamp iterator in time spec
-        if (params.samplingClockStartSeconds != null) {
+        } else if (params.samplingClockStartSeconds != null) {
+            // otherwise use Samplingclock for DataTimestamps
+
             assertTrue(params.samplingClockStartNanos != null);
             assertTrue(params.samplingClockPeriodNanos != null);
             assertTrue(params.samplingClockCount != null);

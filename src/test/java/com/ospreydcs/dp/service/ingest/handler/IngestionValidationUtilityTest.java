@@ -97,38 +97,6 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
         assertTrue(result.msg.equals("clientRequestId must be specified"));
     }
 
-    /**
-     * Provides test coverage of validation check for invalid time spec using timestamp list instead of iterator.
-     */
-    @Test
-    public void testValidateRequestInvalidTimeSpec() {
-        int providerId = 1;
-        String requestId = "request-1";
-        List<Long> timestampsSecondsList = Arrays.asList(12345L);
-        List<Long> timestampsNanosList = Arrays.asList(0L);
-        List<String> columnNames = Arrays.asList("pv_01");
-        List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
-        IngestionTestBase.IngestionRequestParams params =
-                new IngestionTestBase.IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        timestampsSecondsList,
-                        timestampsNanosList,
-                        null,
-                        null,
-                        null,
-                        null,
-                        columnNames,
-                        IngestionDataType.DOUBLE,
-                        values);
-        IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
-        assertTrue(result.isError);
-        assertEquals("only SamplingClock is currently supported for IngestDataRequest.ingestionDataFrame.dataTimestamps.value", result.msg);
-    }
-
     @Test
     public void testValidateRequestInvalidTimeIterator() {
         int providerId = 1;

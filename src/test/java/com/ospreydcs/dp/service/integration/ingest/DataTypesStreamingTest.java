@@ -1,16 +1,17 @@
-package com.ospreydcs.dp.service.integration;
+package com.ospreydcs.dp.service.integration.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.List;
 
-public class IngestionDataTypesStreamingTest extends IngestionDataTypesTestBase {
+public class DataTypesStreamingTest extends DataTypesTestBase {
 
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
