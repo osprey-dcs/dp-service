@@ -5,7 +5,8 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -13,10 +14,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 public class TableResponseDispatcher extends Dispatcher {
 
@@ -42,13 +40,19 @@ public class TableResponseDispatcher extends Dispatcher {
             int columnIndex, BucketDocument bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
     ) {
         int dataValueSize = 0;
-        long second = bucket.getFirstSeconds();
-        long nano = bucket.getFirstNanos();
-        final long delta = bucket.getSamplePeriod();
-        for (DataValue value : bucket.readDataColumnContent().getDataValuesList()) {
+        final DataTimestamps bucketDataTimestamps = bucket.readDataTimestampsContent();
+        DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
+                DataTimestampsUtility.dataTimestampsIterator(bucketDataTimestamps);
+        Iterator<DataValue> dataValueIterator = bucket.readDataColumnContent().getDataValuesList().iterator();
+        while (dataTimestampsIterator.hasNext() && dataValueIterator.hasNext()) {
+
+            final Timestamp timestamp = dataTimestampsIterator.next();
+            final long second = timestamp.getEpochSeconds();
+            final long nano = timestamp.getNanoseconds();
+            final DataValue dataValue = dataValueIterator.next();
 
             // generate DataValue object from column data value
-            dataValueSize = dataValueSize + value.getSerializedSize();
+            dataValueSize = dataValueSize + dataValue.getSerializedSize();
 
             // add to table data structure
             Map<Integer, DataValue> nanoValueMap = tableValueMap.get(second, nano);
@@ -56,14 +60,7 @@ public class TableResponseDispatcher extends Dispatcher {
                 nanoValueMap = new TreeMap<>();
                 tableValueMap.put(second, nano, nanoValueMap);
             }
-            nanoValueMap.put(columnIndex, value);
-
-            // increment nanos, and increment seconds if nanos rolled over one billion
-            nano = nano + delta;
-            if (nano >= 1_000_000_000) {
-                second = second + 1;
-                nano = nano - 1_000_000_000;
-            }
+            nanoValueMap.put(columnIndex, dataValue);
         }
 
         return dataValueSize;
@@ -235,7 +232,7 @@ public class TableResponseDispatcher extends Dispatcher {
             }
             int bucketDataSize = addBucketToTable(columnIndex, bucket, tableValueMap);
             responseMessageSize = responseMessageSize + bucketDataSize;
-            if (responseMessageSize > GrpcUtility.MAX_GRPC_MESSAGE_SIZE) {
+            if (responseMessageSize > TimestampUtility.MAX_GRPC_MESSAGE_SIZE) {
                 final String msg = "result exceeds gRPC message size limit";
                 logger.error(msg);
                 QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);

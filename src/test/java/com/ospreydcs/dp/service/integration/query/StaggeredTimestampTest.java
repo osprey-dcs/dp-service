@@ -41,7 +41,8 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         final long startNanos = 0L;
         final int providerId = INGESTION_PROVIDER_ID;
         final String columnNameTenths = "TEST_TENTHS";
-        final String columnNameTwentieths = "TEST_TWENTIETHS";
+        final String columnNameEighths = "TEST_EIGHTHS";
+        final String columnNameFifths = "TEST_FIFTHS";
         final String columnNameQuarters = "TEST_QUARTERS";
 
         List<IngestionColumnInfo> columnInfoList = new ArrayList<>();
@@ -58,24 +59,26 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             requestIdBaseTenths,
                             intervalTenths,
                             numBucketsTenths,
-                            numSecondsPerBucketTenths);
+                            numSecondsPerBucketTenths, 
+                            false);
             columnInfoList.add(columnInfoTenths);
         }
 
         {
-            // ingest data with timestamps every twentieth of a second
-            final String requestIdBaseTwentieths = "TWENTIETH-";
-            final long intervalTwentieths = 200_000_000L;
-            final int numBucketsTwentieths = 10;
-            final int numSecondsPerBucketTwentieths = 3;
-            final IngestionColumnInfo columnInfoTwentieths =
+            // ingest data with timestamps every fifth of a second
+            final String requestIdBaseFifths = "FIFTH-";
+            final long intervalFifths = 200_000_000L;
+            final int numBucketsFifths = 10;
+            final int numSecondsPerBucketFifths = 3;
+            final IngestionColumnInfo columnInfoFifths =
                     new IngestionColumnInfo(
-                            columnNameTwentieths,
-                            requestIdBaseTwentieths,
-                            intervalTwentieths,
-                            numBucketsTwentieths,
-                            numSecondsPerBucketTwentieths);
-            columnInfoList.add(columnInfoTwentieths);
+                            columnNameFifths,
+                            requestIdBaseFifths,
+                            intervalFifths,
+                            numBucketsFifths,
+                            numSecondsPerBucketFifths, 
+                            false);
+            columnInfoList.add(columnInfoFifths);
         }
 
         {
@@ -90,8 +93,26 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             requestIdBaseQuarters,
                             intervalQuarters,
                             numBucketsQuarters,
-                            numSecondsPerBucketQuarters);
+                            numSecondsPerBucketQuarters, 
+                            false);
             columnInfoList.add(columnInfoQuarters);
+        }
+
+        {
+            // ingest data with timestamps every eighth of a second, using explicit TimestampsList instead of SamplingClock
+            final String requestIdBaseEighths = "EIGHTH-";
+            final long intervalEighths = 125_000_000L;
+            final int numBucketsEighths = 16;
+            final int numSecondsPerBucketEighths = 2;
+            final IngestionColumnInfo columnInfoEighths =
+                    new IngestionColumnInfo(
+                            columnNameEighths,
+                            requestIdBaseEighths,
+                            intervalEighths,
+                            numBucketsEighths,
+                            numSecondsPerBucketEighths,
+                            true); // specify that DataTimestamps in request should use explicit TimestampsList
+            columnInfoList.add(columnInfoEighths);
         }
 
         Map<String, IngestionStreamInfo> validationMap = null;
@@ -108,9 +129,9 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             final long queryStartNanos = 0;
             final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
             final long queryEndNanos = 0;
-            final List<String> queryColumnNames = List.of(columnNameTenths, columnNameTwentieths, columnNameQuarters);
+            final List<String> queryColumnNames = List.of(columnNameTenths, columnNameFifths, columnNameQuarters, columnNameEighths);
 
-            final int numRowsExpected = 12 * queryNumSeconds;
+            final int numRowsExpected = 16 * queryNumSeconds;
 
             sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
@@ -126,7 +147,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             // send bucket query for 5-second subset of ingested data,
             // starting one second offset from start of ingestion data.
             final List<String> queryColumnNamesBucket =
-                    List.of(columnNameTenths, columnNameTwentieths, columnNameQuarters);
+                    List.of(columnNameTenths, columnNameFifths, columnNameQuarters, columnNameEighths);
             final int queryNumSecondsBucket = 5;
             final long queryStartSecondsBucket = startSeconds + 1;
             final long queryStartNanosBucket = 0;
@@ -134,9 +155,10 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
             final long queryEndNanosBucket = 0;
 
             // we expect 5 buckets for tenths (1 secs/bucket),
-            // 2 buckets for twentieths (3 secs/bucket),
+            // 3 buckets for eights (2 secs/bucket),
+            // 2 buckets for fifths (3 secs/bucket),
             // 2 buckets for quarters (5 secs/bucket)
-            final int numBucketsExpected = 9;
+            final int numBucketsExpected = 12;
 
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,

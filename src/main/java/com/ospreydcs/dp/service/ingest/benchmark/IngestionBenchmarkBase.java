@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.ingest.benchmark;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import io.grpc.*;
 import org.apache.logging.log4j.LogManager;
@@ -182,7 +182,7 @@ public abstract class IngestionBenchmarkBase {
 
         requestBuilder.setProviderId(providerId);
         requestBuilder.setClientRequestId(requestId);
-        requestBuilder.setRequestTime(GrpcUtility.getTimestampNow());
+        requestBuilder.setRequestTime(TimestampUtility.getTimestampNow());
 
         // build timestamp iterator for time spec
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();

@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -50,7 +50,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -75,7 +75,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -98,7 +98,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setCreateDataSetResult(result)
                 .build();
 
@@ -152,7 +152,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 .build();
 
         final QueryDataSetsResponse response = QueryDataSetsResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -178,7 +178,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             QueryDataSetsResponse.DataSetsResult dataSetsResult
     ) {
         return QueryDataSetsResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setDataSetsResult(dataSetsResult)
                 .build();
     }
@@ -276,7 +276,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -301,7 +301,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -324,7 +324,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .build();
 
         final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setCreateAnnotationResult(result)
                 .build();
 
@@ -406,7 +406,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 .build();
 
         final QueryAnnotationsResponse response = QueryAnnotationsResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -432,7 +432,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             QueryAnnotationsResponse.AnnotationsResult annotationsResult
     ) {
         return QueryAnnotationsResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setAnnotationsResult(annotationsResult)
                 .build();
     }

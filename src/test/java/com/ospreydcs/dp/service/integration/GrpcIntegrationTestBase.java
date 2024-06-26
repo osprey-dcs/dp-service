@@ -15,6 +15,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -91,19 +92,22 @@ public abstract class GrpcIntegrationTestBase {
         public final long measurementInterval;
         public final int numBuckets;
         public final int numSecondsPerBucket;
+        public final boolean useExplicitTimestampList;
 
         public IngestionColumnInfo(
                 String columnName,
                 String requestIdBase,
                 long measurementInterval,
                 int numBuckets,
-                int numSecondsPerBucket
+                int numSecondsPerBucket,
+                boolean useExplicitTimestampList
         ) {
             this.columnName = columnName;
             this.requestIdBase = requestIdBase;
             this.measurementInterval = measurementInterval;
             this.numBuckets = numBuckets;
             this.numSecondsPerBucket = numSecondsPerBucket;
+            this.useExplicitTimestampList = useExplicitTimestampList;
         }
     }
 
@@ -119,6 +123,8 @@ public abstract class GrpcIntegrationTestBase {
         public final int numValues;
         public final long intervalNanos;
         public final List<Object> dataValues;
+        public final List<Long> timestampSecondsList;
+        public final List<Long> timestampNanosList;
 
         public IngestionBucketInfo(
                 int providerId,
@@ -129,7 +135,9 @@ public abstract class GrpcIntegrationTestBase {
                 long endNanos,
                 int numValues,
                 long intervalNanos,
-                List<Object> dataValues
+                List<Object> dataValues,
+                List<Long> timestampSecondsList,
+                List<Long> timestampNanosList
         ) {
             this.providerId = providerId;
             this.requestId = requestId;
@@ -140,6 +148,8 @@ public abstract class GrpcIntegrationTestBase {
             this.numValues = numValues;
             this.intervalNanos = intervalNanos;
             this.dataValues = dataValues;
+            this.timestampSecondsList = timestampSecondsList;
+            this.timestampNanosList = timestampNanosList;
         }
     }
 
@@ -417,12 +427,14 @@ public abstract class GrpcIntegrationTestBase {
             long startSeconds,
             long startNanos,
             int providerId,
-            String requestIdBase,
-            long measurementInterval,
-            String columnName,
-            int numBuckets,
-            int numSecondsPerBucket
+            IngestionColumnInfo columnInfo
     ) {
+        final String requestIdBase = columnInfo.requestIdBase;
+        long measurementInterval = columnInfo.measurementInterval;
+        final String columnName = columnInfo.columnName;
+        final int numBuckets = columnInfo.numBuckets;
+        final int numSecondsPerBucket = columnInfo.numSecondsPerBucket;
+
         final int numSamplesPerSecond = ((int) (1_000_000_000 / measurementInterval));
         final int numSamplesPerBucket = numSamplesPerSecond * numSecondsPerBucket;
 
@@ -441,6 +453,12 @@ public abstract class GrpcIntegrationTestBase {
             // create list of column data values for request
             final List<List<Object>> columnValues = new ArrayList<>();
             final List<Object> dataValuesList = new ArrayList<>();
+            List<Long> timestampSecondsList = null;
+            List<Long> timestampNanosList = null;
+            if (columnInfo.useExplicitTimestampList) {
+                timestampSecondsList = new ArrayList<>();
+                timestampNanosList = new ArrayList<>();
+            }
             for (int secondIndex = 0; secondIndex < numSecondsPerBucket; ++secondIndex) {
                 long currentNanos = 0;
 
@@ -449,6 +467,10 @@ public abstract class GrpcIntegrationTestBase {
                             secondsCount + (double) sampleIndex / numSamplesPerSecond;
                     dataValuesList.add(dataValue);
                     valueMap.put(currentSeconds + secondIndex, currentNanos, dataValue);
+                    if (columnInfo.useExplicitTimestampList) {
+                        timestampSecondsList.add(currentSeconds + secondIndex);
+                        timestampNanosList.add(currentNanos);
+                    }
                     currentNanos = currentNanos + measurementInterval;
                 }
 
@@ -463,8 +485,8 @@ public abstract class GrpcIntegrationTestBase {
                             requestId,
                             null,
                             null,
-                            null,
-                            null,
+                            timestampSecondsList, // if not null, request will use explicit TimestampsList in DataTimestamps
+                            timestampNanosList,
                             currentSeconds,
                             startNanos,
                             measurementInterval,
@@ -478,6 +500,7 @@ public abstract class GrpcIntegrationTestBase {
                     startTimeInstant.plusNanos(measurementInterval * (numSamplesPerBucket - 1));
 
             // capture data for later validation
+            final long bucketInfoSamplePeriod = (columnInfo.useExplicitTimestampList) ? 0 : measurementInterval;
             final IngestionBucketInfo bucketInfo =
                     new IngestionBucketInfo(
                             providerId,
@@ -487,8 +510,10 @@ public abstract class GrpcIntegrationTestBase {
                             endTimeInstant.getEpochSecond(),
                             endTimeInstant.getNano(),
                             numSamplesPerBucket,
-                            measurementInterval,
-                            dataValuesList);
+                            bucketInfoSamplePeriod,
+                            dataValuesList,
+                            timestampSecondsList,
+                            timestampNanosList);
             bucketInfoMap.put(currentSeconds, startNanos, bucketInfo);
 
             // build request
@@ -526,11 +551,7 @@ public abstract class GrpcIntegrationTestBase {
                             startSeconds,
                             startNanos,
                             providerId,
-                            columnInfo.requestIdBase,
-                            columnInfo.measurementInterval,
-                            columnInfo.columnName,
-                            columnInfo.numBuckets,
-                            columnInfo.numSecondsPerBucket);
+                            columnInfo);
             validationMap.put(columnInfo.columnName, streamInfo);
         }
 
@@ -569,7 +590,6 @@ public abstract class GrpcIntegrationTestBase {
                     assertEquals(columnName, bucketDocument.getPvName());
                     assertEquals(bucketId, bucketDocument.getId());
                     assertEquals(requestBucketInfo.numValues, bucketDocument.getSampleCount());
-                    assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSamplePeriod());
                     assertEquals(requestBucketInfo.startSeconds, bucketDocument.getFirstSeconds());
                     assertEquals(requestBucketInfo.startNanos, bucketDocument.getFirstNanos());
                     assertEquals(
@@ -583,6 +603,22 @@ public abstract class GrpcIntegrationTestBase {
                                     requestBucketInfo.endSeconds, requestBucketInfo.endNanos)),
                             bucketDocument.getLastTime());
                     assertEquals(requestBucketInfo.numValues, bucketDocument.readDataColumnContent().getDataValuesList().size());
+
+                    // check DataTimestamps, either explicit TimestampsList or SamplingClock
+                    final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
+                    if (requestBucketInfo.timestampSecondsList != null && requestBucketInfo.timestampSecondsList.size() > 0) {
+                        // check that bucket contains a TimestampsList
+
+                        assertTrue(bucketDataTimestamps.hasTimestampList());
+                        assertEquals(0, bucketDocument.getSamplePeriod());
+
+                    } else {
+                        // check that bucket contains a SamplingClock
+
+                        assertTrue(bucketDataTimestamps.hasSamplingClock());
+                        assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSamplePeriod());
+                    }
+
                     // verify each value
                     DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
                     for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
@@ -624,7 +660,8 @@ public abstract class GrpcIntegrationTestBase {
                                 requestIdBase,
                                 interval,
                                 numBuckets,
-                                numSecondsPerBucket);
+                                numSecondsPerBucket,
+                                false);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
 
@@ -641,7 +678,8 @@ public abstract class GrpcIntegrationTestBase {
                                 requestIdBase,
                                 interval,
                                 numBuckets,
-                                numSecondsPerBucket);
+                                numSecondsPerBucket,
+                                false);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
         }
@@ -943,7 +981,9 @@ public abstract class GrpcIntegrationTestBase {
                 new TreeMap<>();
         for (QueryDataResponse.QueryData.DataBucket dataBucket : dataBucketList) {
             final String bucketColumnName = dataBucket.getDataColumn().getName();
-            final Timestamp bucketStartTimestamp = dataBucket.getDataTimestamps().getSamplingClock().getStartTime();
+            final DataTimestampsUtility.DataTimestampsModel bucketDataTimestampsModel
+                    = new DataTimestampsUtility.DataTimestampsModel(dataBucket.getDataTimestamps());
+            final Timestamp bucketStartTimestamp = bucketDataTimestampsModel.getFirstTimestamp();
             final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
             final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
             TimestampMap<QueryDataResponse.QueryData.DataBucket> columnTimestampMap =
@@ -981,13 +1021,15 @@ public abstract class GrpcIntegrationTestBase {
                     // find the response bucket corresponding to the expected bucket
                     final QueryDataResponse.QueryData.DataBucket responseBucket =
                             responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
+                    final DataTimestampsUtility.DataTimestampsModel responseBucketDataTimestampsModel =
+                            new DataTimestampsUtility.DataTimestampsModel(responseBucket.getDataTimestamps());
 
                     assertEquals(
-                            columnBucketInfo.intervalNanos,
-                            responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
+                            (Long) columnBucketInfo.intervalNanos,
+                            responseBucketDataTimestampsModel.getSamplePeriodNanos());
                     assertEquals(
-                            columnBucketInfo.numValues,
-                            responseBucket.getDataTimestamps().getSamplingClock().getCount());
+                            (Integer) columnBucketInfo.numValues,
+                            responseBucketDataTimestampsModel.getSampleCount());
 
                     // validate bucket data values
                     int valueIndex = 0;

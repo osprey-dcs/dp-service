@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -160,7 +160,7 @@ public class IngestionTestBase {
             requestBuilder.setClientRequestId(params.requestId);
         }
         if (params.setRequestTime) {
-            requestBuilder.setRequestTime(GrpcUtility.getTimestampNow());
+            requestBuilder.setRequestTime(TimestampUtility.getTimestampNow());
         }
 
         IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder

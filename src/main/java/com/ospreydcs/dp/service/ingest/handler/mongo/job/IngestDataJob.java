@@ -11,13 +11,13 @@ import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
-import com.ospreydcs.dp.service.ingest.model.DataTimestampsModel;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
@@ -161,15 +161,15 @@ public class IngestDataJob extends HandlerJob {
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         // get timestamp details
-        DataTimestampsModel timeSpecModel = new DataTimestampsModel(request.getIngestionDataFrame().getDataTimestamps());
+        DataTimestampsUtility.DataTimestampsModel timeSpecModel = new DataTimestampsUtility.DataTimestampsModel(request.getIngestionDataFrame().getDataTimestamps());
         final Timestamp firstTimestamp = timeSpecModel.getFirstTimestamp();
         final long firstTimestampSeconds = firstTimestamp.getEpochSeconds();
         final long firstTimestampNanos = firstTimestamp.getNanoseconds();
-        final Date firstTimestampDate = GrpcUtility.dateFromTimestamp(firstTimestamp);
+        final Date firstTimestampDate = TimestampUtility.dateFromTimestamp(firstTimestamp);
         final Timestamp lastTimestamp = timeSpecModel.getLastTimestamp();
         final long lastTimestampSeconds = lastTimestamp.getEpochSeconds();
         final long lastTimestampNanos = lastTimestamp.getNanoseconds();
-        final Date lastTimestampDate = GrpcUtility.dateFromTimestamp(lastTimestamp);
+        final Date lastTimestampDate = TimestampUtility.dateFromTimestamp(lastTimestamp);
 
         // create BSON document for each column
         final List<DataColumn> columns = request.getIngestionDataFrame().getDataColumnsList();

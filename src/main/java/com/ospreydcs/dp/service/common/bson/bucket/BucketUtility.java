@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -33,9 +33,9 @@ public class BucketUtility {
         for (int batchIndex = 0 ; batchIndex < numBucketsPerColumn ; batchIndex++) {
 
             final Date firstTimeDate =
-                    GrpcUtility.dateFromTimestamp(GrpcUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos));
+                    TimestampUtility.dateFromTimestamp(TimestampUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos));
             final Date lastTimeDate =
-                    GrpcUtility.dateFromTimestamp(GrpcUtility.timestampFromSeconds(lastTimeSeconds, lastTimeNanos));
+                    TimestampUtility.dateFromTimestamp(TimestampUtility.timestampFromSeconds(lastTimeSeconds, lastTimeNanos));
 
             // create a bucket document for each column in the batch
             for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
@@ -64,7 +64,7 @@ public class BucketUtility {
                 bucket.writeDataColumnContent(dataColumnBuilder.build());
 
                 // set DataTimestamps in bucket
-                final Timestamp startTime = GrpcUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos);
+                final Timestamp startTime = TimestampUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos);
                 final SamplingClock samplingClock = SamplingClock.newBuilder()
                         .setStartTime(startTime)
                         .setPeriodNanos(samplePeriod)

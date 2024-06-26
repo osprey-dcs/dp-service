@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.service;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
@@ -51,7 +51,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
 
         final QueryDataResponse response = QueryDataResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -79,7 +79,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     public static QueryDataResponse queryDataResponse(QueryDataResponse.QueryData.Builder queryDataBuilder) {
         queryDataBuilder.build();
         return QueryDataResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setQueryData(queryDataBuilder)
                 .build();
     }
@@ -113,7 +113,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
 
         final QueryTableResponse response = QueryTableResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -135,7 +135,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
 
     public static QueryTableResponse queryTableResponse(QueryTableResponse.TableResult tableResult) {
         return QueryTableResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setTableResult(tableResult)
                 .build();
     }
@@ -170,7 +170,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .build();
 
         final QueryMetadataResponse response = QueryMetadataResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
 
@@ -196,7 +196,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             QueryMetadataResponse.MetadataResult metadataResult
     ) {
         return QueryMetadataResponse.newBuilder()
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setMetadataResult(metadataResult)
                 .build();
     }

@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import java.time.Instant;
 import java.util.Date;
 
-public class GrpcUtility {
+public class TimestampUtility {
 
     // constants
     public static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;

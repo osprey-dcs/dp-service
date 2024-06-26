@@ -100,10 +100,6 @@ public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
                         params, request.getIngestionDataFrame().getDataColumnsList(), requests, responses);
             }
         }
-
-        {
-            // TODO: query coverage
-        }
     }
 
 }

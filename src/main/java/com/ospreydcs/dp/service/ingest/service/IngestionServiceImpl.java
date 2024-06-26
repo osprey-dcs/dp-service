@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.service;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.GrpcUtility;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -54,7 +54,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         final IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
         return response;
@@ -70,7 +70,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         final IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
-                .setResponseTime(GrpcUtility.getTimestampNow())
+                .setResponseTime(TimestampUtility.getTimestampNow())
                 .setAckResult(ackResult)
                 .build();
         return response;

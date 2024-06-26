@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
-import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
@@ -69,7 +68,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                                     requestIdBase,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket);
+                                    numSecondsPerBucket, false);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
 
@@ -86,7 +85,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                                     requestIdBase,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket);
+                                    numSecondsPerBucket, false);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
             }

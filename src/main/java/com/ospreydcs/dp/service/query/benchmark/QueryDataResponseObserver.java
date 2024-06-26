@@ -83,7 +83,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 //                                "stream: {} bucket column: {} startTime: {} numValues: {}",
 //                                streamNumber,
 //                                bucket.getDataColumn().getName(),
-//                                GrpcUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
+//                                TimestampUtility.dateFromTimestamp(bucket.getSamplingInterval().getStartTime()),
 //                                dataValuesCount);
 
                 dataValuesReceived.addAndGet(dataValuesCount);
