@@ -27,6 +27,8 @@ public class BucketDocument {
     private int dataTypeCase;
     private String dataType;
     private byte[] dataColumnBytes = null;
+    private int dataTimestampsCase;
+    private String dataTimestampsType;
     private byte[] dataTimestampsBytes = null;
     private Map<String, String> attributeMap;
     private int providerId;
@@ -143,7 +145,23 @@ public class BucketDocument {
             }
         }
     }
-    
+
+    public int getDataTimestampsCase() {
+        return dataTimestampsCase;
+    }
+
+    public void setDataTimestampsCase(int dataTimestampsCase) {
+        this.dataTimestampsCase = dataTimestampsCase;
+    }
+
+    public String getDataTimestampsType() {
+        return dataTimestampsType;
+    }
+
+    public void setDataTimestampsType(String dataTimestampsType) {
+        this.dataTimestampsType = dataTimestampsType;
+    }
+
     public byte[] getDataTimestampsBytes() {
         return dataTimestampsBytes;
     }

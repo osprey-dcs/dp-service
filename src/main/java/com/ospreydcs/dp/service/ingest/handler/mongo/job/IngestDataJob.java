@@ -2,10 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.mongo.job;
 
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
-import com.ospreydcs.dp.grpc.v1.common.Attribute;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
@@ -178,13 +175,21 @@ public class IngestDataJob extends HandlerJob {
             final String documentId = pvName + "-" + firstTimestampSeconds + "-" + firstTimestampNanos;
 
             BucketDocument bucket = new BucketDocument();
-            bucket.writeDataColumnContent(column);
-            bucket.writeDataTimestampsContent(request.getIngestionDataFrame().getDataTimestamps());
+
             bucket.setId(documentId);
             bucket.setPvName(pvName);
+
+            bucket.writeDataColumnContent(column);
             final DataValue.ValueCase dataValueCase = column.getDataValues(0).getValueCase();
             bucket.setDataTypeCase(dataValueCase.getNumber());
             bucket.setDataType(dataValueCase.name());
+
+            final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
+            bucket.writeDataTimestampsContent(requestDataTimestamps);
+            final DataTimestamps.ValueCase dataTimestampsCase = requestDataTimestamps.getValueCase();
+            bucket.setDataTimestampsCase(dataTimestampsCase.getNumber());
+            bucket.setDataTimestampsType(dataTimestampsCase.name());
+
             bucket.setFirstTime(firstTimestampDate);
             bucket.setFirstSeconds(firstTimestampSeconds);
             bucket.setFirstNanos(firstTimestampNanos);
