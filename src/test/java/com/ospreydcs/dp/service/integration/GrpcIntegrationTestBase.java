@@ -346,6 +346,8 @@ public abstract class GrpcIntegrationTestBase {
 
             if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
                 // check explicit TimestampsList
+                assertEquals(DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(), bucketDocument.getDataTimestampsCase());
+                assertEquals(DataTimestamps.ValueCase.TIMESTAMPLIST.name(), bucketDocument.getDataTimestampsType());
 
                 // check sample period
                 assertEquals(0L, bucketDocument.getSamplePeriod());
@@ -369,6 +371,8 @@ public abstract class GrpcIntegrationTestBase {
 
             } else {
                 // check SamplingClock parameters
+                assertEquals(DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(), bucketDocument.getDataTimestampsCase());
+                assertEquals(DataTimestamps.ValueCase.SAMPLINGCLOCK.name(), bucketDocument.getDataTimestampsType());
 
                 // check sample period
                 assertEquals((long) params.samplingClockPeriodNanos, bucketDocument.getSamplePeriod());
@@ -602,18 +606,33 @@ public abstract class GrpcIntegrationTestBase {
                             Date.from(Instant.ofEpochSecond(
                                     requestBucketInfo.endSeconds, requestBucketInfo.endNanos)),
                             bucketDocument.getLastTime());
-                    assertEquals(requestBucketInfo.numValues, bucketDocument.readDataColumnContent().getDataValuesList().size());
+                    assertEquals(
+                            requestBucketInfo.numValues,
+                            bucketDocument.readDataColumnContent().getDataValuesList().size());
 
                     // check DataTimestamps, either explicit TimestampsList or SamplingClock
                     final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
-                    if (requestBucketInfo.timestampSecondsList != null && requestBucketInfo.timestampSecondsList.size() > 0) {
+                    if (requestBucketInfo.timestampSecondsList != null
+                            && requestBucketInfo.timestampSecondsList.size() > 0) {
                         // check that bucket contains a TimestampsList
+                        assertEquals(
+                                DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
+                                bucketDocument.getDataTimestampsCase());
+                        assertEquals(
+                                DataTimestamps.ValueCase.TIMESTAMPLIST.name(),
+                                bucketDocument.getDataTimestampsType());
 
                         assertTrue(bucketDataTimestamps.hasTimestampList());
                         assertEquals(0, bucketDocument.getSamplePeriod());
 
                     } else {
                         // check that bucket contains a SamplingClock
+                        assertEquals(
+                                DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(),
+                                bucketDocument.getDataTimestampsCase());
+                        assertEquals(
+                                DataTimestamps.ValueCase.SAMPLINGCLOCK.name(),
+                                bucketDocument.getDataTimestampsType());
 
                         assertTrue(bucketDataTimestamps.hasSamplingClock());
                         assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSamplePeriod());
