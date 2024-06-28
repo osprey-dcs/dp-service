@@ -1119,19 +1119,21 @@ public abstract class GrpcIntegrationTestBase {
         assertEquals(columnNames.size(), pvInfoList.size());
 
         // build map of column info list for convenience
-        final Map<String, QueryMetadataResponse.MetadataResult.PvInfo> columnInfoMap = new HashMap<>();
+        final Map<String, QueryMetadataResponse.MetadataResult.PvInfo> pvInfoMap = new HashMap<>();
         for (QueryMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
-            columnInfoMap.put(columnInfo.getPvName(), columnInfo);
+            pvInfoMap.put(columnInfo.getPvName(), columnInfo);
         }
 
-        // check that a column info was received for each name and verify its contents
+        // check that a PvInfo was received for each name and verify its contents
         for (String columnName : columnNames) {
-            final QueryMetadataResponse.MetadataResult.PvInfo columnInfoForName =
-                    columnInfoMap.get(columnName);
-            assertNotNull(columnInfoForName);
-            assertEquals(columnName, columnInfoForName.getPvName());
-            assertEquals(8, columnInfoForName.getLastBucketDataTypeCase());
-            assertEquals("DOUBLEVALUE", columnInfoForName.getLastBucketDataType());
+            final QueryMetadataResponse.MetadataResult.PvInfo pvInfo =
+                    pvInfoMap.get(columnName);
+            assertNotNull(pvInfo);
+            assertEquals(columnName, pvInfo.getPvName());
+            assertEquals(8, pvInfo.getLastBucketDataTypeCase());
+            assertEquals("DOUBLEVALUE", pvInfo.getLastBucketDataType());
+            assertEquals(1, pvInfo.getLastBucketDataTimestampsCase());
+            assertEquals("SAMPLINGCLOCK", pvInfo.getLastBucketDataTimestampsType());
 
             // iterate through validationMap to get info for first and last bucket for column
             IngestionBucketInfo firstBucketInfo = null;
@@ -1150,13 +1152,19 @@ public abstract class GrpcIntegrationTestBase {
 
             // verify ColumnInfo contents for column against last and first bucket details
             assertNotNull(lastBucketInfo);
-            assertEquals(lastBucketInfo.intervalNanos, columnInfoForName.getLastBucketSamplePeriod());
-            assertEquals(lastBucketInfo.numValues, columnInfoForName.getLastBucketSampleCount());
-            assertEquals(lastBucketInfo.endSeconds, columnInfoForName.getLastDataTimestamp().getEpochSeconds());
-            assertEquals(lastBucketInfo.endNanos, columnInfoForName.getLastDataTimestamp().getNanoseconds());
+            assertEquals(lastBucketInfo.intervalNanos, pvInfo.getLastBucketSamplePeriod());
+            assertEquals(lastBucketInfo.numValues, pvInfo.getLastBucketSampleCount());
+            assertEquals(lastBucketInfo.endSeconds, pvInfo.getLastDataTimestamp().getEpochSeconds());
+            assertEquals(lastBucketInfo.endNanos, pvInfo.getLastDataTimestamp().getNanoseconds());
             assertNotNull(firstBucketInfo);
-            assertEquals(firstBucketInfo.startSeconds, columnInfoForName.getFirstDataTimestamp().getEpochSeconds());
-            assertEquals(firstBucketInfo.startNanos, columnInfoForName.getFirstDataTimestamp().getNanoseconds());
+            assertEquals(firstBucketInfo.startSeconds, pvInfo.getFirstDataTimestamp().getEpochSeconds());
+            assertEquals(firstBucketInfo.startNanos, pvInfo.getFirstDataTimestamp().getNanoseconds());
+
+            // check last bucket id
+            final String expectedLastBucketId =
+                    columnName + "-" + lastBucketInfo.startSeconds + "-" + lastBucketInfo.startNanos;
+            assertEquals(expectedLastBucketId, pvInfo.getLastBucketId());
+
         }
     }
 
