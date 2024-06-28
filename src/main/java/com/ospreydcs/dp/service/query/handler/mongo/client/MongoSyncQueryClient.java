@@ -9,11 +9,11 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.Arrays;
@@ -105,7 +105,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
 
-    private MongoCursor<Document> executeQueryMetadata(Bson columnNameFilter) {
+    private MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Bson columnNameFilter) {
 
         Bson bucketFieldProjection = Projections.fields(Projections.include(
                 BsonConstants.BSON_KEY_PV_NAME,
@@ -126,7 +126,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
         logger.debug("executing getColumnInfo query: {}", columnNameFilter.toString());
 
-        var aggregateIterable = mongoCollectionBuckets.withDocumentClass(Document.class)
+        var aggregateIterable = mongoCollectionBuckets.withDocumentClass(MetadataQueryResultDocument.class)
                 .aggregate(
                         Arrays.asList(
                                 Aggregates.match(columnNameFilter),
@@ -135,61 +135,61 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                 Aggregates.group(
                                         "$" + BsonConstants.BSON_KEY_PV_NAME,
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_PV_NAME,
+                                                BsonConstants.BSON_KEY_METADATA_PV_NAME,
                                                 "$" + BsonConstants.BSON_KEY_PV_NAME),
                                         Accumulators.last(
-                                                "lastBucketId",
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_ID,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_ID),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_COUNT,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_PERIOD,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD),
                                         Accumulators.first(
                                                 // save the first time of the first document in group to the firstTime field
-                                                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
+                                                BsonConstants.BSON_KEY_METADATA_FIRST_DATA_TIMESTAMP,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_FIRST_TIME),
                                         Accumulators.last(
                                                 // save the last time of the last document to the lastTime field
-                                                BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
+                                                BsonConstants.BSON_KEY_METADATA_LAST_DATA_TIMESTAMP,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME)
                                 ),
                                 Aggregates.sort(bucketSort) // sort again so result is sorted
                                 ));
 
-        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});
+//        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});
 
         return aggregateIterable.cursor();
     }
 
     @Override
-    public MongoCursor<Document> executeQueryMetadata(Collection<String> pvNameList) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Collection<String> pvNameList) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
         return executeQueryMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<Document> executeQueryMetadata(String pvNamePatternString) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(String pvNamePatternString) {
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
         final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
         return executeQueryMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<Document> executeQueryMetadata(QueryMetadataRequest request) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(QueryMetadataRequest request) {
         if (request.hasPvNameList()) {
             return executeQueryMetadata(request.getPvNameList().getPvNamesList());
         } else {

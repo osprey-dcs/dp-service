@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryMetadataResponse;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -32,7 +33,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
         this.responseObserver = responseObserver;
     }
 
-    public void handleResult(MongoCursor<Document> cursor) {
+    public void handleResult(MongoCursor<MetadataQueryResultDocument> cursor) {
 
         // validate cursor
         if (cursor == null) {
@@ -54,44 +55,42 @@ public class MetadataResponseDispatcher extends Dispatcher {
         while (cursor.hasNext()) {
             // add grpc object for each document in cursor
             
-            final Document metadataDocument = cursor.next();
+            final MetadataQueryResultDocument metadataDocument = cursor.next();
             
             final QueryMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
-            pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_PV_NAME));
-            pvInfoBuilder.setLastBucketId((String) metadataDocument.get("lastBucketId"));
+            pvInfoBuilder.setPvName(metadataDocument.getPvName());
+            pvInfoBuilder.setLastBucketId(metadataDocument.getLastBucketId());
 
             // last data type case and type
             final Integer lastDataTypeCase =
-                    (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE);
+                    metadataDocument.getLastBucketDataTypeCase();
             if (lastDataTypeCase != null) {
                 pvInfoBuilder.setLastBucketDataTypeCase(lastDataTypeCase);
             }
-            final String lastDataType = (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE);
+            final String lastDataType = metadataDocument.getLastBucketDataType();
             if (lastDataType != null) {
                 pvInfoBuilder.setLastBucketDataType(lastDataType);
             }
 
             // last data timestamps case and type
             final Integer lastDataTimestampsCase =
-                    (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE);
+                    metadataDocument.getLastBucketDataTimestampsCase();
             if (lastDataTimestampsCase != null) {
                 pvInfoBuilder.setLastBucketDataTimestampsCase(lastDataTimestampsCase);
             }
             final String lastDataTimestampsType =
-                    (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE);
+                    metadataDocument.getLastBucketDataTimestampsType();
             if (lastDataTimestampsType != null) {
                 pvInfoBuilder.setLastBucketDataTimestampsType(lastDataTimestampsType);
             }
 
             // set sampling clock details
-            pvInfoBuilder.setLastBucketSampleCount(
-                    (Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT));
-            pvInfoBuilder.setLastBucketSamplePeriod(
-                    (Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD));
+            pvInfoBuilder.setLastBucketSampleCount(metadataDocument.getLastBucketSampleCount());
+            pvInfoBuilder.setLastBucketSamplePeriod(metadataDocument.getLastBucketSamplePeriod());
 
-            final Date firstTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
+            final Date firstTimeDate = metadataDocument.getFirstDataTimestamp();
             final Instant firstTimeInstant = firstTimeDate.toInstant();
             final Timestamp.Builder firstTimeBuilder = Timestamp.newBuilder();
             firstTimeBuilder.setEpochSeconds(firstTimeInstant.getEpochSecond());
@@ -99,7 +98,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
             firstTimeBuilder.build();
             pvInfoBuilder.setFirstDataTimestamp(firstTimeBuilder);
 
-            final Date lastTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_LAST_TIME);
+            final Date lastTimeDate = metadataDocument.getLastDataTimestamp();
             final Instant lastTimeInstant = lastTimeDate.toInstant();
             final Timestamp.Builder lastTimeBuilder = Timestamp.newBuilder();
             lastTimeBuilder.setEpochSeconds(lastTimeInstant.getEpochSecond());

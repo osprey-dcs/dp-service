@@ -85,7 +85,8 @@ public abstract class MongoClientBase {
                 AnnotationDocument.class,
                 CommentAnnotationDocument.class,
                 DataSetDocument.class,
-                DataBlockDocument.class
+                DataBlockDocument.class,
+                MetadataQueryResultDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();

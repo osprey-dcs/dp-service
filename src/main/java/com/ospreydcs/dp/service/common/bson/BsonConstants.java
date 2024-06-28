@@ -34,6 +34,16 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
     public static final String BSON_KEY_ANNOTATION_OWNER_ID = "ownerId";
     public static final String BSON_KEY_ANNOTATION_TAGS = "tags";
+    public static final String BSON_KEY_METADATA_PV_NAME = "pvName";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_ID = "lastBucketId";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE_CASE = "lastBucketDataTypeCase";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE = "lastBucketDataType";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE = "lastBucketDataTimestampsCase";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE = "lastBucketDataTimestampsType";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_COUNT = "lastBucketSampleCount";
+    public static final String BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_PERIOD = "lastBucketSamplePeriod";
+    public static final String BSON_KEY_METADATA_FIRST_DATA_TIMESTAMP = "firstDataTimestamp";
+    public static final String BSON_KEY_METADATA_LAST_DATA_TIMESTAMP = "lastDataTimestamp";
     public static final String BSON_VALUE_STATUS_SUCCESS = "success";
     public static final String BSON_VALUE_STATUS_REJECTED = "rejected";
     public static final String BSON_VALUE_STATUS_ERROR = "error";

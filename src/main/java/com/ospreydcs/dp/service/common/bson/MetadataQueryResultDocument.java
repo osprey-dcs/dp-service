@@ -1,0 +1,98 @@
+package com.ospreydcs.dp.service.common.bson;
+
+import java.util.Date;
+
+public class MetadataQueryResultDocument {
+
+    // instance variables
+    private String pvName;
+    private String lastBucketId;
+    private int lastBucketDataTypeCase;
+    private String lastBucketDataType;
+    private int lastBucketDataTimestampsCase;
+    private String lastBucketDataTimestampsType;
+    private int lastBucketSampleCount;
+    private long lastBucketSamplePeriod;
+    private Date firstDataTimestamp;
+    private Date lastDataTimestamp;
+
+    public String getPvName() {
+        return pvName;
+    }
+
+    public void setPvName(String pvName) {
+        this.pvName = pvName;
+    }
+
+    public String getLastBucketId() {
+        return lastBucketId;
+    }
+
+    public void setLastBucketId(String lastBucketId) {
+        this.lastBucketId = lastBucketId;
+    }
+
+    public int getLastBucketDataTypeCase() {
+        return lastBucketDataTypeCase;
+    }
+
+    public void setLastBucketDataTypeCase(int lastBucketDataTypeCase) {
+        this.lastBucketDataTypeCase = lastBucketDataTypeCase;
+    }
+
+    public String getLastBucketDataType() {
+        return lastBucketDataType;
+    }
+
+    public void setLastBucketDataType(String lastBucketDataType) {
+        this.lastBucketDataType = lastBucketDataType;
+    }
+
+    public int getLastBucketDataTimestampsCase() {
+        return lastBucketDataTimestampsCase;
+    }
+
+    public void setLastBucketDataTimestampsCase(int lastBucketDataTimestampsCase) {
+        this.lastBucketDataTimestampsCase = lastBucketDataTimestampsCase;
+    }
+
+    public String getLastBucketDataTimestampsType() {
+        return lastBucketDataTimestampsType;
+    }
+
+    public void setLastBucketDataTimestampsType(String lastBucketDataTimestampsType) {
+        this.lastBucketDataTimestampsType = lastBucketDataTimestampsType;
+    }
+
+    public int getLastBucketSampleCount() {
+        return lastBucketSampleCount;
+    }
+
+    public void setLastBucketSampleCount(int lastBucketSampleCount) {
+        this.lastBucketSampleCount = lastBucketSampleCount;
+    }
+
+    public long getLastBucketSamplePeriod() {
+        return lastBucketSamplePeriod;
+    }
+
+    public void setLastBucketSamplePeriod(long lastBucketSamplePeriod) {
+        this.lastBucketSamplePeriod = lastBucketSamplePeriod;
+    }
+
+    public Date getFirstDataTimestamp() {
+        return firstDataTimestamp;
+    }
+
+    public void setFirstDataTimestamp(Date firstDataTimestamp) {
+        this.firstDataTimestamp = firstDataTimestamp;
+    }
+
+    public Date getLastDataTimestamp() {
+        return lastDataTimestamp;
+    }
+
+    public void setLastDataTimestamp(Date lastDataTimestamp) {
+        this.lastDataTimestamp = lastDataTimestamp;
+    }
+}
