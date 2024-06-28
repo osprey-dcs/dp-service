@@ -60,31 +60,44 @@ public class MetadataResponseDispatcher extends Dispatcher {
                     QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
             pvInfoBuilder.setPvName((String)metadataDocument.get(BsonConstants.BSON_KEY_PV_NAME));
+            pvInfoBuilder.setLastBucketId((String) metadataDocument.get("lastBucketId"));
 
+            // last data type case and type
             final Integer lastDataTypeCase =
                     (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE);
             if (lastDataTypeCase != null) {
                 pvInfoBuilder.setLastBucketDataTypeCase(lastDataTypeCase);
             }
-
             final String lastDataType = (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TYPE);
             if (lastDataType != null) {
                 pvInfoBuilder.setLastBucketDataType(lastDataType);
             }
 
+            // last data timestamps case and type
+            final Integer lastDataTimestampsCase =
+                    (Integer) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE);
+            if (lastDataTimestampsCase != null) {
+                pvInfoBuilder.setLastBucketDataTimestampsCase(lastDataTimestampsCase);
+            }
+            final String lastDataTimestampsType =
+                    (String) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE);
+            if (lastDataTimestampsType != null) {
+                pvInfoBuilder.setLastBucketDataTimestampsType(lastDataTimestampsType);
+            }
+
             // set sampling clock details
-            final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
-            samplingClockBuilder.setPeriodNanos((Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD));
-            samplingClockBuilder.setCount((Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT));
-            pvInfoBuilder.setLastSamplingClock(samplingClockBuilder);
-            
+            pvInfoBuilder.setLastBucketSampleCount(
+                    (Integer)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT));
+            pvInfoBuilder.setLastBucketSamplePeriod(
+                    (Long)metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD));
+
             final Date firstTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
             final Instant firstTimeInstant = firstTimeDate.toInstant();
             final Timestamp.Builder firstTimeBuilder = Timestamp.newBuilder();
             firstTimeBuilder.setEpochSeconds(firstTimeInstant.getEpochSecond());
             firstTimeBuilder.setNanoseconds(firstTimeInstant.getNano());
             firstTimeBuilder.build();
-            pvInfoBuilder.setFirstTimestamp(firstTimeBuilder);
+            pvInfoBuilder.setFirstDataTimestamp(firstTimeBuilder);
 
             final Date lastTimeDate = (Date) metadataDocument.get(BsonConstants.BSON_KEY_BUCKET_LAST_TIME);
             final Instant lastTimeInstant = lastTimeDate.toInstant();
@@ -92,7 +105,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
             lastTimeBuilder.setEpochSeconds(lastTimeInstant.getEpochSecond());
             lastTimeBuilder.setNanoseconds(lastTimeInstant.getNano());
             lastTimeBuilder.build();
-            pvInfoBuilder.setLastTimestamp(lastTimeBuilder);
+            pvInfoBuilder.setLastDataTimestamp(lastTimeBuilder);
 
             pvInfoBuilder.build();
             metadataResultBuilder.addPvInfos(pvInfoBuilder);

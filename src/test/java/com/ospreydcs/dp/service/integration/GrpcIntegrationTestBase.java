@@ -1131,13 +1131,13 @@ public abstract class GrpcIntegrationTestBase {
 
             // verify ColumnInfo contents for column against last and first bucket details
             assertNotNull(lastBucketInfo);
-            assertEquals(lastBucketInfo.intervalNanos, columnInfoForName.getLastSamplingClock().getPeriodNanos());
-            assertEquals(lastBucketInfo.numValues, columnInfoForName.getLastSamplingClock().getCount());
-            assertEquals(lastBucketInfo.endSeconds, columnInfoForName.getLastTimestamp().getEpochSeconds());
-            assertEquals(lastBucketInfo.endNanos, columnInfoForName.getLastTimestamp().getNanoseconds());
+            assertEquals(lastBucketInfo.intervalNanos, columnInfoForName.getLastBucketSamplePeriod());
+            assertEquals(lastBucketInfo.numValues, columnInfoForName.getLastBucketSampleCount());
+            assertEquals(lastBucketInfo.endSeconds, columnInfoForName.getLastDataTimestamp().getEpochSeconds());
+            assertEquals(lastBucketInfo.endNanos, columnInfoForName.getLastDataTimestamp().getNanoseconds());
             assertNotNull(firstBucketInfo);
-            assertEquals(firstBucketInfo.startSeconds, columnInfoForName.getFirstTimestamp().getEpochSeconds());
-            assertEquals(firstBucketInfo.startNanos, columnInfoForName.getFirstTimestamp().getNanoseconds());
+            assertEquals(firstBucketInfo.startSeconds, columnInfoForName.getFirstDataTimestamp().getEpochSeconds());
+            assertEquals(firstBucketInfo.startNanos, columnInfoForName.getFirstDataTimestamp().getNanoseconds());
         }
     }
 

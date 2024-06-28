@@ -4,6 +4,7 @@ public class BsonConstants {
     
     // BSON field name constants
     public static final String BSON_KEY_PV_NAME = "pvName";
+    public static final String BSON_KEY_BUCKET_ID = "_id";
     public static final String BSON_KEY_BUCKET_FIRST_TIME = "firstTime";
     public static final String BSON_KEY_BUCKET_FIRST_TIME_SECS = "firstSeconds";
     public static final String BSON_KEY_BUCKET_FIRST_TIME_NANOS = "firstNanos";
@@ -12,6 +13,8 @@ public class BsonConstants {
     public static final String BSON_KEY_BUCKET_LAST_TIME_NANOS = "lastNanos";
     public static final String BSON_KEY_BUCKET_DATA_TYPE_CASE = "dataTypeCase";
     public static final String BSON_KEY_BUCKET_DATA_TYPE = "dataType";
+    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE = "dataTimestampsCase";
+    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE = "dataTimestampsType";
     public static final String BSON_KEY_BUCKET_EVENT_DESCRIPTION = "eventDescription";
     public static final String BSON_KEY_BUCKET_EVENT_START_SECONDS = "eventStartSeconds";
     public static final String BSON_KEY_BUCKET_EVENT_START_NANOS = "eventStartNanos";

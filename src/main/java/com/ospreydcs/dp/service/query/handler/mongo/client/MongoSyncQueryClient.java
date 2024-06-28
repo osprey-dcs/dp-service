@@ -109,10 +109,13 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
         Bson bucketFieldProjection = Projections.fields(Projections.include(
                 BsonConstants.BSON_KEY_PV_NAME,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
-                BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
+                BsonConstants.BSON_KEY_BUCKET_ID,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
+                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE,
+                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
+                BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD
         ));
@@ -128,18 +131,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                         Arrays.asList(
                                 Aggregates.match(columnNameFilter),
                                 Aggregates.project(bucketFieldProjection),
-                                Aggregates.sort(bucketSort),
+                                Aggregates.sort(bucketSort), // sort here so that records are ordered for group opeator
                                 Aggregates.group(
                                         "$" + BsonConstants.BSON_KEY_PV_NAME,
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_PV_NAME,
                                                 "$" + BsonConstants.BSON_KEY_PV_NAME),
                                         Accumulators.last(
+                                                "lastBucketId",
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_ID),
+                                        Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE),
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_DATA_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE),
+                                        Accumulators.last(
+                                                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE),
+                                        Accumulators.last(
+                                                BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE),
                                         Accumulators.last(
                                                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT),
@@ -154,10 +166,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                                 // save the last time of the last document to the lastTime field
                                                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME)
-                                )
-                        ));
+                                ),
+                                Aggregates.sort(bucketSort) // sort again so result is sorted
+                                ));
 
-//        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});
+        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});
 
         return aggregateIterable.cursor();
     }
