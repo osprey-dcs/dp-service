@@ -22,7 +22,7 @@ public class QueryDataJob extends HandlerJob {
 
     public QueryDataJob(QueryDataRequest.QuerySpec spec,
                         BucketDocumentResponseDispatcher dispatcher,
-                        StreamObserver responseObserver,
+                        StreamObserver<QueryDataResponse> responseObserver,
                         MongoQueryClientInterface mongoClient
     ) {
         this.querySpec = spec;
