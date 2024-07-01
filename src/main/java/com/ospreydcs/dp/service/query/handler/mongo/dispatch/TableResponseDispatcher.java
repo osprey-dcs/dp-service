@@ -36,20 +36,32 @@ public class TableResponseDispatcher extends Dispatcher {
         this.request = request;
     }
 
-    private static int addBucketToTable(
+    private int addBucketToTable(
             int columnIndex, BucketDocument bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
     ) {
+        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
+        final long beginNanos = this.request.getBeginTime().getNanoseconds();
+        final long endSeconds = this.request.getEndTime().getEpochSeconds();
+        final long endNanos = this.request.getEndTime().getNanoseconds();
+
         int dataValueSize = 0;
         final DataTimestamps bucketDataTimestamps = bucket.readDataTimestampsContent();
-        DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
+        final DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
                 DataTimestampsUtility.dataTimestampsIterator(bucketDataTimestamps);
-        Iterator<DataValue> dataValueIterator = bucket.readDataColumnContent().getDataValuesList().iterator();
+        final Iterator<DataValue> dataValueIterator = bucket.readDataColumnContent().getDataValuesList().iterator();
         while (dataTimestampsIterator.hasNext() && dataValueIterator.hasNext()) {
 
             final Timestamp timestamp = dataTimestampsIterator.next();
             final long second = timestamp.getEpochSeconds();
             final long nano = timestamp.getNanoseconds();
             final DataValue dataValue = dataValueIterator.next();
+
+            // skip values outside query time range
+            if (second < beginSeconds || second > endSeconds) {
+                continue;
+            } else if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
+                continue;
+            }
 
             // generate DataValue object from column data value
             dataValueSize = dataValueSize + dataValue.getSerializedSize();
@@ -81,24 +93,12 @@ public class TableResponseDispatcher extends Dispatcher {
         }
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
-        // add data values to column builders, filter by specified time range
-        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
-        final long beginNanos = this.request.getBeginTime().getNanoseconds();
-        final long endSeconds = this.request.getEndTime().getEpochSeconds();
-        final long endNanos = this.request.getEndTime().getNanoseconds();
+        // add data values to column builders
         for (var secondEntry : tableValueMap.entrySet()) {
             final long second = secondEntry.getKey();
-            if (second < beginSeconds || second > endSeconds) {
-                // ignore values that are out of query range
-                continue;
-            }
             final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
             for (var nanoEntry : secondValueMap.entrySet()) {
                 final long nano = nanoEntry.getKey();
-                if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
-                    // ignore values that are out of query range
-                    continue;
-                }
                 final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
                 final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
                 timestampListBuilder.addTimestamps(timestamp);
@@ -139,27 +139,14 @@ public class TableResponseDispatcher extends Dispatcher {
         columnNamesWithTimestamp.addAll(columnNames);
         rowMapTableBuilder.addAllColumnNames(columnNamesWithTimestamp);
 
-        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
-        final long beginNanos = this.request.getBeginTime().getNanoseconds();
-        final long endSeconds = this.request.getEndTime().getEpochSeconds();
-        final long endNanos = this.request.getEndTime().getNanoseconds();
-
         for (var secondEntry : tableValueMap.entrySet()) {
 
             final long second = secondEntry.getKey();
-            if (second < beginSeconds || second > endSeconds) {
-                // ignore values that are out of query range
-                continue;
-            }
 
             final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
             for (var nanoEntry : secondValueMap.entrySet()) {
 
                 final long nano = nanoEntry.getKey();
-                if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
-                    // ignore values that are out of query range
-                    continue;
-                }
 
                 final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
 
