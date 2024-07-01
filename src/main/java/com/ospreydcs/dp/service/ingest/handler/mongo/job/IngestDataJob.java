@@ -16,6 +16,7 @@ import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
+import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,7 +54,7 @@ public class IngestDataJob extends HandlerJob {
         logger.debug("IngestionWorker handling request providerId: {} requestId: {}",
                 request.getProviderId(), request.getClientRequestId());
 
-        String status = BsonConstants.BSON_VALUE_STATUS_SUCCESS;
+        IngestionRequestStatus status = IngestionRequestStatus.SUCCESS;
         boolean isError = false;
         String errorMsg = "";
         List<String> idsCreated = new ArrayList<>();
@@ -62,7 +63,7 @@ public class IngestDataJob extends HandlerJob {
             // request already rejected, but we want to add details in request status
             isError = true;
             errorMsg = handlerIngestionRequest.rejectMsg;
-            status = BsonConstants.BSON_VALUE_STATUS_REJECTED;
+            status = IngestionRequestStatus.REJECTED;
 
         } else {
 
@@ -73,7 +74,7 @@ public class IngestDataJob extends HandlerJob {
             } catch (DpIngestionException e) {
                 isError = true;
                 errorMsg = e.getMessage();
-                status = BsonConstants.BSON_VALUE_STATUS_ERROR;
+                status = IngestionRequestStatus.ERROR;
             }
 
             if (dataDocumentBatch != null) {
@@ -117,7 +118,7 @@ public class IngestDataJob extends HandlerJob {
                 }
 
                 if (isError) {
-                    status = BsonConstants.BSON_VALUE_STATUS_ERROR;
+                    status = IngestionRequestStatus.ERROR;
                 }
             }
         }

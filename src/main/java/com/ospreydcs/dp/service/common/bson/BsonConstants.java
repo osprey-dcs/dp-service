@@ -44,8 +44,4 @@ public class BsonConstants {
     public static final String BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_PERIOD = "lastBucketSamplePeriod";
     public static final String BSON_KEY_METADATA_FIRST_DATA_TIMESTAMP = "firstDataTimestamp";
     public static final String BSON_KEY_METADATA_LAST_DATA_TIMESTAMP = "lastDataTimestamp";
-    public static final String BSON_VALUE_STATUS_SUCCESS = "success";
-    public static final String BSON_VALUE_STATUS_REJECTED = "rejected";
-    public static final String BSON_VALUE_STATUS_ERROR = "error";
-
 }

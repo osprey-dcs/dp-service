@@ -12,6 +12,7 @@ import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
+import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -71,12 +72,15 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
     }
 
-    private RequestStatusDocument findRequestStatus(Integer providerId, String requestId, String status) {
+    private RequestStatusDocument findRequestStatus(
+            Integer providerId, String requestId, IngestionRequestStatus status
+    ) {
         List<RequestStatusDocument> matchingDocuments =
                 clientTestInterface.findRequestStatusList(providerId, requestId);
         RequestStatusDocument statusDocument = null;
         for (RequestStatusDocument document : matchingDocuments) {
-            if (document.getStatus().equals(status)) {
+            if (document.getRequestStatusCase() == status.ordinal()
+                    && document.getRequestStatusName().equals(status.name())) {
                 return document;
             }
         }
@@ -84,7 +88,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     }
 
     private void verifyFailedRequest(
-            IngestionRequestParams params, String status, String statusMsg, boolean checkBuckets) {
+            IngestionRequestParams params, IngestionRequestStatus status, String statusMsg, boolean checkBuckets) {
 
         if (checkBuckets) {
             // check database contents, no buckets should be created
@@ -115,7 +119,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         // get status document
         final RequestStatusDocument statusDocument =
                 findRequestStatus(
-                        params.providerId, params.requestId, BsonConstants.BSON_VALUE_STATUS_SUCCESS);
+                        params.providerId, params.requestId, IngestionRequestStatus.SUCCESS);
 
         // check bucket in database for each column in request
         final long firstSeconds = params.samplingClockStartSeconds;
@@ -249,7 +253,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         IngestDataJob job = new IngestDataJob(handlerIngestionRequest, clientTestInterface, handler);
         HandlerIngestionResult result = job.handleIngestionRequest(handlerIngestionRequest);
         assertTrue("error flag not set", result.isError);
-        verifyFailedRequest(params, BsonConstants.BSON_VALUE_STATUS_REJECTED, rejectMsg, true);
+        verifyFailedRequest(params, IngestionRequestStatus.REJECTED, rejectMsg, true);
     }
 
     /**
@@ -310,7 +314,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         assertTrue("error flag is not set", result.isError);
         verifyFailedRequest(
                 params,
-                BsonConstants.BSON_VALUE_STATUS_ERROR,
+                IngestionRequestStatus.ERROR,
                 "data type mismatch: DOUBLEVALUE expected: STRINGVALUE",
                 true);
     }
@@ -371,7 +375,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 result.isError);
         assertTrue("message not set", result.message.contains("duplicate key error"));
         verifyFailedRequest(
-                params, BsonConstants.BSON_VALUE_STATUS_ERROR, "E11000 duplicate key error", false);
+                params, IngestionRequestStatus.ERROR, "E11000 duplicate key error", false);
 
     }
 

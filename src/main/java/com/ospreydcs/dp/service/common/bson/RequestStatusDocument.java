@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -8,7 +10,8 @@ public class RequestStatusDocument {
     private Integer providerId;
     private String requestId;
     private Instant updateTime;
-    private String status;
+    private int requestStatusCase;
+    private String requestStatusName;
     private String msg;
     private List<String> idsCreated;
 
@@ -16,11 +19,12 @@ public class RequestStatusDocument {
     }
 
     public RequestStatusDocument(
-            Integer providerId, String requestId, String status, String msg, List<String> idsCreated) {
+            Integer providerId, String requestId, IngestionRequestStatus status, String msg, List<String> idsCreated) {
 
         this.providerId = providerId;
         this.requestId = requestId;
-        this.status = status;
+        this.setRequestStatusCase(status.ordinal());
+        this.setRequestStatusName(status.name());
         this.msg = msg;
         this.idsCreated = idsCreated;
         this.updateTime = Instant.now();
@@ -42,12 +46,28 @@ public class RequestStatusDocument {
         this.requestId = requestId;
     }
 
-    public String getStatus() {
-        return status;
+    public Instant getUpdateTime() {
+        return updateTime;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public void setUpdateTime(Instant updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public int getRequestStatusCase() {
+        return requestStatusCase;
+    }
+
+    public void setRequestStatusCase(int requestStatusCase) {
+        this.requestStatusCase = requestStatusCase;
+    }
+
+    public String getRequestStatusName() {
+        return requestStatusName;
+    }
+
+    public void setRequestStatusName(String requestStatusName) {
+        this.requestStatusName = requestStatusName;
     }
 
     public String getMsg() {
@@ -66,11 +86,4 @@ public class RequestStatusDocument {
         this.idsCreated = idsCreated;
     }
 
-    public Instant getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(Instant updateTime) {
-        this.updateTime = updateTime;
-    }
 }
