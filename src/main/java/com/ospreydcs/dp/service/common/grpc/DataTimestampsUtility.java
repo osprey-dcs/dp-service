@@ -52,7 +52,7 @@ public class DataTimestampsUtility {
             return null;
         }
 
-        public Long getSamplePeriodNanos() {
+        public long getSamplePeriodNanos() {
             if (samplingClock != null) {
                 return samplingClock.getPeriodNanos();
             } else {
@@ -60,7 +60,7 @@ public class DataTimestampsUtility {
             }
         }
 
-        public Integer getSampleCount() {
+        public int getSampleCount() {
             if (samplingClock != null) {
                 return samplingClock.getCount();
             } else {

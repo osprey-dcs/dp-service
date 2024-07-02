@@ -158,12 +158,22 @@ public abstract class GrpcIntegrationTestBase {
         // instance variables
         final public TimestampMap<IngestionBucketInfo> bucketInfoMap;
         final public TimestampMap<Double> valueMap;
+        final List<IngestionTestBase.IngestionRequestParams> paramsList;
+        final List<IngestDataRequest> requestList;
+        final List<IngestDataResponse> responseList;
 
         public IngestionStreamInfo(
-                TimestampMap<IngestionBucketInfo> bucketInfoMap, TimestampMap<Double> valueMap
+                TimestampMap<IngestionBucketInfo> bucketInfoMap,
+                TimestampMap<Double> valueMap,
+                List<IngestionTestBase.IngestionRequestParams> paramsList,
+                List<IngestDataRequest> requestList,
+                List<IngestDataResponse> responseList
         ) {
             this.bucketInfoMap = bucketInfoMap;
             this.valueMap = valueMap;
+            this.paramsList = paramsList;
+            this.requestList = requestList;
+            this.responseList = responseList;
         }
     }
 
@@ -283,148 +293,154 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<BucketDocument> verifyIngestionHandling(
-            IngestionTestBase.IngestionRequestParams params,
-            List<DataColumn> dataColumnList,
+            List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
             List<IngestDataResponse> responseList
     ) {
-        // check response
-        final int numPvs = params.columnNames.size();
+        // check that parameter list sizes match
+        assertEquals(paramsList.size(), requestList.size());
         assertEquals(requestList.size(), responseList.size());
-        for (IngestDataResponse response : responseList) {
+
+        // create container to hold method result
+        final List<BucketDocument> bucketDocumentList = new ArrayList<>();
+
+        // verify handling for each params / request / response
+        for (int listIndex = 0 ; listIndex < requestList.size() ; ++listIndex) {
+
+            final IngestionTestBase.IngestionRequestParams params = paramsList.get(listIndex);
+            final IngestDataRequest request = requestList.get(listIndex);
+            final IngestDataResponse response = responseList.get(listIndex);
+
+            final int numPvs = params.columnNames.size();
+
+            // verify API response
             assertTrue(response.hasAckResult());
             final IngestDataResponse.AckResult ackResult = response.getAckResult();
             assertEquals(numPvs, ackResult.getNumColumns());
-            assertEquals((int)params.samplingClockCount, ackResult.getNumRows());
-        }
+            assertEquals((int) params.samplingClockCount, ackResult.getNumRows());
 
-        // verify database contents
-
-        // validate RequestStatusDocument
-        final RequestStatusDocument statusDocument =
-                mongoClient.findRequestStatus(params.providerId, params.requestId);
-        assertEquals(numPvs, statusDocument.getIdsCreated().size());
-        final List<String> expectedBucketIds = new ArrayList<>();
-        for (String pvName : params.columnNames) {
-            final String expectedBucketId =
-                    pvName + "-" + params.samplingClockStartSeconds + "-" + params.samplingClockStartNanos;
-            assertTrue(expectedBucketId, statusDocument.getIdsCreated().contains(expectedBucketId));
-            expectedBucketIds.add(expectedBucketId);
-        }
-
-        // validate BucketDocument for each column
-        int pvIndex = 0;
-        final List<BucketDocument> bucketDocumentList = new ArrayList<>(dataColumnList.size());
-        for (String expectedBucketId : expectedBucketIds) {
-
-            final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
-            bucketDocumentList.add(bucketDocument);
-
-            assertNotNull(bucketDocument);
-            final String pvName = params.columnNames.get(pvIndex);
-            assertEquals(pvName, bucketDocument.getPvName());
-            assertEquals(expectedBucketId, bucketDocument.getId());
-
-            // check bucket start times
-            assertEquals((long) params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
-            assertEquals((long) params.samplingClockStartNanos, bucketDocument.getFirstNanos());
-            assertEquals(
-                    Date.from(Instant.ofEpochSecond(
-                            params.samplingClockStartSeconds, params.samplingClockStartNanos)),
-                    bucketDocument.getFirstTime());
-
-            // check sample count params
-            assertEquals((int) params.samplingClockCount, bucketDocument.getSampleCount());
-            assertEquals(
-                    (int) params.samplingClockCount,
-                    bucketDocument.readDataColumnContent().getDataValuesList().size());
-
-            // check DataTimestamps (TimestampsList or SamplingClock depending on request)
-            final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
-            long endSeconds = 0L;
-            long endNanos = 0L;
-
-            if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
-                // check explicit TimestampsList
-                assertEquals(DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(), bucketDocument.getDataTimestampsCase());
-                assertEquals(DataTimestamps.ValueCase.TIMESTAMPLIST.name(), bucketDocument.getDataTimestampsType());
-
-                // check sample period
-                assertEquals(0L, bucketDocument.getSamplePeriod());
-
-                // compare list of timestamps in bucket vs. params
-                assertTrue(bucketDataTimestamps.hasTimestampList());
-                final List<Timestamp> bucketTimestampList = bucketDataTimestamps.getTimestampList().getTimestampsList();
-                assertEquals(params.timestampsSecondsList.size(), bucketTimestampList.size());
-                assertEquals(params.timestampNanosList.size(), bucketTimestampList.size());
-                for (int timestampIndex = 0 ; timestampIndex < bucketTimestampList.size() ; ++timestampIndex) {
-                    final Timestamp bucketTimestamp = bucketTimestampList.get(timestampIndex);
-                    final long requestSeconds = params.timestampsSecondsList.get(timestampIndex);
-                    final long requestNanos = params.timestampNanosList.get(timestampIndex);
-                    assertEquals(requestSeconds, bucketTimestamp.getEpochSeconds());
-                    assertEquals(requestNanos, bucketTimestamp.getNanoseconds());
-                }
-
-                // determine expected bucket end times
-                endSeconds = params.timestampsSecondsList.get(params.timestampsSecondsList.size() - 1);
-                endNanos = params.timestampNanosList.get(params.timestampNanosList.size() - 1);
-
-            } else {
-                // check SamplingClock parameters
-                assertEquals(DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(), bucketDocument.getDataTimestampsCase());
-                assertEquals(DataTimestamps.ValueCase.SAMPLINGCLOCK.name(), bucketDocument.getDataTimestampsType());
-
-                // check sample period
-                assertEquals((long) params.samplingClockPeriodNanos, bucketDocument.getSamplePeriod());
-
-                // determine expected bucket end times
-                endSeconds = params.samplingClockStartSeconds;
-                endNanos = params.samplingClockPeriodNanos * (params.samplingClockCount - 1);
+            // validate database RequestStatusDocument
+            final RequestStatusDocument statusDocument =
+                    mongoClient.findRequestStatus(params.providerId, params.requestId);
+            assertEquals(numPvs, statusDocument.getIdsCreated().size());
+            final List<String> expectedBucketIds = new ArrayList<>();
+            for (String pvName : params.columnNames) {
+                final String expectedBucketId =
+                        pvName + "-" + params.samplingClockStartSeconds + "-" + params.samplingClockStartNanos;
+                assertTrue(expectedBucketId, statusDocument.getIdsCreated().contains(expectedBucketId));
+                expectedBucketIds.add(expectedBucketId);
             }
 
-            // check bucket end times against expected values determined above
-            assertEquals(endSeconds, bucketDocument.getLastSeconds());
-            assertEquals(endNanos, bucketDocument.getLastNanos());
-            assertEquals(
-                    Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
-                    bucketDocument.getLastTime());
+            // validate database BucketDocument for each column
+            int pvIndex = 0;
+            for (String expectedBucketId : expectedBucketIds) {
 
-            // compare data value vectors
-            final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
-            final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
-            assertEquals(requestDataColumn, bucketDataColumn); // this appears to compare individual values
+                final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
+                bucketDocumentList.add(bucketDocument);
 
-            pvIndex = pvIndex + 1;
+                assertNotNull(bucketDocument);
+                final String pvName = params.columnNames.get(pvIndex);
+                assertEquals(pvName, bucketDocument.getPvName());
+                assertEquals(expectedBucketId, bucketDocument.getId());
+
+                // check bucket start times
+                assertEquals((long) params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
+                assertEquals((long) params.samplingClockStartNanos, bucketDocument.getFirstNanos());
+                assertEquals(
+                        Date.from(Instant.ofEpochSecond(
+                                params.samplingClockStartSeconds, params.samplingClockStartNanos)),
+                        bucketDocument.getFirstTime());
+
+                // check sample count params
+                assertEquals((int) params.samplingClockCount, bucketDocument.getSampleCount());
+                assertEquals(
+                        (int) params.samplingClockCount,
+                        bucketDocument.readDataColumnContent().getDataValuesList().size());
+
+                // check DataTimestamps (TimestampsList or SamplingClock depending on request)
+                final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
+                DataTimestampsUtility.DataTimestampsModel requestDataTimestampsModel =
+                        new DataTimestampsUtility.DataTimestampsModel(
+                                request.getIngestionDataFrame().getDataTimestamps());
+                final long endSeconds = requestDataTimestampsModel.getLastTimestamp().getEpochSeconds();
+                final long endNanos = requestDataTimestampsModel.getLastTimestamp().getNanoseconds();
+                assertEquals(requestDataTimestampsModel.getSamplePeriodNanos(), bucketDocument.getSamplePeriod());
+
+                if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
+                    // check explicit TimestampsList
+                    assertEquals(
+                            DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
+                            bucketDocument.getDataTimestampsCase());
+                    assertEquals(
+                            DataTimestamps.ValueCase.TIMESTAMPLIST.name(),
+                            bucketDocument.getDataTimestampsType());
+
+                    // compare list of timestamps in bucket vs. params
+                    assertTrue(bucketDataTimestamps.hasTimestampList());
+                    final List<Timestamp> bucketTimestampList =
+                            bucketDataTimestamps.getTimestampList().getTimestampsList();
+                    assertEquals(params.timestampsSecondsList.size(), bucketTimestampList.size());
+                    assertEquals(params.timestampNanosList.size(), bucketTimestampList.size());
+                    for (int timestampIndex = 0; timestampIndex < bucketTimestampList.size(); ++timestampIndex) {
+                        final Timestamp bucketTimestamp = bucketTimestampList.get(timestampIndex);
+                        final long requestSeconds = params.timestampsSecondsList.get(timestampIndex);
+                        final long requestNanos = params.timestampNanosList.get(timestampIndex);
+                        assertEquals(requestSeconds, bucketTimestamp.getEpochSeconds());
+                        assertEquals(requestNanos, bucketTimestamp.getNanoseconds());
+                    }
+
+                } else {
+                    // check SamplingClock parameters
+                    assertEquals(
+                            DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(),
+                            bucketDocument.getDataTimestampsCase());
+                    assertEquals(
+                            DataTimestamps.ValueCase.SAMPLINGCLOCK.name(),
+                            bucketDocument.getDataTimestampsType());
+
+                }
+
+                // check bucket end times against expected values determined above
+                assertEquals(endSeconds, bucketDocument.getLastSeconds());
+                assertEquals(endNanos, bucketDocument.getLastNanos());
+                assertEquals(
+                        Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
+                        bucketDocument.getLastTime());
+
+                // compare data value vectors
+                final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
+                final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
+                final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
+                assertEquals(requestDataColumn, bucketDataColumn); // this appears to compare individual values
+
+                pvIndex = pvIndex + 1;
+            }
         }
 
         return bucketDocumentList;
     }
 
-    private void verifyBucketTimeParameters(int count, long period, long startSeconds, long startNanos, long endSeconds, long endNanos) {
-
-    }
-
     protected List<BucketDocument> sendAndVerifyIngestData(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest,
-            List<DataColumn> dataColumnList
+            IngestDataRequest ingestionRequest
     ) {
         final IngestDataResponse response = sendIngestData(ingestionRequest);
+        final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = Arrays.asList(response);
-        return verifyIngestionHandling(params, dataColumnList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList);
     }
 
     protected List<BucketDocument> sendAndVerifyIngestDataStream(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest,
-            List<DataColumn> dataColumnList
+            IngestDataRequest ingestionRequest
     ) {
 
         // send request
+        final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
-        return verifyIngestionHandling(params, dataColumnList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList);
     }
 
     protected IngestionStreamInfo ingestDataStream(
@@ -447,6 +463,7 @@ public abstract class GrpcIntegrationTestBase {
         final TimestampMap<IngestionBucketInfo> bucketInfoMap = new TimestampMap<>();
 
         // create requests
+        final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
         final List<IngestDataRequest> requestList = new ArrayList<>();
         long currentSeconds = startSeconds;
         int secondsCount = 0;
@@ -498,6 +515,7 @@ public abstract class GrpcIntegrationTestBase {
                             List.of(columnName),
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             columnValues);
+            paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
             final Instant endTimeInstant =
@@ -537,7 +555,7 @@ public abstract class GrpcIntegrationTestBase {
             assertEquals(numSamplesPerBucket, ackResult.getNumRows());
         }
 
-        return new IngestionStreamInfo(bucketInfoMap, valueMap);
+        return new IngestionStreamInfo(bucketInfoMap, valueMap, paramsList, requestList, responseList);
     }
 
     protected Map<String, IngestionStreamInfo> ingestDataStreamFromColumn(
@@ -556,102 +574,11 @@ public abstract class GrpcIntegrationTestBase {
                             startNanos,
                             providerId,
                             columnInfo);
+            verifyIngestionHandling(streamInfo.paramsList, streamInfo.requestList, streamInfo.responseList);
             validationMap.put(columnInfo.columnName, streamInfo);
         }
 
-        // validate database artifacts for this ingestion scenario
-        verifyIngestionDbArtifacts(validationMap);
-
         return validationMap;
-    }
-
-    private void verifyIngestionDbArtifacts(Map<String, IngestionStreamInfo> validationMap) {
-
-        for (var columnIngestionStreamInfoEntry : validationMap.entrySet()) {
-            final String columnName = columnIngestionStreamInfoEntry.getKey();
-            final IngestionStreamInfo columnIngestionInfo = columnIngestionStreamInfoEntry.getValue();
-
-            for (var bucketInfoMapEntry : columnIngestionInfo.bucketInfoMap.entrySet()) {
-                final long second = bucketInfoMapEntry.getKey();
-                final Map<Long, IngestionBucketInfo> nanoMap = bucketInfoMapEntry.getValue();
-                for (var nanoMapEntry : nanoMap.entrySet()) {
-                    final long nano = nanoMapEntry.getKey();
-                    final IngestionBucketInfo requestBucketInfo = nanoMapEntry.getValue();
-
-                    // validate request in database
-                    RequestStatusDocument statusDocument =
-                            mongoClient.findRequestStatus(requestBucketInfo.providerId, requestBucketInfo.requestId);
-                    assertEquals(1, statusDocument.getIdsCreated().size());
-                    final String bucketId = columnName + "-"
-                            + requestBucketInfo.startSeconds
-                            + "-"
-                            + requestBucketInfo.startNanos;
-                    assertTrue(statusDocument.getIdsCreated().contains(bucketId));
-
-                    // validate bucket in database
-                    BucketDocument bucketDocument = mongoClient.findBucket(bucketId);
-                    assertNotNull("bucketId: " + bucketId, bucketDocument);
-                    assertEquals(columnName, bucketDocument.getPvName());
-                    assertEquals(bucketId, bucketDocument.getId());
-                    assertEquals(requestBucketInfo.numValues, bucketDocument.getSampleCount());
-                    assertEquals(requestBucketInfo.startSeconds, bucketDocument.getFirstSeconds());
-                    assertEquals(requestBucketInfo.startNanos, bucketDocument.getFirstNanos());
-                    assertEquals(
-                            Date.from(Instant.ofEpochSecond(
-                                    requestBucketInfo.startSeconds, requestBucketInfo.startNanos)),
-                            bucketDocument.getFirstTime());
-                    assertEquals(requestBucketInfo.endSeconds, bucketDocument.getLastSeconds());
-                    assertEquals(requestBucketInfo.endNanos, bucketDocument.getLastNanos());
-                    assertEquals(
-                            Date.from(Instant.ofEpochSecond(
-                                    requestBucketInfo.endSeconds, requestBucketInfo.endNanos)),
-                            bucketDocument.getLastTime());
-                    assertEquals(
-                            requestBucketInfo.numValues,
-                            bucketDocument.readDataColumnContent().getDataValuesList().size());
-
-                    // check DataTimestamps, either explicit TimestampsList or SamplingClock
-                    final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
-                    if (requestBucketInfo.timestampSecondsList != null
-                            && requestBucketInfo.timestampSecondsList.size() > 0) {
-                        // check that bucket contains a TimestampsList
-                        assertEquals(
-                                DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
-                                bucketDocument.getDataTimestampsCase());
-                        assertEquals(
-                                DataTimestamps.ValueCase.TIMESTAMPLIST.name(),
-                                bucketDocument.getDataTimestampsType());
-
-                        assertTrue(bucketDataTimestamps.hasTimestampList());
-                        assertEquals(0, bucketDocument.getSamplePeriod());
-
-                    } else {
-                        // check that bucket contains a SamplingClock
-                        assertEquals(
-                                DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(),
-                                bucketDocument.getDataTimestampsCase());
-                        assertEquals(
-                                DataTimestamps.ValueCase.SAMPLINGCLOCK.name(),
-                                bucketDocument.getDataTimestampsType());
-
-                        assertTrue(bucketDataTimestamps.hasSamplingClock());
-                        assertEquals(requestBucketInfo.intervalNanos, bucketDocument.getSamplePeriod());
-                    }
-
-                    // verify each value
-                    DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
-                    for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
-                        Object expectedValue = requestBucketInfo.dataValues.get(valIndex);
-                        assertTrue(expectedValue instanceof Double);
-                        final double expectedValueDouble = (Double) expectedValue;
-                        assertEquals(
-                                expectedValueDouble,
-                                bucketDataColumn.getDataValues(valIndex).getDoubleValue(),
-                                0.0);
-                    }
-                }
-            }
-        }
     }
 
     protected Map<String, IngestionStreamInfo> simpleIngestionScenario() {
@@ -1044,10 +971,10 @@ public abstract class GrpcIntegrationTestBase {
                             new DataTimestampsUtility.DataTimestampsModel(responseBucket.getDataTimestamps());
 
                     assertEquals(
-                            (Long) columnBucketInfo.intervalNanos,
+                            columnBucketInfo.intervalNanos,
                             responseBucketDataTimestampsModel.getSamplePeriodNanos());
                     assertEquals(
-                            (Integer) columnBucketInfo.numValues,
+                            columnBucketInfo.numValues,
                             responseBucketDataTimestampsModel.getSampleCount());
 
                     // validate bucket data values

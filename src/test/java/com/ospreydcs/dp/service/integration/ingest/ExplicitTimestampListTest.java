@@ -90,14 +90,14 @@ public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
 
                 // build ingestion request
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                final List<IngestDataRequest> requests = Arrays.asList(request);
+                final List<IngestDataRequest> requestList = Arrays.asList(request);
 
                 // send request
-                final List<IngestDataResponse> responses = sendIngestDataStream(requests);
+                final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
 
                 // verify ingestion
-                verifyIngestionHandling(
-                        params, request.getIngestionDataFrame().getDataColumnsList(), requests, responses);
+                final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
+                verifyIngestionHandling(paramsList, requestList, responseList);
             }
         }
     }

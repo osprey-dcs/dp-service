@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.integration.ingest;
 
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -18,10 +17,9 @@ public class DataTypesUnaryTest extends DataTypesTestBase {
 
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest,
-            List<DataColumn> dataColumnList
+            IngestDataRequest ingestionRequest
     ) {
-        return sendAndVerifyIngestData(params, ingestionRequest, dataColumnList);
+        return sendAndVerifyIngestData(params, ingestionRequest);
     }
 
     @BeforeClass

@@ -61,8 +61,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
     protected abstract List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest,
-            List<DataColumn> dataColumnList
+            IngestDataRequest ingestionRequest
     );
 
     public void ingestionDataTypesTest() {
@@ -160,7 +159,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList=
-                    sendAndVerifyIngestionRpc_(params, ingestionRequest, arrayDataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
             // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
@@ -261,7 +260,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList=
-                    sendAndVerifyIngestionRpc_(params, ingestionRequest, dataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
             // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
@@ -454,7 +453,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
             // send request
             final List<BucketDocument> bucketDocumentList =
-                    sendAndVerifyIngestionRpc_(params, ingestionRequest, dataColumnList);
+                    sendAndVerifyIngestionRpc_(params, ingestionRequest);
 
             // verify contents of mongo bucket documents - the comparison of DataColumns in request to those in
             // bucket document by sendAndVerifyIngestionRpc_() is probably sufficient, but checking that the
