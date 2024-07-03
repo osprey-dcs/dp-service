@@ -101,16 +101,8 @@ public abstract class MongoClientBase {
                 BsonConstants.BSON_KEY_PV_NAME));
         createMongoIndexBuckets(Indexes.ascending(
                 BsonConstants.BSON_KEY_PV_NAME,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME));
-        createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS));
-        createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_PV_NAME,
-                BsonConstants.BSON_KEY_BUCKET_LAST_TIME));
-        createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_PV_NAME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
         return true;
@@ -127,13 +119,39 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesDataSets() {
-        createMongoIndexDataSets(Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)); // text index on comment field
+
+        // create regular index by ownerId
+        createMongoIndexDataSets(Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID));
+
+        // TODO: we can only have one "text" index per collection, regular or compound.  Need to think about this more.
+        // For now, I'm indexing the field globally instead of compound with ownerId.
+        createMongoIndexDataSets(Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION));
+//        createMongoIndexDataSets(Indexes.compoundIndex(
+//                Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID),
+//                Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)));
+
         return true;
     }
 
     private boolean createMongoIndexesAnnotations() {
-        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TYPE));
-        createMongoIndexAnnotations(Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)); // text index on comment field
+
+        // create regular index by ownerId
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID));
+
+        // create compound index on ownerId/type
+        createMongoIndexAnnotations(
+                Indexes.compoundIndex(
+                        Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID),
+                        Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TYPE)));
+
+        // create compound index on type/comment to optimize searching comment annotation text
+        createMongoIndexAnnotations(
+                Indexes.compoundIndex(
+                        Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TYPE),
+                        Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)));
+
+        // TODO: might want a compound index on owner/type/text(comment) but can only have a single text index per collection.
+
         return true;
     }
 

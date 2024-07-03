@@ -122,7 +122,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
         Bson bucketSort = ascending(
                 BsonConstants.BSON_KEY_PV_NAME,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME);
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
 
         logger.debug("executing getColumnInfo query: {}", columnNameFilter.toString());
 
