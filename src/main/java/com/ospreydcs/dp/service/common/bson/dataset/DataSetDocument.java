@@ -10,6 +10,7 @@ public class DataSetDocument {
 
     // instance variables
     private ObjectId id;
+    private String name;
     private String ownerId;
     private String description;
     private List<DataBlockDocument> dataBlocks;
@@ -20,6 +21,14 @@ public class DataSetDocument {
 
     public void setId(ObjectId id) {
         this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getOwnerId() {
@@ -73,6 +82,7 @@ public class DataSetDocument {
         }
         this.setDataBlocks(dataBlocks);
 
+        this.setName(request.getDataSet().getName());
         this.setOwnerId(request.getDataSet().getOwnerId());
         this.setDescription(request.getDataSet().getDescription());
     }
@@ -80,6 +90,13 @@ public class DataSetDocument {
     public List<String> diffRequest(CreateDataSetRequest request) {
 
         final List<String> diffs = new ArrayList<>();
+        
+        // diff name
+        if (! Objects.equals(request.getDataSet().getName(), this.getName())) {
+            final String msg =
+                    "name: " + request.getDataSet().getName() + " mismatch: " + this.getName();
+            diffs.add(msg);
+        }
 
         // diff description
         if (! Objects.equals(request.getDataSet().getDescription(), this.getDescription())) {
@@ -142,17 +159,18 @@ public class DataSetDocument {
         return diffs;
     }
 
-    public DataSet buildDataSet(DataSetDocument dataSetDocument) {
+    public DataSet buildDataSet() {
 
         final DataSet.Builder dataSetBuilder = DataSet.newBuilder();
 
         // add base dataset fields to response object
         dataSetBuilder.setDataSetId(this.getId().toString());
+        dataSetBuilder.setName(this.getName());
         dataSetBuilder.setOwnerId(this.getOwnerId());
         dataSetBuilder.setDescription(this.getDescription());
 
         // add dataset content to response object
-        for (DataBlockDocument dataBlockDocument : dataSetDocument.getDataBlocks()) {
+        for (DataBlockDocument dataBlockDocument : this.getDataBlocks()) {
             Timestamp blockBeginTime = Timestamp.newBuilder()
                     .setEpochSeconds(dataBlockDocument.getBeginTimeSeconds())
                     .setNanoseconds(dataBlockDocument.getBeginTimeNanos())

@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
@@ -102,26 +103,8 @@ public abstract class AnnotationDocument {
         annotationBuilder.setDataSetId(this.getDataSetId());
 
         // add dataset content to response object
-        com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder =
-                com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
-        for (DataBlockDocument dataBlockDocument : dataSetDocument.getDataBlocks()) {
-            Timestamp blockBeginTime = Timestamp.newBuilder()
-                    .setEpochSeconds(dataBlockDocument.getBeginTimeSeconds())
-                    .setNanoseconds(dataBlockDocument.getBeginTimeNanos())
-                    .build();
-            Timestamp blockEndTime = Timestamp.newBuilder()
-                    .setEpochSeconds(dataBlockDocument.getEndTimeSeconds())
-                    .setNanoseconds(dataBlockDocument.getEndTimeNanos())
-                    .build();
-            com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
-                    com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
-                            .setBeginTime(blockBeginTime)
-                            .setEndTime(blockEndTime)
-                            .addAllPvNames(dataBlockDocument.getPvNames())
-                            .build();
-            dataSetBuilder.addDataBlocks(responseBlock);
-        }
-        annotationBuilder.setDataSet(dataSetBuilder);
+        DataSet dataSet = dataSetDocument.buildDataSet();
+        annotationBuilder.setDataSet(dataSet);
 
         // add annotation-type-specific details to response
         addAnnotationDetails(annotationBuilder);

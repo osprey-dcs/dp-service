@@ -120,8 +120,17 @@ public abstract class MongoClientBase {
 
     private boolean createMongoIndexesDataSets() {
 
+        // create regular index by name
+        createMongoIndexDataSets(Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_NAME));
+
         // create regular index by ownerId
         createMongoIndexDataSets(Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID));
+
+        // create compound index by ownerId / name
+        createMongoIndexDataSets(
+                Indexes.compoundIndex(
+                        Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID),
+                        Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_NAME)));
 
         // TODO: we can only have one "text" index per collection, regular or compound.  Need to think about this more.
         // For now, I'm indexing the field globally instead of compound with ownerId.

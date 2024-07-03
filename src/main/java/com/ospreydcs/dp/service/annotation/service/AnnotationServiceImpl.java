@@ -244,6 +244,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
+                case NAMECRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.NameCriterion nameCriterion
+                            = criterion.getNameCriterion();
+                    if (nameCriterion.getNamePattern().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.NameCriterion namePattern must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
                 case DESCRIPTIONCRITERION -> {
                     final QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion descriptionCriterion
                             = criterion.getDescriptionCriterion();

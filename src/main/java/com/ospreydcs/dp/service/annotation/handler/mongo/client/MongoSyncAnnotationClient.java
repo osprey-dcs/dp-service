@@ -18,6 +18,7 @@ import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Filters.and;
@@ -89,6 +90,15 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     if (! ownerId.isBlank()) {
                         Bson ownerFilter = Filters.eq(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID, ownerId);
                         globalFilterList.add(ownerFilter);
+                    }
+                }
+
+                case NAMECRITERION -> {
+                    final String namePatternString = criterion.getNameCriterion().getNamePattern();
+                    if (! namePatternString.isBlank()) {
+                        final Pattern namePattern = Pattern.compile(namePatternString, Pattern.CASE_INSENSITIVE);
+                        final Bson nameFilter = Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME, namePattern);
+                        criteriaFilterList.add(nameFilter);
                     }
                 }
 
