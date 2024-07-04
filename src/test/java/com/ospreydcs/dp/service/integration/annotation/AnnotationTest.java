@@ -98,7 +98,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // createDataSet() negative test - request should be rejected because description not specified
+            // createDataSet() negative test - request should be rejected because name not specified
 
             final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
 
@@ -110,15 +110,16 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             dataBlocks.add(dataBlockValid);
 
             final String ownerId = "craigmcc";
-            final String unspecifiedDescription = "";
+            final String unspecifiedName = "";
+            final String description = "reject test";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(ownerId, unspecifiedDescription, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(unspecifiedName, ownerId, description, dataBlocks);
 
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
 
             sendAndVerifyCreateDataSet(
-                    params, true, "DataSet description must be specified");
+                    params, true, "DataSet name must be specified");
         }
 
         {
@@ -148,9 +149,10 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             dataBlocks.add(dataBlockMixed);
 
             final String ownerId = "craigmcc";
+            final String name = "missing PV test";
             final String description = "negative test, PVs don't exist in archive";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(ownerId, description, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(name, ownerId, description, dataBlocks);
 
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
@@ -191,28 +193,38 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                 final List<String> secondHalfPvNames = List.of("S02-GCC01", "S02-BPM01");
                 final AnnotationTestBase.AnnotationDataBlock secondHalfDataBlock =
                         new AnnotationTestBase.AnnotationDataBlock(
-                                currentSecond, 500_000_000L, currentSecond, 999_000_000L, secondHalfPvNames);
+                                currentSecond,
+                                500_000_000L,
+                                currentSecond,
+                                999_000_000L,
+                                secondHalfPvNames);
                 secondHalfDataBlocks.add(secondHalfDataBlock);
             }
 
             final String ownerId = "craigmcc";
 
             // create data set with first half-second blocks
+            final String firstHalfName = "first half dataset";
             final String firstHalfDescription = "first half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet firstHalfDataSet = 
-                    new AnnotationTestBase.AnnotationDataSet(ownerId, firstHalfDescription, firstHalfDataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(
+                            firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
             firstHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
-            firstHalfDataSetId = sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
+            firstHalfDataSetId =
+                    sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
+            final String secondHalfName = "second half dataset";
             final String secondHalfDescription = "second half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
-                    new AnnotationTestBase.AnnotationDataSet(ownerId, secondHalfDescription, secondHalfDataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(
+                            secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
             secondHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
-            secondHalfDataSetId = sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
+            secondHalfDataSetId =
+                    sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 

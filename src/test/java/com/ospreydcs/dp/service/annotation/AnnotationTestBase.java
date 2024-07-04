@@ -32,10 +32,14 @@ public class AnnotationTestBase {
     }
 
     public static class AnnotationDataSet {
+        public final String name;
         public final String ownerId;
         public final String description;
         public final List<AnnotationDataBlock> dataBlocks;
-        public AnnotationDataSet(String ownerId, String description, List<AnnotationDataBlock> dataBlocks) {
+        public AnnotationDataSet(
+                String name, String ownerId, String description, List<AnnotationDataBlock> dataBlocks
+        ) {
+            this.name = name;
             this.ownerId = ownerId;
             this.description = description;
             this.dataBlocks = dataBlocks;
@@ -454,6 +458,7 @@ public class AnnotationTestBase {
             dataSetBuilder.addDataBlocks(dataBlockBuilder);
         }
 
+        dataSetBuilder.setName(params.dataSet.name);
         dataSetBuilder.setDescription(params.dataSet.description);
         dataSetBuilder.setOwnerId(params.dataSet.ownerId);
 

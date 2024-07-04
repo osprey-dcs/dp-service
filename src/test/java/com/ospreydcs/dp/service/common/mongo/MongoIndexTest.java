@@ -47,13 +47,15 @@ public class MongoIndexTest {
             // check datasets collection indexes
             List<Document> datasetsIndexesDocuments =
                     this.mongoCollectionDataSets.listIndexes().into(new ArrayList<>());
-            assertEquals(3, datasetsIndexesDocuments.size());
+            assertEquals(5, datasetsIndexesDocuments.size());
             List<String> datasetsIndexNames = datasetsIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(datasetsIndexNames.contains("_id_"));
             assertTrue(datasetsIndexNames.contains("description_text"));
+            assertTrue(datasetsIndexNames.contains("name_1"));
             assertTrue(datasetsIndexNames.contains("ownerId_1"));
+            assertTrue(datasetsIndexNames.contains("ownerId_1_name_1"));
 
             // check requestStatus collection indexes
             List<Document> requestStatusIndexesDocuments =

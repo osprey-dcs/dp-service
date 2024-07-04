@@ -1228,7 +1228,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean found = false;
             DataSet foundDataSet = null;
             for (DataSet resultDataSet : resultDataSets) {
-                if (requestParams.dataSet.description.equals(resultDataSet.getDescription())) {
+                if (requestParams.dataSet.name.equals(resultDataSet.getName())) {
                     found = true;
                     foundDataSet = resultDataSet;
                     break;
@@ -1238,6 +1238,7 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundDataSet);
             final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
             assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
+            assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
             assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
 
             // compare data blocks from result with request
@@ -1392,6 +1393,9 @@ public abstract class GrpcIntegrationTestBase {
             final AnnotationTestBase.AnnotationDataSet requestDataSet = dataSetRequestParams.dataSet;
             final DataSet responseDataSet = foundAnnotation.getDataSet();
             assertEquals(requestDataSet.dataBlocks.size(), responseDataSet.getDataBlocksCount());
+            assertTrue(requestDataSet.name.equals(responseDataSet.getName()));
+            assertTrue(requestDataSet.ownerId.equals(responseDataSet.getOwnerId()));
+            assertTrue(requestDataSet.description.equals(responseDataSet.getDescription()));
             for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
                 boolean responseBlockFound = false;
                 for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
