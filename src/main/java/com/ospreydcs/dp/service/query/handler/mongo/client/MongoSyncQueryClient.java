@@ -16,8 +16,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.*;
@@ -115,6 +117,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE,
                 BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD

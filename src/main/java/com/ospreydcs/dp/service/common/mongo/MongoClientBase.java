@@ -97,14 +97,19 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesBuckets() {
+
+        // regular index by name
         createMongoIndexBuckets(Indexes.ascending(
                 BsonConstants.BSON_KEY_PV_NAME));
+
+        // compound index by name and time fields (used in bucket data queries)
         createMongoIndexBuckets(Indexes.ascending(
                 BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
+
         return true;
     }
 
