@@ -1051,6 +1051,15 @@ public abstract class GrpcIntegrationTestBase {
             pvInfoMap.put(columnInfo.getPvName(), columnInfo);
         }
 
+        // build list of pv names in response to verify against expected
+        final List<String> responsePvNames = new ArrayList<>();
+        for (QueryMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
+            responsePvNames.add(columnInfo.getPvName());
+        }
+
+        // check that response pvNames are sorted (against list in sorted order)
+        assertEquals(columnNames, responsePvNames);
+
         // check that a PvInfo was received for each name and verify its contents
         for (String columnName : columnNames) {
             final QueryMetadataResponse.MetadataResult.PvInfo pvInfo =

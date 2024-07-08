@@ -109,6 +109,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Bson columnNameFilter) {
 
+        // NOTE: PROJECTION MUST INCLUDE KEYS FOR ALL FIELDS USED IN SORTING and GROUPING!!!
+        // If not the values will silently be null and lead to unexpected results!!
+
         Bson bucketFieldProjection = Projections.fields(Projections.include(
                 BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_ID,
@@ -124,10 +127,13 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD
         ));
 
+        // Sort fields must appear in projection.
         Bson bucketSort = ascending(
                 BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
+
+        Bson metadataSort = ascending(BsonConstants.BSON_KEY_METADATA_PV_NAME);
 
         logger.debug("executing getColumnInfo query: {}", columnNameFilter.toString());
 
@@ -136,7 +142,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                         Arrays.asList(
                                 Aggregates.match(columnNameFilter),
                                 Aggregates.project(bucketFieldProjection),
-                                Aggregates.sort(bucketSort), // sort here so that records are ordered for group opeator
+                                Aggregates.sort(bucketSort), // sort buckets here so that records are ordered for group opeator
+
+                                // Bucket fields for grouping must appear in projection!!
                                 Aggregates.group(
                                         "$" + BsonConstants.BSON_KEY_PV_NAME,
                                         Accumulators.last(
@@ -172,7 +180,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                                 BsonConstants.BSON_KEY_METADATA_LAST_DATA_TIMESTAMP,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME)
                                 ),
-                                Aggregates.sort(bucketSort) // sort again so result is sorted
+                                Aggregates.sort(metadataSort) // sort metadata documents so result is sorted
                                 ));
 
 //        aggregateIterable.forEach(bucketDocument -> {System.out.println(bucketDocument.toString());});

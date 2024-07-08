@@ -53,7 +53,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
             // send metadata query for column pattern matching all "S01" devices
             final String columnNamePattern = "S01";
             final List<String> expectedColumnNameMatches =
-                    List.of("S01-GCC01", "S01-GCC02", "S01-GCC03", "S01-BPM01", "S01-BPM02", "S01-BPM03");
+                    List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
             sendAndVerifyQueryMetadata(
                     columnNamePattern,
                     validationMap,
