@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.ingest.handler.mongo.driver;
+package com.ospreydcs.dp.service.common.mongo.driver;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.result.InsertManyResult;
