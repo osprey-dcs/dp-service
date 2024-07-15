@@ -12,6 +12,7 @@ import java.util.List;
 
 public class DataTypesStreamingTest extends DataTypesTestBase {
 
+    @Override
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest

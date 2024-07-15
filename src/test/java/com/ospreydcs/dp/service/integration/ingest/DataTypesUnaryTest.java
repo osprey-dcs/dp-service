@@ -15,6 +15,7 @@ import java.util.List;
 @RunWith(JUnit4.class)
 public class DataTypesUnaryTest extends DataTypesTestBase {
 
+    @Override
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest
