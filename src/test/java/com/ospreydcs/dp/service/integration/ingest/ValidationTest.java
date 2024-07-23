@@ -56,7 +56,7 @@ public class ValidationTest extends GrpcIntegrationTestBase {
         final List<IngestDataRequest> requests = Arrays.asList(request);
 
         // send request and examine response
-        final List<IngestDataResponse> responses = sendIngestDataStream(requests);
+        final List<IngestDataResponse> responses = sendIngestDataBidiStream(requests);
         assertTrue(responses.size() == requests.size());
         final IngestDataResponse response = responses.get(0);
         assertTrue(response.getProviderId() == providerId);

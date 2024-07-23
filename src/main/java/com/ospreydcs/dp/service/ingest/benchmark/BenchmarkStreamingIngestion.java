@@ -33,7 +33,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
         }
 
         public IngestionTaskResult call() {
-            IngestionTaskResult result = sendStreamingIngestionRequest(
+            IngestionTaskResult result = sendBidiStreamingIngestionRequest(
                     this.params, this.templdateDataFrameBuilder, this.channel);
             return result;
         }
@@ -56,7 +56,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
          * @param params
          * @return
          */
-        private IngestionTaskResult sendStreamingIngestionRequest(
+        private IngestionTaskResult sendBidiStreamingIngestionRequest(
                 IngestionTaskParams params,
                 IngestDataRequest.IngestionDataFrame.Builder templateDataTable,
                 Channel channel) {
@@ -168,7 +168,7 @@ public class BenchmarkStreamingIngestion extends IngestionBenchmarkBase {
                 }
             };
 
-            StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataStream(responseObserver);
+            StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataBidiStream(responseObserver);
 
             IngestionTaskResult result = new IngestionTaskResult();
 

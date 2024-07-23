@@ -264,7 +264,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<IngestDataResponse> sendIngestDataStream(List<IngestDataRequest> requestList) {
+    protected List<IngestDataResponse> sendIngestDataBidiStream(List<IngestDataRequest> requestList) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(ingestionChannel);
@@ -272,7 +272,7 @@ public abstract class GrpcIntegrationTestBase {
         final IngestionTestBase.IngestionResponseObserver responseObserver =
                 new IngestionTestBase.IngestionResponseObserver(requestList.size());
 
-        StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataStream(responseObserver);
+        StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataBidiStream(responseObserver);
 
         for (IngestDataRequest request : requestList) {
             // send request in separate thread to better simulate out of process grpc,
@@ -439,7 +439,7 @@ public abstract class GrpcIntegrationTestBase {
         // send request
         final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
-        final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
+        final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
         return verifyIngestionHandling(paramsList, requestList, responseList);
     }
 
@@ -546,7 +546,7 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         // send requests
-        final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
+        final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
         assertEquals(requestList.size(), responseList.size());
         for (IngestDataResponse response : responseList) {
             assertTrue(response.hasAckResult());

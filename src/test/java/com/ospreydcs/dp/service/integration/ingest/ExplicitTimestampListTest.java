@@ -93,7 +93,7 @@ public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
                 final List<IngestDataRequest> requestList = Arrays.asList(request);
 
                 // send request
-                final List<IngestDataResponse> responseList = sendIngestDataStream(requestList);
+                final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
 
                 // verify ingestion
                 final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);

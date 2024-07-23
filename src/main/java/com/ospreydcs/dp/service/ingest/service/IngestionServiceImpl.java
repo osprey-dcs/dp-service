@@ -111,7 +111,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     @Override
-    public StreamObserver<IngestDataRequest> ingestDataStream(StreamObserver<IngestDataResponse> responseObserver) {
+    public StreamObserver<IngestDataRequest> ingestDataBidiStream(StreamObserver<IngestDataResponse> responseObserver) {
 
         return new StreamObserver<IngestDataRequest>() {
 
