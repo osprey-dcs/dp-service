@@ -54,13 +54,13 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     }
 
     @Override
-    public void handleIngestDataStream(HandlerIngestionRequest handlerIngestionRequest) {
+    public void handleIngestionRequest(HandlerIngestionRequest handlerIngestionRequest) {
 
         final IngestDataJob job = new IngestDataJob(handlerIngestionRequest, mongoIngestionClient, this);
 
         logger.debug(
                 "adding IngestDataJob id: {} provider: {} request: {}",
-                handlerIngestionRequest.responseObserver.hashCode(),
+                job.hashCode(),
                 handlerIngestionRequest.request.getProviderId(),
                 handlerIngestionRequest.request.getClientRequestId());
 

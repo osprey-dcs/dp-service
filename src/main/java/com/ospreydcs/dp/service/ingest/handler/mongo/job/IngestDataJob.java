@@ -51,8 +51,8 @@ public class IngestDataJob extends HandlerJob {
     public HandlerIngestionResult handleIngestionRequest(HandlerIngestionRequest handlerIngestionRequest) {
 
         final IngestDataRequest request = handlerIngestionRequest.request;
-        logger.debug("IngestionWorker handling request providerId: {} requestId: {}",
-                request.getProviderId(), request.getClientRequestId());
+        logger.debug("id: {} handling ingestion request providerId: {} requestId: {}",
+                this.hashCode(), request.getProviderId(), request.getClientRequestId());
 
         IngestionRequestStatus status = IngestionRequestStatus.SUCCESS;
         boolean isError = false;
