@@ -118,7 +118,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataStreamFromColumn(columnInfoList, startSeconds, startNanos, providerId);
+            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos, providerId);
         }
 
         {

@@ -74,8 +74,6 @@ public abstract class IngestionStreamRequestObserverBase implements StreamObserv
             // decrement pending request count and signal if we are finished
             decrementPendingRequestCountAndSignalFinish();
 
-            return;
-
         } else {
             // handle ingestion request
             handleIngestionRequest_(request);

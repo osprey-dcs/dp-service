@@ -93,7 +93,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             {
                 // perform ingestion for specified list of columns
                 ingestionStreamInfoMap =
-                        ingestDataStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+                        ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
             }
         }
 

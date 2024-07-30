@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Provides features and utilities for testing of ingestion service by inheritance to derived classes.
@@ -358,6 +359,52 @@ public class IngestionTestBase {
         public void onError(Throwable t) {
             Status status = Status.fromThrowable(t);
             System.err.println("IngestionResponseObserver error: " + status);
+            isError.set(true);
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static class IngestDataStreamResponseObserver implements StreamObserver<IngestDataStreamResponse> {
+
+        // instance variables
+        CountDownLatch finishLatch = null;
+        private final List<IngestDataStreamResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+
+        public IngestDataStreamResponseObserver() {
+            this.finishLatch = new CountDownLatch(1);
+        }
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                System.err.println("InterruptedException waiting for finishLatch");
+                isError.set(true);
+            }
+        }
+
+        public IngestDataStreamResponse getResponse() {
+            if (responseList.size() != 1) {
+                fail("response list size != 1");
+            }
+            return responseList.get(0);
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public void onNext(IngestDataStreamResponse ingestionResponse) {
+            responseList.add(ingestionResponse);
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            Status status = Status.fromThrowable(t);
+            System.err.println("IngestDataStreamResponseObserver error: " + status);
             isError.set(true);
         }
 

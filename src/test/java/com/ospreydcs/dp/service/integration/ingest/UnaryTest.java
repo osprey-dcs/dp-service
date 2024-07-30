@@ -72,7 +72,7 @@ public class UnaryTest extends GrpcIntegrationTestBase {
         // create request
         final int providerId = 1;
         final String requestId = "request-1";
-        final List<String> columnNames = Arrays.asList("PV_01"); // empty PV list should cause rejection.
+        final List<String> columnNames = Arrays.asList("PV_01");
         final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
         final Instant instantNow = Instant.now();
         final IngestionTestBase.IngestionRequestParams params =

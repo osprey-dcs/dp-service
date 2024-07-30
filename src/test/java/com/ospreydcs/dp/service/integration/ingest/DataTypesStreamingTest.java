@@ -17,7 +17,7 @@ public class DataTypesStreamingTest extends DataTypesTestBase {
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest
     ) {
-        return sendAndVerifyIngestDataStream(params, ingestionRequest);
+        return sendAndVerifyIngestDataBidiStream(params, ingestionRequest);
     }
 
     @BeforeClass
