@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import io.grpc.*;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -135,6 +136,15 @@ public abstract class IngestionBenchmarkBase {
          * @throws Exception
          */
         public abstract IngestionTaskResult call();
+
+        protected void onRequest(IngestDataRequest request) {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
+        protected void onCompleted() {
+            // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
+        }
+
     }
 
     protected static ConfigurationManager configMgr() {
@@ -233,6 +243,142 @@ public abstract class IngestionBenchmarkBase {
         dataFrameBuilder.build();
         requestBuilder.setIngestionDataFrame(dataFrameBuilder);
         return requestBuilder.build();
+    }
+
+    protected static IngestionTaskResult sendRequestStream(
+            IngestionTask task,
+            StreamObserver<IngestDataRequest> requestObserver,
+            CountDownLatch finishLatch,
+            CountDownLatch responseLatch,
+            boolean[] responseError,
+            boolean[] runtimeError
+    ) {
+        final IngestionTaskParams params = task.params;
+        final int streamNumber = params.streamNumber;
+        final int numSeconds = params.numSeconds;
+        final int numRows = params.numRows;
+        final int numColumns = params.numColumns;
+
+        final IngestionTaskResult result = new IngestionTaskResult();
+
+        long dataValuesSubmitted = 0;
+        long dataBytesSubmitted = 0;
+        long grpcBytesSubmitted = 0;
+        boolean isError = false;
+        try {
+            for (int secondsOffset = 0; secondsOffset < numSeconds; secondsOffset++) {
+
+                final String requestId = String.valueOf(secondsOffset);
+
+                // build IngestionRequest for current second, record elapsed time so we can subtract from measurement
+                // final IngestionRequest request = buildIngestionRequest(secondsOffset, params);
+                final IngestDataRequest request = prepareIngestionRequest(
+                        task.templdateDataFrameBuilder, params, secondsOffset);
+
+                // call hook for subclasses to add validation
+                try {
+                    task.onRequest(request);
+                } catch (AssertionError assertionError) {
+                    System.err.println("stream: " + streamNumber + " assertion error");
+                    assertionError.printStackTrace(System.err);
+                    isError = true;
+                    break;
+                }
+
+                // send grpc ingestion request
+                logger.trace("stream: {} sending secondsOffset: {}", streamNumber, secondsOffset);
+                requestObserver.onNext(request);
+
+                dataValuesSubmitted = dataValuesSubmitted + (numRows * numColumns);
+                dataBytesSubmitted = dataBytesSubmitted + (numRows * numColumns * Double.BYTES);
+//                grpcBytesSubmitted = grpcBytesSubmitted + request.getSerializedSize(); // adds 2% performance overhead
+
+                if (finishLatch.getCount() == 0) {
+                    // RPC completed or errored before we finished sending.
+                    // Sending further requests won't error, but they will just be thrown away.
+                    isError = true;
+                    break;
+                }
+            }
+        } catch (RuntimeException e) {
+            logger.error("stream: {} streamingIngestion() failed: {}", streamNumber, e.getMessage());
+            // cancel rpc, onError() sets runtimeError[0]
+            isError = true;
+        }
+
+        // mark the end of requests
+        requestObserver.onCompleted();
+
+        // don't wait for responses if there was already an error
+        if (!isError) {
+            try {
+                // wait until all responses received
+                boolean awaitSuccess = responseLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+                if (!awaitSuccess) {
+                    logger.error("stream: {} timeout waiting for responseLatch", streamNumber);
+                    result.setStatus(false);
+                    return result;
+                }
+            } catch (InterruptedException e) {
+                logger.error(
+                        "stream: {} streamingIngestion InterruptedException waiting for responseLatch",
+                        streamNumber);
+                result.setStatus(false);
+                return result;
+            }
+        }
+
+        // receiving happens asynchronously
+        try {
+            boolean awaitSuccess = finishLatch.await(AWAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            if (!awaitSuccess) {
+                logger.error("stream: {} timeout waiting for finishLatch", streamNumber);
+                result.setStatus(false);
+                return result;
+            }
+        } catch (InterruptedException e) {
+            logger.error(
+                    "stream: {} streamingIngestion InterruptedException waiting for finishLatch",
+                    streamNumber);
+            result.setStatus(false);
+            return result;
+        }
+
+        if (responseError[0]) {
+            System.err.println("stream: " + streamNumber + " response error encountered");
+            result.setStatus(false);
+            return result;
+
+        } else if (runtimeError[0]) {
+            System.err.println("stream: " + streamNumber + " runtime error encountered");
+            result.setStatus(false);
+            return result;
+
+        } else if (isError) {
+            System.err.println("stream: " + streamNumber + " request error encountered");
+            result.setStatus(false);
+            return result;
+
+        } else {
+
+            try {
+                // call hook for subclasses to add validation
+                task.onCompleted();
+            } catch (AssertionError assertionError) {
+                System.err.println("stream: " + streamNumber + " assertion error");
+                assertionError.printStackTrace(System.err);
+                result.setStatus(false);
+                return result;
+            }
+
+//            LOGGER.info("stream: {} responseCount: {}", streamNumber, responseCount);
+            result.setStatus(true);
+            result.setDataValuesSubmitted(dataValuesSubmitted);
+            result.setDataBytesSubmitted(dataBytesSubmitted);
+            result.setGrpcBytesSubmitted(grpcBytesSubmitted);
+            return result;
+        }
+
     }
 
     protected abstract IngestionTask newIngestionTask(
@@ -402,6 +548,25 @@ public abstract class IngestionBenchmarkBase {
         }
         System.out.println("max write rate: " + maxRate);
         System.out.println("min write rate: " + minRate);
+    }
+
+    public static void runBenchmark(IngestionBenchmarkBase benchmark) {
+
+        final String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
+        logger.info("Creating gRPC channel using connect string: {}", connectString);
+        final ManagedChannel channel =
+                Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
+
+        benchmark.ingestionExperiment(channel);
+
+        try {
+            boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
+            if (!awaitSuccess) {
+                logger.error("timeout in channel.shutdownNow.awaitTermination");
+            }
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
+        }
     }
 
 }

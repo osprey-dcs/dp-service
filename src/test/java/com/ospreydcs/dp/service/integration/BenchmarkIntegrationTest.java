@@ -12,7 +12,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
-import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkStreamingIngestion;
+import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkBidiStreamingIngestion;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.query.benchmark.*;
 import io.grpc.Channel;
@@ -59,7 +59,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static final int QUERY_TABLE_NUM_PVS_PER_REQUEST = 5;
 
 
-    private static class IntegrationTestStreamingIngestionApp extends BenchmarkStreamingIngestion {
+    private static class IntegrationTestStreamingIngestionApp extends BenchmarkBidiStreamingIngestion {
 
         private static class IntegrationTestIngestionRequestInfo {
             public final int providerId;
@@ -72,7 +72,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         }
 
         private static class IntegrationTestIngestionTask
-                extends BenchmarkStreamingIngestion.StreamingIngestionTask
+                extends BidiStreamingIngestionTask
         {
             // instance variables
             private Map<String, IntegrationTestIngestionRequestInfo> requestValidationMap = new TreeMap<>();
@@ -236,7 +236,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         }
 
-        protected StreamingIngestionTask newIngestionTask(
+        protected BidiStreamingIngestionTask newIngestionTask(
                 IngestionTaskParams params, IngestionDataFrame.Builder templateDataTable, Channel channel
         ) {
             return new IntegrationTestIngestionTask(params, templateDataTable, channel);
