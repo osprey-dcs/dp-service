@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager;
 
 public class IngestionGrpcServer extends GrpcServerBase {
 
+    // static variables
     private static final Logger LOGGER = LogManager.getLogger();
 
     // configuration

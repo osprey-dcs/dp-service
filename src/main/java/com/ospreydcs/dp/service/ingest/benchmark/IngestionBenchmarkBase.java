@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingest.benchmark;
 
+import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
@@ -26,8 +27,7 @@ public abstract class IngestionBenchmarkBase {
     public static final String NAME_COLUMN_BASE = "dpTest_";
 
     // configuration
-    public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionBenchmark.grpcConnectString";
-    public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50051";
+    public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60051";
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
@@ -516,6 +516,10 @@ public abstract class IngestionBenchmarkBase {
 
                 logger.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                         numThreads, numStreams);
+
+                // empty and initialize benchmark database
+                BenchmarkMongoClient.prepareBenchmarkDatabase();
+
                 BenchmarkScenarioResult scenarioResult =
                         ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
                 if (scenarioResult.success) {
@@ -552,7 +556,7 @@ public abstract class IngestionBenchmarkBase {
 
     public static void runBenchmark(IngestionBenchmarkBase benchmark) {
 
-        final String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
+        final String connectString = BENCHMARK_GRPC_CONNECT_STRING;
         logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
