@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.benchmark;
 import com.mongodb.client.result.InsertManyResult;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -11,6 +12,9 @@ import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.Channel;
+import io.grpc.Grpc;
+import io.grpc.InsecureChannelCredentials;
+import io.grpc.ManagedChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,45 +37,13 @@ public abstract class QueryBenchmarkBase {
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
 
     // configuration
-    public static final String CFG_KEY_GRPC_CONNECT_STRING = "QueryBenchmark.grpcConnectString";
-    public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:50052";
+    public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60052";
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
     }
 
-    protected static String getConnectString() {
-        return configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
-    }
-
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
-
-//        private static String collectionNamePrefix = null;
-//
-//        private static String getTestCollectionNamePrefix() {
-//            if (collectionNamePrefix == null) {
-//                collectionNamePrefix = "test-" + System.currentTimeMillis() + "-";
-//            }
-//            return collectionNamePrefix;
-//        }
-//
-//        protected static String getTestCollectionNameBuckets() {
-//            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_BUCKETS;
-//        }
-//
-//        protected static String getTestCollectionNameRequestStatus() {
-//            return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
-//        }
-//
-//        @Override
-//        protected String getCollectionNameBuckets() {
-//            return getTestCollectionNameBuckets();
-//        }
-//
-//        @Override
-//        protected String getCollectionNameRequestStatus() {
-//            return getTestCollectionNameRequestStatus();
-//        }
 
         public int insertBucketDocuments(List<BucketDocument> documentList) {
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
@@ -487,6 +459,46 @@ public abstract class QueryBenchmarkBase {
         }
         System.out.println("max rate: " + formatter.format(maxRate));
         System.out.println("min rate: " + formatter.format(minRate));
+    }
+
+    public static void runBenchmark(
+            QueryBenchmarkBase benchmark,
+            int[] totalNumPvsArray,
+            int[] numPvsPerRequestArray,
+            int[] numThreadsArray
+    ) {
+        long startSeconds = Instant.now().getEpochSecond();
+
+        // load data for use by the query benchmark
+        BenchmarkMongoClient.prepareBenchmarkDatabase(); // override default db name to dp-benchmark and initialize db
+        loadBucketData(startSeconds);
+
+        // Create a communication channel to the server, known as a Channel. Channels are thread-safe
+        // and reusable. It is common to create channels at the beginning of your application and reuse
+        // them until the application shuts down.
+        //
+        // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
+        // use TLS, use TlsChannelCredentials instead.
+        String connectString = BENCHMARK_GRPC_CONNECT_STRING;
+        logger.info("Creating gRPC channel using connect string: {}", connectString);
+        final ManagedChannel channel =
+                Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
+
+        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
+
+        // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
+        // resources the channel should be shut down when it will no longer be used. If it may be used
+        // again leave it running.
+        try {
+            boolean awaitSuccess = channel.shutdownNow().awaitTermination(
+                    TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
+            if (!awaitSuccess) {
+                logger.error("timeout in channel.shutdownNow.awaitTermination");
+            }
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
+        }
+
     }
 
 }

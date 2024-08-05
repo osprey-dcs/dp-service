@@ -98,47 +98,12 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
 
     public static void main(final String[] args) {
 
-        long startSeconds = Instant.now().getEpochSecond();
-
-        // load data for use by the query benchmark
-        loadBucketData(startSeconds);
-
-        // Create a communication channel to the server, known as a Channel. Channels are thread-safe
-        // and reusable. It is common to create channels at the beginning of your application and reuse
-        // them until the application shuts down.
-        //
-        // For the example we use plaintext insecure credentials to avoid needing TLS certificates. To
-        // use TLS, use TlsChannelCredentials instead.
-        String connectString = getConnectString();
-        logger.info("Creating gRPC channel using connect string: {}", connectString);
-        final ManagedChannel channel =
-                Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
-
-        BenchmarkQueryDataUnary benchmark = new BenchmarkQueryDataUnary();
-
-        final int[] totalNumPvsArray = {10, /*100, 500, 1000*/};
+        final int[] totalNumPvsArray = {10, /*100, 500, 1000*/}; // use small number of PVs so we don't get errors for exceeding message size limit for unary response
         final int[] numPvsPerRequestArray = {/*1,*/ 1/*, 25, 50*/};
         final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
 
-//        final int[] totalNumPvsArray = {1000};
-//        final int[] numPvsPerRequestArray = {10};
-//        final int[] numThreadsArray = {5};
-
-        benchmark.queryExperiment(
-                channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
-
-        // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
-        // resources the channel should be shut down when it will no longer be used. If it may be used
-        // again leave it running.
-        try {
-            boolean awaitSuccess = channel.shutdownNow().awaitTermination(
-                    TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
-            if (!awaitSuccess) {
-                logger.error("timeout in channel.shutdownNow.awaitTermination");
-            }
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException in channel.shutdownNow.awaitTermination: " + e.getMessage());
-        }
+        BenchmarkQueryDataUnary benchmark = new BenchmarkQueryDataUnary();
+        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
     }
 
 }
