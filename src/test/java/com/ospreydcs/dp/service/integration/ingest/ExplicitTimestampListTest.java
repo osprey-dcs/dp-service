@@ -86,7 +86,7 @@ public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
                                 numSamples, // each DataColumn must contain 5 DataValues
                                 pvNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values);
+                                values, null);
 
                 // build ingestion request
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);

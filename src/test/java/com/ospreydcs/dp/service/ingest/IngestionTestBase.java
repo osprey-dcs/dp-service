@@ -14,8 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 /**
  * Provides features and utilities for testing of ingestion service by inheritance to derived classes.
@@ -52,6 +51,7 @@ public class IngestionTestBase {
         public List<String> columnNames = null;
         public IngestionDataType dataType = null;
         public List<List<Object>> values = null;
+        public List<List<DataValue.ValueStatus>> valuesStatus = null;
         public Map<String, String> attributes = null;
         public String eventDescription = null;
         public Long eventStartSeconds = null;
@@ -72,8 +72,9 @@ public class IngestionTestBase {
                 Integer samplingClockCount,
                 List<String> columnNames,
                 IngestionDataType dataType,
-                List<List<Object>> values) {
-
+                List<List<Object>> values,
+                List<List<DataValue.ValueStatus>> valuesStatus
+        ) {
             this.providerId = providerId;
             this.requestId = requestId;
             this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
@@ -87,6 +88,7 @@ public class IngestionTestBase {
             this.columnNames = columnNames;
             this.dataType = dataType;
             this.values = values;
+            this.valuesStatus = valuesStatus;
         }
 
         public IngestionRequestParams(
@@ -123,7 +125,8 @@ public class IngestionTestBase {
                     samplingClockCount,
                     columnNames,
                     dataType,
-                    values);
+                    values,
+                    null);
 
             this.attributes = attributes;
             this.eventDescription = eventDescription;
@@ -218,26 +221,33 @@ public class IngestionTestBase {
 
         } else if (params.columnNames != null) {
             assertTrue(params.values != null);
-            assertTrue(params.columnNames.size() == params.values.size());
+            assertEquals(params.columnNames.size(), params.values.size());
+            if (params.valuesStatus != null) {
+                assertEquals(params.columnNames.size(), params.valuesStatus.size());
+            }
             for (int i = 0 ; i < params.columnNames.size() ; i++) {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
-                DataValue dataValue = null;
+                DataValue.Builder dataValueBuilder = null;
+                if (params.valuesStatus != null) {
+                    assertEquals(params.values.get(i).size(), params.valuesStatus.get(i).size());
+                }
+                int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
                         case STRING -> {
-                            dataValue = DataValue.newBuilder().setStringValue((String) value).build();
+                            dataValueBuilder = DataValue.newBuilder().setStringValue((String) value);
                         }
                         case DOUBLE -> {
-                            dataValue = DataValue.newBuilder().setDoubleValue((Double) value).build();
+                            dataValueBuilder = DataValue.newBuilder().setDoubleValue((Double) value);
                         }
                         case INT -> {
-                            dataValue = DataValue.newBuilder().setLongValue((Long) value).build();
+                            dataValueBuilder = DataValue.newBuilder().setLongValue((Long) value);
                         }
                         case BYTE_ARRAY -> {
                         }
                         case BOOLEAN -> {
-                            dataValue = DataValue.newBuilder().setBooleanValue((Boolean) value).build();
+                            dataValueBuilder = DataValue.newBuilder().setBooleanValue((Boolean) value);
                         }
                         case IMAGE -> {
                         }
@@ -250,12 +260,19 @@ public class IngestionTestBase {
                                 arrayBuilder.addDataValues(DataValue.newBuilder().setDoubleValue(doubleValue).build());
                             }
                             arrayBuilder.build();
-                            dataValue = DataValue.newBuilder().setArrayValue(arrayBuilder).build();
+                            dataValueBuilder = DataValue.newBuilder().setArrayValue(arrayBuilder);
                         }
                     }
 
-                    dataColumnBuilder.addDataValues(dataValue);
+                    if (params.valuesStatus != null) {
+                        DataValue.ValueStatus valueStatus = params.valuesStatus.get(i).get(valueIndex);
+                        dataValueBuilder.setValueStatus(valueStatus);
+                    }
+
+                    dataColumnBuilder.addDataValues(dataValueBuilder.build());
+                    valueIndex++;
                 }
+
                 dataColumnBuilder.build();
                 dataFrameBuilder.addDataColumns(dataColumnBuilder);
             }

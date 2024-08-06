@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import io.grpc.Status;
@@ -376,4 +377,30 @@ public class QueryTestBase {
         }
     }
 
+    public static void verifyDataBucket(
+            QueryDataResponse.QueryData.DataBucket responseBucket,
+            DataColumn requestColumn,
+            long startSeconds,
+            long startNanos,
+            long samplePeriod,
+            int numSamples
+    ) {
+        assertEquals(
+                startSeconds,
+                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getEpochSeconds());
+        assertEquals(
+                startNanos,
+                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getNanoseconds());
+        assertEquals(
+                samplePeriod,
+                responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
+        assertEquals(
+                numSamples,
+                responseBucket.getDataTimestamps().getSamplingClock().getCount());
+
+        // this compares each DataValue including ValueStatus, confirmed in debugger
+        assertEquals(
+                requestColumn,
+                responseBucket.getDataColumn());
+    }
 }

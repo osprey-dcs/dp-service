@@ -53,7 +53,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
                             1,
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            values);
+                            values, null);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);
@@ -79,7 +79,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
                             1,
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            values);
+                            values, null);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);
@@ -118,7 +118,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
                             1,
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            values);
+                            values, null);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);
@@ -144,7 +144,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
                             1,
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            values);
+                            values, null);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);

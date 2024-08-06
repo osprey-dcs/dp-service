@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -99,7 +100,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples, // each DataColumn must contain 5 DataValues
                             pvNames,
                             null,
-                            null);
+                            null, null);
 
             // build list of DataColumns
             arrayDataColumnList = new ArrayList<>(pvNames.size());
@@ -193,7 +194,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                     queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
-            verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
+            QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
 
 
@@ -231,7 +232,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples, // each DataColumn must contain 5 DataValues
                             pvNames,
                             null,
-                            null);
+                            null, null);
 
             // build list of DataColumns
             final List<DataColumn> dataColumnList = new ArrayList<>();
@@ -290,7 +291,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                     queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
-            verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
+            QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
 
             // write image content from query to file
             final File outputFile = new File("src/test/resources/test-image-output.bmp");
@@ -343,7 +344,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples,
                             pvNames,
                             null,
-                            null);
+                            null, null);
 
             // build list of DataColumns
             final List<DataColumn> dataColumnList = new ArrayList<>();
@@ -566,7 +567,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
                     queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
-            verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
+            QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
     }
 
@@ -595,28 +596,4 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
         }
     }
 
-    private void verifyDataBucket(
-            QueryDataResponse.QueryData.DataBucket responseBucket,
-            DataColumn requestColumn,
-            long startSeconds,
-            long startNanos,
-            long samplePeriod,
-            int numSamples
-    ) {
-        assertEquals(
-                startSeconds,
-                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getEpochSeconds());
-        assertEquals(
-                startNanos,
-                responseBucket.getDataTimestamps().getSamplingClock().getStartTime().getNanoseconds());
-        assertEquals(
-                samplePeriod,
-                responseBucket.getDataTimestamps().getSamplingClock().getPeriodNanos());
-        assertEquals(
-                numSamples,
-                responseBucket.getDataTimestamps().getSamplingClock().getCount());
-        assertEquals(
-                requestColumn,
-                responseBucket.getDataColumn());
-    }
 }

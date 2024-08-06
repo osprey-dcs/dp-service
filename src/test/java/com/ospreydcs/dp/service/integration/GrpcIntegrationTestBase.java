@@ -482,7 +482,9 @@ public abstract class GrpcIntegrationTestBase {
             final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
             final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
             final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
-            assertEquals(requestDataColumn, bucketDataColumn); // this appears to compare individual values
+
+            // this compares each DataValue including ValueStatus, confirmed in debugger
+            assertEquals(requestDataColumn, bucketDataColumn);
 
             pvIndex = pvIndex + 1;
         }
@@ -596,7 +598,7 @@ public abstract class GrpcIntegrationTestBase {
                             numSamplesPerBucket,
                             List.of(columnName),
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            columnValues);
+                            columnValues, null);
             paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);

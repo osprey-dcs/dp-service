@@ -51,7 +51,7 @@ public class ValidationTest extends GrpcIntegrationTestBase {
                         1,
                         columnNames,
                         IngestionTestBase.IngestionDataType.DOUBLE,
-                        values);
+                        values, null);
         final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
         final List<IngestDataRequest> requests = Arrays.asList(request);
 
