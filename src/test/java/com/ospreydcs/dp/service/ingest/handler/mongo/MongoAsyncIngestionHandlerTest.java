@@ -4,6 +4,7 @@ import com.mongodb.reactivestreams.client.FindPublisher;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoAsyncIngestionClient;
 import org.bson.conversions.Bson;
 import org.junit.*;
 import org.junit.runners.MethodSorters;

@@ -1,13 +1,18 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
+import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoAsyncIngestionClient;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
+import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.*;
 
 public class MongoIngestionHandler extends QueueHandlerBase implements IngestionHandlerInterface {
 
@@ -63,6 +68,24 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
                 job.hashCode(),
                 handlerIngestionRequest.request.getProviderId(),
                 handlerIngestionRequest.request.getClientRequestId());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQueryRequestStatus(
+            QueryRequestStatusRequest request,
+            StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        final QueryRequestStatusJob job =
+                new QueryRequestStatusJob(request, responseObserver, mongoIngestionClient);
+
+        logger.debug("adding QueryRequestStatusJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

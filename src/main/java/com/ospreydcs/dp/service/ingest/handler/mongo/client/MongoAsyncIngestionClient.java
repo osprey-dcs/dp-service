@@ -1,12 +1,16 @@
-package com.ospreydcs.dp.service.ingest.handler.mongo;
+package com.ospreydcs.dp.service.ingest.handler.mongo.client;
 
 import com.mongodb.MongoException;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoAsyncClient;
+import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
+import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -81,5 +85,10 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
         }
 
         return (InsertOneResult) receivedList.get(0);
+    }
+
+    @Override
+    public MongoCursor<RequestStatusDocument> executeQueryRequestStatus(QueryRequestStatusRequest request) {
+        throw new UnsupportedOperationException("executeQueryRequestStatus method not implemented");
     }
 }

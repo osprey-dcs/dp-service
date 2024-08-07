@@ -1,12 +1,16 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
 import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
+import org.bson.types.ObjectId;
 
 import java.time.Instant;
 import java.util.List;
 
 public class RequestStatusDocument {
-    
+
+    private ObjectId id;
     private Integer providerId;
     private String requestId;
     private Instant updateTime;
@@ -28,6 +32,14 @@ public class RequestStatusDocument {
         this.msg = msg;
         this.idsCreated = idsCreated;
         this.updateTime = Instant.now();
+    }
+
+    public ObjectId getId() {
+        return id;
+    }
+
+    public void setId(ObjectId id) {
+        this.id = id;
     }
 
     public Integer getProviderId() {
@@ -86,4 +98,42 @@ public class RequestStatusDocument {
         this.idsCreated = idsCreated;
     }
 
+    public QueryRequestStatusResponse.RequestStatusResult.RequestStatus buildRequestStatus(
+            RequestStatusDocument requestStatusDocument
+    ) {
+        final QueryRequestStatusResponse.RequestStatusResult.RequestStatus.Builder requestStatusBuilder =
+                QueryRequestStatusResponse.RequestStatusResult.RequestStatus.newBuilder();
+
+        // add base annotation fields to response object
+        requestStatusBuilder.setRequestStatusId(this.getId().toString());
+        requestStatusBuilder.setProviderId(this.getProviderId());
+        requestStatusBuilder.setRequestId(this.getRequestId());
+        requestStatusBuilder.setStatusMessage(this.getMsg());
+        requestStatusBuilder.addAllIdsCreated(this.getIdsCreated());
+
+        // set update time
+        Timestamp updateTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(this.getUpdateTime().getEpochSecond())
+                .setNanoseconds(this.getUpdateTime().getNano())
+                .build();
+        requestStatusBuilder.setUpdateTime(updateTimestamp);
+
+        // set status enum
+        switch(IngestionRequestStatus.valueOf(requestStatusDocument.getRequestStatusName())) {
+            case SUCCESS -> {
+                requestStatusBuilder.setIngestionRequestStatus(
+                        com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus.INGESTION_REQUEST_STATUS_SUCCESS);
+            }
+            case REJECTED -> {
+                requestStatusBuilder.setIngestionRequestStatus(
+                        com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus.INGESTION_REQUEST_STATUS_REJECTED);
+            }
+            case ERROR -> {
+                requestStatusBuilder.setIngestionRequestStatus(
+                        com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus.INGESTION_REQUEST_STATUS_ERROR);
+            }
+        }
+
+        return requestStatusBuilder.build();
+    }
 }

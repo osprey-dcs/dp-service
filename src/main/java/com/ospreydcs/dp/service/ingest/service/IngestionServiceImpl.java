@@ -114,7 +114,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         logger.debug("ingestDataBidiStream");
         return new IngestDataBidiStreamRequestObserver(responseObserver, handler, this);
     }
-
+    
     protected void handleIngestionRequest(
             IngestDataRequest request,
             StreamObserver<IngestDataResponse> responseObserver
@@ -173,5 +173,161 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
         IngestDataStreamResponse response = responseBuilder.build();
         responseObserver.onNext(response);
+    }
+
+    private static QueryRequestStatusResponse queryRequestStatusResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryRequestStatusResponse response = QueryRequestStatusResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    private static QueryRequestStatusResponse queryRequestStatusResponseReject(String msg
+    ) {
+        return queryRequestStatusResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    private static QueryRequestStatusResponse queryRequestStatusResponseError(String msg
+    ) {
+        return queryRequestStatusResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryRequestStatusResponse queryRequestStatusResponseEmpty(
+    ) {
+        return queryRequestStatusResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryRequestStatusResponse queryRequestStatusResponse(
+            QueryRequestStatusResponse.RequestStatusResult result
+    ) {
+        return QueryRequestStatusResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setRequestStatusResult(result)
+                .build();
+    }
+
+    public static void sendQueryRequestStatusResponseReject(
+            String msg, StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        final QueryRequestStatusResponse response = queryRequestStatusResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryRequestStatusResponseError(
+            String msg, StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        final QueryRequestStatusResponse response = queryRequestStatusResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryRequestStatusResponseEmpty(
+            StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        final QueryRequestStatusResponse response = queryRequestStatusResponseEmpty();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryRequestStatusResponse(
+            QueryRequestStatusResponse.RequestStatusResult requestStatusResult,
+            StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        final QueryRequestStatusResponse response  = queryRequestStatusResponse(requestStatusResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryRequestStatus(
+            QueryRequestStatusRequest request,
+            StreamObserver<QueryRequestStatusResponse> responseObserver
+    ) {
+        logger.info("id: {} queryRequestStatus request received", responseObserver.hashCode());
+
+        // check that request contains non-empty list of criteria
+        final List<QueryRequestStatusRequest.QueryRequestStatusCriterion> criterionList = request.getCriteriaList();
+        if (criterionList.size() == 0) {
+            final String errorMsg = "QueryRequestStatusRequest.criteria list must not be empty";
+            sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+        }
+
+        // validate query criteria
+        for (QueryRequestStatusRequest.QueryRequestStatusCriterion criterion : criterionList) {
+
+            switch (criterion.getCriterionCase()) {
+
+                case PROVIDERIDCRITERION -> {
+                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderIdCriterion providerIdCriterion = 
+                            criterion.getProviderIdCriterion();
+                    if (providerIdCriterion.getProviderId() < 1) {
+                        final String errorMsg = "QueryRequestStatusRequest.ProviderIdCriterion.providerId must be greater than 0";
+                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+                
+                case PROVIDERNAMECRITERION -> {
+                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderNameCriterion providerNameCriterion =
+                            criterion.getProviderNameCriterion();
+                    if (providerNameCriterion.getProviderName().isBlank()) {
+                        final String errorMsg = "QueryRequestStatusRequest.ProviderNameCriterion.providerName must not be blank";
+                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+                
+                case REQUESTIDCRITERION -> {
+                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.RequestIdCriterion requestIdCriterion =
+                            criterion.getRequestIdCriterion();
+                    if (requestIdCriterion.getRequestId().isBlank()) {
+                        final String errorMsg = "QueryRequestStatusRequest.RequestIdCriterion.requestId must not be blank";
+                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+                
+                case STATUSCRITERION -> {
+//                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion statusCriterion =
+//                            criterion.getStatusCriterion();
+//                    if (statusCriterion.getStatus().) {
+//                        final String errorMsg = "QueryRequestStatusRequest.StatusCriterion.status must";
+//                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+//                        return;
+//                    }
+                }
+                
+                case TIMERANGECRITERION -> {
+                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.TimeRangeCriterion timeRangeCriterion =
+                            criterion.getTimeRangeCriterion();
+                    if (timeRangeCriterion.getBeginTime().getEpochSeconds() < 1) {
+                        final String errorMsg = "QueryRequestStatusRequest.TimeRangeCriterion.beginTime seconds must be greater than 0";
+                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+                
+                case CRITERION_NOT_SET -> {
+                    final String errorMsg = "QueryRequestStatusRequest.criterion is not set";
+                    sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                    return;
+                }
+            }
+        }
+
+        handler.handleQueryRequestStatus(request, responseObserver);
     }
 }

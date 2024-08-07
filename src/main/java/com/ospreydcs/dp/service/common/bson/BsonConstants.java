@@ -22,6 +22,7 @@ public class BsonConstants {
     public static final String BSON_KEY_BUCKET_SAMPLE_PERIOD = "samplePeriod";
     public static final String BSON_KEY_BUCKET_ATTRIBUTE_MAP = "attributeMap";
     public static final String BSON_KEY_BUCKET_COLUMN_DATA_BYTES = "columnDataBytes";
+    public static final String BSON_KEY_REQ_STATUS_ID = "_id";
     public static final String BSON_KEY_REQ_STATUS_PROVIDER_ID = "providerId";
     public static final String BSON_KEY_REQ_STATUS_REQUEST_ID = "requestId";
     public static final String BSON_KEY_REQ_STATUS_TIME = "updateTime";
