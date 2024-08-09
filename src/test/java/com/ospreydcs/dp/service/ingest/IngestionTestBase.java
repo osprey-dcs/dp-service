@@ -6,10 +6,7 @@ import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -428,6 +425,264 @@ public class IngestionTestBase {
         @Override
         public void onCompleted() {
         }
+    }
+    
+    public static class QueryRequestStatusParams {
+        
+        public final Integer providerId;
+        public final String providerName;
+        public final String requestId;
+        public final IngestionRequestStatus status;
+        public final Long beginSeconds;
+        public final Long beginNanos;
+        public final Long endSeconds;
+        public final Long endNanos;
+
+        public QueryRequestStatusParams(
+                Integer providerId,
+                String providerName,
+                String requestId,
+                IngestionRequestStatus status,
+                Long beginSeconds,
+                Long beginNanos,
+                Long endSeconds,
+                Long endNanos
+        ) {
+            this.providerId = providerId;
+            this.providerName = providerName;
+            this.requestId = requestId;
+            this.status = status;
+            this.beginSeconds = beginSeconds;
+            this.beginNanos = beginNanos;
+            this.endSeconds = endSeconds;
+            this.endNanos = endNanos;
+        }
+    }
+
+    public static class QueryRequestStatusExpectedResponse {
+        public final Integer providerId;
+        public final String requestId;
+        public final IngestionRequestStatus status;
+        public final String statusMessage;
+        public final List<String> idsCreated;
+
+        public QueryRequestStatusExpectedResponse(
+                Integer providerId,
+                String requestId,
+                IngestionRequestStatus status,
+                String statusMessage,
+                List<String> idsCreated
+        ) {
+            this.providerId = providerId;
+            this.requestId = requestId;
+            this.status = status;
+            this.statusMessage = statusMessage;
+            this.idsCreated = idsCreated;
+        }
+    }
+
+    public static class QueryRequestStatusExpectedResponseMap {
+
+        public final Map<Integer, Map<String, QueryRequestStatusExpectedResponse>> expectedResponses = new HashMap<>();
+
+        public void addExpectedResponse(QueryRequestStatusExpectedResponse response) {
+            final int providerId = response.providerId;
+            final String requestId = response.requestId;
+            Map<String, QueryRequestStatusExpectedResponse> providerResponseMap;
+            if (expectedResponses.containsKey(providerId)) {
+                providerResponseMap = expectedResponses.get(providerId);
+            } else {
+                providerResponseMap = new HashMap<>();
+                expectedResponses.put(providerId, providerResponseMap);
+            }
+            providerResponseMap.put(requestId, response);
+        }
+
+        public int size() {
+            int size = 0;
+            for (Map<String, QueryRequestStatusExpectedResponse> providerMap : expectedResponses.values()) {
+                size = size + providerMap.size();
+            }
+            return size;
+        }
+
+        public QueryRequestStatusExpectedResponse get(int providerId, String requestId) {
+            if (expectedResponses.containsKey(providerId)) {
+                return expectedResponses.get(providerId).get(requestId);
+            } else {
+                return null;
+            }
+        }
+    }
+
+    public static class QueryRequestStatusResponseObserver implements StreamObserver<QueryRequestStatusResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> getRequestStatusList() {
+            return requestStatusList;
+        }
+
+        @Override
+        public void onNext(QueryRequestStatusResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exception response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasRequestStatusResult());
+                final QueryRequestStatusResponse.RequestStatusResult requestStatusResult =
+                        response.getRequestStatusResult();
+                assertNotNull(requestStatusResult);
+
+                // flag error if already received a response
+                if (!requestStatusList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    for (QueryRequestStatusResponse.RequestStatusResult.RequestStatus requestStatus :
+                            requestStatusResult.getRequestStatusList()) {
+                        requestStatusList.add(requestStatus);
+                    }
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+
+    public static QueryRequestStatusRequest buildQueryRequestStatusRequest(QueryRequestStatusParams params) {
+
+        QueryRequestStatusRequest.Builder requestBuilder = QueryRequestStatusRequest.newBuilder();
+
+        if (params.providerId != null) {
+            QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderIdCriterion providerIdCriterion =
+                    QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderIdCriterion.newBuilder()
+                            .setProviderId(params.providerId)
+                            .build();
+            QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
+                    = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()
+                    .setProviderIdCriterion(providerIdCriterion)
+                    .build();
+            requestBuilder.addCriteria(criterion);
+        }
+
+        if (params.providerName != null) {
+            QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderNameCriterion providerNameCriterion =
+                    QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderNameCriterion.newBuilder()
+                            .setProviderName(params.providerName)
+                            .build();
+            QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
+                    = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()
+                    .setProviderNameCriterion(providerNameCriterion)
+                    .build();
+            requestBuilder.addCriteria(criterion);
+        }
+
+        if (params.requestId != null) {
+            QueryRequestStatusRequest.QueryRequestStatusCriterion.RequestIdCriterion requestIdCriterion =
+                    QueryRequestStatusRequest.QueryRequestStatusCriterion.RequestIdCriterion.newBuilder()
+                            .setRequestId(params.requestId)
+                            .build();
+            QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
+                    = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()
+                    .setRequestIdCriterion(requestIdCriterion)
+                    .build();
+            requestBuilder.addCriteria(criterion);
+        }
+
+        if (params.status != null) {
+            QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion statusCriterion =
+                    QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion.newBuilder()
+                            .setStatus(params.status)
+                            .build();
+            QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
+                    = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()
+                    .setStatusCriterion(statusCriterion)
+                    .build();
+            requestBuilder.addCriteria(criterion);
+        }
+
+        if (params.beginSeconds != null) {
+            QueryRequestStatusRequest.QueryRequestStatusCriterion.TimeRangeCriterion.Builder timeRangeCriterionBuilder =
+                    QueryRequestStatusRequest.QueryRequestStatusCriterion.TimeRangeCriterion.newBuilder();
+            Timestamp beginTimestamp = Timestamp.newBuilder()
+                    .setEpochSeconds(params.beginSeconds)
+                    .setNanoseconds(params.beginNanos)
+                    .build();
+            timeRangeCriterionBuilder.setBeginTime(beginTimestamp);
+            if (params.endSeconds != null) {
+                Timestamp endTimestamp = Timestamp.newBuilder()
+                        .setEpochSeconds(params.endSeconds)
+                        .setNanoseconds(params.endNanos)
+                        .build();
+                timeRangeCriterionBuilder.setEndTime(endTimestamp);
+            }
+            QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
+                    = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()
+                    .setTimeRangeCriterion(timeRangeCriterionBuilder.build())
+                    .build();
+            requestBuilder.addCriteria(criterion);
+        }
+
+        return requestBuilder.build();
     }
 
 }

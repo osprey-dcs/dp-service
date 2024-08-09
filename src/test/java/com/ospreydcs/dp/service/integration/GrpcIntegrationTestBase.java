@@ -1,9 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.annotation.*;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataStreamResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
@@ -13,7 +11,6 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
@@ -721,6 +718,58 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return validationMap;
+    }
+
+    private List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> sendQueryRequestStatus(
+            QueryRequestStatusRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub
+                = DpIngestionServiceGrpc.newStub(ingestionChannel);
+
+        final IngestionTestBase.QueryRequestStatusResponseObserver responseObserver =
+                new IngestionTestBase.QueryRequestStatusResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryRequestStatus(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getRequestStatusList();
+    }
+
+    protected void sendAndVerifyQueryRequestStatus(
+            IngestionTestBase.QueryRequestStatusParams params,
+            IngestionTestBase.QueryRequestStatusExpectedResponseMap expectedResponseMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryRequestStatusRequest request = IngestionTestBase.buildQueryRequestStatusRequest(params);
+        List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList =
+                sendQueryRequestStatus(request, expectReject, expectedRejectMessage);
+
+        // verify API response against expectedResponseMap
+        assertEquals(expectedResponseMap.size(), requestStatusList.size());
+        for (QueryRequestStatusResponse.RequestStatusResult.RequestStatus responseStatus : requestStatusList) {
+            IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponseStatus =
+                    expectedResponseMap.get(responseStatus.getProviderId(), responseStatus.getRequestId());
+            assertEquals((Integer)responseStatus.getProviderId(), expectedResponseStatus.providerId);
+            assertEquals(responseStatus.getRequestId(), expectedResponseStatus.requestId);
+            assertEquals(responseStatus.getIngestionRequestStatus(), expectedResponseStatus.status);
+            assertEquals(responseStatus.getStatusMessage(), expectedResponseStatus.statusMessage);
+            assertEquals(responseStatus.getIdsCreatedList(), expectedResponseStatus.idsCreated);
+        }
     }
 
     protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {
