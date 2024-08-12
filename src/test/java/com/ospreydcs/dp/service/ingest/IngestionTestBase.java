@@ -432,7 +432,7 @@ public class IngestionTestBase {
         public final Integer providerId;
         public final String providerName;
         public final String requestId;
-        public final IngestionRequestStatus status;
+        public final List<IngestionRequestStatus> status;
         public final Long beginSeconds;
         public final Long beginNanos;
         public final Long endSeconds;
@@ -442,7 +442,7 @@ public class IngestionTestBase {
                 Integer providerId,
                 String providerName,
                 String requestId,
-                IngestionRequestStatus status,
+                List<IngestionRequestStatus> status,
                 Long beginSeconds,
                 Long beginNanos,
                 Long endSeconds,
@@ -651,7 +651,7 @@ public class IngestionTestBase {
         if (params.status != null) {
             QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion statusCriterion =
                     QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion.newBuilder()
-                            .setStatus(params.status)
+                            .addAllStatus(params.status)
                             .build();
             QueryRequestStatusRequest.QueryRequestStatusCriterion criterion
                     = QueryRequestStatusRequest.QueryRequestStatusCriterion.newBuilder()

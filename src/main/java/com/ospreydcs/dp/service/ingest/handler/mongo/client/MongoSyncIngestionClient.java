@@ -5,11 +5,14 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
@@ -17,6 +20,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.and;
@@ -97,9 +101,33 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 }
 
                 case STATUSCRITERION -> {
+                    final List<IngestionRequestStatus> statusList = criterion.getStatusCriterion().getStatusList();
+                    if (!statusList.isEmpty()) {
+                        List<Integer> statusCaseList = new ArrayList<>();
+                        for (IngestionRequestStatus status : statusList) {
+                            statusCaseList.add(status.getNumber());
+                        }
+                        Bson filter = Filters.in(BsonConstants.BSON_KEY_REQ_STATUS_STATUS, statusCaseList);
+                        criteriaFilterList.add(filter);
+                    }
                 }
 
                 case TIMERANGECRITERION -> {
+                    final Timestamp beginTimestamp = criterion.getTimeRangeCriterion().getBeginTime();
+                    final Timestamp endTimestamp = criterion.getTimeRangeCriterion().getEndTime();
+                    if (beginTimestamp.getEpochSeconds() > 0) {
+                        Date beginDate = TimestampUtility.dateFromTimestamp(beginTimestamp);
+                        Date endDate = null;
+                        if (endTimestamp.getEpochSeconds() > 0) {
+                            endDate = TimestampUtility.dateFromTimestamp(endTimestamp);
+                        } else {
+                            endDate = new Date();
+                        }
+                        Bson filter = Filters.and(
+                                Filters.gte(BsonConstants.BSON_KEY_REQ_STATUS_TIME, beginDate),
+                                Filters.lte(BsonConstants.BSON_KEY_REQ_STATUS_TIME, endDate));
+                        criteriaFilterList.add(filter);
+                    }
                 }
 
                 case CRITERION_NOT_SET -> {

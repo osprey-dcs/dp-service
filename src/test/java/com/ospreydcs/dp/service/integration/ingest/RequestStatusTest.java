@@ -47,7 +47,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
             final Integer providerId = 1;
             final String providerName = null;
             final String requestId = "S01-GCC01-3";
-            final IngestionRequestStatus status = null;
+            final List<IngestionRequestStatus> status = null;
             final Long beginSeconds = null;
             final Long beginNanos = null;
             final Long endSeconds = null;

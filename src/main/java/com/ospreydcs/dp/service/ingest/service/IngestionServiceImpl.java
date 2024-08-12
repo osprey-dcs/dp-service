@@ -301,13 +301,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 }
                 
                 case STATUSCRITERION -> {
-//                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion statusCriterion =
-//                            criterion.getStatusCriterion();
-//                    if (statusCriterion.getStatus().) {
-//                        final String errorMsg = "QueryRequestStatusRequest.StatusCriterion.status must";
-//                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
-//                        return;
-//                    }
+                    final QueryRequestStatusRequest.QueryRequestStatusCriterion.StatusCriterion statusCriterion =
+                            criterion.getStatusCriterion();
+                    if (statusCriterion.getStatusList().size() == 0) {
+                        final String errorMsg = "QueryRequestStatusRequest.StatusCriterion.status must not be empty";
+                        sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
                 }
                 
                 case TIMERANGECRITERION -> {
