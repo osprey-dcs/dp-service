@@ -23,8 +23,8 @@ public class MongoTestClient extends MongoSyncClient {
 
     // constants
     public static final String MONGO_TEST_DATABASE_NAME = "dp-test";
-    private static final int MONGO_FIND_RETRY_COUNT = 300;
-    private static final int MONGO_FIND_RETRY_INTERVAL_MILLIS = 100;
+    public static final int MONGO_FIND_RETRY_COUNT = 300;
+    public static final int MONGO_FIND_RETRY_INTERVAL_MILLIS = 100;
 
     @Override
     public boolean init() {
