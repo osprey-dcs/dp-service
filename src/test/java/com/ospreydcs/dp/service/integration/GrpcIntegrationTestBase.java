@@ -112,7 +112,7 @@ public abstract class GrpcIntegrationTestBase {
     protected static class IngestionBucketInfo {
 
         // instance variables
-        public final int providerId;
+        public final String providerId;
         public final String requestId;
         public final long startSeconds;
         public final long startNanos;
@@ -125,7 +125,7 @@ public abstract class GrpcIntegrationTestBase {
         public final List<Long> timestampNanosList;
 
         public IngestionBucketInfo(
-                int providerId,
+                String providerId,
                 String requestId,
                 long startSeconds,
                 long startNanos,
@@ -527,7 +527,7 @@ public abstract class GrpcIntegrationTestBase {
     protected IngestionStreamInfo ingestDataBidiStream(
             long startSeconds,
             long startNanos,
-            int providerId,
+            String providerId,
             IngestionColumnInfo columnInfo
     ) {
         final String requestIdBase = columnInfo.requestIdBase;
@@ -643,7 +643,7 @@ public abstract class GrpcIntegrationTestBase {
             List<IngestionColumnInfo> columnInfoList,
             long startSeconds,
             long startNanos,
-            int providerId
+            String providerId
     ) {
         // create data structure for validating query result
         Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
@@ -666,7 +666,7 @@ public abstract class GrpcIntegrationTestBase {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
-        final int providerId = INGESTION_PROVIDER_ID;
+        final String providerId = String.valueOf(INGESTION_PROVIDER_ID);
 
         List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
 

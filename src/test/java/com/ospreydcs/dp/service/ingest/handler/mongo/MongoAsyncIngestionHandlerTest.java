@@ -46,7 +46,7 @@ public class MongoAsyncIngestionHandlerTest extends MongoIngestionHandlerTestBas
             }
         }
 
-        public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId) {
+        public List<RequestStatusDocument> findRequestStatusList(String providerId, String requestId) {
             Bson filter = and(eq("providerId", providerId), eq("requestId", requestId));
             FindPublisher<RequestStatusDocument> publisher = mongoCollectionRequestStatus.find(filter);
             ObservableSubscriber<RequestStatusDocument> subscriber = new ObservableSubscriber<>();

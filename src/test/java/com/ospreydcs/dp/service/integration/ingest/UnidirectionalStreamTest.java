@@ -31,7 +31,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
         final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
         final List<IngestDataRequest> requestList = new ArrayList<>();
 
-        final int providerId = 1;
+        final String providerId = String.valueOf(1);
 
         // create 1st request
         {
@@ -96,7 +96,7 @@ public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
         final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
         final List<IngestDataRequest> requestList = new ArrayList<>();
 
-        final int providerId = 1;
+        final String providerId = String.valueOf(1);
 
         // create valid request
         {

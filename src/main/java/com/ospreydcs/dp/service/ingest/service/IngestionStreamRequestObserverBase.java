@@ -54,7 +54,7 @@ public abstract class IngestionStreamRequestObserverBase implements StreamObserv
     @Override
     public void onNext(IngestDataRequest request) {
 
-        final int providerId = request.getProviderId();
+        final String providerId = request.getProviderId();
         final String requestId = request.getClientRequestId();
 
         logger.debug(

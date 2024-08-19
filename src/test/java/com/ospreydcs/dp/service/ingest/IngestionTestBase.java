@@ -34,7 +34,7 @@ public class IngestionTestBase {
      */
     public static class IngestionRequestParams {
 
-        public Integer providerId = null;
+        public String providerId = null;
         public String requestId = null;
         public boolean setRequestTime = true;
         public Long snapshotStartTimestampSeconds = null;
@@ -57,7 +57,7 @@ public class IngestionTestBase {
         public Long eventStopNanos = null;
 
         public IngestionRequestParams(
-                Integer providerId,
+                String providerId,
                 String requestId,
                 Long snapshotStartTimestampSeconds,
                 Long snapshotStartTimestampNanos,
@@ -89,7 +89,7 @@ public class IngestionTestBase {
         }
 
         public IngestionRequestParams(
-                Integer providerId,
+                String providerId,
                 String requestId,
                 Long snapshotStartTimestampSeconds,
                 Long snapshotStartTimestampNanos,

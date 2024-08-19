@@ -62,10 +62,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static class IntegrationTestStreamingIngestionApp extends BenchmarkBidiStreamingIngestion {
 
         private static class IntegrationTestIngestionRequestInfo {
-            public final int providerId;
+            public final String providerId;
             public final long startSeconds;
             public boolean responseReceived = false;
-            public IntegrationTestIngestionRequestInfo(int providerId, long startSeconds) {
+            public IntegrationTestIngestionRequestInfo(String providerId, long startSeconds) {
                 this.providerId = providerId;
                 this.startSeconds = startSeconds;
             }
@@ -136,7 +136,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     }
 
                     // check that provider in response matches request
-                    final int responseProviderId = response.getProviderId();
+                    final String responseProviderId = response.getProviderId();
                     if (responseProviderId != requestInfo.providerId) {
                         fail("response provider id: " + responseProviderId
                                 + " mismatch request: " + requestInfo.providerId);

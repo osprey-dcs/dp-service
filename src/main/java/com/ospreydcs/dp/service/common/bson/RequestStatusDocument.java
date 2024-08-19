@@ -11,7 +11,7 @@ import java.util.List;
 public class RequestStatusDocument {
 
     private ObjectId id;
-    private Integer providerId;
+    private String providerId;
     private String requestId;
     private Instant updateTime;
     private int requestStatusCase;
@@ -23,7 +23,7 @@ public class RequestStatusDocument {
     }
 
     public RequestStatusDocument(
-            Integer providerId, String requestId, IngestionRequestStatus status, String msg, List<String> idsCreated) {
+            String providerId, String requestId, IngestionRequestStatus status, String msg, List<String> idsCreated) {
 
         this.providerId = providerId;
         this.requestId = requestId;
@@ -42,11 +42,11 @@ public class RequestStatusDocument {
         this.id = id;
     }
 
-    public Integer getProviderId() {
+    public String getProviderId() {
         return providerId;
     }
 
-    public void setProviderId(Integer providerId) {
+    public void setProviderId(String providerId) {
         this.providerId = providerId;
     }
 

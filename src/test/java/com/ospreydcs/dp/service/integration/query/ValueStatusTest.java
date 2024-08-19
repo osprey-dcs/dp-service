@@ -48,7 +48,7 @@ public class ValueStatusTest extends GrpcIntegrationTestBase {
         final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
         final List<IngestDataRequest> requestList = new ArrayList<>();
 
-        final int providerId = 1;
+        final String providerId = String.valueOf(1);
         final long startSeconds = Instant.now().getEpochSecond();
         final long samplePeriod = 1_000_000L;
         final int sampleCount = 1;

@@ -47,7 +47,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
             // some with errors due to duplicate database ids
 
             for (int providerIndex=1 ; providerIndex <= 5 ; ++providerIndex) {
-                final int providerId = providerIndex;
+                final String providerId = String.valueOf(providerIndex);
 
                 // use same seconds value for both requests to get duplicate id
 

@@ -31,7 +31,7 @@ public class BucketDocument {
     private String dataTimestampsType;
     private byte[] dataTimestampsBytes = null;
     private Map<String, String> attributeMap;
-    private int providerId;
+    private String providerId;
     private String clientRequestId;
 
     public String getId() {
@@ -210,11 +210,11 @@ public class BucketDocument {
         this.attributeMap = attributeMap;
     }
 
-    public int getProviderId() {
+    public String getProviderId() {
         return providerId;
     }
 
-    public void setProviderId(int providerId) {
+    public void setProviderId(String providerId) {
         this.providerId = providerId;
     }
 

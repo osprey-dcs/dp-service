@@ -32,7 +32,7 @@ public class ValidationTest extends GrpcIntegrationTestBase {
     public void testRejectEmptyPvNamesList() {
 
         // create request
-        final int providerId = 1;
+        final String providerId = String.valueOf(1);
         final String requestId = "request-1";
         final List<String> columnNames = Arrays.asList(""); // empty PV list should cause rejection.
         final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));

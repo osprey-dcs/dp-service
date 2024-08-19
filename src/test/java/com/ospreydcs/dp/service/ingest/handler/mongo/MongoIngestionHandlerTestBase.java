@@ -30,7 +30,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
     protected interface TestClientInterface extends MongoIngestionClientInterface {
         public BucketDocument findBucketWithId(String id);
-        public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId);
+        public List<RequestStatusDocument> findRequestStatusList(String providerId, String requestId);
     }
 
     /**
@@ -73,7 +73,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     }
 
     private RequestStatusDocument findRequestStatus(
-            Integer providerId, String requestId, IngestionRequestStatus status
+            String providerId, String requestId, IngestionRequestStatus status
     ) {
         List<RequestStatusDocument> matchingDocuments =
                 clientTestInterface.findRequestStatusList(providerId, requestId);
@@ -203,7 +203,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestReject() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-2";
         String pvName = "pv_01";
         List<String> columnNames = Arrays.asList(pvName);
@@ -261,7 +261,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestErrorDataTypeMismatch() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-8";
         String pvName = "pv_08";
         List<String> columnNames = Arrays.asList(pvName);
@@ -321,7 +321,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessFloat() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         String pvName = "pv_01";
         List<String> columnNames = Arrays.asList(pvName);
@@ -381,7 +381,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessString() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);;
         String requestId = "request-4";
         String pvName = "pv_04";
         List<String> columnNames = Arrays.asList(pvName);
@@ -430,7 +430,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessInt() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-5";
         String pvName = "pv_05";
         List<String> columnNames = Arrays.asList(pvName);
@@ -479,7 +479,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessBoolean() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-6";
         String pvName = "pv_06";
         List<String> columnNames = Arrays.asList(pvName);
@@ -531,7 +531,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessArray() {
 
         // assemble IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-7";
         String pvName = "pv_07";
         List<String> columnNames = Arrays.asList(pvName);

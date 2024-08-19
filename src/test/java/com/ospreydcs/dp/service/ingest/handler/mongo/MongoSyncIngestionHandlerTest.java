@@ -40,7 +40,7 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
             }
         }
 
-        public List<RequestStatusDocument> findRequestStatusList(Integer providerId, String requestId) {
+        public List<RequestStatusDocument> findRequestStatusList(String providerId, String requestId) {
             List<RequestStatusDocument> matchingDocuments = new ArrayList<>();
             Bson filter = and(eq("providerId", providerId), eq("requestId", requestId));
             mongoCollectionRequestStatus.find(filter).into(matchingDocuments);

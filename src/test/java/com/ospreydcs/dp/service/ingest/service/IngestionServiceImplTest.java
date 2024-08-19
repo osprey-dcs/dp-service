@@ -51,7 +51,7 @@ public class IngestionServiceImplTest extends IngestionTestBase {
     public void testIngestionResponseAck() {
 
         // create IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34, 42.00));
@@ -88,7 +88,7 @@ public class IngestionServiceImplTest extends IngestionTestBase {
     public void testIngestionResponseReject() {
 
         // create IngestionRequest
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));

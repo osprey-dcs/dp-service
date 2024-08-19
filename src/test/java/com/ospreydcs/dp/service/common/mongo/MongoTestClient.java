@@ -71,7 +71,7 @@ public class MongoTestClient extends MongoSyncClient {
         return null;
     }
 
-    public RequestStatusDocument findRequestStatus(Integer providerId, String requestId) {
+    public RequestStatusDocument findRequestStatus(String providerId, String requestId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount) {
             List<RequestStatusDocument> matchingDocuments = new ArrayList<>();
             Bson filter = and(eq("providerId", providerId), eq("requestId", requestId));

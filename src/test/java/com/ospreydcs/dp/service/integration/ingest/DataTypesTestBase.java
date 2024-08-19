@@ -22,7 +22,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
     private static final Logger logger = LogManager.getLogger();
 
     // constants
-    private static final int INGESTION_PROVIDER_ID = 1;
+    private static final String INGESTION_PROVIDER_ID = "1";
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
@@ -69,7 +69,7 @@ public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
-        final int providerId = INGESTION_PROVIDER_ID;
+        final String providerId = INGESTION_PROVIDER_ID;
 
 
         List<DataColumn> arrayDataColumnList = null;

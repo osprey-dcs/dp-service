@@ -16,7 +16,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
 
     @Test
     public void testValidateRequestUnspecifiedRequestTime() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -72,7 +72,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
 
     @Test
     public void testValidateRequestUnspecifiedRequestId() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
         Instant instantNow = Instant.now();
@@ -99,7 +99,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
 
     @Test
     public void testValidateRequestInvalidTimeIterator() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -132,7 +132,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
      */
     @Test
     public void testValidateRequestEmptyColumnsList() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         Instant instantNow = Instant.now();
         IngestionTestBase.IngestionRequestParams params =
@@ -162,7 +162,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
      */
     @Test
     public void testValidateRequestColumnSizeMismatch() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -193,7 +193,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
      */
     @Test
     public void testValidateRequestColumnNameMissing() {
-        int providerId = 1;
+        String providerId = String.valueOf(1);
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("");
         List<List<Object>> values = Arrays.asList(Arrays.asList(12.34, 42.00));

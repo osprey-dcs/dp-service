@@ -185,7 +185,7 @@ public abstract class IngestionBenchmarkBase {
             IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder,
             IngestionTaskParams params, Integer secondsOffset) {
 
-        final int providerId = params.streamNumber;
+        final String providerId = String.valueOf(params.streamNumber);
         final String requestId = String.valueOf(secondsOffset);
 
         IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();

@@ -12,7 +12,7 @@ public class IngestionValidationUtility {
         boolean isError = false;
         String statusMsg = "";
 
-        int providerId = request.getProviderId();
+        String providerId = request.getProviderId();
         String requestId = request.getClientRequestId();
         Timestamp requestTimestamp = request.getRequestTime();
         int numRequestColumns = request.getIngestionDataFrame().getDataColumnsList().size();
@@ -24,7 +24,7 @@ public class IngestionValidationUtility {
             isError = true;
             statusMsg = "requestTime must be specified";
 
-        } else if (providerId == 0) {
+        } else if (providerId.isBlank()) {
             // check that provider is specified
             isError = true;
             statusMsg = "providerId must be specified";
