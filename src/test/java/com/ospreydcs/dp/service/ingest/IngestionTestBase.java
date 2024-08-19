@@ -429,7 +429,7 @@ public class IngestionTestBase {
     
     public static class QueryRequestStatusParams {
         
-        public final Integer providerId;
+        public final String providerId;
         public final String providerName;
         public final String requestId;
         public final List<IngestionRequestStatus> status;
@@ -439,7 +439,7 @@ public class IngestionTestBase {
         public final Long endNanos;
 
         public QueryRequestStatusParams(
-                Integer providerId,
+                String providerId,
                 String providerName,
                 String requestId,
                 List<IngestionRequestStatus> status,
@@ -460,14 +460,14 @@ public class IngestionTestBase {
     }
 
     public static class QueryRequestStatusExpectedResponse {
-        public final Integer providerId;
+        public final String providerId;
         public final String requestId;
         public final IngestionRequestStatus status;
         public final String statusMessage;
         public final List<String> idsCreated;
 
         public QueryRequestStatusExpectedResponse(
-                Integer providerId,
+                String providerId,
                 String requestId,
                 IngestionRequestStatus status,
                 String statusMessage,
@@ -483,10 +483,10 @@ public class IngestionTestBase {
 
     public static class QueryRequestStatusExpectedResponseMap {
 
-        public final Map<Integer, Map<String, QueryRequestStatusExpectedResponse>> expectedResponses = new HashMap<>();
+        public final Map<String, Map<String, QueryRequestStatusExpectedResponse>> expectedResponses = new HashMap<>();
 
         public void addExpectedResponse(QueryRequestStatusExpectedResponse response) {
-            final int providerId = response.providerId;
+            final String providerId = response.providerId;
             final String requestId = response.requestId;
             Map<String, QueryRequestStatusExpectedResponse> providerResponseMap;
             if (expectedResponses.containsKey(providerId)) {
@@ -506,7 +506,7 @@ public class IngestionTestBase {
             return size;
         }
 
-        public QueryRequestStatusExpectedResponse get(int providerId, String requestId) {
+        public QueryRequestStatusExpectedResponse get(String providerId, String requestId) {
             if (expectedResponses.containsKey(providerId)) {
                 return expectedResponses.get(providerId).get(requestId);
             } else {

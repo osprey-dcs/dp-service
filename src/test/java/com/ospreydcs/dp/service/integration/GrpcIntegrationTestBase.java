@@ -802,7 +802,7 @@ public abstract class GrpcIntegrationTestBase {
         for (QueryRequestStatusResponse.RequestStatusResult.RequestStatus responseStatus : requestStatusList) {
             IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponseStatus =
                     expectedResponseMap.get(responseStatus.getProviderId(), responseStatus.getRequestId());
-            assertEquals((Integer)responseStatus.getProviderId(), expectedResponseStatus.providerId);
+            assertEquals(responseStatus.getProviderId(), expectedResponseStatus.providerId);
             assertEquals(responseStatus.getRequestId(), expectedResponseStatus.requestId);
             assertEquals(responseStatus.getIngestionRequestStatus(), expectedResponseStatus.status);
 //            assertEquals(responseStatus.getStatusMessage(), expectedResponseStatus.statusMessage);

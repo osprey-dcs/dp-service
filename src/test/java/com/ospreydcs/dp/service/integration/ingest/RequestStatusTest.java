@@ -162,7 +162,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
         {
             // send request status query by providerId, requestId, matches a single status document
 
-            final Integer providerId = 3;
+            final String providerId = String.valueOf(3);
             final String providerName = null;
             final String requestId = "request-3-3";
             final List<IngestionRequestStatus> status = null;
@@ -200,7 +200,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
         {
             // send request status query by providerId, status and time range, for rejected and error status
 
-            final Integer providerId = 2;
+            final String providerId = String.valueOf(2);
             final String providerName = null;
             final String requestId = null;
             final List<IngestionRequestStatus> status =
