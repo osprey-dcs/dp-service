@@ -251,10 +251,21 @@ public class IngestionTestBase {
                         case STRUCTURE -> {
                         }
                         case ARRAY_DOUBLE -> {
-                            List<Double> doubleList = (List<Double>) value;
+                            List<?> valueList = null;
+                            if (value instanceof List) {
+                                valueList = (List<?>) value;
+                            } else {
+                                fail("unexpected value list type: " + value.getClass().getName());
+                            }
                             Array.Builder arrayBuilder = Array.newBuilder();
-                            for (Double doubleValue : doubleList) {
-                                arrayBuilder.addDataValues(DataValue.newBuilder().setDoubleValue(doubleValue).build());
+                            for (var listElement : valueList) {
+                                if (!(listElement instanceof Double)) {
+                                    fail("unexpected value list element type: " + listElement.getClass().getName());
+                                }
+                                arrayBuilder.addDataValues(
+                                        DataValue.newBuilder()
+                                                .setDoubleValue((Double) listElement)
+                                                .build());
                             }
                             arrayBuilder.build();
                             dataValueBuilder = DataValue.newBuilder().setArrayValue(arrayBuilder);

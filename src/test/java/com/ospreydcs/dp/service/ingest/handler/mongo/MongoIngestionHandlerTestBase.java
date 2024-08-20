@@ -149,30 +149,31 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
             int dataValueIndex = 0;
             for (Object columnValue : columnDataList) {
                 if (columnValue instanceof Double) {
-                    assertEquals((Double) columnValue, dataColumn.getDataValues(dataValueIndex).getDoubleValue(), 0.0);
+                    assertEquals(
+                            (Double) columnValue,
+                            dataColumn.getDataValues(dataValueIndex).getDoubleValue(), 0.0);
                 } else if (columnValue instanceof Long) {
                     assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getLongValue());
                 } else if (columnValue instanceof String) {
                     assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getStringValue());
                 } else if (columnValue instanceof Boolean) {
                     assertEquals(columnValue, dataColumn.getDataValues(dataValueIndex).getBooleanValue());
-                } else if (columnValue instanceof List) {
+                } else if (columnValue instanceof List<?> listDataValue) {
                     int rowIndex = 0;
-                    final List listDataValue = (List) columnValue;
-                    final Object firstListValue = listDataValue.get(rowIndex);
-                    if (firstListValue instanceof Double) {
-                        // compare array of values to expected
-                        for (Double doubleValue : (List<Double>) listDataValue) {
-                            assertEquals(
-                                    (Double) listDataValue.get(rowIndex),
-                                    dataColumn
-                                            .getDataValues(dataValueIndex)
-                                            .getArrayValue()
-                                            .getDataValues(rowIndex)
-                                            .getDoubleValue(),
-                                    0.0);
-                            rowIndex = rowIndex + 1;
+                    // compare array of values to expected
+                    for (var listElement : listDataValue) {
+                        if (! (listElement instanceof Double)) {
+                            fail("unexpected listElement type: " + listElement.getClass().getName());
                         }
+                        assertEquals(
+                                (Double) listElement,
+                                dataColumn
+                                        .getDataValues(dataValueIndex)
+                                        .getArrayValue()
+                                        .getDataValues(rowIndex)
+                                        .getDoubleValue(),
+                                0.0);
+                        rowIndex = rowIndex + 1;
                     }
                 } else {
                     fail("unexpected data value type: " + columnValue.getClass().getCanonicalName());
