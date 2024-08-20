@@ -82,8 +82,8 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
             switch (criterion.getCriterionCase()) {
 
                 case PROVIDERIDCRITERION -> {
-                    final int providerId = criterion.getProviderIdCriterion().getProviderId();
-                    if (providerId > 0) {
+                    final String providerId = criterion.getProviderIdCriterion().getProviderId();
+                    if (! providerId.isBlank()) {
                         Bson filter = Filters.eq(BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID, providerId);
                         criteriaFilterList.add(filter);
                     }

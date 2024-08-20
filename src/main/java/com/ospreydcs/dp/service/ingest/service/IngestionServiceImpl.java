@@ -273,7 +273,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 case PROVIDERIDCRITERION -> {
                     final QueryRequestStatusRequest.QueryRequestStatusCriterion.ProviderIdCriterion providerIdCriterion = 
                             criterion.getProviderIdCriterion();
-                    if (providerIdCriterion.getProviderId() < 1) {
+                    if (providerIdCriterion.getProviderId().isBlank()) {
                         final String errorMsg = "QueryRequestStatusRequest.ProviderIdCriterion.providerId must be greater than 0";
                         sendQueryRequestStatusResponseReject(errorMsg, responseObserver);
                         return;
