@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
@@ -178,6 +179,8 @@ public class IngestDataJob extends HandlerJob {
 
             bucket.setId(documentId);
             bucket.setPvName(pvName);
+            bucket.setProviderId(request.getProviderId());
+            bucket.setClientRequestId(request.getClientRequestId());
 
             bucket.writeDataColumnContent(column);
             final DataValue.ValueCase dataValueCase = column.getDataValues(0).getValueCase();
@@ -199,16 +202,17 @@ public class IngestDataJob extends HandlerJob {
             bucket.setSamplePeriod(timeSpecModel.getSamplePeriodNanos());
             bucket.setSampleCount(timeSpecModel.getSampleCount());
 
-            // add metadata
-            Map<String, String> attributeMap = new TreeMap<>();
+            // add attributes
+            final Map<String, String> attributeMap =
+                    AttributesUtility.attributeMapFromList(request.getAttributesList());
+            bucket.setAttributeMap(attributeMap);
+
+            // add event metadata
             String eventDescription = "";
             long eventStartSeconds = 0;
             long eventStartNanos = 0;
             long eventStopSeconds = 0;
             long eventStopNanos = 0;
-            for (Attribute attribute : request.getAttributesList()) {
-                attributeMap.put(attribute.getName(), attribute.getValue());
-            }
             if (request.hasEventMetadata()) {
                 if (request.getEventMetadata().getDescription() != null) {
                     eventDescription = request.getEventMetadata().getDescription();
@@ -222,7 +226,6 @@ public class IngestDataJob extends HandlerJob {
                     eventStopNanos = request.getEventMetadata().getStopTimestamp().getNanoseconds();
                 }
             }
-            bucket.setAttributeMap(attributeMap);
             EventMetadataDocument eventMetadataDocument = new EventMetadataDocument();
             eventMetadataDocument.setDescription(eventDescription);
             eventMetadataDocument.setStartSeconds(eventStartSeconds);
@@ -230,8 +233,6 @@ public class IngestDataJob extends HandlerJob {
             eventMetadataDocument.setStopSeconds(eventStopSeconds);
             eventMetadataDocument.setStopNanos(eventStopNanos);
             bucket.setEventMetadata(eventMetadataDocument);
-            bucket.setProviderId(request.getProviderId());
-            bucket.setClientRequestId(request.getClientRequestId());
 
             bucketList.add(bucket);
         }

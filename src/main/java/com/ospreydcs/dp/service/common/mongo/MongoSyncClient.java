@@ -4,6 +4,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
@@ -21,6 +22,7 @@ public class MongoSyncClient extends MongoClientBase {
     // instance variables
     protected MongoClient mongoClient = null;
     protected MongoDatabase mongoDatabase = null;
+    protected MongoCollection<ProviderDocument> mongoCollectionProviders = null;
     protected MongoCollection<BucketDocument> mongoCollectionBuckets = null;
     protected MongoCollection<RequestStatusDocument> mongoCollectionRequestStatus = null;
     protected MongoCollection<DataSetDocument> mongoCollectionDataSets = null;
@@ -36,6 +38,18 @@ public class MongoSyncClient extends MongoClientBase {
     protected boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry) {
         mongoDatabase = mongoClient.getDatabase(databaseName);
         mongoDatabase = mongoDatabase.withCodecRegistry(codecRegistry);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionProviders(String collectionName) {
+        mongoCollectionProviders = mongoDatabase.getCollection(collectionName, ProviderDocument.class);  // creates collection if it doesn't exist
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexProviders(Bson fieldNamesBson) {
+        mongoCollectionProviders.createIndex(fieldNamesBson);
         return true;
     }
 

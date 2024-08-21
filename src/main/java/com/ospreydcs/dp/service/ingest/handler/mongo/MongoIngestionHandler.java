@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -10,6 +12,7 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClient
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
+import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,6 +59,25 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("error in mongoIngestionClient.fini");
         }
         return true;
+    }
+
+    @Override
+    public void handleRegisterProvider(
+            RegisterProviderRequest request,
+            StreamObserver<RegisterProviderResponse> responseObserver
+    ) {
+        final RegisterProviderJob job = new RegisterProviderJob(
+                request, responseObserver, mongoIngestionClient, this);
+
+        logger.debug("adding RegisterProviderJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+
     }
 
     @Override

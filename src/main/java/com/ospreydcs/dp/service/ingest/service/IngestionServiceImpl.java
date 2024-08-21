@@ -89,6 +89,103 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         }
     }
 
+    private static RegisterProviderResponse registerProviderResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final RegisterProviderResponse response = RegisterProviderResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    private static RegisterProviderResponse registerProviderResponseReject(String msg) {
+
+        return registerProviderResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    private static RegisterProviderResponse registerProviderResponseError(String msg) {
+
+        return registerProviderResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    private static RegisterProviderResponse registerProviderResponseSuccess(
+            String providerName,
+            String providerId,
+            boolean isNewProvider
+    ) {
+        final RegisterProviderResponse.RegistrationResult registrationResult =
+                RegisterProviderResponse.RegistrationResult.newBuilder()
+                        .setProviderName(providerName)
+                        .setProviderId(providerId)
+                        .setIsNewProvider(isNewProvider)
+                        .build();
+
+        final RegisterProviderResponse response = RegisterProviderResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setRegistrationResult(registrationResult)
+                .build();
+
+        return response;
+    }
+
+    public static void sendRegisterProviderResponseReject(
+            String msg, StreamObserver<RegisterProviderResponse> responseObserver
+    ) {
+        final RegisterProviderResponse response = registerProviderResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendRegisterProviderResponseError(
+            String msg, StreamObserver<RegisterProviderResponse> responseObserver
+    ) {
+        final RegisterProviderResponse response = registerProviderResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendRegisterProviderResponseSuccess(
+            String providerName,
+            String providerId,
+            boolean isNewProvider,
+            StreamObserver<RegisterProviderResponse> responseObserver
+    ) {
+        final RegisterProviderResponse response
+                = registerProviderResponseSuccess(providerName, providerId, isNewProvider);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void registerProvider(
+            RegisterProviderRequest request,
+            StreamObserver<RegisterProviderResponse> responseObserver
+    ) {
+        logger.info(
+                "id: {} registerProvider request received, provider: {}",
+                responseObserver.hashCode(),
+                request.getProviderName());
+
+        // validate request
+        if (request.getProviderName().isBlank()) {
+            final String errorMsg = "RegisterProviderRequest.providerName must be specified";
+            sendRegisterProviderResponseReject(errorMsg, responseObserver);
+            return;
+        }
+
+        // handle request
+        handler.handleRegisterProvider(request, responseObserver);
+    }
+
     @Override
     public void ingestData(IngestDataRequest request, StreamObserver<IngestDataResponse> responseObserver) {
 

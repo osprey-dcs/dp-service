@@ -3,17 +3,24 @@ package com.ospreydcs.dp.service.ingest.handler.mongo.client;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.UpdateOptions;
+import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
+import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.common.mongo.UpdateResultWrapper;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,6 +36,29 @@ import static com.mongodb.client.model.Indexes.ascending;
 public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIngestionClientInterface {
 
     private static final Logger logger = LogManager.getLogger();
+
+    @Override
+    public UpdateResultWrapper upsertProvider(RegisterProviderRequest request) {
+
+        Bson filter = Filters.eq(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName());
+
+        Bson updates = Updates.combine(
+                Updates.set(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName()),
+                Updates.set(
+                        BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTE_MAP,
+                        AttributesUtility.attributeMapFromList(request.getAttributesList()))
+        );
+
+        UpdateOptions options = new UpdateOptions().upsert(true);
+
+        try {
+            UpdateResult updateResult = mongoCollectionProviders.updateOne(filter, updates, options);
+            return new UpdateResultWrapper(updateResult);
+        } catch (MongoException e) {
+            logger.error(e);
+            return new UpdateResultWrapper(e.getMessage());
+        }
+    }
 
     @Override
     public IngestionTaskResult insertBatch(

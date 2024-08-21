@@ -6,9 +6,11 @@ import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoAsyncClient;
+import com.ospreydcs.dp.service.common.mongo.UpdateResultWrapper;
 import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
@@ -21,6 +23,11 @@ import java.util.List;
 public class MongoAsyncIngestionClient extends MongoAsyncClient implements MongoIngestionClientInterface {
 
     private static final Logger logger = LogManager.getLogger();
+
+    @Override
+    public UpdateResultWrapper upsertProvider(RegisterProviderRequest request) {
+        throw new UnsupportedOperationException("upsertProvider method not implemented");
+    }
 
     @Override
     public IngestionTaskResult insertBatch(IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {

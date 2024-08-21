@@ -28,6 +28,7 @@ public abstract class MongoClientBase {
 
     // constants
     public static final String MONGO_DATABASE_NAME = "dp";
+    public static final String COLLECTION_NAME_PROVIDERS = "providers";
     public static final String COLLECTION_NAME_BUCKETS = "buckets";
     public static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
     public static final String COLLECTION_NAME_DATA_SETS = "dataSets";
@@ -47,6 +48,8 @@ public abstract class MongoClientBase {
     // abstract methods
     protected abstract boolean initMongoClient(String connectString);
     protected abstract boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry);
+    protected abstract boolean initMongoCollectionProviders(String collectionName);
+    protected abstract boolean createMongoIndexProviders(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionBuckets(String collectionName);
     protected abstract boolean createMongoIndexBuckets(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionRequestStatus(String collectionName);
@@ -79,6 +82,7 @@ public abstract class MongoClientBase {
         // Indeed, registering the classes explicitly solved that problem but sort of a bummer because any new ones must
         // be explicitly registered here.
         CodecProvider pojoCodecProvider = PojoCodecProvider.builder().register(
+                ProviderDocument.class,
                 BucketDocument.class,
                 EventMetadataDocument.class,
                 RequestStatusDocument.class,
@@ -94,6 +98,11 @@ public abstract class MongoClientBase {
         CodecRegistry pojoCodecRegistry =
                 fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
         return pojoCodecRegistry;
+    }
+
+    private boolean createMongoIndexesProviders() {
+        createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_NAME));
+        return true;
     }
 
     private boolean createMongoIndexesBuckets() {
@@ -199,6 +208,10 @@ public abstract class MongoClientBase {
         }
     }
 
+    protected String getCollectionNameProviders() {
+        return COLLECTION_NAME_PROVIDERS;
+    }
+
     protected String getCollectionNameBuckets() {
         return COLLECTION_NAME_BUCKETS;
     }
@@ -221,6 +234,7 @@ public abstract class MongoClientBase {
 
         String connectString = getMongoConnectString();
         String databaseName = getMongoDatabaseName();
+        String collectionNameProviders = getCollectionNameProviders();
         String collectionNameBuckets = getCollectionNameBuckets();
         String collectionNameRequestStatus = getCollectionNameRequestStatus();
         String collectionNameDataSets = getCollectionNameDataSets();
@@ -234,6 +248,10 @@ public abstract class MongoClientBase {
 
         // connect to database
         initMongoDatabase(databaseName, getPojoCodecRegistry());
+
+        // initialize providers collection
+        initMongoCollectionProviders(collectionNameProviders);
+        createMongoIndexesProviders();
 
         // initialize buckets collection
         initMongoCollectionBuckets(collectionNameBuckets);
