@@ -17,20 +17,24 @@ import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.common.mongo.UpdateResultWrapper;
+import com.ospreydcs.dp.service.ingest.handler.model.FindProviderResult;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.and;
+import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Indexes.ascending;
 
 public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIngestionClientInterface {
@@ -46,7 +50,9 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName()),
                 Updates.set(
                         BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTE_MAP,
-                        AttributesUtility.attributeMapFromList(request.getAttributesList()))
+                        AttributesUtility.attributeMapFromList(request.getAttributesList())),
+                Updates.currentDate(
+                        BsonConstants.BSON_KEY_PROVIDER_LAST_UPDATED)
         );
 
         UpdateOptions options = new UpdateOptions().upsert(true);
@@ -57,6 +63,30 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         } catch (MongoException e) {
             logger.error(e);
             return new UpdateResultWrapper(e.getMessage());
+        }
+    }
+
+    @Override
+    public FindProviderResult findProvider(String providerName) {
+
+        List<ProviderDocument> matchingDocuments = new ArrayList<>();
+
+        // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
+        try {
+            mongoCollectionProviders.find(
+                    eq(BsonConstants.BSON_KEY_PROVIDER_NAME, providerName)).into(matchingDocuments);
+        } catch (Exception ex) {
+            final String errorMsg = "mongo exception in find(): " + ex.getMessage();
+            logger.error(errorMsg);
+            return FindProviderResult.findProviderError(errorMsg);
+        }
+
+        if (matchingDocuments.size() == 0) {
+            return FindProviderResult.findProviderError("no providers found with specified name");
+        } else if (matchingDocuments.size() == 1) {
+            return FindProviderResult.findProviderSuccess(matchingDocuments.get(0));
+        } else {
+            return FindProviderResult.findProviderError("multiple providers found with specified name");
         }
     }
 

@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.MongoDatabase;
+import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -51,6 +52,24 @@ public class MongoTestClient extends MongoSyncClient {
     public static void prepareTestDatabase() {
         MongoTestClient testClient = new MongoTestClient();
         testClient.init();
+    }
+
+    public ProviderDocument findProvider(String providerId) {
+        for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+            List<ProviderDocument> matchingDocuments = new ArrayList<>();
+            mongoCollectionProviders.find(eq("_id", new ObjectId(providerId))).into(matchingDocuments);
+            if (matchingDocuments.size() > 0) {
+                return matchingDocuments.get(0);
+            } else {
+                try {
+                    logger.info("findProvider id: " + providerId + " retrying");
+                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                } catch (InterruptedException ex) {
+                    // ignore and just retry
+                }
+            }
+        }
+        return null;
     }
 
     public BucketDocument findBucket(String id) {

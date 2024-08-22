@@ -7,12 +7,14 @@ import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
+import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
@@ -237,6 +239,69 @@ public abstract class GrpcIntegrationTestBase {
         mongoClient.fini();
         mongoClient = null;
         ingestionServiceMock = null;
+    }
+
+    protected RegisterProviderResponse sendRegsiterProvider(
+            RegisterProviderRequest request
+    ) {
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(ingestionChannel);
+
+        final IngestionTestBase.RegisterProviderResponseObserver responseObserver =
+                new IngestionTestBase.RegisterProviderResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.registerProvider(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            fail("responseObserver error: " + responseObserver.getErrorMessage());
+        }
+
+        return responseObserver.getResponseList().get(0);
+    }
+
+    protected String sendAndVerifyRegisterProvider(
+            IngestionTestBase.RegisterProviderRequestParams params,
+            boolean expectExceptionalResponse,
+            ExceptionalResult.ExceptionalResultStatus expectedExceptionStatus,
+            String expectedExceptionMessage,
+            boolean expectedIsNew,
+            String expectedProviderId
+    ) {
+        // build request
+        final RegisterProviderRequest request = IngestionTestBase.buildRegisterProviderRequest(params);
+
+        // send API request
+        final RegisterProviderResponse response = sendRegsiterProvider(request);
+
+        // verify exceptional response
+        if (expectExceptionalResponse) {
+            assertTrue(response.hasExceptionalResult());
+            final ExceptionalResult exceptionalResult = response.getExceptionalResult();
+            assertEquals(expectedExceptionStatus, exceptionalResult.getExceptionalResultStatus());
+            assertTrue(exceptionalResult.getMessage().contains(expectedExceptionMessage));
+            return null;
+        }
+
+        // verify registration result
+        assertTrue(response.hasRegistrationResult());
+        final RegisterProviderResponse.RegistrationResult registrationResult = response.getRegistrationResult();
+        assertEquals(params.name, registrationResult.getProviderName());
+        assertEquals(expectedIsNew, registrationResult.getIsNewProvider());
+        final String providerId = registrationResult.getProviderId();
+
+        // verify ProviderDocument from database
+        final ProviderDocument providerDocument = mongoClient.findProvider(providerId);
+        assertEquals(params.name, providerDocument.getName());
+        assertEquals(params.attributes, providerDocument.getAttributeMap());
+
+        // return id of ProviderDocument
+        return providerId;
     }
 
     protected IngestDataResponse sendIngestData(IngestDataRequest request) {

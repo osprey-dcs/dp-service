@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoAsyncClient;
 import com.ospreydcs.dp.service.common.mongo.UpdateResultWrapper;
+import com.ospreydcs.dp.service.ingest.handler.model.FindProviderResult;
 import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
 import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
@@ -27,6 +28,11 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
     @Override
     public UpdateResultWrapper upsertProvider(RegisterProviderRequest request) {
         throw new UnsupportedOperationException("upsertProvider method not implemented");
+    }
+
+    @Override
+    public FindProviderResult findProvider(String providerName) {
+        throw new UnsupportedOperationException("findProvider method not implemented");
     }
 
     @Override

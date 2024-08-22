@@ -8,6 +8,7 @@ public class BsonConstants {
     public static final String BSON_KEY_PROVIDER_ID = "_id";
     public static final String BSON_KEY_PROVIDER_NAME = "name";
     public static final String BSON_KEY_PROVIDER_ATTRIBUTE_MAP = "attributeMap";
+    public static final String BSON_KEY_PROVIDER_LAST_UPDATED = "lastUpdated";
 
     public static final String BSON_KEY_BUCKET_ID = "_id";
     public static final String BSON_KEY_BUCKET_FIRST_TIME = "firstTime";
