@@ -44,11 +44,14 @@ public class ValueStatusTest extends GrpcIntegrationTestBase {
     @Test
     public void valueStatusTest() {
 
+        // register provider
+        final String providerName = String.valueOf(1);
+        final String providerId = registerProvider(providerName, null);
+
         // create containers
         final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
         final List<IngestDataRequest> requestList = new ArrayList<>();
 
-        final String providerId = String.valueOf(1);
         final long startSeconds = Instant.now().getEpochSecond();
         final long samplePeriod = 1_000_000L;
         final int sampleCount = 1;

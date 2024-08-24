@@ -43,7 +43,10 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
 
-        final String providerId = String.valueOf(INGESTION_PROVIDER_ID);
+        // register ingestion provider
+        final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
+        final String providerId = registerProvider(providerName, null);
+
 
         Map<String, IngestionStreamInfo> ingestionStreamInfoMap = null;
         {

@@ -4,8 +4,10 @@ import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
+import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -44,6 +46,7 @@ public abstract class IngestionBenchmarkBase {
         final public int numRows;
         final public int firstColumnIndex;
         final public int lastColumnIndex;
+        final public String providerId;
 
         public IngestionTaskParams(
                 long startSeconds,
@@ -52,7 +55,8 @@ public abstract class IngestionBenchmarkBase {
                 int numColumns,
                 int numRows,
                 int firstColumnIndex,
-                int lastColumnIndex) {
+                int lastColumnIndex,
+                String providerId) {
 
             this.startSeconds = startSeconds;
             this.streamNumber = streamNumber;
@@ -61,6 +65,7 @@ public abstract class IngestionBenchmarkBase {
             this.numRows = numRows;
             this.firstColumnIndex = firstColumnIndex;
             this.lastColumnIndex = lastColumnIndex;
+            this.providerId = providerId;
         }
     }
 
@@ -185,7 +190,7 @@ public abstract class IngestionBenchmarkBase {
             IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder,
             IngestionTaskParams params, Integer secondsOffset) {
 
-        final String providerId = String.valueOf(params.streamNumber);
+        final String providerId = params.providerId;
         final String requestId = String.valueOf(secondsOffset);
 
         IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
@@ -386,6 +391,46 @@ public abstract class IngestionBenchmarkBase {
             IngestDataRequest.IngestionDataFrame.Builder templateDataTable,
             Channel channel);
 
+    private String registerProvider(String providerName, Channel channel) {
+
+        // build register provider params
+        final RegisterProviderUtility.RegisterProviderRequestParams params
+                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, null);
+
+        // build register provider request
+        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+
+        // create response observer
+        final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
+                new RegisterProviderUtility.RegisterProviderResponseObserver();
+
+        // send api request
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(channel);
+        asyncStub.registerProvider(request, responseObserver);
+
+        // wait for response
+        responseObserver.await();
+        if (responseObserver.isError()) {
+            logger.error(
+                    "error registering provider: {} message: {}",
+                    providerName,
+                    responseObserver.getErrorMessage());
+            System.exit(1);
+        }
+
+        if (responseObserver.getResponseList().size() != 1) {
+            logger.error(
+                    "unexpected provder registration: {} responseList size: {}",
+                    providerName,
+                    responseObserver.getResponseList().size());
+            System.exit(1);
+        }
+
+        final RegisterProviderResponse response = responseObserver.getResponseList().get(0);
+        return response.getRegistrationResult().getProviderId();
+    }
+
     /**
      * Executes a multithreaded streaming ingestion scenario with specified properties.
      * Creates an executor service with a fixed size thread pool, and submits a list of
@@ -416,13 +461,18 @@ public abstract class IngestionBenchmarkBase {
         List<IngestionTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {
+
+            // register provider for stream number
+            final String providerId = registerProvider(String.valueOf(i), channel);
+
             final int firstColumnIndex = lastColumnIndex + 1;
             lastColumnIndex = lastColumnIndex + numColumns;
             IngestionTaskParams params = new IngestionTaskParams(
-                    startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex);
+                    startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex, providerId);
             IngestDataRequest.IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
             IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
+
         }
 
         // start performance measurment timer

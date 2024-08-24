@@ -36,6 +36,11 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
     }
 
     @Override
+    public boolean validateProviderId(String providerId) {
+        throw new UnsupportedOperationException("validateProviderId method not implemented");
+    }
+
+    @Override
     public IngestionTaskResult insertBatch(IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 
         logger.debug("inserting batch of bucket documents to mongo");

@@ -298,9 +298,37 @@ public abstract class GrpcIntegrationTestBase {
         // verify ProviderDocument from database
         final ProviderDocument providerDocument = mongoClient.findProvider(providerId);
         assertEquals(params.name, providerDocument.getName());
-        assertEquals(params.attributes, providerDocument.getAttributeMap());
+        if (params.attributes != null) {
+            assertEquals(params.attributes, providerDocument.getAttributeMap());
+        }
 
         // return id of ProviderDocument
+        return providerId;
+    }
+
+    protected String registerProvider(String providerName, Map<String, String> attributeMap) {
+
+        String providerId = null;
+
+        // create register provider params
+        final IngestionTestBase.RegisterProviderRequestParams params
+                = new IngestionTestBase.RegisterProviderRequestParams(providerName, attributeMap);
+
+        // send and verify register provider API request
+        final boolean expectExceptionalResponse = false;
+        final ExceptionalResult.ExceptionalResultStatus expectedExceptionStatus = null;
+        final String expectedExceptionMessage = null;
+        boolean expectedIsNew = true;
+        final String expectedProviderId = null;
+        providerId = sendAndVerifyRegisterProvider(
+                params,
+                expectExceptionalResponse,
+                expectedExceptionStatus,
+                expectedExceptionMessage,
+                expectedIsNew,
+                expectedProviderId);
+        Objects.requireNonNull(providerId);
+
         return providerId;
     }
 
@@ -455,6 +483,9 @@ public abstract class GrpcIntegrationTestBase {
         final int numPvs = params.columnNames.size();
         final RequestStatusDocument statusDocument =
                 mongoClient.findRequestStatus(params.providerId, params.requestId);
+        assertEquals(
+                IngestionRequestStatus.INGESTION_REQUEST_STATUS_SUCCESS_VALUE,
+                statusDocument.getRequestStatusCase());
         assertEquals(numPvs, statusDocument.getIdsCreated().size());
         final List<String> expectedBucketIds = new ArrayList<>();
         for (String pvName : params.columnNames) {
@@ -731,7 +762,10 @@ public abstract class GrpcIntegrationTestBase {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
-        final String providerId = String.valueOf(INGESTION_PROVIDER_ID);
+
+        // register provider used by scenario
+        final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
+        final String providerId = registerProvider(providerName, null);
 
         List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
 
@@ -867,11 +901,11 @@ public abstract class GrpcIntegrationTestBase {
         for (QueryRequestStatusResponse.RequestStatusResult.RequestStatus responseStatus : requestStatusList) {
             IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponseStatus =
                     expectedResponseMap.get(responseStatus.getProviderId(), responseStatus.getRequestId());
-            assertEquals(responseStatus.getProviderId(), expectedResponseStatus.providerId);
-            assertEquals(responseStatus.getRequestId(), expectedResponseStatus.requestId);
-            assertEquals(responseStatus.getIngestionRequestStatus(), expectedResponseStatus.status);
+            assertEquals(expectedResponseStatus.providerId, responseStatus.getProviderId());
+            assertEquals(expectedResponseStatus.requestId, responseStatus.getRequestId());
+            assertEquals(expectedResponseStatus.status, responseStatus.getIngestionRequestStatus());
 //            assertEquals(responseStatus.getStatusMessage(), expectedResponseStatus.statusMessage);
-            assertEquals(responseStatus.getIdsCreatedList(), expectedResponseStatus.idsCreated);
+            assertEquals(expectedResponseStatus.idsCreated, responseStatus.getIdsCreatedList());
         }
     }
 

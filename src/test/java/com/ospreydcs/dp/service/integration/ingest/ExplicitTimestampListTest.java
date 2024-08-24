@@ -34,7 +34,10 @@ public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
-        final String providerId = String.valueOf(1);
+
+        // register ingestion provider
+        final String providerName = String.valueOf(1);
+        final String providerId = registerProvider(providerName, null);
 
         {
             // ingest data with explicit timestamp list

@@ -91,6 +91,24 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
     }
 
     @Override
+    public boolean validateProviderId(String providerId) {
+
+        List<ProviderDocument> matchingDocuments = new ArrayList<>();
+
+        // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
+        try {
+            mongoCollectionProviders.find(
+                    eq(BsonConstants.BSON_KEY_PROVIDER_ID, new ObjectId(providerId))).into(matchingDocuments);
+        } catch (Exception ex) {
+            final String errorMsg = "mongo exception in find(): " + ex.getMessage();
+            logger.error(errorMsg);
+            return false;
+        }
+
+        return matchingDocuments.size() > 0;
+    }
+
+    @Override
     public IngestionTaskResult insertBatch(
             IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 

@@ -15,7 +15,9 @@ import org.junit.Test;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static java.lang.Thread.sleep;
 import static org.junit.Assert.*;
@@ -41,21 +43,28 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
     @Test
     public void requestStatusTest() {
 
-        long startSeconds = Instant.now().getEpochSecond();
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        final Map<String, String> providerIdMap = new HashMap<>();
+
         {
             // ingest data for five different providers, scenario with some successful requests, some with rejects, and
             // some with errors due to duplicate database ids
 
             for (int providerIndex=1 ; providerIndex <= 5 ; ++providerIndex) {
-                final String providerId = String.valueOf(providerIndex);
+
+                // register ingestion provider
+                final String providerName = String.valueOf(providerIndex);
+                final String providerId = registerProvider(providerName, null);
+                providerIdMap.put(providerName, providerId);
 
                 // use same seconds value for both requests to get duplicate id
 
                 // send simple successful ingestion requests
                 int requestIndex = 0;
                 for (requestIndex = 1 ; requestIndex <= 5 ; ++requestIndex) {
-                    final String requestId = "request-" + providerId + "-" + requestIndex;
-                    final String pvName = "pv-" + providerId + "-" + requestIndex;
+                    final String requestId = "request-" + providerName + "-" + requestIndex;
+                    final String pvName = "pv-" + providerName + "-" + requestIndex;
                     final List<String> columnNames = Arrays.asList(pvName);
                     final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
                     final IngestionTestBase.IngestionRequestParams params =
@@ -80,7 +89,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
 
                 // send request that will be rejected because of empty string in columnNames list
                 {
-                    final String requestId = "request-" + providerId + "-" + requestIndex;
+                    final String requestId = "request-" + providerName + "-" + requestIndex;
                     // final String pvName = "pv-" + providerId + "-" + requestIndex;
                     final List<String> columnNames = Arrays.asList("");  // add emtpy column name string
                     final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
@@ -119,8 +128,8 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
                 // send request that will cause error due to duplicate database id
                 requestIndex = requestIndex + 1;
                 {
-                    final String requestId = "request-" + providerId + "-" + requestIndex;
-                    final String pvName = "pv-" + providerId + "-1"; // send data for pv that was already sent
+                    final String requestId = "request-" + providerName + "-" + requestIndex;
+                    final String pvName = "pv-" + providerName + "-1"; // send data for pv that was already sent
                     final List<String> columnNames = Arrays.asList(pvName);
                     final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
                     final IngestionTestBase.IngestionRequestParams params =
@@ -162,7 +171,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
         {
             // send request status query by providerId, requestId, matches a single status document
 
-            final String providerId = String.valueOf(3);
+            final String providerId = providerIdMap.get(String.valueOf(3));
             final String providerName = null;
             final String requestId = "request-3-3";
             final List<IngestionRequestStatus> status = null;
@@ -200,7 +209,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
         {
             // send request status query by providerId, status and time range, for rejected and error status
 
-            final String providerId = String.valueOf(2);
+            final String providerId = providerIdMap.get(String.valueOf(2));
             final String providerName = null;
             final String requestId = null;
             final List<IngestionRequestStatus> status =

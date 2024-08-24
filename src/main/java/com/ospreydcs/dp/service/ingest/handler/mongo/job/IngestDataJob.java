@@ -67,59 +67,69 @@ public class IngestDataJob extends HandlerJob {
 
         } else {
 
-            // generate batch of bucket documents for request
-            List<BucketDocument> dataDocumentBatch = null;
-            try {
-                dataDocumentBatch = generateBucketsFromRequest(request);
-            } catch (DpIngestionException e) {
+            // validate provider
+            boolean isValidProvider = mongoClient.validateProviderId(request.getProviderId());
+            if (!isValidProvider) {
                 isError = true;
-                errorMsg = e.getMessage();
-                status = IngestionRequestStatus.ERROR;
-            }
+                errorMsg = "invalid providerId: " + request.getProviderId();
+                logger.error(errorMsg);
 
-            if (dataDocumentBatch != null) {
-                // add the batch to mongo and handle result
-                IngestionTaskResult ingestionTaskResult =
-                        mongoClient.insertBatch(request, dataDocumentBatch);
+            } else {
 
-                if (ingestionTaskResult.isError) {
+                // generate batch of bucket documents for request
+                List<BucketDocument> dataDocumentBatch = null;
+                try {
+                    dataDocumentBatch = generateBucketsFromRequest(request);
+                } catch (DpIngestionException e) {
                     isError = true;
-                    errorMsg = ingestionTaskResult.msg;
-                    logger.error(errorMsg);
+                    errorMsg = e.getMessage();
+                    status = IngestionRequestStatus.ERROR;
+                }
 
-                } else {
+                if (dataDocumentBatch != null) {
+                    // add the batch to mongo and handle result
+                    IngestionTaskResult ingestionTaskResult =
+                            mongoClient.insertBatch(request, dataDocumentBatch);
 
-                    InsertManyResult insertManyResult = ingestionTaskResult.insertManyResult;
-
-                    if (!insertManyResult.wasAcknowledged()) {
-                        // check mongo insertMany result was acknowledged
+                    if (ingestionTaskResult.isError) {
                         isError = true;
-                        errorMsg = "insertMany result not acknowledged";
+                        errorMsg = ingestionTaskResult.msg;
                         logger.error(errorMsg);
 
                     } else {
 
-                        long recordsInsertedCount = insertManyResult.getInsertedIds().size();
-                        long recordsExpected = request.getIngestionDataFrame().getDataColumnsList().size();
-                        if (recordsInsertedCount != recordsExpected) {
-                            // check records inserted matches expected
+                        InsertManyResult insertManyResult = ingestionTaskResult.insertManyResult;
+
+                        if (!insertManyResult.wasAcknowledged()) {
+                            // check mongo insertMany result was acknowledged
                             isError = true;
-                            errorMsg = "insertMany actual records inserted: "
-                                    + recordsInsertedCount + " mismatch expected: " + recordsExpected;
+                            errorMsg = "insertMany result not acknowledged";
                             logger.error(errorMsg);
 
                         } else {
-                            // get list of ids created
-                            for (var entry : insertManyResult.getInsertedIds().entrySet()) {
-                                idsCreated.add(entry.getValue().asString().getValue());
+
+                            long recordsInsertedCount = insertManyResult.getInsertedIds().size();
+                            long recordsExpected = request.getIngestionDataFrame().getDataColumnsList().size();
+                            if (recordsInsertedCount != recordsExpected) {
+                                // check records inserted matches expected
+                                isError = true;
+                                errorMsg = "insertMany actual records inserted: "
+                                        + recordsInsertedCount + " mismatch expected: " + recordsExpected;
+                                logger.error(errorMsg);
+
+                            } else {
+                                // get list of ids created
+                                for (var entry : insertManyResult.getInsertedIds().entrySet()) {
+                                    idsCreated.add(entry.getValue().asString().getValue());
+                                }
                             }
                         }
                     }
                 }
+            }
 
-                if (isError) {
-                    status = IngestionRequestStatus.ERROR;
-                }
+            if (isError) {
+                status = IngestionRequestStatus.ERROR;
             }
         }
 

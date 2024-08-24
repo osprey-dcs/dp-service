@@ -2,7 +2,10 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -12,21 +15,22 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
+import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
 import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
+import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.Assert.*;
 
 public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
+    // static variables
     protected static MongoIngestionHandler handler = null;
     protected static TestClientInterface clientTestInterface = null;
     private static String collectionNamePrefix = null;
+    private static String providerId = null;
 
     protected interface TestClientInterface extends MongoIngestionClientInterface {
         public BucketDocument findBucketWithId(String id);
@@ -43,6 +47,40 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         MongoIngestionHandlerTestBase.handler = handler;
         clientTestInterface = clientInterface;
         assertTrue("dbHandler init failed", clientTestInterface.init());
+
+        // register provider
+        {
+            // create params, using empty provider name
+            final String providerName = "1";
+            final RegisterProviderUtility.RegisterProviderRequestParams params
+                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, null);
+
+            // send and verify API request
+            final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+
+            // create response observer
+            final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
+                    new RegisterProviderUtility.RegisterProviderResponseObserver();
+
+            // create and execute register provider job
+            RegisterProviderJob registerProviderJob =
+                    new RegisterProviderJob(request, responseObserver, clientInterface, handler);
+            registerProviderJob.execute();
+
+            // wait for response
+            responseObserver.await();
+
+            if (responseObserver.isError()) {
+                fail("error registering provider: " + responseObserver.getErrorMessage());
+            }
+
+            if (responseObserver.getResponseList().size() != 1) {
+                fail("unexpected provder registration responseList size: " + responseObserver.getResponseList().size());
+            }
+
+            final RegisterProviderResponse response = responseObserver.getResponseList().get(0);
+            providerId = response.getRegistrationResult().getProviderId();
+        }
     }
 
     /**
@@ -204,7 +242,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestReject() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-2";
         String pvName = "pv_01";
         List<String> columnNames = Arrays.asList(pvName);
@@ -262,7 +299,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestErrorDataTypeMismatch() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-8";
         String pvName = "pv_08";
         List<String> columnNames = Arrays.asList(pvName);
@@ -322,7 +358,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessFloat() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-1";
         String pvName = "pv_01";
         List<String> columnNames = Arrays.asList(pvName);
@@ -382,7 +417,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessString() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);;
         String requestId = "request-4";
         String pvName = "pv_04";
         List<String> columnNames = Arrays.asList(pvName);
@@ -431,7 +465,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessInt() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-5";
         String pvName = "pv_05";
         List<String> columnNames = Arrays.asList(pvName);
@@ -480,7 +513,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessBoolean() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-6";
         String pvName = "pv_06";
         List<String> columnNames = Arrays.asList(pvName);
@@ -532,7 +564,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
     public void testHandleIngestionRequestSuccessArray() {
 
         // assemble IngestionRequest
-        String providerId = String.valueOf(1);
         String requestId = "request-7";
         String pvName = "pv_07";
         List<String> columnNames = Arrays.asList(pvName);
