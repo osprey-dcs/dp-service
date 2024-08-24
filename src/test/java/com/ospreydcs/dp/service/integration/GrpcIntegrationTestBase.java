@@ -22,6 +22,7 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
+import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -247,8 +248,8 @@ public abstract class GrpcIntegrationTestBase {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(ingestionChannel);
 
-        final IngestionTestBase.RegisterProviderResponseObserver responseObserver =
-                new IngestionTestBase.RegisterProviderResponseObserver();
+        final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
+                new RegisterProviderUtility.RegisterProviderResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
@@ -266,7 +267,7 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected String sendAndVerifyRegisterProvider(
-            IngestionTestBase.RegisterProviderRequestParams params,
+            RegisterProviderUtility.RegisterProviderRequestParams params,
             boolean expectExceptionalResponse,
             ExceptionalResult.ExceptionalResultStatus expectedExceptionStatus,
             String expectedExceptionMessage,
@@ -274,7 +275,7 @@ public abstract class GrpcIntegrationTestBase {
             String expectedProviderId
     ) {
         // build request
-        final RegisterProviderRequest request = IngestionTestBase.buildRegisterProviderRequest(params);
+        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
 
         // send API request
         final RegisterProviderResponse response = sendRegsiterProvider(request);
@@ -311,8 +312,8 @@ public abstract class GrpcIntegrationTestBase {
         String providerId = null;
 
         // create register provider params
-        final IngestionTestBase.RegisterProviderRequestParams params
-                = new IngestionTestBase.RegisterProviderRequestParams(providerName, attributeMap);
+        final RegisterProviderUtility.RegisterProviderRequestParams params
+                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
 
         // send and verify register provider API request
         final boolean expectExceptionalResponse = false;
