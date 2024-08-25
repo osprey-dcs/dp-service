@@ -29,77 +29,80 @@ public class UnaryTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testRejectEmptyPvNamesList() {
+    public void unaryTest() {
 
-        // create request
-        final String providerId = String.valueOf(1);
-        final String requestId = "request-1";
-        final List<String> columnNames = Arrays.asList(""); // empty PV list should cause rejection.
-        final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
-        final Instant instantNow = Instant.now();
-        final IngestionTestBase.IngestionRequestParams params =
-                new IngestionTestBase.IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        instantNow.getEpochSecond(),
-                        0L,
-                        1_000_000L,
-                        1,
-                        columnNames,
-                        IngestionTestBase.IngestionDataType.DOUBLE,
-                        values, null);
-        final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
+        String providerId;
+        {
+            // register ingestion provider
+            final String providerName = String.valueOf(1);
+            providerId = registerProvider(providerName, null);
+        }
 
-        // send request and examine response
-        final IngestDataResponse response = sendIngestData(request);
-        assertTrue(response.getProviderId() == providerId);
-        assertTrue(response.getClientRequestId().equals(requestId));
-        assertTrue(response.hasExceptionalResult());
-        assertEquals(
-                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
-                response.getExceptionalResult().getExceptionalResultStatus());
-        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all data columns"));
-    }
+        {
+            // negative test case, rejection due to empty PV name
 
-    @Test
-    public void testSuccessSimpleDouble() {
+            // create request
+            final String requestId = "request-1";
+            final List<String> columnNames = Arrays.asList(""); // empty PV name should cause rejection
+            final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
+            final Instant instantNow = Instant.now();
+            final IngestionTestBase.IngestionRequestParams params =
+                    new IngestionTestBase.IngestionRequestParams(
+                            providerId,
+                            requestId,
+                            null,
+                            null,
+                            null,
+                            null,
+                            instantNow.getEpochSecond(),
+                            0L,
+                            1_000_000L,
+                            1,
+                            columnNames,
+                            IngestionTestBase.IngestionDataType.DOUBLE,
+                            values, null);
+            final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
-        // create request
-        final String providerId = String.valueOf(1);
-        final String requestId = "request-1";
-        final List<String> columnNames = Arrays.asList("PV_01");
-        final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
-        final Instant instantNow = Instant.now();
-        final IngestionTestBase.IngestionRequestParams params =
-                new IngestionTestBase.IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        instantNow.getEpochSecond(),
-                        0L,
-                        1_000_000L,
-                        1,
-                        columnNames,
-                        IngestionTestBase.IngestionDataType.DOUBLE,
-                        values, null);
-        final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
+            // send request and examine response
+            final IngestDataResponse response = sendIngestData(request);
+            assertTrue(response.getProviderId() == providerId);
+            assertTrue(response.getClientRequestId().equals(requestId));
+            assertTrue(response.hasExceptionalResult());
+            assertEquals(
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    response.getExceptionalResult().getExceptionalResultStatus());
+            assertTrue(response.getResponseTime().getEpochSeconds() > 0);
+            assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all data columns"));
+        }
 
-        // send request and examine response
-        final IngestDataResponse response = sendIngestData(request);
-        assertTrue(response.getProviderId() == providerId);
-        assertTrue(response.getClientRequestId().equals(requestId));
-        assertTrue(response.hasAckResult());
-        final IngestDataResponse.AckResult ackResult = response.getAckResult();
-        assertEquals(1, ackResult.getNumColumns());
-        assertEquals(1, ackResult.getNumRows());
+        {
+            // positive unary ingestion test for simple request
+
+            // create request
+            final String requestId = "request-2";
+            final List<String> columnNames = Arrays.asList("PV_01");
+            final List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
+            final Instant instantNow = Instant.now();
+            final IngestionTestBase.IngestionRequestParams params =
+                    new IngestionTestBase.IngestionRequestParams(
+                            providerId,
+                            requestId,
+                            null,
+                            null,
+                            null,
+                            null,
+                            instantNow.getEpochSecond(),
+                            0L,
+                            1_000_000L,
+                            1,
+                            columnNames,
+                            IngestionTestBase.IngestionDataType.DOUBLE,
+                            values, null);
+            final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
+
+            // send request and examine response
+            sendAndVerifyIngestData(params, request);
+        }
     }
 
 }
