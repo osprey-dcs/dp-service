@@ -3,8 +3,8 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
+import com.ospreydcs.dp.service.common.server.GrpcServerBase;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -65,11 +65,12 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
 
             // determine bucket size and check if too large
             int bucketSerializedSize = bucket.getSerializedSize();
-            if (bucketSerializedSize > TimestampUtility.MAX_GRPC_MESSAGE_SIZE) {
+            if (bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 // single bucket is larger than maximum message size, so send error response
                 return QueryServiceImpl.queryDataResponseError(
                         "bucket size: " + bucketSerializedSize
-                                + " greater than maximum message size: " + TimestampUtility.MAX_GRPC_MESSAGE_SIZE);
+                                + " greater than maximum message size: "
+                                + MongoQueryHandler.getOutgoingMessageSizeLimitBytes());
             }
 
             // add bucket to result
@@ -77,7 +78,7 @@ public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
             messageSize = messageSize + bucketSerializedSize;
 
             // break out of cursor handling loop if next bucket might exceed maximum size
-            if (messageSize + bucketSerializedSize > TimestampUtility.MAX_GRPC_MESSAGE_SIZE) {
+            if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 break;
             }
         }

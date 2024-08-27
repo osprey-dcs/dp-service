@@ -13,11 +13,13 @@ import java.util.concurrent.TimeUnit;
 
 public abstract class GrpcServerBase {
 
-    // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
-
     // constants
     private static final int TIMEOUT_TERMINATION_SECS = 30;
+    private static final String CFG_KEY_INCOMING_MESSAGE_SIZE_LIMIT_BYTES = "GrpcServer.incomingMessageSizeLimitBytes";
+    private static final int DEFAULT_INCOMING_MESSAGE_SIZE_LIMIT_BYTES = 4_096_000;
+
+    // static variables
+    private static final Logger LOGGER = LogManager.getLogger();
 
     // instance variables
     private Server server;
@@ -36,6 +38,12 @@ public abstract class GrpcServerBase {
     protected abstract void finiService_();
     protected abstract int getPort_();
 
+    private static int getIncomingMessageSizeLimitBytes() {
+        return configMgr().getConfigInteger(
+                CFG_KEY_INCOMING_MESSAGE_SIZE_LIMIT_BYTES,
+                DEFAULT_INCOMING_MESSAGE_SIZE_LIMIT_BYTES);
+    }
+
     protected void start() throws IOException {
 
         initService_();
@@ -44,6 +52,7 @@ public abstract class GrpcServerBase {
 
         server = Grpc.newServerBuilderForPort(port, InsecureServerCredentials.create())
                 .addService(serviceImpl)
+                .maxInboundMessageSize(getIncomingMessageSizeLimitBytes())
                 .build()
                 .start();
         LOGGER.info("Server started, listening on " + port);

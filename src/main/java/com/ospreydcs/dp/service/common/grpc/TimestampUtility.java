@@ -7,9 +7,6 @@ import java.util.Date;
 
 public class TimestampUtility {
 
-    // constants
-    public static final int MAX_GRPC_MESSAGE_SIZE = 4_000_000;
-
 
     public static Timestamp timestampFromSeconds(long epochSecs, long nanos) {
         return Timestamp.newBuilder().setEpochSeconds(epochSecs).setNanoseconds(nanos).build();

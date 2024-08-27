@@ -26,6 +26,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "QueryHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
+    private static final String CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES = "GrpcServer.incomingMessageSizeLimitBytes";
+    private static final int DEFAULT_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES = 4_096_000;
 
     // instance variables
     private final MongoQueryClientInterface mongoQueryClient;
@@ -40,6 +42,12 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
 
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    public static int getOutgoingMessageSizeLimitBytes() {
+        return configMgr().getConfigInteger(
+                CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES,
+                DEFAULT_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES);
     }
 
     @Override

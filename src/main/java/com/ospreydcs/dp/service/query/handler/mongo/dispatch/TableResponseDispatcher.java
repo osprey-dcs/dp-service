@@ -6,9 +6,10 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
+import com.ospreydcs.dp.service.common.server.GrpcServerBase;
+import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -219,7 +220,7 @@ public class TableResponseDispatcher extends Dispatcher {
             }
             int bucketDataSize = addBucketToTable(columnIndex, bucket, tableValueMap);
             responseMessageSize = responseMessageSize + bucketDataSize;
-            if (responseMessageSize > TimestampUtility.MAX_GRPC_MESSAGE_SIZE) {
+            if (responseMessageSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 final String msg = "result exceeds gRPC message size limit";
                 logger.error(msg);
                 QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);

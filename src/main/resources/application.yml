@@ -14,6 +14,12 @@ MongoClient:
   # MongoClient.dbPassword: Password for dbUser for connection to MongoDB by Data Platform services.
   dbPassword: admin
 
+# GrpcServer: General settings for running gRPC servers.
+GrpcServer:
+
+  # GrpcServer.maxMessageSizeBytesIncoming: Limit on incoming gRPC message size in bytes, enforced by gRPC framework.
+  incomingMessageSizeLimitBytes: 4096000
+
 # IngestionServer: Settings for the Ingestion server process.
 IngestionServer:
 
@@ -48,6 +54,11 @@ QueryHandler:
   # QueryHandler.numWorkers: Number of worker threads used by the Query Service request handler.
   # This parameter might take some tuning on deployments to get the best performance.
   numWorkers: 7
+
+  # QueryHandler.outgoingMessageSizeLimitBytes: Limit on outgoing gRPC message size in bytes, applied by query handler.
+  # gRPC framework only controls incoming message size, outgoing message size is unlimited, so we are adding this to
+  # control the size of messages for query responses.
+  outgoingMessageSizeLimitBytes: 4096000
 
 # QueryBenchmark: Settings for the Query Service performance benchmark applications.
 QueryBenchmark:
