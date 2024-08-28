@@ -22,10 +22,10 @@ public class MongoIndexTest {
         public void checkIndexes() {
 
             // check annotations collection indexes
-            List<Document> annotationsIndexesDocuments =
+            final List<Document> annotationsIndexesDocuments =
                     this.mongoCollectionAnnotations.listIndexes().into(new ArrayList<>());
             assertEquals(4, annotationsIndexesDocuments.size());
-            List<String> annotationsIndexNames = annotationsIndexesDocuments.stream()
+            final List<String> annotationsIndexNames = annotationsIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(annotationsIndexNames.contains("_id_"));
@@ -34,10 +34,10 @@ public class MongoIndexTest {
             assertTrue(annotationsIndexNames.contains("type_1_comment_text"));
 
             // check buckets collection indexes
-            List<Document> bucketsIndexesDocuments =
+            final List<Document> bucketsIndexesDocuments =
                     this.mongoCollectionBuckets.listIndexes().into(new ArrayList<>());
             assertEquals(3, bucketsIndexesDocuments.size());
-            List<String> bucketsIndexNames = bucketsIndexesDocuments.stream()
+            final List<String> bucketsIndexNames = bucketsIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(bucketsIndexNames.contains("_id_"));
@@ -45,10 +45,10 @@ public class MongoIndexTest {
             assertTrue(bucketsIndexNames.contains("pvName_1_firstSeconds_1_firstNanos_1_lastSeconds_1_lastNanos_1"));
 
             // check datasets collection indexes
-            List<Document> datasetsIndexesDocuments =
+            final List<Document> datasetsIndexesDocuments =
                     this.mongoCollectionDataSets.listIndexes().into(new ArrayList<>());
             assertEquals(5, datasetsIndexesDocuments.size());
-            List<String> datasetsIndexNames = datasetsIndexesDocuments.stream()
+            final List<String> datasetsIndexNames = datasetsIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(datasetsIndexNames.contains("_id_"));
@@ -58,16 +58,26 @@ public class MongoIndexTest {
             assertTrue(datasetsIndexNames.contains("ownerId_1_name_1"));
 
             // check requestStatus collection indexes
-            List<Document> requestStatusIndexesDocuments =
+            final List<Document> requestStatusIndexesDocuments =
                     this.mongoCollectionRequestStatus.listIndexes().into(new ArrayList<>());
-            assertEquals(3, requestStatusIndexesDocuments.size());
-            List<String> requestStatusIndexNames = requestStatusIndexesDocuments.stream()
+            assertEquals(4, requestStatusIndexesDocuments.size());
+            final List<String> requestStatusIndexNames = requestStatusIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(requestStatusIndexNames.contains("_id_"));
             assertTrue(requestStatusIndexNames.contains("providerId_1_requestId_1"));
-            assertTrue(requestStatusIndexNames.contains("providerId_1_updateTime_1"));
+            assertTrue(requestStatusIndexNames.contains("providerId_1_requestStatusCase_1_updateTime_1"));
+            assertTrue(requestStatusIndexNames.contains("requestStatusCase_1_updateTime_1"));
 
+            // check providers collection indexes
+            final List<Document> providersIndexesDocuments =
+                    this.mongoCollectionProviders.listIndexes().into(new ArrayList<>());
+            assertEquals(2, providersIndexesDocuments.size());
+            final List<String> providersIndexNames = providersIndexesDocuments.stream()
+                    .map(document -> (String) document.get("name"))
+                    .collect(Collectors.toList());
+            assertTrue(providersIndexNames.contains("_id_"));
+            assertTrue(providersIndexNames.contains("name_1"));
         }
     }
 
@@ -79,7 +89,7 @@ public class MongoIndexTest {
 
     @Test
     public void testIndexesExist() {
-        MongoIndexTestClient testClient = new MongoIndexTestClient();
+        final MongoIndexTestClient testClient = new MongoIndexTestClient();
         testClient.init();
         testClient.checkIndexes();
         testClient.fini();

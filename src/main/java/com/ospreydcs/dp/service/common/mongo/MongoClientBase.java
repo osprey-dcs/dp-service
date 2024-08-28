@@ -128,6 +128,10 @@ public abstract class MongoClientBase {
                 BsonConstants.BSON_KEY_REQ_STATUS_REQUEST_ID));
         createMongoIndexRequestStatus(Indexes.ascending(
                 BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_ID,
+                BsonConstants.BSON_KEY_REQ_STATUS_STATUS,
+                BsonConstants.BSON_KEY_REQ_STATUS_TIME));
+        createMongoIndexRequestStatus(Indexes.ascending(
+                BsonConstants.BSON_KEY_REQ_STATUS_STATUS,
                 BsonConstants.BSON_KEY_REQ_STATUS_TIME));
         return true;
     }
