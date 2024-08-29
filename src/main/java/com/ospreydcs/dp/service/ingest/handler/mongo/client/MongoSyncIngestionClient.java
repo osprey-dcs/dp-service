@@ -91,7 +91,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
     }
 
     @Override
-    public boolean validateProviderId(String providerId) {
+    public String providerNameForId(String providerId) {
 
         List<ProviderDocument> matchingDocuments = new ArrayList<>();
 
@@ -102,10 +102,14 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         } catch (Exception ex) {
             final String errorMsg = "mongo exception in find(): " + ex.getMessage();
             logger.error(errorMsg);
-            return false;
+            return null;
         }
 
-        return matchingDocuments.size() > 0;
+        if (matchingDocuments.isEmpty()) {
+            return null;
+        } else {
+            return matchingDocuments.get(0).getName();
+        }
     }
 
     @Override
@@ -168,6 +172,11 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 }
 
                 case PROVIDERNAMECRITERION -> {
+                    final String providerName = criterion.getProviderNameCriterion().getProviderName();
+                    if (!providerName.isBlank()) {
+                        Bson filter = Filters.eq(BsonConstants.BSON_KEY_REQ_STATUS_PROVIDER_NAME, providerName);
+                        criteriaFilterList.add(filter);
+                    }
                 }
 
                 case REQUESTIDCRITERION -> {

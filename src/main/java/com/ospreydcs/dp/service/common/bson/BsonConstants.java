@@ -31,6 +31,7 @@ public class BsonConstants {
 
     public static final String BSON_KEY_REQ_STATUS_ID = "_id";
     public static final String BSON_KEY_REQ_STATUS_PROVIDER_ID = "providerId";
+    public static final String BSON_KEY_REQ_STATUS_PROVIDER_NAME = "providerName";
     public static final String BSON_KEY_REQ_STATUS_REQUEST_ID = "requestId";
     public static final String BSON_KEY_REQ_STATUS_STATUS = "requestStatusCase";
     public static final String BSON_KEY_REQ_STATUS_TIME = "updateTime";

@@ -36,7 +36,7 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
     }
 
     @Override
-    public boolean validateProviderId(String providerId) {
+    public String providerNameForId(String providerId) {
         throw new UnsupportedOperationException("validateProviderId method not implemented");
     }
 

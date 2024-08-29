@@ -20,11 +20,12 @@ public interface MongoIngestionClientInterface {
 
     UpdateResultWrapper upsertProvider(RegisterProviderRequest request);
     FindProviderResult findProvider(String providerName);
-    boolean validateProviderId(String providerId);
+    String providerNameForId(String providerId);
 
     IngestionTaskResult insertBatch(IngestDataRequest request, List<BucketDocument> dataDocumentBatch);
 
     InsertOneResult insertRequestStatus(RequestStatusDocument requestStatusDocument);
 
     MongoCursor<RequestStatusDocument> executeQueryRequestStatus(QueryRequestStatusRequest request);
+
 }

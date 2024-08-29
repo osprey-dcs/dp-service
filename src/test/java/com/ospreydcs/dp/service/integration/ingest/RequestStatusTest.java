@@ -172,7 +172,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
             // send request status query by providerId, requestId, matches a single status document
 
             final String providerId = providerIdMap.get(String.valueOf(3));
-            final String providerName = null;
+            final String providerName = String.valueOf(3);
             final String requestId = "request-3-3";
             final List<IngestionRequestStatus> status = null;
             final Long beginSeconds = null;
@@ -182,7 +182,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
 
             final IngestionTestBase.QueryRequestStatusParams params = new IngestionTestBase.QueryRequestStatusParams(
                     providerId,
-                    providerName,
+                    null,
                     requestId,
                     status,
                     beginSeconds,
@@ -200,17 +200,22 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
             final List<String> expectedIdsCreated = Arrays.asList(expectedBucketId);
             final IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponse =
                     new IngestionTestBase.QueryRequestStatusExpectedResponse(
-                            providerId, requestId, expectedStatus, expectedMessage, expectedIdsCreated);
+                            providerId,
+                            providerName,
+                            requestId,
+                            expectedStatus,
+                            expectedMessage,
+                            expectedIdsCreated);
             expectedResponseMap.addExpectedResponse(expectedResponse);
 
             sendAndVerifyQueryRequestStatus(params, expectedResponseMap, false, "");
         }
 
         {
-            // send request status query by providerId, status and time range, for rejected and error status
+            // send request status query by provider name, status and time range, for rejected and error status
 
             final String providerId = providerIdMap.get(String.valueOf(2));
-            final String providerName = null;
+            final String providerName = String.valueOf(2);
             final String requestId = null;
             final List<IngestionRequestStatus> status =
                     Arrays.asList(
@@ -222,7 +227,7 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
             final Long endNanos = null;
 
             final IngestionTestBase.QueryRequestStatusParams params = new IngestionTestBase.QueryRequestStatusParams(
-                    providerId,
+                    null, // send query with ProviderNameCriterion instead of ProviderIdCriterion
                     providerName,
                     requestId,
                     status,
@@ -244,7 +249,12 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
                 final List<String> expectedIdsCreated = Arrays.asList();
                 final IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponse =
                         new IngestionTestBase.QueryRequestStatusExpectedResponse(
-                                providerId, expectedRequestId, expectedStatus, expectedMessage, expectedIdsCreated);
+                                providerId,
+                                providerName,
+                                expectedRequestId,
+                                expectedStatus,
+                                expectedMessage,
+                                expectedIdsCreated);
                 expectedResponseMap.addExpectedResponse(expectedResponse);
             }
 
@@ -256,7 +266,12 @@ public class RequestStatusTest extends GrpcIntegrationTestBase {
                 final List<String> expectedIdsCreated = Arrays.asList();
                 final IngestionTestBase.QueryRequestStatusExpectedResponse expectedResponse =
                         new IngestionTestBase.QueryRequestStatusExpectedResponse(
-                                providerId, expectedRequestId, expectedStatus, expectedMessage, expectedIdsCreated);
+                                providerId,
+                                providerName,
+                                expectedRequestId,
+                                expectedStatus,
+                                expectedMessage,
+                                expectedIdsCreated);
                 expectedResponseMap.addExpectedResponse(expectedResponse);
             }
 

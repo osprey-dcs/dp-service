@@ -473,6 +473,7 @@ public class IngestionTestBase {
 
     public static class QueryRequestStatusExpectedResponse {
         public final String providerId;
+        public final String providerName;
         public final String requestId;
         public final IngestionRequestStatus status;
         public final String statusMessage;
@@ -480,12 +481,14 @@ public class IngestionTestBase {
 
         public QueryRequestStatusExpectedResponse(
                 String providerId,
+                String providerName,
                 String requestId,
                 IngestionRequestStatus status,
                 String statusMessage,
                 List<String> idsCreated
         ) {
             this.providerId = providerId;
+            this.providerName = providerName;
             this.requestId = requestId;
             this.status = status;
             this.statusMessage = statusMessage;

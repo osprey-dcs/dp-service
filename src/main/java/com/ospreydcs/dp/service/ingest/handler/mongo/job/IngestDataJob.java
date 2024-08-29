@@ -59,6 +59,9 @@ public class IngestDataJob extends HandlerJob {
         String errorMsg = "";
         List<String> idsCreated = new ArrayList<>();
 
+        // validate providerId by getting providerName
+        String providerName = mongoClient.providerNameForId(request.getProviderId());
+
         if (handlerIngestionRequest.rejected) {
             // request already rejected, but we want to add details in request status
             isError = true;
@@ -67,9 +70,8 @@ public class IngestDataJob extends HandlerJob {
 
         } else {
 
-            // validate provider
-            boolean isValidProvider = mongoClient.validateProviderId(request.getProviderId());
-            if (!isValidProvider) {
+            // flag error for invalid providerId
+            if (providerName == null) {
                 isError = true;
                 errorMsg = "invalid providerId: " + request.getProviderId();
                 logger.error(errorMsg);
@@ -134,8 +136,12 @@ public class IngestDataJob extends HandlerJob {
         }
 
         // save request status and check result of insert operation
+        if (providerName == null) {
+            providerName = "";
+        }
         RequestStatusDocument statusDocument = new RequestStatusDocument(
                 request.getProviderId(),
+                providerName,
                 request.getClientRequestId(),
                 status,
                 errorMsg,

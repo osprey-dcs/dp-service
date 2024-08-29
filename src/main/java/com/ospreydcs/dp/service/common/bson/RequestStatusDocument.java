@@ -12,6 +12,7 @@ public class RequestStatusDocument {
 
     private ObjectId id;
     private String providerId;
+    private String providerName;
     private String requestId;
     private Instant updateTime;
     private int requestStatusCase;
@@ -23,9 +24,15 @@ public class RequestStatusDocument {
     }
 
     public RequestStatusDocument(
-            String providerId, String requestId, IngestionRequestStatus status, String msg, List<String> idsCreated) {
-
+            String providerId,
+            String providerName,
+            String requestId,
+            IngestionRequestStatus status,
+            String msg,
+            List<String> idsCreated
+    ) {
         this.providerId = providerId;
+        this.setProviderName(providerName);
         this.requestId = requestId;
         this.setRequestStatusCase(status.ordinal());
         this.setRequestStatusName(status.name());
@@ -49,6 +56,10 @@ public class RequestStatusDocument {
     public void setProviderId(String providerId) {
         this.providerId = providerId;
     }
+
+    public String getProviderName() { return providerName; }
+
+    public void setProviderName(String providerName) { this.providerName = providerName; }
 
     public String getRequestId() {
         return requestId;
@@ -107,6 +118,7 @@ public class RequestStatusDocument {
         // add base annotation fields to response object
         requestStatusBuilder.setRequestStatusId(this.getId().toString());
         requestStatusBuilder.setProviderId(this.getProviderId());
+        requestStatusBuilder.setProviderName(this.getProviderName());
         requestStatusBuilder.setRequestId(this.getRequestId());
         requestStatusBuilder.setStatusMessage(this.getMsg());
         requestStatusBuilder.addAllIdsCreated(this.getIdsCreated());
