@@ -197,7 +197,6 @@ public abstract class IngestionBenchmarkBase {
 
         requestBuilder.setProviderId(providerId);
         requestBuilder.setClientRequestId(requestId);
-        requestBuilder.setRequestTime(TimestampUtility.getTimestampNow());
 
         // build timestamp iterator for time spec
         Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();

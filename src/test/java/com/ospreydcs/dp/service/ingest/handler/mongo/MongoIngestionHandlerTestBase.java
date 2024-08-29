@@ -277,7 +277,6 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstNanos,
                         null,
                         null);
-        params.setRequestTime(false); // this would cause a reject for missing request time, but we aren't really validating the request
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses

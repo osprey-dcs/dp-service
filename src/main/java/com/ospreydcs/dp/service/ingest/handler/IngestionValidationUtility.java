@@ -14,17 +14,11 @@ public class IngestionValidationUtility {
 
         String providerId = request.getProviderId();
         String requestId = request.getClientRequestId();
-        Timestamp requestTimestamp = request.getRequestTime();
         int numRequestColumns = request.getIngestionDataFrame().getDataColumnsList().size();
         int numRequestRows = IngestionServiceImpl.getNumRequestRows(request);
 
         // validate request
-        if (requestTimestamp == null || requestTimestamp.getEpochSeconds() == 0) {
-            // check that request timestamp is provided
-            isError = true;
-            statusMsg = "requestTime must be specified";
-
-        } else if (providerId.isBlank()) {
+        if (providerId.isBlank()) {
             // check that provider is specified
             isError = true;
             statusMsg = "providerId must be specified";

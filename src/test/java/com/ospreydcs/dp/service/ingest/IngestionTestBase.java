@@ -37,7 +37,6 @@ public class IngestionTestBase {
 
         public String providerId = null;
         public String requestId = null;
-        public boolean setRequestTime = true;
         public Long snapshotStartTimestampSeconds = null;
         public Long snapshotStartTimestampNanos = null;
         public List<Long> timestampsSecondsList = null;
@@ -133,10 +132,6 @@ public class IngestionTestBase {
             this.eventStopSeconds = eventStopSeconds;
             this.eventStopNanos = eventStopNanos;
         }
-
-        public void setRequestTime(boolean setRequestTime) {
-            this.setRequestTime = setRequestTime;
-        }
     }
 
     public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
@@ -160,9 +155,6 @@ public class IngestionTestBase {
         }
         if (params.requestId != null) {
             requestBuilder.setClientRequestId(params.requestId);
-        }
-        if (params.setRequestTime) {
-            requestBuilder.setRequestTime(TimestampUtility.getTimestampNow());
         }
 
         IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder

@@ -15,35 +15,6 @@ import static org.junit.Assert.assertTrue;
 public class IngestionValidationUtilityTest extends IngestionTestBase {
 
     @Test
-    public void testValidateRequestUnspecifiedRequestTime() {
-        String providerId = String.valueOf(1);
-        String requestId = "request-1";
-        List<String> columnNames = Arrays.asList("pv_01");
-        List<List<Object>> values = Arrays.asList(Arrays.asList(12.34));
-        Instant instantNow = Instant.now();
-        IngestionTestBase.IngestionRequestParams params =
-                new IngestionRequestParams(
-                        providerId,
-                        requestId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        instantNow.getEpochSecond(),
-                        0L,
-                        1_000_000L,
-                        1,
-                        columnNames,
-                        IngestionDataType.DOUBLE,
-                        values, null);
-        params.setRequestTime(false);
-        IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
-        assertTrue(result.isError);
-        assertTrue(result.msg.equals("requestTime must be specified"));
-    }
-
-    @Test
     public void testValidateRequestUnspecifiedProvider() {
         String requestId = "request-1";
         List<String> columnNames = Arrays.asList("pv_01");
