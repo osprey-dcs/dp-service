@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateCommentAnnotationJob;
@@ -217,6 +218,11 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Override
+    public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
+
     }
 
 }

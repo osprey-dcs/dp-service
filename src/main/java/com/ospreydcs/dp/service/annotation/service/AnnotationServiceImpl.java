@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
@@ -530,5 +531,103 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         handler.handleQueryAnnotations(request, responseObserver);
+    }
+
+    private static ExportDataSetResponse exportDataSetResponseReject(String msg) {
+
+        final ExceptionalResult exceptionalResult =
+                ExceptionalResult.newBuilder()
+                        .setExceptionalResultStatus(
+                                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
+                        .setMessage(msg)
+                        .build();
+
+        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static void sendExportDataSetResponseReject(
+            String errorMsg,
+            StreamObserver<ExportDataSetResponse> responseObserver
+    ) {
+        final ExportDataSetResponse response = exportDataSetResponseReject(errorMsg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static ExportDataSetResponse exportDataSetResponseError(String msg) {
+
+        final ExceptionalResult exceptionalResult =
+                ExceptionalResult.newBuilder()
+                        .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                        .setMessage(msg)
+                        .build();
+
+        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static void sendExportDataSetResponseError(
+            String errorMsg, StreamObserver<ExportDataSetResponse> responseObserver
+    ) {
+        final ExportDataSetResponse response = exportDataSetResponseError(errorMsg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private static ExportDataSetResponse exportDataSetResponseSuccess(String exportId) {
+
+        final ExportDataSetResponse.ExportDataSetResult result =
+                ExportDataSetResponse.ExportDataSetResult.newBuilder()
+                        .setExportId(exportId)
+                        .build();
+
+        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExportDataSetResult(result)
+                .build();
+
+        return response;
+    }
+
+    public static void sendExportDataSetResponseSuccess(
+            String dataSetId, StreamObserver<ExportDataSetResponse> responseObserver
+    ) {
+        final ExportDataSetResponse response = exportDataSetResponseSuccess(dataSetId);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+    
+    @Override
+    public void exportDataSet(
+            ExportDataSetRequest request,
+            StreamObserver<ExportDataSetResponse> responseObserver
+    ) {
+        logger.info("id: {} exportDataSet request received", responseObserver.hashCode());
+
+        // validate request
+        ValidationResult validationResult = AnnotationValidationUtility.validateExportDataSetRequest(request);
+        if (validationResult.isError) {
+            logger.debug("id: {} ExportDataSetRequest validation failed: {}",
+                    responseObserver.hashCode(),
+                    validationResult.msg);
+            sendExportDataSetResponseReject(
+                    validationResult.msg,
+                    responseObserver);
+            return;
+        }
+
+        // handle request
+        HandlerExportDataSetRequest handlerRequest = new HandlerExportDataSetRequest(request, responseObserver);
+        handler.handleExportDataSet(handlerRequest);
+
     }
 }

@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.interfaces;
 
 import com.ospreydcs.dp.grpc.v1.annotation.*;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import io.grpc.stub.StreamObserver;
 
 public interface AnnotationHandlerInterface {
@@ -22,4 +23,6 @@ public interface AnnotationHandlerInterface {
 
     void handleQueryAnnotations(
             QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
+
+    void handleExportDataSet(HandlerExportDataSetRequest handlerRequest);
 }

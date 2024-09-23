@@ -1,9 +1,6 @@
 package com.ospreydcs.dp.service.annotation.handler;
 
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CommentAnnotation;
-import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
-import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 
@@ -100,4 +97,14 @@ public class AnnotationValidationUtility {
         return new ValidationResult(false, "");
     }
 
+    public static ValidationResult validateExportDataSetRequest(ExportDataSetRequest request) {
+
+        final String dataSetId = request.getDataSetId();
+        if (dataSetId == null || dataSetId.isBlank()) {
+            final String errorMsg = "ExportDataSetRequest.dataSetId must be specified";
+            return new ValidationResult(true, errorMsg);
+        }
+
+        return new ValidationResult(false, "");
+    }
 }
