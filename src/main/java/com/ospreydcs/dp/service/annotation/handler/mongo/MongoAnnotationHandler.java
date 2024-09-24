@@ -6,9 +6,7 @@ import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerI
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateCommentAnnotationJob;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.CreateDataSetJob;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.QueryDataSetsJob;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -16,7 +14,6 @@ import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.QueryAnnotationsJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -222,6 +219,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     @Override
     public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
+
+        final ExportDataSetJob job = new ExportDataSetJob(handlerRequest, mongoAnnotationClient);
+
+        logger.debug("adding ExportDataSetJob id: {} to queue", handlerRequest.responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
 
     }
 
