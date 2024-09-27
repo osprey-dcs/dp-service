@@ -11,6 +11,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,7 +30,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private static final Logger logger = LogManager.getLogger();
 
-    private MongoCursor<BucketDocument> executeBucketDocumentQuery(
+    public MongoCursor<BucketDocument> executeBucketDocumentQuery(
             Bson columnNameFilter,
             long startTimeSeconds,
             long startTimeNanos,
@@ -58,6 +59,19 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                         BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
                 ))
                 .cursor();
+    }
+
+    @Override
+    public MongoCursor<BucketDocument> executeDataBlockQuery(DataBlockDocument dataBlock) {
+
+        final long startTimeSeconds = dataBlock.getBeginTimeSeconds();
+        final long startTimeNanos = dataBlock.getBeginTimeNanos();
+        final long endTimeSeconds = dataBlock.getEndTimeSeconds();
+        final long endTimeNanos = dataBlock.getEndTimeNanos();
+
+        final Bson columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, dataBlock.getPvNames());
+        return executeBucketDocumentQuery(
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
 
     @Override

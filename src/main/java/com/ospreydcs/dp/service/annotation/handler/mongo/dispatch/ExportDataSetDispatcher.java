@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
+import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 
 public class ExportDataSetDispatcher extends Dispatcher {
@@ -16,5 +17,9 @@ public class ExportDataSetDispatcher extends Dispatcher {
         super();
         this.handlerRequest = handlerRequest;
         this.mongoClient = mongoClient;
+    }
+
+    public void handleError(String errorMsg) {
+        AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
     }
 }

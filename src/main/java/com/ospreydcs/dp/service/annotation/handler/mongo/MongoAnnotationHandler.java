@@ -220,7 +220,8 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     @Override
     public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
 
-        final ExportDataSetJob job = new ExportDataSetJob(handlerRequest, mongoAnnotationClient);
+        final ExportDataSetJob job = new ExportDataSetJob(
+                handlerRequest, mongoAnnotationClient, mongoQueryClient);
 
         logger.debug("adding ExportDataSetJob id: {} to queue", handlerRequest.responseObserver.hashCode());
 
