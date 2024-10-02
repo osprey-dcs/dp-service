@@ -29,28 +29,28 @@ import java.io.IOException;
 public class DatasetExportHdf5File {
 
     // constants
-    private final static String GROUP_DATASET = "dataset";
-    private final static String GROUP_PVS = "pvs";
-    private final static String GROUP_TIMES = "times";
-    private final static String DATASET_FIRST_SECONDS = "firstSeconds";
-    private final static String DATASET_FIRST_NANOS = "firstNanos";
-    private final static String DATASET_FIRST_TIME = "firstTime";
-    private final static String DATASET_LAST_SECONDS = "lastSeconds";
-    private final static String DATASET_LAST_NANOS = "lastNanos";
-    private final static String DATASET_LAST_TIME = "lastTime";
-    private final static String DATASET_SAMPLE_COUNT = "sampleCount";
-    private final static String DATASET_SAMPLE_PERIOD = "samplePeriod";
-    private final static String DATASET_DATA_COLUMN_BYTES = "dataColumnBytes";
-    private final static String DATASET_DATA_TIMESTAMPS_BYTES = "dataTimestampsBytes";
-    private final static String DATASET_ATTRIBUTE_MAP_KEYS = "attributeMapKeys";
-    private final static String DATASET_ATTRIBUTE_MAP_VALUES = "attributeMapValues";
-    private final static String DATASET_EVENT_METADATA_DESCRIPTION = "eventMetadataDescription";
-    private final static String DATASET_EVENT_METADATA_START_SECONDS = "eventMetadataStartSeconds";
-    private final static String DATASET_EVENT_METADATA_START_NANOS = "eventMetadataStartNanos";
-    private final static String DATASET_EVENT_METADATA_STOP_SECONDS = "eventMetadataStopSeconds";
-    private final static String DATASET_EVENT_METADATA_STOP_NANOS = "eventMetadataStopNanos";
-    private final static String DATASET_PROVIDER_ID = "providerId";
-    private final static String PATH_SEPARATOR = "/";
+    public final static String GROUP_DATASET = "dataset";
+    public final static String GROUP_PVS = "pvs";
+    public final static String GROUP_TIMES = "times";
+    public final static String DATASET_FIRST_SECONDS = "firstSeconds";
+    public final static String DATASET_FIRST_NANOS = "firstNanos";
+    public final static String DATASET_FIRST_TIME = "firstTime";
+    public final static String DATASET_LAST_SECONDS = "lastSeconds";
+    public final static String DATASET_LAST_NANOS = "lastNanos";
+    public final static String DATASET_LAST_TIME = "lastTime";
+    public final static String DATASET_SAMPLE_COUNT = "sampleCount";
+    public final static String DATASET_SAMPLE_PERIOD = "samplePeriod";
+    public final static String DATASET_DATA_COLUMN_BYTES = "dataColumnBytes";
+    public final static String DATASET_DATA_TIMESTAMPS_BYTES = "dataTimestampsBytes";
+    public final static String DATASET_ATTRIBUTE_MAP_KEYS = "attributeMapKeys";
+    public final static String DATASET_ATTRIBUTE_MAP_VALUES = "attributeMapValues";
+    public final static String DATASET_EVENT_METADATA_DESCRIPTION = "eventMetadataDescription";
+    public final static String DATASET_EVENT_METADATA_START_SECONDS = "eventMetadataStartSeconds";
+    public final static String DATASET_EVENT_METADATA_START_NANOS = "eventMetadataStartNanos";
+    public final static String DATASET_EVENT_METADATA_STOP_SECONDS = "eventMetadataStopSeconds";
+    public final static String DATASET_EVENT_METADATA_STOP_NANOS = "eventMetadataStopNanos";
+    public final static String DATASET_PROVIDER_ID = "providerId";
+    public final static String PATH_SEPARATOR = "/";
 
     // instance variables
     private final IHDF5Writer writer;
@@ -156,7 +156,6 @@ public class DatasetExportHdf5File {
         // providerId
         final String providerIdPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_PROVIDER_ID;
         writer.writeString(providerIdPath, bucketDocument.getProviderId());
-
         
         // create groups for indexing by time and pv
         final String timesSecondsGroup = GROUP_TIMES + PATH_SEPARATOR + firstSecondsString;
@@ -178,19 +177,6 @@ public class DatasetExportHdf5File {
         if (! writer.object().exists(timesSecondsNanosPvsPvPath)) {
             writer.object().createSoftLink(PATH_SEPARATOR + pvTimesSecondsNanosGroup, timesSecondsNanosPvsPvPath);
         }
-
-//            writer.string().write("/groupA/string", "Just some random string.");
-//            writer.int32().writeArray("/groupB/inarr", new int[]
-//                    { 17, 42, -1 });
-//            writer.float64().writeMatrix("/groupB/dmat", new double[][]
-//                    {
-//                            { 1.1, 2.2, 3.3 },
-//                            { 4.4, 5.5, 6.6 },
-//                            { 7.7, 8.8, 9.9 }, });
-//            writer.object().createSoftLink("/groupA/groupC", "/groupB/groupC");
-//            writer.time().write("/groupA/date", new Date());
-//            writer.close();
-
     }
 
     public void close() {

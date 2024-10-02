@@ -377,6 +377,7 @@ public class SerializationTest {
             }
 
             DataColumn dataColumnFromFile = null;
+            assertArrayEquals(dataColumn.toByteArray(), binPbFileContent);
             try {
                 dataColumnFromFile = DataColumn.parseFrom(binPbFileContent);
             } catch (InvalidProtocolBufferException ex) {

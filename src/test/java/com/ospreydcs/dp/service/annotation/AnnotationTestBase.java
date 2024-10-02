@@ -1,7 +1,9 @@
 package com.ospreydcs.dp.service.annotation;
 
+import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -10,8 +12,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static com.ospreydcs.dp.service.annotation.utility.DatasetExportHdf5File.*;
+import static org.junit.Assert.*;
 
 public class AnnotationTestBase {
 
@@ -550,6 +552,112 @@ public class AnnotationTestBase {
         requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
 
         return requestBuilder.build();
+    }
+
+    public static void verifyBucketDocumentHdf5Content(IHDF5Reader reader, BucketDocument bucketDocument) {
+
+        final String firstSecondsString = String.format("%012d", bucketDocument.getFirstSeconds());
+        final String firstNanosString = String.format("%012d", bucketDocument.getFirstNanos());
+
+        // check paths for pv index
+        final String pvsPath = PATH_SEPARATOR + GROUP_PVS;
+        final String pvPath = pvsPath + PATH_SEPARATOR + bucketDocument.getPvName();
+        assertTrue(reader.object().isGroup(pvPath));
+        final String pvBucketPath = pvPath
+                + PATH_SEPARATOR
+                + GROUP_TIMES
+                + PATH_SEPARATOR
+                + firstSecondsString
+                + PATH_SEPARATOR
+                + firstNanosString;
+        assertTrue(reader.object().isGroup(pvBucketPath));
+
+        // verify dataset contents accessed via pv index
+        verifyBucketDocumentHdf5ContentViaPath(reader, pvBucketPath, bucketDocument);
+
+        // check paths for time index
+        final String timesPath = PATH_SEPARATOR + GROUP_TIMES;
+        final String timeBucketPath = timesPath
+                + PATH_SEPARATOR
+                + firstSecondsString
+                + PATH_SEPARATOR
+                + firstNanosString
+                + PATH_SEPARATOR
+                + GROUP_PVS
+                + PATH_SEPARATOR
+                + bucketDocument.getPvName();
+        assertTrue(reader.object().isGroup(timeBucketPath));
+
+        // verify dataset contents accessed via time index
+        verifyBucketDocumentHdf5ContentViaPath(reader, timeBucketPath, bucketDocument);
+    }
+
+    public static void verifyBucketDocumentHdf5ContentViaPath(
+            IHDF5Reader reader,
+            String pvBucketPath,
+            BucketDocument bucketDocument
+    ) {
+        // verify dataset contents for first seconds/nanos/time
+        final String firstSecondsPath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_SECONDS;
+        assertEquals(bucketDocument.getFirstSeconds(), reader.readLong(firstSecondsPath));
+        final String firstNanosPath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_NANOS;
+        assertEquals(bucketDocument.getFirstNanos(), reader.readLong(firstNanosPath));
+        final String firstTimePath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_TIME;
+        assertEquals(bucketDocument.getFirstTime(), reader.time().readDate(firstTimePath));
+
+        // verify dataset contents for first seconds/nanos/time
+        final String lastSecondsPath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_SECONDS;
+        assertEquals(bucketDocument.getLastSeconds(), reader.readLong(lastSecondsPath));
+        final String lastNanosPath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_NANOS;
+        assertEquals(bucketDocument.getLastNanos(), reader.readLong(lastNanosPath));
+        final String lastTimePath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_TIME;
+        assertEquals(bucketDocument.getLastTime(), reader.time().readDate(lastTimePath));
+
+        // sample period and count
+        final String sampleCountPath = pvBucketPath + PATH_SEPARATOR + DATASET_SAMPLE_COUNT;
+        assertEquals(bucketDocument.getSampleCount(), reader.readInt(sampleCountPath));
+        final String samplePeriodPath = pvBucketPath + PATH_SEPARATOR + DATASET_SAMPLE_PERIOD;
+        assertEquals(bucketDocument.getSamplePeriod(), reader.readLong(samplePeriodPath));
+
+        // dataColumnBytes
+        final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
+        assertArrayEquals(bucketDocument.getDataColumnBytes(), reader.readAsByteArray(columnDataPath));
+
+        // dataTimestampsBytes
+        final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
+        assertArrayEquals(bucketDocument.getDataTimestampsBytes(), reader.readAsByteArray(dataTimestampsPath));
+
+        // attributeMap - write keys to one array and values to another
+        final String attributeMapKeysPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
+        assertArrayEquals(
+                bucketDocument.getAttributeMap().keySet().toArray(new String[0]),
+                reader.readStringArray(attributeMapKeysPath));
+        final String attributeMapValuesPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
+        assertArrayEquals(
+                bucketDocument.getAttributeMap().values().toArray(new String[0]),
+                reader.readStringArray(attributeMapValuesPath));
+
+        // eventMetadata - description, start/stop times
+        final String eventMetadataDescriptionPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
+        assertEquals(bucketDocument.getEventMetadata().getDescription(), reader.readString(eventMetadataDescriptionPath));
+        final String eventMetadataStartSecondsPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
+        assertEquals(bucketDocument.getEventMetadata().getStartSeconds(), reader.readLong(eventMetadataStartSecondsPath));
+        final String eventMetadataStartNanosPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
+        assertEquals(bucketDocument.getEventMetadata().getStartNanos(), reader.readLong(eventMetadataStartNanosPath));
+        final String eventMetadataStopSecondsPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
+        assertEquals(bucketDocument.getEventMetadata().getStopSeconds(), reader.readLong(eventMetadataStopSecondsPath));
+        final String eventMetadataStopNanosPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
+        assertEquals(bucketDocument.getEventMetadata().getStopNanos(), reader.readLong(eventMetadataStopNanosPath));
+
+        // providerId
+        final String providerIdPath = pvBucketPath + PATH_SEPARATOR + DATASET_PROVIDER_ID;
+        assertEquals(bucketDocument.getProviderId(), reader.readString(providerIdPath));
+
     }
 
 }
