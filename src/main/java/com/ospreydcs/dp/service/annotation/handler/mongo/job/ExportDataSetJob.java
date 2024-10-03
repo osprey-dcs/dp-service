@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
-import ch.systemsx.cisd.hdf5.HDF5Factory;
-import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
@@ -59,7 +57,7 @@ public class ExportDataSetJob extends HandlerJob {
         // create hdf5 file for export
         DatasetExportHdf5File exportFile = null;
         try {
-            exportFile = new DatasetExportHdf5File(exportFileString);
+            exportFile = new DatasetExportHdf5File(dataset, exportFileString);
         } catch (IOException e) {
             final String errorMsg = "error writing to export file: " + exportFileString;
             logger.error(errorMsg);

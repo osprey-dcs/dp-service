@@ -6,13 +6,14 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import org.bson.types.ObjectId;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Date;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 import static org.junit.Assert.*;
 
@@ -20,16 +21,6 @@ public class DatasetExportHdf5FileTest {
 
     @Test
     public void testCreateExportFile() {
-
-        // create export file and top-level group index structure
-        final String exportFilePathString = "/tmp/testCreateExportFile.h5";
-        DatasetExportHdf5File exportHdf5File = null;
-        try {
-            exportHdf5File = new DatasetExportHdf5File(exportFilePathString);
-        } catch (IOException e) {
-            fail("exception creating " + exportFilePathString);
-        }
-        Objects.requireNonNull(exportHdf5File);
 
         final Instant instantNow = Instant.now();
         final Instant firstInstant = instantNow.minusNanos(instantNow.getNano());
@@ -40,6 +31,31 @@ public class DatasetExportHdf5FileTest {
         final long lastNanos = 900000000L;
         final Instant lastInstant = firstInstant.plusNanos(lastNanos);
         final Date lastTime = Date.from(lastInstant);
+
+        // create dataset for export
+        final DataSetDocument dataset = new DataSetDocument();
+        dataset.setName("export dataset");
+        dataset.setDescription("test coverage for export to hdf5 file");
+        dataset.setId(new ObjectId("1234abcd1234abcd1234abcd")); // must be 24 digit hex
+        final List<DataBlockDocument> dataBlocks = new ArrayList<>();
+        DataBlockDocument dataBlock1 = new DataBlockDocument();
+        dataBlock1.setPvNames(Set.of("S01-GCC01", "S01-GCC02"));
+        dataBlock1.setBeginTimeSeconds(firstSeconds);
+        dataBlock1.setBeginTimeNanos(firstNanos);
+        dataBlock1.setEndTimeSeconds(lastSeconds);
+        dataBlock1.setEndTimeNanos(lastNanos);
+        dataBlocks.add(dataBlock1);
+        dataset.setDataBlocks(dataBlocks);
+
+        // create export file and top-level group index structure
+        final String exportFilePathString = "/tmp/testCreateExportFile.h5";
+        DatasetExportHdf5File exportHdf5File = null;
+        try {
+            exportHdf5File = new DatasetExportHdf5File(dataset, exportFilePathString);
+        } catch (IOException e) {
+            fail("exception creating " + exportFilePathString);
+        }
+        Objects.requireNonNull(exportHdf5File);
 
         final Timestamp samplingClockStartTime = Timestamp.newBuilder()
                 .setEpochSeconds(firstSeconds)
@@ -126,6 +142,7 @@ public class DatasetExportHdf5FileTest {
 
         // verify file content
         final IHDF5Reader reader = HDF5Factory.openForReading("/tmp/testCreateExportFile.h5");
+        AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
         AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, pv1BucketDocument);
         AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, pv2BucketDocument);
 

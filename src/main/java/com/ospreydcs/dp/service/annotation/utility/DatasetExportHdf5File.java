@@ -3,6 +3,8 @@ package com.ospreydcs.dp.service.annotation.utility;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,6 +35,12 @@ public class DatasetExportHdf5File {
     public final static String GROUP_DATASET = "dataset";
     public final static String GROUP_PVS = "pvs";
     public final static String GROUP_TIMES = "times";
+    public final static String GROUP_DATA_BLOCKS = "datablocks";
+    public final static String DATASET_BLOCK_PV_NAME_LIST = "pvNameList";
+    public final static String DATASET_BLOCK_BEGIN_SECONDS = "beginSeconds";
+    public final static String DATASET_BLOCK_BEGIN_NANOS = "beginNanos";
+    public final static String DATASET_BLOCK_END_SECONDS = "endSeconds";
+    public final static String DATASET_BLOCK_END_NANOS = "endNanos";
     public final static String DATASET_FIRST_SECONDS = "firstSeconds";
     public final static String DATASET_FIRST_NANOS = "firstNanos";
     public final static String DATASET_FIRST_TIME = "firstTime";
@@ -56,18 +64,19 @@ public class DatasetExportHdf5File {
     // instance variables
     private final IHDF5Writer writer;
 
-    public DatasetExportHdf5File(String filePathString) throws IOException {
+    public DatasetExportHdf5File(DataSetDocument dataSet, String filePathString) throws IOException {
         // create hdf5 file with specified path
         File hdf5File = new File(filePathString);
 //        if (hdf5File.canWrite()) {
 //            throw new IOException("unable to write to hdf5 file: " + filePathString);
 //        }
         writer = HDF5Factory.configure(hdf5File).overwrite().writer();
-        this.initialize();
+        this.initialize(dataSet);
     }
 
-    private void initialize() {
+    private void initialize(DataSetDocument dataSet) {
         this.createGroups();
+        this.writeDataSetData(dataSet);
     }
 
     public void createGroups() {
@@ -75,6 +84,36 @@ public class DatasetExportHdf5File {
         writer.object().createGroup(GROUP_DATASET);
         writer.object().createGroup(GROUP_PVS);
         writer.object().createGroup(GROUP_TIMES);
+    }
+
+    public void writeDataSetData(DataSetDocument dataSet) {
+
+        // create dataset base paths
+        final String dataBlocksGroup = PATH_SEPARATOR
+                + GROUP_DATASET
+                + PATH_SEPARATOR
+                + GROUP_DATA_BLOCKS;
+        writer.object().createGroup(dataBlocksGroup);
+
+        int dataBlockIndex = 0;
+        for (DataBlockDocument dataBlock : dataSet.getDataBlocks()) {
+            final String dataBlockIndexGroup = dataBlocksGroup
+                    + PATH_SEPARATOR
+                    + dataBlockIndex;
+            writer.object().createGroup(dataBlockIndexGroup);
+            final String dataBlockPathBase = dataBlockIndexGroup + PATH_SEPARATOR;
+            final String pvNameListPath = dataBlockPathBase + DATASET_BLOCK_PV_NAME_LIST;
+            writer.writeStringArray(pvNameListPath, dataBlock.getPvNames().toArray(new String[0]));
+            final String beginTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_SECONDS;
+            writer.writeLong(beginTimeSecondsPath, dataBlock.getBeginTimeSeconds());
+            final String beginTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_NANOS;
+            writer.writeLong(beginTimeNanosPath, dataBlock.getBeginTimeNanos());
+            final String endTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_END_SECONDS;
+            writer.writeLong(endTimeSecondsPath, dataBlock.getEndTimeSeconds());
+            final String endTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_END_NANOS;
+            writer.writeLong(endTimeNanosPath, dataBlock.getEndTimeNanos());
+            dataBlockIndex = dataBlockIndex + 1;
+        }
     }
 
     public void writeBucketData(BucketDocument bucketDocument) {

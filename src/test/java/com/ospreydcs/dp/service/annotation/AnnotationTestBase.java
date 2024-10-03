@@ -4,6 +4,8 @@ import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -552,6 +554,41 @@ public class AnnotationTestBase {
         requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
 
         return requestBuilder.build();
+    }
+
+    public static void verifyDatasetHdf5Content(IHDF5Reader reader, DataSetDocument dataset) {
+
+        // verify dataset paths
+        final String datasetGroup = PATH_SEPARATOR
+                + GROUP_DATASET;
+        assertTrue(reader.object().isGroup(datasetGroup));
+
+        final String dataBlocksGroup = PATH_SEPARATOR
+                + GROUP_DATASET
+                + PATH_SEPARATOR
+                + GROUP_DATA_BLOCKS;
+        assertTrue(reader.object().isGroup(dataBlocksGroup));
+
+        // verify dataset contents
+        int dataBlockIndex = 0;
+        for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
+            final String dataBlockIndexGroup = dataBlocksGroup
+                    + PATH_SEPARATOR
+                    + dataBlockIndex;
+            assertTrue(reader.object().isGroup(dataBlockIndexGroup));
+            final String dataBlockPathBase = dataBlockIndexGroup + PATH_SEPARATOR;
+            final String pvNameListPath = dataBlockPathBase + DATASET_BLOCK_PV_NAME_LIST;
+            assertArrayEquals(dataBlock.getPvNames().toArray(new String[0]), reader.readStringArray(pvNameListPath));
+            final String beginTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_SECONDS;
+            assertEquals(dataBlock.getBeginTimeSeconds(), reader.readLong(beginTimeSecondsPath));
+            final String beginTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_NANOS;
+            assertEquals(dataBlock.getBeginTimeNanos(), reader.readLong(beginTimeNanosPath));
+            final String endTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_END_SECONDS;
+            assertEquals(dataBlock.getEndTimeSeconds(), reader.readLong(endTimeSecondsPath));
+            final String endTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_END_NANOS;
+            assertEquals(dataBlock.getEndTimeNanos(), reader.readLong(endTimeNanosPath));
+            dataBlockIndex = dataBlockIndex + 1;
+        }
     }
 
     public static void verifyBucketDocumentHdf5Content(IHDF5Reader reader, BucketDocument bucketDocument) {
