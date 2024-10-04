@@ -9,3 +9,21 @@ Level1:
     booleanValueFalse: faLse
     booeanValueUnknown: unknown
     noValue:
+
+# Export: Settings for the export mechanism.
+Export:
+
+  # serverMountPoint: Target base directory mounted to machine running Annotation Service for export output files.
+  # Setting must be specified to use the export feature.  Export requests will return an error response if not specified.
+  # E.g., "/opt/dp/export".
+  serverMountPoint: /tmp
+
+  # shareMountPoint: Client-accessible directory for accessing export output files, if different than serverMountPoint.
+  # Defaults to serverMountPoint if not specified.
+  # E.g., "/share/dp/export".
+  shareMountPoint: /share
+
+  # urlBase: Optional base URL for accessing export output files.
+  # Requires a web-server providing access to files at the specified location.
+  # E.g., "https://www.facility.gov/dp/export".
+  urlBase: https://www.ospreydcs.com/dp/export

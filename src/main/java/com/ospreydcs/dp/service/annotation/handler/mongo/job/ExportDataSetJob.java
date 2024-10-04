@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataSetDispatcher;
@@ -25,16 +26,19 @@ public class ExportDataSetJob extends HandlerJob {
     private final ExportDataSetDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoAnnotationClient;
     private final MongoQueryClientInterface mongoQueryClient;
+    private final ExportConfiguration exportConfiguration;
 
     public ExportDataSetJob(
             HandlerExportDataSetRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
-            MongoQueryClientInterface mongoQueryClient
+            MongoQueryClientInterface mongoQueryClient,
+            ExportConfiguration exportConfiguration
     ) {
         this.handlerRequest = handlerRequest;
         this.mongoAnnotationClient = mongoAnnotationClient;
         this.mongoQueryClient = mongoQueryClient;
         this.dispatcher = new ExportDataSetDispatcher(handlerRequest, mongoAnnotationClient);
+        this.exportConfiguration = exportConfiguration;
     }
 
     @Override
@@ -51,15 +55,22 @@ public class ExportDataSetJob extends HandlerJob {
             return;
         }
 
-        // TODO: generate path (url?) for exported file
-        final String exportFileString = "/tmp/dataset-export.h5";
+        // generate server output file path for export
+        final ExportConfiguration.ExportFilePaths exportFilePaths =  exportConfiguration.getExportFilePaths(datasetId);
+        if (! exportFilePaths.valid) {
+            final String errorMsg =
+                    "Export mechanism is not properly configured (e.g., see resources/application.yml file)";
+            this.dispatcher.handleError(errorMsg);
+            return;
+        }
 
         // create hdf5 file for export
+        final String serverFilePath = exportFilePaths.serverFilePath;
         DatasetExportHdf5File exportFile = null;
         try {
-            exportFile = new DatasetExportHdf5File(dataset, exportFileString);
+            exportFile = new DatasetExportHdf5File(dataset, serverFilePath);
         } catch (IOException e) {
-            final String errorMsg = "error writing to export file: " + exportFileString;
+            final String errorMsg = "error writing to export file: " + serverFilePath;
             logger.error(errorMsg);
             this.dispatcher.handleError(errorMsg);
             return;

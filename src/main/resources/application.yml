@@ -67,14 +67,33 @@ QueryBenchmark:
   grpcConnectString: "localhost:50052"
 
 # annotationServer: Settings for the annotation server process.
-annotationServer:
+AnnotationServer:
 
   # annotationServer.port: Network port for Annotation Service gRPC.
   port: 50053
 
 # annotationHandler: Settings for the annotation Service request handler.
-annotationHandler:
+AnnotationHandler:
 
   # annotationHandler.numWorkers: Number of worker threads used by the annotation Service request handler.
   # This parameter might take some tuning on deployments to get the best performance.
   numWorkers: 7
+
+# Export: Settings for the export mechanism.
+Export:
+
+  # serverMountPoint: Target base directory mounted to machine running Annotation Service for export output files.
+  # Setting must be specified to use the export feature.  Export requests will return an error response if not specified.
+  # E.g., "/opt/dp/export".
+  serverMountPoint:
+
+  # shareMountPoint: Client-accessible directory for accessing export output files, if different than serverMountPoint.
+  # Defaults to serverMountPoint if not specified.
+  # E.g., "/share/dp/export".
+  shareMountPoint:
+
+  # urlBase: Optional base URL for accessing export output files.
+  # Requires a web-server providing access to files at the specified location.
+  # E.g., "https://www.facility.gov/dp/export".
+  urlBase:
+
