@@ -30,9 +30,6 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "AnnotationHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
-    public static final String CFG_KEY_EXPORT_SERVER_MOUNT_POINT = "Export.serverMountPoint";
-    public static final String CFG_KEY_EXPORT_SHARE_MOUNT_POINT = "Export.shareMountPoint";
-    public static final String CFG_KEY_EXPORT_URL_BASE = "Export.urlBase";
 
     // instance variables
     private final MongoAnnotationClientInterface mongoAnnotationClient;
@@ -221,18 +218,10 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ExportConfiguration getExportConfiguration() {
-        final String serverMountPoint = configMgr().getConfigString(CFG_KEY_EXPORT_SERVER_MOUNT_POINT);
-        final String shareMountPoint = configMgr().getConfigString(CFG_KEY_EXPORT_SHARE_MOUNT_POINT);
-        final String urlBase = configMgr().getConfigString(CFG_KEY_EXPORT_URL_BASE);
-        return new ExportConfiguration(serverMountPoint, shareMountPoint, urlBase);
-    }
-
     @Override
     public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
 
-        final ExportDataSetJob job = new ExportDataSetJob(
-                handlerRequest, mongoAnnotationClient, mongoQueryClient, getExportConfiguration());
+        final ExportDataSetJob job = new ExportDataSetJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
 
         logger.debug("adding ExportDataSetJob id: {} to queue", handlerRequest.responseObserver.hashCode());
 
@@ -242,7 +231,6 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
-
     }
 
 }

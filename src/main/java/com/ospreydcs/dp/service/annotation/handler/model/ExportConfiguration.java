@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.model;
 
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
+
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
@@ -23,35 +25,66 @@ public class ExportConfiguration {
         }
     }
 
+    // constants
+    public static final String FILE_EXTENSION_HDF5 = "h5";
+
+    // configuration
+    public static final String CFG_KEY_EXPORT_SERVER_MOUNT_POINT = "Export.serverMountPoint";
+    public static final String CFG_KEY_EXPORT_SHARE_MOUNT_POINT = "Export.shareMountPoint";
+    public static final String CFG_KEY_EXPORT_URL_BASE = "Export.urlBase";
+
+    // instance variables
     public String serverMountPoint = null;
     public String shareMountPoint = null;
     public String urlBase = null;
     public boolean valid = false;
 
+    public ExportConfiguration() {
+        final String serverMountPointConfig = configMgr().getConfigString(CFG_KEY_EXPORT_SERVER_MOUNT_POINT);
+        final String shareMountPointConfig = configMgr().getConfigString(CFG_KEY_EXPORT_SHARE_MOUNT_POINT);
+        final String urlBaseConfig = configMgr().getConfigString(CFG_KEY_EXPORT_URL_BASE);
+        initialize(serverMountPointConfig, shareMountPointConfig, urlBaseConfig);
+    }
+
     public ExportConfiguration(
-        String serverMountPoint,
-        String shareMountPoint,
-        String urlBase
+            String serverMountPoint,
+            String shareMountPoint,
+            String urlBase
+    ) {
+        initialize(serverMountPoint, shareMountPoint, urlBase);
+    }
+
+    private void initialize(
+            String serverMountPoint,
+            String shareMountPoint,
+            String urlBase
     ) {
         if (serverMountPoint == null || serverMountPoint.isEmpty()) {
             valid = false;
             return;
         }
-        // add trailing slash if needed to each of the three
+
         this.serverMountPoint =
-                (serverMountPoint.charAt(serverMountPoint.length()-1) != separatorChar) 
+                (serverMountPoint.charAt(serverMountPoint.length() - 1) == separatorChar)
                         ? serverMountPoint : serverMountPoint + separatorChar;
+
         if (shareMountPoint != null && !shareMountPoint.isEmpty()) {
             this.shareMountPoint =
-                    (shareMountPoint.charAt(shareMountPoint.length() - 1) != separatorChar)
+                    (shareMountPoint.charAt(shareMountPoint.length() - 1) == separatorChar)
                             ? shareMountPoint : shareMountPoint + separatorChar;
         }
+
         if (urlBase != null && !urlBase.isEmpty()) {
             this.urlBase =
-                    (urlBase.charAt(urlBase.length() - 1) != separatorChar)
+                    (urlBase.charAt(urlBase.length() - 1) == separatorChar)
                             ? urlBase : urlBase + separatorChar;
         }
+
         valid = true;
+    }
+
+    protected static ConfigurationManager configMgr() {
+        return ConfigurationManager.getInstance();
     }
 
     /*
@@ -69,27 +102,30 @@ public class ExportConfiguration {
             return dateDirectory;
         }
 
-        final String parentDirectory = objectId.substring(0, 2) + separator;
-        final String childDirectory = objectId.substring(2, 4) + separator;
+        final String parentDirectory = objectId.substring(objectId.length()-4, objectId.length()-2) + separator;
+        final String childDirectory = objectId.substring(objectId.length()-2, objectId.length()) + separator;
         return dateDirectory + parentDirectory + childDirectory;
     }
 
-    public ExportFilePaths getExportFilePaths(String objectId) {
+    public ExportFilePaths getExportFilePaths(String objectId, String extension) {
 
         if (!valid) {
             return new ExportFilePaths(false, null, null, null);
         }
 
+        // generate filename
+        final String filename = objectId + "." + extension;
+
         // get subdirectory path within balanced directory structure
         final String subdirectory = getExportFileSubdirectory(objectId);
 
         // generate server file path
-        final String serverFilePath = serverMountPoint + subdirectory + objectId;
+        final String serverFilePath = serverMountPoint + subdirectory + filename;
 
         // generate share file path
         String shareFilePath;
         if (shareMountPoint != null) {
-            shareFilePath = shareMountPoint + subdirectory + objectId;
+            shareFilePath = shareMountPoint + subdirectory + filename;
         } else {
             shareFilePath = serverFilePath;
         }
@@ -97,7 +133,7 @@ public class ExportConfiguration {
         // generate url file path
         String fileUrl = null;
         if (urlBase != null) {
-            fileUrl = urlBase + subdirectory + objectId;
+            fileUrl = urlBase + subdirectory + filename;
         }
 
         return new ExportFilePaths(true, serverFilePath, shareFilePath, fileUrl);

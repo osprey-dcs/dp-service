@@ -31,14 +31,13 @@ public class ExportDataSetJob extends HandlerJob {
     public ExportDataSetJob(
             HandlerExportDataSetRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
-            MongoQueryClientInterface mongoQueryClient,
-            ExportConfiguration exportConfiguration
+            MongoQueryClientInterface mongoQueryClient
     ) {
         this.handlerRequest = handlerRequest;
         this.mongoAnnotationClient = mongoAnnotationClient;
         this.mongoQueryClient = mongoQueryClient;
         this.dispatcher = new ExportDataSetDispatcher(handlerRequest, mongoAnnotationClient);
-        this.exportConfiguration = exportConfiguration;
+        this.exportConfiguration = new ExportConfiguration();
     }
 
     @Override
@@ -56,7 +55,8 @@ public class ExportDataSetJob extends HandlerJob {
         }
 
         // generate server output file path for export
-        final ExportConfiguration.ExportFilePaths exportFilePaths =  exportConfiguration.getExportFilePaths(datasetId);
+        final ExportConfiguration.ExportFilePaths exportFilePaths =
+                exportConfiguration.getExportFilePaths(datasetId, ExportConfiguration.FILE_EXTENSION_HDF5);
         if (! exportFilePaths.valid) {
             final String errorMsg =
                     "Export mechanism is not properly configured (e.g., see resources/application.yml file)";
