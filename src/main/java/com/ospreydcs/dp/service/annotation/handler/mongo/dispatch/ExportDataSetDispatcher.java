@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
+import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
@@ -21,5 +22,12 @@ public class ExportDataSetDispatcher extends Dispatcher {
 
     public void handleError(String errorMsg) {
         AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+    }
+
+    public void handleResult(ExportConfiguration.ExportFilePaths exportFilePaths) {
+        AnnotationServiceImpl.sendExportDataSetResponseSuccess(
+                exportFilePaths.shareFilePath,
+                exportFilePaths.fileUrl,
+                handlerRequest.responseObserver);
     }
 }

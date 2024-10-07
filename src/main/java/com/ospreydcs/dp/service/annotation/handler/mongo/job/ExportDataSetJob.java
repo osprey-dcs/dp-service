@@ -96,9 +96,9 @@ public class ExportDataSetJob extends HandlerJob {
         }
 
         exportFile.close();
-//
-//        logger.debug("dispatching QueryAnnotationsJob id: {}", this.responseObserver.hashCode());
-//        dispatcher.handleResult(cursor);
+
+        logger.debug("dispatching ExportDataSetJob id: {}", this.handlerRequest.responseObserver.hashCode());
+        dispatcher.handleResult(exportFilePaths);
     }
 
 }

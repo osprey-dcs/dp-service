@@ -583,11 +583,12 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         responseObserver.onCompleted();
     }
 
-    private static ExportDataSetResponse exportDataSetResponseSuccess(String exportId) {
+    private static ExportDataSetResponse exportDataSetResponseSuccess(String filePath, String fileUrl) {
 
         final ExportDataSetResponse.ExportDataSetResult result =
                 ExportDataSetResponse.ExportDataSetResult.newBuilder()
-                        .setExportId(exportId)
+                        .setFilePath(filePath)
+                        .setFileUrl(fileUrl == null ? "" : fileUrl)
                         .build();
 
         final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
@@ -599,9 +600,9 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     }
 
     public static void sendExportDataSetResponseSuccess(
-            String dataSetId, StreamObserver<ExportDataSetResponse> responseObserver
+            String filePath, String fileUrl, StreamObserver<ExportDataSetResponse> responseObserver
     ) {
-        final ExportDataSetResponse response = exportDataSetResponseSuccess(dataSetId);
+        final ExportDataSetResponse response = exportDataSetResponseSuccess(filePath, fileUrl);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
