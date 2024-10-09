@@ -1,31 +1,27 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataSetDispatcher;
-import com.ospreydcs.dp.service.annotation.utility.DatasetExportHdf5File;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.IOException;
+public abstract class ExportDataSetJob extends HandlerJob {
 
-public class ExportDataSetJob extends HandlerJob {
+    protected static record ExportDatasetStatus (boolean isError, String errorMessage) {}
 
     // static variables
-    private static final Logger logger = LogManager.getLogger();
+    protected static final Logger logger = LogManager.getLogger();
 
     // instance variables
     private final HandlerExportDataSetRequest handlerRequest;
     private final ExportDataSetDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoAnnotationClient;
-    private final MongoQueryClientInterface mongoQueryClient;
+    protected final MongoQueryClientInterface mongoQueryClient;
     private final ExportConfiguration exportConfiguration;
 
     public ExportDataSetJob(
@@ -40,10 +36,16 @@ public class ExportDataSetJob extends HandlerJob {
         this.exportConfiguration = new ExportConfiguration();
     }
 
+    protected abstract String getFileExtension_();
+    protected abstract ExportDatasetStatus exportDataset_(DataSetDocument dataset, String serverFilePath);
+
     @Override
     public void execute() {
 
-        logger.debug("executing ExportDataSetJob id: {}", this.handlerRequest.responseObserver.hashCode());
+        logger.debug(
+                "executing {} id: {}",
+                this.getClass().getSimpleName(),
+                this.handlerRequest.responseObserver.hashCode());
 
         // get dataset for id specified in request
         String datasetId = this.handlerRequest.exportDataSetRequest.getDataSetId();
@@ -56,48 +58,27 @@ public class ExportDataSetJob extends HandlerJob {
 
         // generate server output file path for export
         final ExportConfiguration.ExportFilePaths exportFilePaths =
-                exportConfiguration.getExportFilePaths(datasetId, ExportConfiguration.FILE_EXTENSION_HDF5);
+                exportConfiguration.getExportFilePaths(datasetId, getFileExtension_());
         if (! exportFilePaths.valid) {
             final String errorMsg =
                     "Export mechanism is not properly configured (e.g., see resources/application.yml file)";
             this.dispatcher.handleError(errorMsg);
             return;
         }
-
-        // create hdf5 file for export
         final String serverFilePath = exportFilePaths.serverFilePath;
-        DatasetExportHdf5File exportFile = null;
-        try {
-            exportFile = new DatasetExportHdf5File(dataset, serverFilePath);
-        } catch (IOException e) {
-            final String errorMsg = "error writing to export file: " + serverFilePath;
-            logger.error(errorMsg);
-            this.dispatcher.handleError(errorMsg);
+
+        // export data to file
+        ExportDatasetStatus status = exportDataset_(dataset, serverFilePath);
+        if (status.isError) {
+            logger.error(status.errorMessage);
+            this.dispatcher.handleError(status.errorMessage);
             return;
         }
 
-        // execute query for each data block in dataset and write data to hdf5 file
-        for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
-
-            final MongoCursor<BucketDocument> cursor =
-                    this.mongoQueryClient.executeDataBlockQuery(dataBlock);
-
-            if (cursor == null) {
-                final String errorMsg = "unknown error executing data block query";
-                logger.error(errorMsg);
-                this.dispatcher.handleError(errorMsg);
-                return;
-            }
-
-            while (cursor.hasNext()) {
-                final BucketDocument bucketDocument = cursor.next();
-                exportFile.writeBucketData(bucketDocument);
-            }
-        }
-
-        exportFile.close();
-
-        logger.debug("dispatching ExportDataSetJob id: {}", this.handlerRequest.responseObserver.hashCode());
+        logger.debug(
+                "dispatching {} id: {}",
+                this.getClass().getSimpleName(),
+                this.handlerRequest.responseObserver.hashCode());
         dispatcher.handleResult(exportFilePaths);
     }
 

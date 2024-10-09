@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.annotation.utility;
+package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
@@ -29,7 +29,7 @@ import java.util.Objects;
  * by navigating the soft link.
  */
 
-public class DatasetExportHdf5File {
+public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
 
     // constants
     public final static String GROUP_DATASET = "dataset";

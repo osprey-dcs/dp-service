@@ -105,6 +105,13 @@ public class AnnotationValidationUtility {
             return new ValidationResult(true, errorMsg);
         }
 
+        final ExportDataSetRequest.ExportOutputFormat outputFormat = request.getOutputFormat();
+        if (outputFormat == ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED ||
+                outputFormat == ExportDataSetRequest.ExportOutputFormat.UNRECOGNIZED) {
+            final String errorMsg = "valid ExportDataSetRequest.outputFormat must be specified";
+            return new ValidationResult(true, errorMsg);
+        }
+
         return new ValidationResult(false, "");
     }
 }

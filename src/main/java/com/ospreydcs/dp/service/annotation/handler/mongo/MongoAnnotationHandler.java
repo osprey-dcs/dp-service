@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetReq
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
+import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -221,7 +222,29 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     @Override
     public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
 
-        final ExportDataSetJob job = new ExportDataSetJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+        ExportDataSetJob job = null;
+        switch (handlerRequest.exportDataSetRequest.getOutputFormat()) {
+            case EXPORT_FORMAT_UNSPECIFIED -> {
+                // this should be caught in validation, but just in case...
+                final String errorMsg = "ExportDataSetRequest.outputFormat must be specified";
+                AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+            }
+            case EXPORT_FORMAT_HDF5 -> {
+                job = new Hdf5ExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+            }
+            case EXPORT_FORMAT_CSV -> {
+                // TODO: add CsvExportJob
+            }
+            case EXPORT_FORMAT_XLSX -> {
+                // TODO: add XlsxExportJob
+            }
+            case UNRECOGNIZED -> {
+                // this should be caught in validation, but just in case...
+                final String errorMsg = "ExportDataSetRequest.outputFormat unrecognized value";
+                AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+            }
+        }
+        Objects.requireNonNull(job);
 
         logger.debug("adding ExportDataSetJob id: {} to queue", handlerRequest.responseObserver.hashCode());
 

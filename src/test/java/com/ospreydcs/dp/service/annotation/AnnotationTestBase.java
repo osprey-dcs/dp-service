@@ -14,7 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.ospreydcs.dp.service.annotation.utility.DatasetExportHdf5File.*;
+import static com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File.*;
 import static org.junit.Assert.*;
 
 public class AnnotationTestBase {
