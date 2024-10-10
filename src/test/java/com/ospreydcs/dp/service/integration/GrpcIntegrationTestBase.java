@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
+import ch.systemsx.cisd.hdf5.HDF5Factory;
+import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.grpc.v1.query.*;
@@ -14,7 +16,6 @@ import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
@@ -1696,6 +1697,76 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return resultAnnotations;
+    }
+
+    protected ExportDataSetResponse.ExportDataSetResult sendExportDataSet(
+            ExportDataSetRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(annotationChannel);
+
+        final AnnotationTestBase.ExportDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.ExportDataSetResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.exportDataSet(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getResult();
+    }
+
+    protected ExportDataSetResponse.ExportDataSetResult sendAndVerifyExportDataSet(
+            String dataSetId,
+            ExportDataSetRequest.ExportOutputFormat outputFormat,
+            int expectedNumBuckets,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final ExportDataSetRequest request =
+                AnnotationTestBase.buildExportDataSetRequest(
+                        dataSetId,
+                        outputFormat);
+
+        final ExportDataSetResponse.ExportDataSetResult exportResult =
+                sendExportDataSet(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertTrue(exportResult == null);
+            return null;
+        }
+
+        // validate response
+
+        // retrieve dataset for id
+        DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
+        assertNotNull(dataset);
+
+        // retrieve BucketDocuments for specified dataset
+        final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
+        assertEquals(expectedNumBuckets, datasetBuckets.size());
+
+        // verify file content
+        final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
+        AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
+        for (BucketDocument bucket : datasetBuckets) {
+            AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+        }
+        reader.close();
+
+        return exportResult;
     }
 
 }

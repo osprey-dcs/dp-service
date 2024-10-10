@@ -10,6 +10,11 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 public abstract class ExportDataSetJob extends HandlerJob {
 
     protected static record ExportDatasetStatus (boolean isError, String errorMessage) {}
@@ -65,10 +70,23 @@ public abstract class ExportDataSetJob extends HandlerJob {
             this.dispatcher.handleError(errorMsg);
             return;
         }
-        final String serverFilePath = exportFilePaths.serverFilePath;
+        final String serverDirectoryPathString = exportFilePaths.serverDirectoryPath;
+        final String filename = exportFilePaths.filename;
+
+        // create directories in server file path
+        Path serverDirectoryPath = Paths.get(serverDirectoryPathString);
+        try {
+            Files.createDirectories(serverDirectoryPath);
+        } catch (IOException e) {
+            final String errorMsg =
+                    "IOException creating directories in path " + serverDirectoryPathString + ": " + e.getMessage();
+            logger.error(errorMsg);
+            this.dispatcher.handleError(errorMsg);
+            return;
+        }
 
         // export data to file
-        ExportDatasetStatus status = exportDataset_(dataset, serverFilePath);
+        ExportDatasetStatus status = exportDataset_(dataset, serverDirectoryPathString + filename);
         if (status.isError) {
             logger.error(status.errorMessage);
             this.dispatcher.handleError(status.errorMessage);

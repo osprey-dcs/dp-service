@@ -21,9 +21,9 @@ Export:
   # shareMountPoint: Client-accessible directory for accessing export output files, if different than serverMountPoint.
   # Defaults to serverMountPoint if not specified.
   # E.g., "/share/dp/export".
-  shareMountPoint: /share
+  shareMountPoint:
 
   # urlBase: Optional base URL for accessing export output files.
   # Requires a web-server providing access to files at the specified location.
   # E.g., "https://www.facility.gov/dp/export".
-  urlBase: https://www.ospreydcs.com/dp/export
+  urlBase:

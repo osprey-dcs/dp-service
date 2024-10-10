@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
@@ -404,6 +406,50 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
                 }
             }
+        }
+
+        {
+            // export to hdf5, negative test, unspecified dataset id
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            "",
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                            true,
+                            "ExportDataSetRequest.dataSetId must be specified");
+        }
+
+        {
+            // export to hdf5, negative test, invalid dataset id
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            "1234abcd1234abcd1234abcd",
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                            true,
+                            "Dataset with id 1234abcd1234abcd1234abcd not found");
+        }
+
+        {
+            // export to hdf5, negative test, unspecified output format
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            firstHalfDataSetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED,
+                            10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                            true,
+                            "valid ExportDataSetRequest.outputFormat must be specified");
+        }
+
+        {
+            // export to hdf5, positive test
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            firstHalfDataSetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                            false,
+                            "");
         }
 
     }

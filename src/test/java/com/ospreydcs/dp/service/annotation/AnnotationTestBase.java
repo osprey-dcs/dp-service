@@ -437,6 +437,99 @@ public class AnnotationTestBase {
         }
     }
 
+    public static class ExportDataSetResponseObserver implements StreamObserver<ExportDataSetResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExportDataSetResponse.ExportDataSetResult> resultList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public ExportDataSetResponse.ExportDataSetResult getResult() {
+            if (!resultList.isEmpty()) {
+                return resultList.get(0);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void onNext(ExportDataSetResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasExportDataSetResult());
+                final ExportDataSetResponse.ExportDataSetResult result = response.getExportDataSetResult();
+                assertNotNull(result);
+
+                // flag error if already received a response
+                if (!resultList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    resultList.add(result);
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
     public static CreateDataSetRequest buildCreateDataSetRequest(CreateDataSetParams params) {
 
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
@@ -556,6 +649,16 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
+    public static ExportDataSetRequest buildExportDataSetRequest(
+            String dataSetId,
+            ExportDataSetRequest.ExportOutputFormat outputFormat
+    ) {
+        ExportDataSetRequest.Builder requestBuilder = ExportDataSetRequest.newBuilder();
+        requestBuilder.setDataSetId(dataSetId);
+        requestBuilder.setOutputFormat(outputFormat);
+        return requestBuilder.build();
+    }
+
     public static void verifyDatasetHdf5Content(IHDF5Reader reader, DataSetDocument dataset) {
 
         // verify dataset paths
@@ -666,13 +769,15 @@ public class AnnotationTestBase {
 
         // attributeMap - write keys to one array and values to another
         final String attributeMapKeysPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
-        assertArrayEquals(
-                bucketDocument.getAttributeMap().keySet().toArray(new String[0]),
-                reader.readStringArray(attributeMapKeysPath));
-        final String attributeMapValuesPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
-        assertArrayEquals(
-                bucketDocument.getAttributeMap().values().toArray(new String[0]),
-                reader.readStringArray(attributeMapValuesPath));
+        if (reader.object().getDataSetInformation(attributeMapKeysPath).getSize() > 0) {
+            assertArrayEquals(
+                    bucketDocument.getAttributeMap().keySet().toArray(new String[0]),
+                    reader.readStringArray(attributeMapKeysPath));
+            final String attributeMapValuesPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
+            assertArrayEquals(
+                    bucketDocument.getAttributeMap().values().toArray(new String[0]),
+                    reader.readStringArray(attributeMapValuesPath));
+        }
 
         // eventMetadata - description, start/stop times
         final String eventMetadataDescriptionPath =

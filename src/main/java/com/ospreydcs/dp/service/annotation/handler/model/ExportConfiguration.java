@@ -2,6 +2,9 @@ package com.ospreydcs.dp.service.annotation.handler.model;
 
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
@@ -12,16 +15,27 @@ public class ExportConfiguration {
 
     public static class ExportFilePaths {
 
-        public final String serverFilePath;
+        public final String filename;
+        public final String serverDirectoryPath;
         public final String shareFilePath;
         public final String fileUrl;
         public final boolean valid;
+        public final String validMsg;
 
-        public ExportFilePaths(boolean valid, String serverFilePath, String shareFilePath, String fileUrl) {
-            this.serverFilePath = serverFilePath;
+        public ExportFilePaths(
+                boolean valid,
+                String validMsg,
+                String filename,
+                String serverDirectoryPath,
+                String shareFilePath,
+                String fileUrl
+        ) {
+            this.filename = filename;
+            this.serverDirectoryPath = serverDirectoryPath;
             this.shareFilePath = shareFilePath;
             this.fileUrl = fileUrl;
             this.valid = valid;
+            this.validMsg = validMsg;
         }
     }
 
@@ -38,29 +52,33 @@ public class ExportConfiguration {
     public String shareMountPoint = null;
     public String urlBase = null;
     public boolean valid = false;
+    public String validMsg = "";
 
     public ExportConfiguration() {
         final String serverMountPointConfig = configMgr().getConfigString(CFG_KEY_EXPORT_SERVER_MOUNT_POINT);
         final String shareMountPointConfig = configMgr().getConfigString(CFG_KEY_EXPORT_SHARE_MOUNT_POINT);
         final String urlBaseConfig = configMgr().getConfigString(CFG_KEY_EXPORT_URL_BASE);
-        initialize(serverMountPointConfig, shareMountPointConfig, urlBaseConfig);
+        initialize(serverMountPointConfig, shareMountPointConfig, urlBaseConfig, true);
     }
 
     public ExportConfiguration(
             String serverMountPoint,
             String shareMountPoint,
-            String urlBase
+            String urlBase,
+            boolean testDirectories
     ) {
-        initialize(serverMountPoint, shareMountPoint, urlBase);
+        initialize(serverMountPoint, shareMountPoint, urlBase, testDirectories);
     }
 
     private void initialize(
             String serverMountPoint,
             String shareMountPoint,
-            String urlBase
+            String urlBase,
+            boolean testDirectories
     ) {
         if (serverMountPoint == null || serverMountPoint.isEmpty()) {
-            valid = false;
+            this.validMsg = "serverMountPoint is not specified in configuration";
+            this.valid = false;
             return;
         }
 
@@ -80,7 +98,27 @@ public class ExportConfiguration {
                             ? urlBase : urlBase + separatorChar;
         }
 
-        valid = true;
+        // mark configuration invalid if serverMountPoint or shareMountPoint directories don't exist
+        if (testDirectories) {
+
+            Path serverMountPointPath = Paths.get(this.serverMountPoint);
+            if (Files.notExists(serverMountPointPath)) {
+                this.validMsg = "serverMountPoint does not exist or is not a directory: " + this.serverMountPoint;
+                this.valid = false;
+                return;
+            }
+
+            if (this.shareMountPoint != null) {
+                Path shareMountPointPath = Paths.get(this.shareMountPoint);
+                if (Files.notExists(shareMountPointPath) || !Files.isDirectory(shareMountPointPath)) {
+                    this.validMsg = "shareMountPoint does not exist or is not a directory: " + this.shareMountPoint;
+                    this.valid = false;
+                    return;
+                }
+            }
+        }
+
+        this.valid = true;
     }
 
     protected static ConfigurationManager configMgr() {
@@ -110,7 +148,13 @@ public class ExportConfiguration {
     public ExportFilePaths getExportFilePaths(String objectId, String extension) {
 
         if (!valid) {
-            return new ExportFilePaths(false, null, null, null);
+            return new ExportFilePaths(
+                    false,
+                    this.validMsg,
+                    null,
+                    null,
+                    null,
+                    null);
         }
 
         // generate filename
@@ -120,14 +164,14 @@ public class ExportConfiguration {
         final String subdirectory = getExportFileSubdirectory(objectId);
 
         // generate server file path
-        final String serverFilePath = serverMountPoint + subdirectory + filename;
+        final String serverDirectoryPath = serverMountPoint + subdirectory;
 
         // generate share file path
         String shareFilePath;
         if (shareMountPoint != null) {
             shareFilePath = shareMountPoint + subdirectory + filename;
         } else {
-            shareFilePath = serverFilePath;
+            shareFilePath = serverDirectoryPath + filename;
         }
 
         // generate url file path
@@ -136,6 +180,12 @@ public class ExportConfiguration {
             fileUrl = urlBase + subdirectory + filename;
         }
 
-        return new ExportFilePaths(true, serverFilePath, shareFilePath, fileUrl);
+        return new ExportFilePaths(
+                true,
+                "",
+                filename,
+                serverDirectoryPath,
+                shareFilePath,
+                fileUrl);
     }
 }

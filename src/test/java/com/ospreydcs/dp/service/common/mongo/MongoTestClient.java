@@ -1,11 +1,14 @@
 package com.ospreydcs.dp.service.common.mongo;
 
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
@@ -145,6 +148,19 @@ public class MongoTestClient extends MongoSyncClient {
             }
         }
         return null;
+    }
+
+    public List<BucketDocument> findDataSetBuckets(DataSetDocument dataset) {
+        MongoSyncQueryClient mongoSyncQueryClient = new MongoSyncQueryClient();
+        mongoSyncQueryClient.init();
+        List<BucketDocument> datasetBuckets = new ArrayList<>();
+        for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
+            final MongoCursor<BucketDocument> documentCursor = mongoSyncQueryClient.executeDataBlockQuery(dataBlock);
+            while (documentCursor.hasNext()) {
+                datasetBuckets.add(documentCursor.next());
+            }
+        }
+        return datasetBuckets;
     }
 
 
