@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.server.GrpcServerBase;
+import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -35,48 +36,6 @@ public class TableResponseDispatcher extends Dispatcher {
     ) {
         this.responseObserver = responseObserver;
         this.request = request;
-    }
-
-    private int addBucketToTable(
-            int columnIndex, BucketDocument bucket, TimestampMap<Map<Integer, DataValue>> tableValueMap
-    ) {
-        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
-        final long beginNanos = this.request.getBeginTime().getNanoseconds();
-        final long endSeconds = this.request.getEndTime().getEpochSeconds();
-        final long endNanos = this.request.getEndTime().getNanoseconds();
-
-        int dataValueSize = 0;
-        final DataTimestamps bucketDataTimestamps = bucket.readDataTimestampsContent();
-        final DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
-                DataTimestampsUtility.dataTimestampsIterator(bucketDataTimestamps);
-        final Iterator<DataValue> dataValueIterator = bucket.readDataColumnContent().getDataValuesList().iterator();
-        while (dataTimestampsIterator.hasNext() && dataValueIterator.hasNext()) {
-
-            final Timestamp timestamp = dataTimestampsIterator.next();
-            final long second = timestamp.getEpochSeconds();
-            final long nano = timestamp.getNanoseconds();
-            final DataValue dataValue = dataValueIterator.next();
-
-            // skip values outside query time range
-            if (second < beginSeconds || second > endSeconds) {
-                continue;
-            } else if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
-                continue;
-            }
-
-            // generate DataValue object from column data value
-            dataValueSize = dataValueSize + dataValue.getSerializedSize();
-
-            // add to table data structure
-            Map<Integer, DataValue> nanoValueMap = tableValueMap.get(second, nano);
-            if (nanoValueMap == null) {
-                nanoValueMap = new TreeMap<>();
-                tableValueMap.put(second, nano, nanoValueMap);
-            }
-            nanoValueMap.put(columnIndex, dataValue);
-        }
-
-        return dataValueSize;
     }
 
     private QueryTableResponse.TableResult columnTableResultFromMap(
@@ -208,26 +167,29 @@ public class TableResponseDispatcher extends Dispatcher {
         // data structure for getting column index
         final List<String> columnNameList = new ArrayList<>();
 
-        int responseMessageSize = 0;
-        while (cursor.hasNext()) {
-            // add buckets to table data structure
-            final BucketDocument bucket = cursor.next();
-            int columnIndex = columnNameList.indexOf(bucket.getPvName());
-            if (columnIndex == -1) {
-                // add column to list and get index
-                columnNameList.add(bucket.getPvName());
-                columnIndex = columnNameList.size() - 1;
-            }
-            int bucketDataSize = addBucketToTable(columnIndex, bucket, tableValueMap);
-            responseMessageSize = responseMessageSize + bucketDataSize;
-            if (responseMessageSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
-                final String msg = "result exceeds gRPC message size limit";
-                logger.error(msg);
-                QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
-                return;
-            }
+        // build temporary tabular data structure from cursor
+        final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
+        final long beginNanos = this.request.getBeginTime().getNanoseconds();
+        final long endSeconds = this.request.getEndTime().getEpochSeconds();
+        final long endNanos = this.request.getEndTime().getNanoseconds();
+        TabularDataUtility.TimestampMapDataSizeStats sizeStats =
+                TabularDataUtility.updateTimestampMapFromBucketCursor(
+                        tableValueMap,
+                        columnNameList,
+                        cursor,
+                        0,
+                        MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
+                        beginSeconds,
+                        beginNanos,
+                        endSeconds,
+                        endNanos
+                );
+        if (sizeStats.sizeLimitExceeded()) {
+            final String msg = "result exceeds gRPC message size limit";
+            logger.error(msg);
+            QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
+            return;
         }
-        cursor.close();
 
         // create column or row-oriented table result from map as specified in request
         QueryTableResponse.TableResult tableResult = null;
