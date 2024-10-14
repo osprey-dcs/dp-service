@@ -41,6 +41,7 @@ public class ExportConfiguration {
 
     // constants
     public static final String FILE_EXTENSION_HDF5 = "h5";
+    public static final String FILE_EXTENSION_CSV = "csv";
 
     // configuration
     public static final String CFG_KEY_EXPORT_SERVER_MOUNT_POINT = "Export.serverMountPoint";
