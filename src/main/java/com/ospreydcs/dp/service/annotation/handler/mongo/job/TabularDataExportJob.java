@@ -20,8 +20,8 @@ import java.util.Map;
 public abstract class TabularDataExportJob extends ExportDataSetJob {
 
     // constants
-    private static final String COLUMN_HEADER_SECONDS = "seconds";
-    private static final String COLUMN_HEADER_NANOS = "nanos";
+    public static final String COLUMN_HEADER_SECONDS = "seconds";
+    public static final String COLUMN_HEADER_NANOS = "nanos";
 
     // instance variables
     private TabularDataExportFileInterface exportFile;
@@ -93,7 +93,9 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
         // write data to tabular formatted file
 
         // write column headers
-        final List<String> columnHeaders = List.of(COLUMN_HEADER_SECONDS, COLUMN_HEADER_NANOS);
+        final List<String> columnHeaders = new ArrayList<>();
+        columnHeaders.add(COLUMN_HEADER_SECONDS);
+        columnHeaders.add(COLUMN_HEADER_NANOS);
         columnHeaders.addAll(columnNameList);
         exportFile.writeHeaderRow(columnHeaders);
 
@@ -123,7 +125,40 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
                     if (columnDataValue == null) {
                         columnDataValue = DataValue.newBuilder().build();
                     }
-                    rowDataValues.add(columnDataValue.toString());
+                    String columnValueString = null;
+                    switch (columnDataValue.getValueCase()) {
+                        case STRINGVALUE -> {
+                            columnValueString = columnDataValue.getStringValue();
+                        }
+                        case BOOLEANVALUE -> {
+                        }
+                        case UINTVALUE -> {
+                        }
+                        case ULONGVALUE -> {
+                        }
+                        case INTVALUE -> {
+                        }
+                        case LONGVALUE -> {
+                        }
+                        case FLOATVALUE -> {
+                        }
+                        case DOUBLEVALUE -> {
+                            columnValueString = String.valueOf(columnDataValue.getDoubleValue());
+                        }
+                        case BYTEARRAYVALUE -> {
+                        }
+                        case ARRAYVALUE -> {
+                        }
+                        case STRUCTUREVALUE -> {
+                        }
+                        case IMAGEVALUE -> {
+                        }
+                        case TIMESTAMPVALUE -> {
+                        }
+                        case VALUE_NOT_SET -> {
+                        }
+                    }
+                    rowDataValues.add(columnValueString);
 
                     columnIndex = columnIndex + 1;
                 }

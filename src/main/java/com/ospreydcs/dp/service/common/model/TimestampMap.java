@@ -29,4 +29,12 @@ public class TimestampMap<T> {
         return timestampMap.entrySet();
     }
 
+    public int size() {
+        int entryCount = 0;
+        for (Map.Entry<Long, Map<Long, T>> entry : timestampMap.entrySet()) {
+            entryCount = entryCount + entry.getValue().size();
+        }
+        return entryCount;
+    }
+
 }

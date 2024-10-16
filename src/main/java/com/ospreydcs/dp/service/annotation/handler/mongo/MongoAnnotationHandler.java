@@ -233,10 +233,11 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 job = new Hdf5ExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_CSV -> {
-                // TODO: add CsvExportJob
+                job = new CsvExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_XLSX -> {
                 // TODO: add XlsxExportJob
+                throw new UnsupportedOperationException("TODO: xlsx export output format not implemented");
             }
             case UNRECOGNIZED -> {
                 // this should be caught in validation, but just in case...

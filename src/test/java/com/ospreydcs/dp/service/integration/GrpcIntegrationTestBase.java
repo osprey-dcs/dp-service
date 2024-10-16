@@ -2,15 +2,18 @@ package com.ospreydcs.dp.service.integration;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJob;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
@@ -19,6 +22,7 @@ import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
@@ -29,15 +33,22 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.TableResponseDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import de.siegmar.fastcsv.reader.CsvReader;
+import de.siegmar.fastcsv.reader.CsvRecord;
+import de.siegmar.fastcsv.reader.NamedCsvRecord;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
+import io.opencensus.metrics.export.Distribution;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 
@@ -1758,13 +1769,91 @@ public abstract class GrpcIntegrationTestBase {
         final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
         assertEquals(expectedNumBuckets, datasetBuckets.size());
 
-        // verify file content
-        final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-        AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
-        for (BucketDocument bucket : datasetBuckets) {
-            AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+        // verify file content for specified output format
+        switch (outputFormat) {
+
+            case EXPORT_FORMAT_HDF5 -> {
+                final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
+                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
+                for (BucketDocument bucket : datasetBuckets) {
+                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+                }
+                reader.close();
+            }
+
+            case EXPORT_FORMAT_CSV -> {
+                final TimestampMap<Map<Integer, DataValue>> tableValueMap = new TimestampMap<>(); // temp tabular data structure
+                final List<String> columnNameList = new ArrayList<>(); // data structure for getting column index by PV name
+                for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
+                    final MongoCursor<BucketDocument> cursor = mongoClient.findDataBlockBuckets(dataBlock);
+                    // build temporary tabular data structure from cursor
+                    final long beginSeconds = dataBlock.getBeginTimeSeconds();
+                    final long beginNanos = dataBlock.getBeginTimeNanos();
+                    final long endSeconds = dataBlock.getEndTimeSeconds();
+                    final long endNanos = dataBlock.getEndTimeNanos();
+                    final TabularDataUtility.TimestampMapDataSizeStats sizeStats =
+                            TabularDataUtility.updateTimestampMapFromBucketCursor(
+                                    tableValueMap,
+                                    columnNameList,
+                                    cursor,
+                                    0,
+                                    null,
+                                    beginSeconds,
+                                    beginNanos,
+                                    endSeconds,
+                                    endNanos
+                            );
+                }
+
+                // read file row by row and compare to expected values from tabular bucket data structure
+                final Path exportFilePath = Paths.get(exportResult.getFilePath());
+                CsvReader<CsvRecord> csvReader = null;
+                try {
+                    csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
+                } catch (IOException e) {
+                    fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
+                }
+                assertNotNull(csvReader);
+                boolean first = true;
+                int dataRowCount = 0;
+                Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
+                final int expectedNumColumns = 2 + columnNameList.size();
+                while (csvRecordIterator.hasNext()) {
+                    final CsvRecord csvRecord = csvRecordIterator.next();
+                    assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+                    final List<String> csvRowValues = csvRecord.getFields();
+                    if (first) {
+                        final List<String> expectedRowValues =
+                                new ArrayList<>();
+                        expectedRowValues.add(TabularDataExportJob.COLUMN_HEADER_SECONDS);
+                        expectedRowValues.add(TabularDataExportJob.COLUMN_HEADER_NANOS);
+                        expectedRowValues.addAll(columnNameList);
+                        assertEquals(expectedRowValues, csvRowValues);
+                        first = false;
+                    } else {
+                        final long seconds = Long.valueOf(csvRowValues.get(0));
+                        final long nanos = Long.valueOf(csvRowValues.get(1));
+                        Map<Integer, DataValue> rowColumnValueMap  = tableValueMap.get(seconds, nanos);
+                        for (int csvColumnIndex = 2; csvColumnIndex < expectedNumColumns; csvColumnIndex++) {
+                            final int mapColumnIndex = csvColumnIndex - 2; // skip columns for seconds/nanos
+                            final String csvRowValue = csvRowValues.get(csvColumnIndex);
+                            System.out.println(
+                                    rowColumnValueMap.get(mapColumnIndex).getDoubleValue()
+                                            + " : " + csvRowValue);
+                            assertEquals(
+                                    String.valueOf(rowColumnValueMap.get(mapColumnIndex).getDoubleValue()),
+                                    csvRowValue);
+                        }
+                        dataRowCount = dataRowCount + 1;
+                    }
+                }
+                assertEquals(tableValueMap.size(), dataRowCount);
+            }
+
+            case EXPORT_FORMAT_XLSX -> {
+                throw new UnsupportedOperationException("TODO: xlsx output file verification not implemented");
+            }
         }
-        reader.close();
 
         return exportResult;
     }

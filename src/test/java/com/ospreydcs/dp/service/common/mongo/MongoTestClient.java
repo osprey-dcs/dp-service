@@ -134,7 +134,7 @@ public class MongoTestClient extends MongoSyncClient {
 
     public AnnotationDocument findAnnotation(String annotationId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-            List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
+            final List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
             mongoCollectionAnnotations.find(eq("_id", new ObjectId(annotationId))).into(matchingAnnotations);
             if (matchingAnnotations.size() > 0) {
                 return matchingAnnotations.get(0);
@@ -151,9 +151,9 @@ public class MongoTestClient extends MongoSyncClient {
     }
 
     public List<BucketDocument> findDataSetBuckets(DataSetDocument dataset) {
-        MongoSyncQueryClient mongoSyncQueryClient = new MongoSyncQueryClient();
+        final MongoSyncQueryClient mongoSyncQueryClient = new MongoSyncQueryClient();
         mongoSyncQueryClient.init();
-        List<BucketDocument> datasetBuckets = new ArrayList<>();
+        final List<BucketDocument> datasetBuckets = new ArrayList<>();
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
             final MongoCursor<BucketDocument> documentCursor = mongoSyncQueryClient.executeDataBlockQuery(dataBlock);
             while (documentCursor.hasNext()) {
@@ -163,5 +163,10 @@ public class MongoTestClient extends MongoSyncClient {
         return datasetBuckets;
     }
 
+    public MongoCursor<BucketDocument> findDataBlockBuckets(DataBlockDocument dataBlock) {
+        final MongoSyncQueryClient mongoSyncQueryClient = new MongoSyncQueryClient();
+        mongoSyncQueryClient.init();
+        return mongoSyncQueryClient.executeDataBlockQuery(dataBlock);
+    }
 
 }

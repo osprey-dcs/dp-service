@@ -452,6 +452,17 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                             "");
         }
 
+        {
+            // export to csv, positive test
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            firstHalfDataSetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                            false,
+                            "");
+        }
+
     }
 
 }
