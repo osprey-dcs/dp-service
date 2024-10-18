@@ -85,7 +85,7 @@ Export:
   # serverMountPoint: Target base directory mounted to machine running Annotation Service for export output files.
   # Setting must be specified to use the export feature.  Export requests will return an error response if not specified.
   # E.g., "/opt/dp/export".
-  serverMountPoint:
+  serverMountPoint: /tmp
 
   # shareMountPoint: Client-accessible directory for accessing export output files, if different than serverMountPoint.
   # Defaults to serverMountPoint if not specified.
@@ -95,5 +95,4 @@ Export:
   # urlBase: Optional base URL for accessing export output files.
   # Requires a web-server providing access to files at the specified location.
   # E.g., "https://www.facility.gov/dp/export".
-  urlBase:
-
+  urlBase: http://localhost:8080
