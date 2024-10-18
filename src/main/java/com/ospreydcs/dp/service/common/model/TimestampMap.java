@@ -1,12 +1,11 @@
 package com.ospreydcs.dp.service.common.model;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 
 public class TimestampMap<T> {
 
-    final private Map<Long, Map<Long, T>> timestampMap = new TreeMap<>();
+    // instance variables
+    final protected Map<Long, Map<Long, T>> timestampMap = new TreeMap<>();
 
     public void put(long seconds, long nanos, T value) {
         Map<Long, T> secondMap = timestampMap.get(seconds);

@@ -5,10 +5,9 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
+import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
-import com.ospreydcs.dp.service.common.server.GrpcServerBase;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -39,7 +38,7 @@ public class TableResponseDispatcher extends Dispatcher {
     }
 
     private QueryTableResponse.TableResult columnTableResultFromMap(
-            List<String> columnNames, TimestampMap<Map<Integer, DataValue>> tableValueMap) {
+            List<String> columnNames, TimestampDataMap tableValueMap) {
 
         // create builders for table and columns, and list of timestamps
         final QueryTableResponse.TableResult.Builder tableResultBuilder =
@@ -89,7 +88,7 @@ public class TableResponseDispatcher extends Dispatcher {
     }
 
     private QueryTableResponse.TableResult rowMapTableResultFromMap(
-            List<String> columnNames, TimestampMap<Map<Integer, DataValue>> tableValueMap) {
+            List<String> columnNames, TimestampDataMap tableValueMap) {
 
         final QueryTableResponse.TableResult.Builder tableResultBuilder = QueryTableResponse.TableResult.newBuilder();
         final QueryTableResponse.RowMapTable.Builder rowMapTableBuilder = QueryTableResponse.RowMapTable.newBuilder();
@@ -99,46 +98,80 @@ public class TableResponseDispatcher extends Dispatcher {
         columnNamesWithTimestamp.addAll(columnNames);
         rowMapTableBuilder.addAllColumnNames(columnNamesWithTimestamp);
 
-        for (var secondEntry : tableValueMap.entrySet()) {
+        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.dataRowIterator();
+        while (dataRowIterator.hasNext()) {
 
-            final long second = secondEntry.getKey();
+            // read next data row
+            final TimestampDataMap.DataRow dataRow = dataRowIterator.next();
 
-            final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
-            for (var nanoEntry : secondValueMap.entrySet()) {
+            // create builder for response data row and map for column values
+            final QueryTableResponse.RowMapTable.DataRow.Builder dataRowBuilder =
+                    QueryTableResponse.RowMapTable.DataRow.newBuilder();
+            final Map<String, DataValue> rowDataValueMap = new TreeMap<>();
 
-                final long nano = nanoEntry.getKey();
+            // set value for timestamp column
+            final Timestamp timestamp = Timestamp.newBuilder()
+                    .setEpochSeconds(dataRow.seconds())
+                    .setNanoseconds(dataRow.nanos())
+                    .build();
+            final DataValue timestampDataValue = DataValue.newBuilder()
+                    .setTimestampValue(timestamp)
+                    .build();
+            rowDataValueMap.put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
 
-                final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
-
-                // create map for row's data, keys are column names, values are column values
-                final QueryTableResponse.RowMapTable.DataRow.Builder dataRowBuilder =
-                        QueryTableResponse.RowMapTable.DataRow.newBuilder();
-                final Map<String, DataValue> rowDataValueMap = new TreeMap<>();
-
-                // set value for timestamp column
-                final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
-                final DataValue timestampDataValue = DataValue.newBuilder()
-                        .setTimestampValue(timestamp)
-                        .build();
-                rowDataValueMap.put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
-
-                // add map entry for each data column value
-                int columnIndex = 0;
-                for (String columnName : columnNames) {
-                    DataValue columnDataValue = nanoValueMap.get(columnIndex);
-                    if (columnDataValue == null) {
-                        columnDataValue = DataValue.newBuilder().build();
-                    }
-                    rowDataValueMap.put(columnName, columnDataValue);
-
-                    columnIndex = columnIndex + 1;
-                }
-
-                // add value map to row, add row to result
-                dataRowBuilder.putAllColumnValues(rowDataValueMap);
-                rowMapTableBuilder.addRows(dataRowBuilder.build());
+            // add map entry for each data column value
+            int columnIndex = 0;
+            for (String columnName : columnNames) {
+                DataValue columnDataValue = dataRow.dataValues().get(columnIndex);
+                rowDataValueMap.put(columnName, columnDataValue);
+                columnIndex = columnIndex + 1;
             }
+
+            // add value map to row, add row to result
+            dataRowBuilder.putAllColumnValues(rowDataValueMap);
+            rowMapTableBuilder.addRows(dataRowBuilder.build());
         }
+
+//        for (var secondEntry : tableValueMap.entrySet()) {
+//
+//            final long second = secondEntry.getKey();
+//
+//            final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
+//            for (var nanoEntry : secondValueMap.entrySet()) {
+//
+//                final long nano = nanoEntry.getKey();
+//
+//                final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
+//
+//                // create map for row's data, keys are column names, values are column values
+//                final QueryTableResponse.RowMapTable.DataRow.Builder dataRowBuilder =
+//                        QueryTableResponse.RowMapTable.DataRow.newBuilder();
+//                final Map<String, DataValue> rowDataValueMap = new TreeMap<>();
+//
+//                // set value for timestamp column
+//                final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
+//                final DataValue timestampDataValue = DataValue.newBuilder()
+//                        .setTimestampValue(timestamp)
+//                        .build();
+//                rowDataValueMap.put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
+//
+//                // add map entry for each data column value
+//                int columnIndex = 0;
+//                for (String columnName : columnNames) {
+//                    DataValue columnDataValue = nanoValueMap.get(columnIndex);
+//                    if (columnDataValue == null) {
+//                        columnDataValue = DataValue.newBuilder().build();
+//                    }
+//                    rowDataValueMap.put(columnName, columnDataValue);
+//
+//                    columnIndex = columnIndex + 1;
+//                }
+//
+//                // add value map to row, add row to result
+//                dataRowBuilder.putAllColumnValues(rowDataValueMap);
+//                rowMapTableBuilder.addRows(dataRowBuilder.build());
+//            }
+//        }
 
         tableResultBuilder.setRowMapTable(rowMapTableBuilder.build());
         return tableResultBuilder.build();
@@ -162,20 +195,16 @@ public class TableResponseDispatcher extends Dispatcher {
         }
 
         // create data structure for creating table
-        final TimestampMap<Map<Integer, DataValue>> tableValueMap = new TimestampMap<>();
-
-        // data structure for getting column index
-        final List<String> columnNameList = new ArrayList<>();
+        final TimestampDataMap tableValueMap = new TimestampDataMap();
 
         // build temporary tabular data structure from cursor
         final long beginSeconds = this.request.getBeginTime().getEpochSeconds();
         final long beginNanos = this.request.getBeginTime().getNanoseconds();
         final long endSeconds = this.request.getEndTime().getEpochSeconds();
         final long endNanos = this.request.getEndTime().getNanoseconds();
-        TabularDataUtility.TimestampMapDataSizeStats sizeStats =
+        TabularDataUtility.TimestampDataMapSizeStats sizeStats =
                 TabularDataUtility.updateTimestampMapFromBucketCursor(
                         tableValueMap,
-                        columnNameList,
                         cursor,
                         0,
                         MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
@@ -193,6 +222,7 @@ public class TableResponseDispatcher extends Dispatcher {
 
         // create column or row-oriented table result from map as specified in request
         QueryTableResponse.TableResult tableResult = null;
+        final List<String> columnNameList = tableValueMap.getColumnNameList();
         switch (request.getFormat()) {
 
             case TABLE_FORMAT_COLUMN -> {

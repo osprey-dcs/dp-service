@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import de.siegmar.fastcsv.writer.CsvWriter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -8,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 public class DatasetExportCsvFile implements TabularDataExportFileInterface {
@@ -23,14 +26,74 @@ public class DatasetExportCsvFile implements TabularDataExportFileInterface {
         this.csvWriter = CsvWriter.builder().build(filePath);
     }
 
+    public static String dataValueToString(DataValue dataValue) {
+
+        String columnValueString = "";
+        switch (dataValue.getValueCase()) {
+            case STRINGVALUE -> {
+                columnValueString = dataValue.getStringValue();
+            }
+            case BOOLEANVALUE -> {
+                columnValueString = Boolean.toString(dataValue.getBooleanValue());
+            }
+            case UINTVALUE -> {
+                columnValueString = Integer.toString(dataValue.getUintValue());
+            }
+            case ULONGVALUE -> {
+                columnValueString = Long.toString(dataValue.getLongValue());
+            }
+            case INTVALUE -> {
+                columnValueString = Integer.toString(dataValue.getIntValue());
+            }
+            case LONGVALUE -> {
+                columnValueString = Long.toString(dataValue.getLongValue());
+            }
+            case FLOATVALUE -> {
+                columnValueString = Float.toString(dataValue.getFloatValue());
+            }
+            case DOUBLEVALUE -> {
+                columnValueString = String.valueOf(dataValue.getDoubleValue());
+            }
+            case BYTEARRAYVALUE -> {
+                columnValueString = dataValue.toString();
+            }
+            case ARRAYVALUE -> {
+                columnValueString = dataValue.toString();
+            }
+//            case STRUCTUREVALUE -> {
+//            }
+//            case IMAGEVALUE -> {
+//            }
+//            case TIMESTAMPVALUE -> {
+//            }
+//            case VALUE_NOT_SET -> {
+//            }
+            default -> {
+                columnValueString = dataValue.toString();
+            }
+        }
+        return columnValueString;
+    }
+
     @Override
     public void writeHeaderRow(List<String> headers) {
         this.csvWriter.writeRecord(headers);
     }
 
     @Override
-    public void writeDataRow(List<String> data) {
-        this.csvWriter.writeRecord(data);
+    public void writeData(TimestampDataMap tableValueMap) {
+        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.dataRowIterator();
+        while (dataRowIterator.hasNext()) {
+            final TimestampDataMap.DataRow dataRow = dataRowIterator.next();
+            final List<String> rowDataValues = new ArrayList<>();
+            rowDataValues.add(String.valueOf(dataRow.seconds()));
+            rowDataValues.add(String.valueOf(dataRow.nanos()));
+            for (DataValue columnDataValue : dataRow.dataValues()) {
+                String columnValueString = dataValueToString(columnDataValue);
+                rowDataValues.add(columnValueString);
+            }
+            this.csvWriter.writeRecord(rowDataValues);
+        }
     }
 
     @Override

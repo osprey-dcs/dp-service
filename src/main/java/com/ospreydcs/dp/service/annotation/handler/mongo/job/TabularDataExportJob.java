@@ -1,21 +1,19 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.TabularDataExportFileInterface;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
-import com.ospreydcs.dp.service.common.model.TimestampMap;
+import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public abstract class TabularDataExportJob extends ExportDataSetJob {
 
@@ -49,8 +47,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
         }
 
         // execute query for each data block in dataset and write data to file
-        final TimestampMap<Map<Integer, DataValue>> tableValueMap = new TimestampMap<>(); // temp tabular data structure
-        final List<String> columnNameList = new ArrayList<>(); // data structure for getting column index by PV name
+        final TimestampDataMap tableValueMap = new TimestampDataMap();
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
 
             final MongoCursor<BucketDocument> cursor =
@@ -71,10 +68,9 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
             final long beginNanos = dataBlock.getBeginTimeNanos();
             final long endSeconds = dataBlock.getEndTimeSeconds();
             final long endNanos = dataBlock.getEndTimeNanos();
-            TabularDataUtility.TimestampMapDataSizeStats sizeStats =
+            TabularDataUtility.TimestampDataMapSizeStats sizeStats =
                     TabularDataUtility.updateTimestampMapFromBucketCursor(
                             tableValueMap,
-                            columnNameList,
                             cursor,
                             0,
                             null,
@@ -96,78 +92,13 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
         final List<String> columnHeaders = new ArrayList<>();
         columnHeaders.add(COLUMN_HEADER_SECONDS);
         columnHeaders.add(COLUMN_HEADER_NANOS);
-        columnHeaders.addAll(columnNameList);
+        columnHeaders.addAll(tableValueMap.getColumnNameList());
         exportFile.writeHeaderRow(columnHeaders);
 
-        for (var secondEntry : tableValueMap.entrySet()) {
+        // write data
+        exportFile.writeData(tableValueMap);
 
-            final long second = secondEntry.getKey();
-
-            final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
-            for (var nanoEntry : secondValueMap.entrySet()) {
-
-                final long nano = nanoEntry.getKey();
-
-                // get map of column data values for row (key is column index, row is data value for that column)
-                final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
-
-                // create list for row data values
-                final List<String> rowDataValues = new ArrayList<>();
-
-                // add values to row for seconds and nanos columns
-                rowDataValues.add(String.valueOf(second));
-                rowDataValues.add(String.valueOf(nano));
-
-                // add values to row for each column data value
-                int columnIndex = 0;
-                for (String columnName : columnNameList) {
-                    DataValue columnDataValue = nanoValueMap.get(columnIndex);
-                    if (columnDataValue == null) {
-                        columnDataValue = DataValue.newBuilder().build();
-                    }
-                    String columnValueString = null;
-                    switch (columnDataValue.getValueCase()) {
-                        case STRINGVALUE -> {
-                            columnValueString = columnDataValue.getStringValue();
-                        }
-                        case BOOLEANVALUE -> {
-                        }
-                        case UINTVALUE -> {
-                        }
-                        case ULONGVALUE -> {
-                        }
-                        case INTVALUE -> {
-                        }
-                        case LONGVALUE -> {
-                        }
-                        case FLOATVALUE -> {
-                        }
-                        case DOUBLEVALUE -> {
-                            columnValueString = String.valueOf(columnDataValue.getDoubleValue());
-                        }
-                        case BYTEARRAYVALUE -> {
-                        }
-                        case ARRAYVALUE -> {
-                        }
-                        case STRUCTUREVALUE -> {
-                        }
-                        case IMAGEVALUE -> {
-                        }
-                        case TIMESTAMPVALUE -> {
-                        }
-                        case VALUE_NOT_SET -> {
-                        }
-                    }
-                    rowDataValues.add(columnValueString);
-
-                    columnIndex = columnIndex + 1;
-                }
-
-                // write data row to file
-                exportFile.writeDataRow(rowDataValues);
-            }
-        }
-
+        // close file
         exportFile.close();
 
         return new ExportDatasetStatus(false, "");
