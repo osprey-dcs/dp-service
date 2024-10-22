@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetReq
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
 import java.io.IOException;
@@ -26,7 +27,7 @@ public class CsvExportJob extends TabularDataExportJob {
     protected DatasetExportCsvFile createExportFile_(
             DataSetDocument dataset,
             String serverFilePath
-    ) throws IOException {
+    ) throws DpException {
         return new DatasetExportCsvFile(dataset, serverFilePath);
     }
 

@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.export.TabularDataExpor
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -33,7 +34,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
     }
 
     protected abstract TabularDataExportFileInterface createExportFile_(
-            DataSetDocument dataset, String serverFilePath) throws IOException;
+            DataSetDocument dataset, String serverFilePath) throws DpException;
 
     @Override
     protected ExportDatasetStatus exportDataset_(DataSetDocument dataset, String serverFilePath) {
@@ -41,8 +42,8 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
         // create file for export
         try {
             exportFile = createExportFile_(dataset, serverFilePath);
-        } catch (IOException e) {
-            final String errorMsg = "error writing to export file: " + serverFilePath;
+        } catch (DpException e) {
+            final String errorMsg = "exception opening export file " + serverFilePath + ": " + e.getMessage();
             return new ExportDatasetStatus(true, errorMsg);
         }
 
@@ -93,13 +94,28 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
         columnHeaders.add(COLUMN_HEADER_SECONDS);
         columnHeaders.add(COLUMN_HEADER_NANOS);
         columnHeaders.addAll(tableValueMap.getColumnNameList());
-        exportFile.writeHeaderRow(columnHeaders);
+        try {
+            exportFile.writeHeaderRow(columnHeaders);
+        } catch (DpException e) {
+            final String errorMsg = "exception writing header to export file " + serverFilePath + ": " + e.getMessage();
+            return new ExportDatasetStatus(true, errorMsg);
+        }
 
         // write data
-        exportFile.writeData(tableValueMap);
+        try {
+            exportFile.writeData(tableValueMap);
+        } catch (DpException e) {
+            final String errorMsg = "exception writing data to export file " + serverFilePath + ": " + e.getMessage();
+            return new ExportDatasetStatus(true, errorMsg);
+        }
 
         // close file
-        exportFile.close();
+        try {
+            exportFile.close();
+        } catch (DpException e) {
+            final String errorMsg = "exception closing export file " + serverFilePath + ": " + e.getMessage();
+            return new ExportDatasetStatus(true, errorMsg);
+        }
 
         return new ExportDatasetStatus(false, "");
     }

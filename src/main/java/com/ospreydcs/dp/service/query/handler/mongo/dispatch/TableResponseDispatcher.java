@@ -132,47 +132,6 @@ public class TableResponseDispatcher extends Dispatcher {
             rowMapTableBuilder.addRows(dataRowBuilder.build());
         }
 
-//        for (var secondEntry : tableValueMap.entrySet()) {
-//
-//            final long second = secondEntry.getKey();
-//
-//            final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
-//            for (var nanoEntry : secondValueMap.entrySet()) {
-//
-//                final long nano = nanoEntry.getKey();
-//
-//                final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
-//
-//                // create map for row's data, keys are column names, values are column values
-//                final QueryTableResponse.RowMapTable.DataRow.Builder dataRowBuilder =
-//                        QueryTableResponse.RowMapTable.DataRow.newBuilder();
-//                final Map<String, DataValue> rowDataValueMap = new TreeMap<>();
-//
-//                // set value for timestamp column
-//                final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
-//                final DataValue timestampDataValue = DataValue.newBuilder()
-//                        .setTimestampValue(timestamp)
-//                        .build();
-//                rowDataValueMap.put(TABLE_RESULT_TIMESTAMP_COLUMN_NAME, timestampDataValue);
-//
-//                // add map entry for each data column value
-//                int columnIndex = 0;
-//                for (String columnName : columnNames) {
-//                    DataValue columnDataValue = nanoValueMap.get(columnIndex);
-//                    if (columnDataValue == null) {
-//                        columnDataValue = DataValue.newBuilder().build();
-//                    }
-//                    rowDataValueMap.put(columnName, columnDataValue);
-//
-//                    columnIndex = columnIndex + 1;
-//                }
-//
-//                // add value map to row, add row to result
-//                dataRowBuilder.putAllColumnValues(rowDataValueMap);
-//                rowMapTableBuilder.addRows(dataRowBuilder.build());
-//            }
-//        }
-
         tableResultBuilder.setRowMapTable(rowMapTableBuilder.build());
         return tableResultBuilder.build();
     }

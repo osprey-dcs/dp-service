@@ -5,6 +5,7 @@ import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 
 import java.io.File;
 import java.io.IOException;
@@ -64,7 +65,7 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
     // instance variables
     private final IHDF5Writer writer;
 
-    public DatasetExportHdf5File(DataSetDocument dataSet, String filePathString) throws IOException {
+    public DatasetExportHdf5File(DataSetDocument dataSet, String filePathString) throws DpException {
         // create hdf5 file with specified path
         File hdf5File = new File(filePathString);
 //        if (hdf5File.canWrite()) {

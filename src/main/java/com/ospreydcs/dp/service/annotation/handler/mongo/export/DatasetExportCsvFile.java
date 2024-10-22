@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import de.siegmar.fastcsv.writer.CsvWriter;
 import org.apache.logging.log4j.LogManager;
@@ -21,9 +22,13 @@ public class DatasetExportCsvFile implements TabularDataExportFileInterface {
     // instance variables
     private final CsvWriter csvWriter;
 
-    public DatasetExportCsvFile(DataSetDocument dataSet, String filePathString) throws IOException {
+    public DatasetExportCsvFile(DataSetDocument dataSet, String filePathString) throws DpException {
         Path filePath = Paths.get(filePathString);
-        this.csvWriter = CsvWriter.builder().build(filePath);
+        try {
+            this.csvWriter = CsvWriter.builder().build(filePath);
+        } catch (IOException e) {
+            throw new DpException(e);
+        }
     }
 
     public static String dataValueToString(DataValue dataValue) {
@@ -54,12 +59,10 @@ public class DatasetExportCsvFile implements TabularDataExportFileInterface {
             case DOUBLEVALUE -> {
                 columnValueString = String.valueOf(dataValue.getDoubleValue());
             }
-            case BYTEARRAYVALUE -> {
-                columnValueString = dataValue.toString();
-            }
-            case ARRAYVALUE -> {
-                columnValueString = dataValue.toString();
-            }
+//            case BYTEARRAYVALUE -> {
+//            }
+//            case ARRAYVALUE -> {
+//            }
 //            case STRUCTUREVALUE -> {
 //            }
 //            case IMAGEVALUE -> {

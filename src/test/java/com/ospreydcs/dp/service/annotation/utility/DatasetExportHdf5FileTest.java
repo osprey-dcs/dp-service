@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.types.ObjectId;
 import org.junit.Test;
 
@@ -53,7 +54,7 @@ public class DatasetExportHdf5FileTest {
         DatasetExportHdf5File exportHdf5File = null;
         try {
             exportHdf5File = new DatasetExportHdf5File(dataset, exportFilePathString);
-        } catch (IOException e) {
+        } catch (DpException e) {
             fail("exception creating " + exportFilePathString);
         }
         Objects.requireNonNull(exportHdf5File);
