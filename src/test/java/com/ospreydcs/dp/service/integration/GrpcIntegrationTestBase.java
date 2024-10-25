@@ -44,8 +44,12 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.ClassRule;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -1739,6 +1743,31 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getResult();
     }
 
+    private TimestampDataMap getTimestampDataMapForDataset(DataSetDocument dataset) {
+
+        final TimestampDataMap expectedDataMap = new TimestampDataMap();
+        for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
+            final MongoCursor<BucketDocument> cursor = mongoClient.findDataBlockBuckets(dataBlock);
+            final long beginSeconds = dataBlock.getBeginTimeSeconds();
+            final long beginNanos = dataBlock.getBeginTimeNanos();
+            final long endSeconds = dataBlock.getEndTimeSeconds();
+            final long endNanos = dataBlock.getEndTimeNanos();
+            final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
+                    TabularDataUtility.updateTimestampMapFromBucketCursor(
+                            expectedDataMap,
+                            cursor,
+                            0,
+                            null,
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos
+                    );
+        }
+
+        return expectedDataMap;
+    }
+
     protected ExportDataSetResponse.ExportDataSetResult sendAndVerifyExportDataSet(
             String dataSetId,
             ExportDataSetRequest.ExportOutputFormat outputFormat,
@@ -1784,96 +1813,19 @@ public abstract class GrpcIntegrationTestBase {
             case EXPORT_FORMAT_CSV -> {
 
                 // build temporary tabular data structure from cursor
-                final TimestampDataMap expectedDataMap = new TimestampDataMap();
-                for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
-                    final MongoCursor<BucketDocument> cursor = mongoClient.findDataBlockBuckets(dataBlock);
-                    final long beginSeconds = dataBlock.getBeginTimeSeconds();
-                    final long beginNanos = dataBlock.getBeginTimeNanos();
-                    final long endSeconds = dataBlock.getEndTimeSeconds();
-                    final long endNanos = dataBlock.getEndTimeNanos();
-                    final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
-                            TabularDataUtility.updateTimestampMapFromBucketCursor(
-                                    expectedDataMap,
-                                    cursor,
-                                    0,
-                                    null,
-                                    beginSeconds,
-                                    beginNanos,
-                                    endSeconds,
-                                    endNanos
-                            );
-                }
+                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
 
-                // open csv file and create reader
-                final Path exportFilePath = Paths.get(exportResult.getFilePath());
-                CsvReader<CsvRecord> csvReader = null;
-                try {
-                    csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
-                } catch (IOException e) {
-                    fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
-                }
-                assertNotNull(csvReader);
-
-                final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
-                final List<String> expectedColumnNameList = expectedDataMap.getColumnNameList();
-                final int expectedNumColumns = 2 + expectedColumnNameList.size();
-
-                // verify header row
-                {
-                    assertTrue(csvRecordIterator.hasNext());
-                    final CsvRecord csvRecord = csvRecordIterator.next();
-
-                    // check number of csv header columns matches expected
-                    assertEquals(expectedNumColumns, csvRecord.getFieldCount());
-
-                    // build list of expected column headers
-                    final List<String> expectedHeaderValues = new ArrayList<>();
-                    expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_SECONDS);
-                    expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_NANOS);
-                    expectedHeaderValues.addAll(expectedColumnNameList);
-
-                    // check content of csv header row matches expected
-                    final List<String> csvRowValues = csvRecord.getFields();
-                    assertEquals(expectedHeaderValues, csvRowValues);
-                }
-
-                // verify data rows
-                {
-                    final TimestampDataMap.DataRowIterator expectedDataRowIterator = expectedDataMap.dataRowIterator();
-                    int dataRowCount = 0;
-                    while (csvRecordIterator.hasNext() && expectedDataRowIterator.hasNext()) {
-
-                        // read row from csv file
-                        final CsvRecord csvRecord = csvRecordIterator.next();
-                        assertEquals(expectedNumColumns, csvRecord.getFieldCount());
-                        final List<String> csvRowValues = csvRecord.getFields();
-
-                        // read expected row from map structure
-                        final TimestampDataMap.DataRow expectedDataRow = expectedDataRowIterator.next();
-
-                        // verify seconds/nanos match between file and expected
-                        final long csvSeconds = Long.valueOf(csvRowValues.get(0));
-                        final long csvNanos = Long.valueOf(csvRowValues.get(1));
-                        assertEquals(expectedDataRow.seconds(), csvSeconds);
-                        assertEquals(expectedDataRow.nanos(), csvNanos);
-
-                        // compare data values from csv file with expected
-                        final List<String> csvDataValues = csvRowValues.subList(2, csvRowValues.size());
-                        for (int columnIndex = 0; columnIndex < csvDataValues.size(); columnIndex++) {
-                            final String csvDataValue = csvDataValues.get(columnIndex);
-                            final DataValue expectedDataValue = expectedDataRow.dataValues().get(columnIndex);
-                            assertEquals(DatasetExportCsvFile.dataValueToString(expectedDataValue), csvDataValue);
-                        }
-                        dataRowCount = dataRowCount + 1;
-                    }
-                    assertFalse(csvRecordIterator.hasNext());
-                    assertFalse(expectedDataRowIterator.hasNext());
-                    assertEquals(expectedDataMap.size(), dataRowCount);
-                }
+                // verify file content against data map
+                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
             }
 
             case EXPORT_FORMAT_XLSX -> {
-                throw new UnsupportedOperationException("TODO: xlsx output file verification not implemented");
+
+                // build temporary tabular data structure from cursor
+                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+
+                // verify file content against data map
+                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
             }
         }
 

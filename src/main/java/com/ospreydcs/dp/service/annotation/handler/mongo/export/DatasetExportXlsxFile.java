@@ -95,8 +95,8 @@ public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
         while (dataRowIterator.hasNext()) {
             final TimestampDataMap.DataRow sourceDataRow = dataRowIterator.next();
             final Row fileDataRow = dataSheet.createRow(currentDataRowIndex);
-            fileDataRow.createCell(0).setCellValue(TabularDataExportJob.COLUMN_HEADER_SECONDS);
-            fileDataRow.createCell(1).setCellValue(TabularDataExportJob.COLUMN_HEADER_NANOS);
+            fileDataRow.createCell(0).setCellValue(sourceDataRow.seconds());
+            fileDataRow.createCell(1).setCellValue(sourceDataRow.nanos());
             int dataColumnIndex = 2;
             for (DataValue sourceCellValue : sourceDataRow.dataValues()) {
                 Cell fileDataCell = fileDataRow.createCell(dataColumnIndex);
