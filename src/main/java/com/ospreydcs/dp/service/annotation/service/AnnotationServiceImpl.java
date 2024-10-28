@@ -510,6 +510,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
+                case DATASETCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion dataSetCriterion
+                            = criterion.getDataSetCriterion();
+                    if (dataSetCriterion.getDataSetId().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
                 case COMMENTCRITERION -> {
                     final QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion
                             = criterion.getCommentCriterion();

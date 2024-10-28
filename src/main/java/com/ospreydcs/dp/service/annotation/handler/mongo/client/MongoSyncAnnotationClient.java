@@ -193,6 +193,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
+                case DATASETCRITERION -> {
+                    final String dataSetId = criterion.getDataSetCriterion().getDataSetId();
+                    if (! dataSetId.isBlank()) {
+                        Bson dataSetIdFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_DATASET_ID, dataSetId);
+                        globalFilterList.add(dataSetIdFilter);
+                    }
+                }
+
                 case COMMENTCRITERION -> {
                     final String commentText = criterion.getCommentCriterion().getCommentText();
                     if (! commentText.isBlank()) {
