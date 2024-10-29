@@ -9,8 +9,6 @@ import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJob;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -35,8 +33,6 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.TableResponseDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
-import de.siegmar.fastcsv.reader.CsvReader;
-import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -44,15 +40,8 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
-import org.apache.poi.openxml4j.opc.OPCPackage;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.ClassRule;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 
@@ -1646,15 +1635,16 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationsList();
     }
 
-    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotationsOwnerComment(
+    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
             String ownerId,
+            String datasetId,
             String commentText,
             boolean expectReject,
             String expectedRejectMessage,
             List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
-                AnnotationTestBase.buildQueryAnnotationsRequestOwnerComment(ownerId, commentText);
+                AnnotationTestBase.buildQueryAnnotationsRequest(ownerId, datasetId, commentText);
 
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
@@ -1671,7 +1661,14 @@ public abstract class GrpcIntegrationTestBase {
             boolean found = false;
             QueryAnnotationsResponse.AnnotationsResult.Annotation foundAnnotation = null;
             for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : resultAnnotations) {
-                if (requestParams.comment.equals(resultAnnotation.getCommentAnnotation().getComment())) {
+                if (
+                        (requestParams.ownerId.equals(resultAnnotation.getOwnerId())) &&
+
+                        (requestParams.dataSetId.equals(resultAnnotation.getDataSetId())) &&
+
+                        (requestParams.comment == null
+                                || (requestParams.comment.equals(resultAnnotation.getCommentAnnotation().getComment())))
+                ) {
                     found = true;
                     foundAnnotation = resultAnnotation;
                     break;
@@ -1683,6 +1680,17 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getAnnotationId()));
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
             assertTrue(requestParams.dataSetId.equals(foundAnnotation.getDataSetId()));
+
+            // match annotation fields in result against query filter parameters
+            if (ownerId != null) {
+                assertEquals(ownerId, foundAnnotation.getOwnerId());
+            }
+            if (datasetId != null) {
+                assertEquals(datasetId, foundAnnotation.getDataSetId());
+            }
+            if (commentText != null) {
+                assertTrue(foundAnnotation.getCommentAnnotation().getComment().contains(commentText));
+            }
 
             // compare dataset content from result with what was requested when creating dataset
             final AnnotationTestBase.CreateDataSetParams dataSetRequestParams =

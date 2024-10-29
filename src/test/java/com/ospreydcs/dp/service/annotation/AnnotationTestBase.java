@@ -636,31 +636,51 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryAnnotationsRequest buildQueryAnnotationsRequestOwnerComment(String ownerId, String commentText) {
-
+    public static QueryAnnotationsRequest buildQueryAnnotationsRequest(
+            String ownerId,
+            String datasetId,
+            String commentText
+    ) {
         QueryAnnotationsRequest.Builder requestBuilder = QueryAnnotationsRequest.newBuilder();
 
         // add owner criteria
-        QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
-                QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
-                        .setOwnerId(ownerId)
-                        .build();
-        QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
-                QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                        .setOwnerCriterion(ownerCriterion)
-                        .build();
-        requestBuilder.addCriteria(ownerQueryAnnotationsCriterion);
+        if (ownerId != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
+                            .setOwnerId(ownerId)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setOwnerCriterion(ownerCriterion)
+                            .build();
+            requestBuilder.addCriteria(ownerQueryAnnotationsCriterion);
+        }
+
+        // add datasetId criteria
+        if (datasetId != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion dataSetCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion.newBuilder()
+                            .setDataSetId(datasetId)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion datasetIdQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setDataSetCriterion(dataSetCriterion)
+                            .build();
+            requestBuilder.addCriteria(datasetIdQueryAnnotationsCriterion);
+        }
 
         // add comment criteria
-        QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion =
-                QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion.newBuilder()
-                        .setCommentText(commentText)
-                        .build();
-        QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriteria =
-                QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                        .setCommentCriterion(commentCriterion)
-                        .build();
-        requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
+        if (commentText != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion.newBuilder()
+                            .setCommentText(commentText)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriteria =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setCommentCriterion(commentCriterion)
+                            .build();
+            requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
+        }
 
         return requestBuilder.build();
     }
