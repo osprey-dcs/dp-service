@@ -29,6 +29,7 @@ The [Data Platform Technical Overview](https://github.com/osprey-dcs/data-platfo
 * [MongoDB interface](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#mongodb-interface)
 * [serialization of protobuf objects to MongoDB documents](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#serialization-of-protobuf-objects-to-mongodb-documents)
 * [configuration](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#configuration)
+* [exporting data](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#exporting-data)
 * [performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#performance-benchmarking)
   * [ingestion service performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#ingestion-service-performance-benchmarking)
   * [query service performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#query-service-performance-benchmarking)
