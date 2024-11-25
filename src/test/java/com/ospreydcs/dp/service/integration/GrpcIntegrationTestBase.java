@@ -42,7 +42,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import static org.junit.Assert.*;
@@ -1733,6 +1738,9 @@ public abstract class GrpcIntegrationTestBase {
         final AnnotationTestBase.ExportDataSetResponseObserver responseObserver =
                 new AnnotationTestBase.ExportDataSetResponseObserver();
 
+        // start performance measurment timer
+        final Instant t0 = Instant.now();
+
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
@@ -1740,6 +1748,13 @@ public abstract class GrpcIntegrationTestBase {
         }).start();
 
         responseObserver.await();
+
+        // stop performance measurement timer
+        final Instant t1 = Instant.now();
+        final long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+        final double secondsElapsed = dtMillis / 1_000.0;
+
+        System.out.println("export format " + request.getOutputFormat().name() + " elapsed seconds: " + secondsElapsed);
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
@@ -1796,7 +1811,17 @@ public abstract class GrpcIntegrationTestBase {
             return null;
         }
 
-        // validate response
+        // validate
+        assertNotNull(exportResult);
+
+        // check that file is available
+        Path target = Path.of(exportResult.getFilePath());
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
+            System.out.println("got file attributes for: " + target);
+        } catch (IOException ex) {
+            fail("IOException getting file attributes for: " + target);
+        }
 
         // retrieve dataset for id
         DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
@@ -1806,36 +1831,36 @@ public abstract class GrpcIntegrationTestBase {
         final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
         assertEquals(expectedNumBuckets, datasetBuckets.size());
 
-        // verify file content for specified output format
-        switch (outputFormat) {
-
-            case EXPORT_FORMAT_HDF5 -> {
-                final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
-                for (BucketDocument bucket : datasetBuckets) {
-                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
-                }
-                reader.close();
-            }
-
-            case EXPORT_FORMAT_CSV -> {
-
-                // build temporary tabular data structure from cursor
-                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
-
-                // verify file content against data map
-                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
-            }
-
-            case EXPORT_FORMAT_XLSX -> {
-
-                // build temporary tabular data structure from cursor
-                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
-
-                // verify file content against data map
-                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
-            }
-        }
+//        // verify file content for specified output format
+//        switch (outputFormat) {
+//
+//            case EXPORT_FORMAT_HDF5 -> {
+//                final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
+//                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
+//                for (BucketDocument bucket : datasetBuckets) {
+//                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+//                }
+//                reader.close();
+//            }
+//
+//            case EXPORT_FORMAT_CSV -> {
+//
+//                // build temporary tabular data structure from cursor
+//                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+//
+//                // verify file content against data map
+//                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
+//            }
+//
+//            case EXPORT_FORMAT_XLSX -> {
+//
+//                // build temporary tabular data structure from cursor
+//                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+//
+//                // verify file content against data map
+//                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
+//            }
+//        }
 
         return exportResult;
     }

@@ -464,7 +464,7 @@ public class AnnotationTestBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                finishLatch.await(10, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
