@@ -657,6 +657,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // run large export to excel test
         {
+            System.out.println();
+            System.out.println("========== running large export to excel ==========");
             ExportDataSetResponse.ExportDataSetResult exportResult =
                     sendAndVerifyExportDataSet(
                             datasetId,
@@ -664,10 +666,39 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             60 * pvCount, // 60 buckets per pv
                             false,
                             "");
+            System.out.println("========== large export to excel completed ==========");
+            System.out.println();
         }
 
+        // run large export to csv test
+        {
+            System.out.println();
+            System.out.println("========== running large export to csv ==========");
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            datasetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            60 * pvCount, // 60 buckets per pv
+                            false,
+                            "");
+            System.out.println("========== large export to csv completed ==========");
+            System.out.println();
+        }
 
-
+        // run large export to hdf5 test
+        {
+            System.out.println();
+            System.out.println("========== running large export to hdf5 ==========");
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            datasetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            60 * pvCount, // 60 buckets per pv
+                            false,
+                            "");
+            System.out.println("========== large export to hdf5 completed ==========");
+            System.out.println();
+        }
 
         // run and verify bidirectional stream query api scenario
         queryGrpcClient.runQueryResponseCursorScenario();

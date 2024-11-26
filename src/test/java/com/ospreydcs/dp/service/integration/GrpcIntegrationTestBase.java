@@ -1831,36 +1831,36 @@ public abstract class GrpcIntegrationTestBase {
         final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
         assertEquals(expectedNumBuckets, datasetBuckets.size());
 
-//        // verify file content for specified output format
-//        switch (outputFormat) {
-//
-//            case EXPORT_FORMAT_HDF5 -> {
-//                final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-//                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
-//                for (BucketDocument bucket : datasetBuckets) {
-//                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
-//                }
-//                reader.close();
-//            }
-//
-//            case EXPORT_FORMAT_CSV -> {
-//
-//                // build temporary tabular data structure from cursor
-//                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
-//
-//                // verify file content against data map
-//                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
-//            }
-//
-//            case EXPORT_FORMAT_XLSX -> {
-//
-//                // build temporary tabular data structure from cursor
-//                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
-//
-//                // verify file content against data map
-//                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
-//            }
-//        }
+        // verify file content for specified output format
+        switch (outputFormat) {
+
+            case EXPORT_FORMAT_HDF5 -> {
+                final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
+                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
+                for (BucketDocument bucket : datasetBuckets) {
+                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+                }
+                reader.close();
+            }
+
+            case EXPORT_FORMAT_CSV -> {
+
+                // build temporary tabular data structure from cursor
+                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+
+                // verify file content against data map
+                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
+            }
+
+            case EXPORT_FORMAT_XLSX -> {
+
+                // build temporary tabular data structure from cursor
+                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+
+                // verify file content against data map
+                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
+            }
+        }
 
         return exportResult;
     }
