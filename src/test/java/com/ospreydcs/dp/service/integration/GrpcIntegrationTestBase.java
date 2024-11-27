@@ -38,11 +38,14 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
-import java.io.IOException;
+import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -1813,14 +1816,40 @@ public abstract class GrpcIntegrationTestBase {
 
         // validate
         assertNotNull(exportResult);
+        assertNotEquals("", exportResult.getFilePath());
+        assertNotEquals("", exportResult.getFileUrl());
 
-        // check that file is available
+//        // open file url to reproduce issue Mitch encountered from web app
+//        String command = "curl " + exportResult.getFileUrl();
+//        try {
+//            Process process = Runtime.getRuntime().exec(command);
+//            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+//            String line;
+//            while((line = reader.readLine()) != null) {
+//                System.out.println(line);
+//            }
+//            reader.close();
+//        } catch (IOException e) {
+//            fail("exception calling curl for " + exportResult.getFilePath() + ": " + e.getMessage());
+//        }
+
+        // check that file is available (this is the same as the check done by WatchService (e.g., WatchService
+        // won't solve our problem with corrupt excel file if this test succeeds)
         Path target = Path.of(exportResult.getFilePath());
         try {
             BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
             System.out.println("got file attributes for: " + target);
         } catch (IOException ex) {
             fail("IOException getting file attributes for: " + target);
+        }
+
+        // copy file from url to reproduce issue Mitch enountered from web app (opening URL from Javascript)
+        final int filenameIndex = exportResult.getFilePath().lastIndexOf('/') + 1;
+        final String filename = exportResult.getFilePath().substring(filenameIndex);
+        try {
+            FileUtils.copyURLToFile(new URL(exportResult.getFileUrl()), new File("/tmp/" + filename));
+        } catch (IOException e) {
+            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
         }
 
         // retrieve dataset for id
