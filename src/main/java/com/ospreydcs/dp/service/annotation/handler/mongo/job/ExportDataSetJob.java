@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -95,18 +96,21 @@ public abstract class ExportDataSetJob extends HandlerJob {
             return;
         }
 
+        // log file size and check if open
+        final File serverFile = new File(serverFilePathString);
+        logger.debug("export file " + serverFilePathString + " size: " + serverFile.length());
+
         // check that file is readable before sending API response
         // even though Java calls like write() and close() are synchronous, the OS handling is async
         // we encountered race conditions if not checking that file writing completes before sending api response
-        // TODO: enable this
-//        try {
-//            final BasicFileAttributes exportFileAttributes = awaitFile(serverFilePath, 60*1000 /* 60 seconds */);
-//        } catch (IOException | InterruptedException e) {
-//            final String errorMsg = "exception waiting for export file " + serverFilePathString + ": " + e.getMessage();
-//            logger.error(errorMsg);
-//            this.dispatcher.handleError(errorMsg);
-//            return;
-//        }
+        try {
+            final BasicFileAttributes exportFileAttributes = awaitFile(serverFilePath, 60*1000 /* 60 seconds */);
+        } catch (IOException | InterruptedException e) {
+            final String errorMsg = "exception waiting for export file " + serverFilePathString + ": " + e.getMessage();
+            logger.error(errorMsg);
+            this.dispatcher.handleError(errorMsg);
+            return;
+        }
 
         logger.debug(
                 "dispatching {} id: {}",
@@ -123,11 +127,11 @@ public abstract class ExportDataSetJob extends HandlerJob {
 
         // If path already exists, return early
         try {
-            logger.trace("ExportDataSetJob.awaitFile path " + target.toString() + " already exists");
+            logger.debug("ExportDataSetJob.awaitFile path " + target.toString() + " already exists");
             return Files.readAttributes(target, BasicFileAttributes.class);
         } catch (NoSuchFileException ex) {}
 
-        logger.trace("ExportDataSetJob.awaitFile using WatchService to wait for file " + target.toString());
+        logger.debug("ExportDataSetJob.awaitFile using WatchService to wait for file " + target.toString());
         final WatchService watchService = FileSystems.getDefault().newWatchService();
         try {
             final WatchKey watchKey = targetDir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
