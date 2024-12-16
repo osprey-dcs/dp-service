@@ -112,9 +112,16 @@ public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
         try {
             FileOutputStream fileOutputStream = new FileOutputStream(new File(filePathString));
             this.workbook.write(fileOutputStream);
+            fileOutputStream.flush();
             fileOutputStream.close();
             this.workbook.dispose();
+
+            logger.debug("excel export file " + filePathString
+                    + " open: " + fileOutputStream.getChannel().isOpen()
+                    + " size: " + fileOutputStream.getChannel().size());
+
         } catch (IOException e) {
+            logger.error("IOException writing and closing excel file: " + e.getMessage());
             throw new DpException(e);
         }
     }

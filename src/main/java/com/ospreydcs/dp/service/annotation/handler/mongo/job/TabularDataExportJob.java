@@ -98,6 +98,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
             exportFile.writeHeaderRow(columnHeaders);
         } catch (DpException e) {
             final String errorMsg = "exception writing header to export file " + serverFilePath + ": " + e.getMessage();
+            logger.error(errorMsg);
             return new ExportDatasetStatus(true, errorMsg);
         }
 
@@ -106,6 +107,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
             exportFile.writeData(tableValueMap);
         } catch (DpException e) {
             final String errorMsg = "exception writing data to export file " + serverFilePath + ": " + e.getMessage();
+            logger.error(errorMsg);
             return new ExportDatasetStatus(true, errorMsg);
         }
 
@@ -114,6 +116,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
             exportFile.close();
         } catch (DpException e) {
             final String errorMsg = "exception closing export file " + serverFilePath + ": " + e.getMessage();
+            logger.error(errorMsg);
             return new ExportDatasetStatus(true, errorMsg);
         }
 

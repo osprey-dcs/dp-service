@@ -74,7 +74,7 @@ public abstract class ExportDataSetJob extends HandlerJob {
         final String filename = exportFilePaths.filename;
 
         // create directories in server file path
-        Path serverDirectoryPath = Paths.get(serverDirectoryPathString);
+        final Path serverDirectoryPath = Paths.get(serverDirectoryPathString);
         try {
             Files.createDirectories(serverDirectoryPath);
         } catch (IOException e) {
@@ -86,7 +86,9 @@ public abstract class ExportDataSetJob extends HandlerJob {
         }
 
         // export data to file
-        ExportDatasetStatus status = exportDataset_(dataset, serverDirectoryPathString + filename);
+        final String serverFilePathString = serverDirectoryPathString + filename;
+        final Path serverFilePath = Paths.get(serverFilePathString);
+        final ExportDatasetStatus status = exportDataset_(dataset, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage);
             this.dispatcher.handleError(status.errorMessage);
@@ -96,7 +98,15 @@ public abstract class ExportDataSetJob extends HandlerJob {
         // check that file is readable before sending API response
         // even though Java calls like write() and close() are synchronous, the OS handling is async
         // we encountered race conditions if not checking that file writing completes before sending api response
-
+        // TODO: enable this
+//        try {
+//            final BasicFileAttributes exportFileAttributes = awaitFile(serverFilePath, 60*1000 /* 60 seconds */);
+//        } catch (IOException | InterruptedException e) {
+//            final String errorMsg = "exception waiting for export file " + serverFilePathString + ": " + e.getMessage();
+//            logger.error(errorMsg);
+//            this.dispatcher.handleError(errorMsg);
+//            return;
+//        }
 
         logger.debug(
                 "dispatching {} id: {}",
@@ -113,9 +123,11 @@ public abstract class ExportDataSetJob extends HandlerJob {
 
         // If path already exists, return early
         try {
+            logger.trace("ExportDataSetJob.awaitFile path " + target.toString() + " already exists");
             return Files.readAttributes(target, BasicFileAttributes.class);
         } catch (NoSuchFileException ex) {}
 
+        logger.trace("ExportDataSetJob.awaitFile using WatchService to wait for file " + target.toString());
         final WatchService watchService = FileSystems.getDefault().newWatchService();
         try {
             final WatchKey watchKey = targetDir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
