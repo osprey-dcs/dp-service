@@ -84,6 +84,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : criterionList) {
             switch (criterion.getCriterionCase()) {
 
+                case IDCRITERION -> {
+                    final String datasetId = criterion.getIdCriterion().getId();
+                    if (! datasetId.isBlank()) {
+                        Bson idFilter = Filters.eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(datasetId));
+                        globalFilterList.add(idFilter);
+                    }
+                }
+
                 case OWNERCRITERION -> {
                     // update ownerFilter from OwnerCriterion
                     final String ownerId = criterion.getOwnerCriterion().getOwnerId();
@@ -183,6 +191,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         final List<QueryAnnotationsRequest.QueryAnnotationsCriterion> criterionList = request.getCriteriaList();
         for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : criterionList) {
             switch (criterion.getCriterionCase()) {
+
+                case IDCRITERION -> {
+                    final String annotationId = criterion.getIdCriterion().getId();
+                    if (! annotationId.isBlank()) {
+                        Bson idFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId));
+                        globalFilterList.add(idFilter);
+                    }
+                }
 
                 case OWNERCRITERION -> {
                     // update ownerFilter from OwnerCriterion

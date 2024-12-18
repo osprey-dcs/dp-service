@@ -44,7 +44,6 @@ import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
 import java.io.*;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1496,7 +1495,8 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getDataSetsList();
     }
 
-    protected List<DataSet> sendAndVerifyQueryDataSetsOwnerDescription(
+    protected List<DataSet> sendAndVerifyQueryDataSets(
+            String datasetId,
             String ownerId,
             String descriptionText,
             boolean expectReject,
@@ -1504,7 +1504,7 @@ public abstract class GrpcIntegrationTestBase {
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResult
     ) {
         final QueryDataSetsRequest request =
-                AnnotationTestBase.buildQueryDataSetsRequestOwnerDescription(ownerId, descriptionText);
+                AnnotationTestBase.buildQueryDataSetsRequest(datasetId, ownerId, descriptionText);
 
         final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
 
@@ -1532,6 +1532,9 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundDataSet);
             final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
             assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
+            if (datasetId != null) {
+                assertEquals(datasetId, foundDataSet.getDataSetId());
+            }
             assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
             assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
 
@@ -1586,7 +1589,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationId();
     }
 
-    protected void sendAndVerifyCreateCommentAnnotation(
+    protected String sendAndVerifyCreateCommentAnnotation(
             AnnotationTestBase.CreateCommentAnnotationParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1598,7 +1601,7 @@ public abstract class GrpcIntegrationTestBase {
 
         if (expectReject) {
             assertNull(annotationId);
-            return;
+            return null;
         }
 
         // validate response and database contents
@@ -1612,6 +1615,8 @@ public abstract class GrpcIntegrationTestBase {
 
         // save annotationId to map for use in validating queryAnnotations() result
         this.createAnnotationParamsIdMap.put(params, annotationId);
+
+        return annotationId;
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
@@ -1644,6 +1649,7 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
+            String annotationId,
             String ownerId,
             String datasetId,
             String commentText,
@@ -1652,7 +1658,7 @@ public abstract class GrpcIntegrationTestBase {
             List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
-                AnnotationTestBase.buildQueryAnnotationsRequest(ownerId, datasetId, commentText);
+                AnnotationTestBase.buildQueryAnnotationsRequest(annotationId, ownerId, datasetId, commentText);
 
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
@@ -1686,6 +1692,9 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundAnnotation);
             final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getAnnotationId()));
+            if (annotationId != null) {
+                assertEquals(annotationId, foundAnnotation.getAnnotationId());
+            }
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
             assertTrue(requestParams.dataSetId.equals(foundAnnotation.getDataSetId()));
 
