@@ -96,3 +96,10 @@ Export:
   # Requires a web-server providing access to files at the specified location.
   # E.g., "https://www.facility.gov/dp/export".
   urlBase: http://localhost:8081
+
+  # tabularExportFileSizeLimitBytes: Specifies size limit in bytes for tabular export output files to avoid potential
+  # out of memory issues in the service.  Limit applies to tabular export formats like csv and xlsx because a large
+  # table data structure is created in memory before writing the file, but does not apply to bucketed export formats
+  # like hdf5, because each bucket is written to file as it is accessed from the database without building
+  # in-memory data strcutures.
+  tabularExportFileSizeLimitBytes: 4096000

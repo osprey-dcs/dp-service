@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.TabularDataExportFileInterface;
@@ -49,13 +50,15 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
 
         // execute query for each data block in dataset and write data to file
         final TimestampDataMap tableValueMap = new TimestampDataMap();
+        int tableDataSize = 0;
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
 
             final MongoCursor<BucketDocument> cursor =
                     this.mongoQueryClient.executeDataBlockQuery(dataBlock);
 
             if (cursor == null) {
-                final String errorMsg = "unknown error executing data block query";
+                final String errorMsg = "unknown error executing data block query for export file: " + serverFilePath;
+                logger.error(errorMsg);
                 return new ExportDatasetStatus(true, errorMsg);
             }
 
@@ -73,18 +76,23 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
                     TabularDataUtility.updateTimestampMapFromBucketCursor(
                             tableValueMap,
                             cursor,
-                            0,
-                            null,
+                            tableDataSize,
+                            ExportConfiguration.getExportFileSizeLimitBytes(),
                             beginSeconds,
                             beginNanos,
                             endSeconds,
                             endNanos
                     );
 
-//            if (sizeStats.sizeLimitExceeded()) {
-//                  // TODO: not sure if we want to add a size limit here yet?
-//            }
-//            tableDataSize = tableDataSize + sizeStats.currentDataSize();
+            // check if export output file size limit exceeded
+            if (sizeStats.sizeLimitExceeded()) {
+                final String errorMsg = "export file size limit "
+                        + ExportConfiguration.getExportFileSizeLimitBytes()
+                        + " exceeded for: " + serverFilePath;
+                return new ExportDatasetStatus(true, errorMsg);
+            }
+
+            tableDataSize = tableDataSize + sizeStats.currentDataSize();
         }
 
         // write data to tabular formatted file

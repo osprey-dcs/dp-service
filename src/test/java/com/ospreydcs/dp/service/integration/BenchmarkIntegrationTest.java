@@ -655,7 +655,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println("created export dataset with id: " + datasetId);
         }
 
-        // run large export to excel test
+        // run large export to excel test, triggers export file size limit error
         {
             System.out.println();
             System.out.println("========== running large export to excel ==========");
@@ -664,13 +664,13 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             datasetId,
                             ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             60 * pvCount, // 60 buckets per pv
-                            false,
-                            "");
+                            true,
+                            "export file size limit");
             System.out.println("========== large export to excel completed ==========");
             System.out.println();
         }
 
-        // run large export to csv test
+        // run large export to csv test, triggers export file size limit error
         {
             System.out.println();
             System.out.println("========== running large export to csv ==========");
@@ -679,26 +679,27 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             datasetId,
                             ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             60 * pvCount, // 60 buckets per pv
-                            false,
-                            "");
+                            true,
+                            "export file size limit");
             System.out.println("========== large export to csv completed ==========");
             System.out.println();
         }
 
-        // run large export to hdf5 test
-        {
-            System.out.println();
-            System.out.println("========== running large export to hdf5 ==========");
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
-                            datasetId,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
-                            60 * pvCount, // 60 buckets per pv
-                            false,
-                            "");
-            System.out.println("========== large export to hdf5 completed ==========");
-            System.out.println();
-        }
+// commenting this code for now because it creates a 172 MB file each run.  But can be uncommented to make a large hdf5 file.
+//        // run large export to hdf5 test, succeeds because export file size limit only applies to tabular files
+//        {
+//            System.out.println();
+//            System.out.println("========== running large export to hdf5 ==========");
+//            ExportDataSetResponse.ExportDataSetResult exportResult =
+//                    sendAndVerifyExportDataSet(
+//                            datasetId,
+//                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+//                            60 * pvCount, // 60 buckets per pv
+//                            false,
+//                            "");
+//            System.out.println("========== large export to hdf5 completed ==========");
+//            System.out.println();
+//        }
 
         // run and verify bidirectional stream query api scenario
         queryGrpcClient.runQueryResponseCursorScenario();

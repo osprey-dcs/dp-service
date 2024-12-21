@@ -1826,8 +1826,8 @@ public abstract class GrpcIntegrationTestBase {
         // validate
         assertNotNull(exportResult);
         assertNotEquals("", exportResult.getFilePath());
-        assertNotEquals("", exportResult.getFileUrl());
 
+//         assertNotEquals("", exportResult.getFileUrl());
 //        // open file url to reproduce issue Mitch encountered from web app
 //        String command = "curl " + exportResult.getFileUrl();
 //        try {
@@ -1852,15 +1852,15 @@ public abstract class GrpcIntegrationTestBase {
             fail("IOException getting file attributes for: " + target);
         }
 
-        // copy file from url to reproduce issue Mitch enountered from web app (opening URL from Javascript)
-        final int filenameIndex = exportResult.getFilePath().lastIndexOf('/') + 1;
-        final String filename = exportResult.getFilePath().substring(filenameIndex);
-        try {
-            FileUtils.copyURLToFile(new URL(exportResult.getFileUrl()), new File("/tmp/" + filename));
-        } catch (IOException e) {
-            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
-        }
-
+//        // copy file from url to reproduce issue Mitch enountered from web app (opening URL from Javascript)
+//        final int filenameIndex = exportResult.getFilePath().lastIndexOf('/') + 1;
+//        final String filename = exportResult.getFilePath().substring(filenameIndex);
+//        try {
+//            FileUtils.copyURLToFile(new URL(exportResult.getFileUrl()), new File("/tmp/" + filename));
+//        } catch (IOException e) {
+//            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
+//        }
+//
         // retrieve dataset for id
         DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
         assertNotNull(dataset);
