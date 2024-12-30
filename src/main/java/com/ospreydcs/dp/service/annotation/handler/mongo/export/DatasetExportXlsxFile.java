@@ -1,14 +1,13 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJob;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 
 import java.io.*;
 import java.util.List;
@@ -23,14 +22,14 @@ public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
 
     // instance variables
     private final String filePathString;
-    private final Workbook workbook;
+    private final SXSSFWorkbook workbook;
     private final Sheet dataSheet;
     private final CreationHelper creationHelper;
     private int currentDataRowIndex = 1;
 
     public DatasetExportXlsxFile (DataSetDocument dataSet, String filePathString) throws DpException {
         this.filePathString = filePathString;
-        this.workbook = new XSSFWorkbook();
+        this.workbook = new SXSSFWorkbook(1);
         this.dataSheet = workbook.createSheet(SHEET_NAME_DATA);
         this.creationHelper = workbook.getCreationHelper();
     }
@@ -111,10 +110,13 @@ public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
     @Override
     public void close() throws DpException {
         try {
-            FileOutputStream fileOutputStream = new FileOutputStream(new File(filePathString));
+            final FileOutputStream fileOutputStream = new FileOutputStream(new File(filePathString));
             this.workbook.write(fileOutputStream);
+            fileOutputStream.flush();
             fileOutputStream.close();
+            this.workbook.dispose();
         } catch (IOException e) {
+            logger.error("IOException writing and closing excel file: " + e.getMessage());
             throw new DpException(e);
         }
     }

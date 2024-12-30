@@ -38,11 +38,18 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
+import java.io.*;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import static org.junit.Assert.*;
@@ -1488,7 +1495,8 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getDataSetsList();
     }
 
-    protected List<DataSet> sendAndVerifyQueryDataSetsOwnerDescription(
+    protected List<DataSet> sendAndVerifyQueryDataSets(
+            String datasetId,
             String ownerId,
             String descriptionText,
             boolean expectReject,
@@ -1496,7 +1504,7 @@ public abstract class GrpcIntegrationTestBase {
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResult
     ) {
         final QueryDataSetsRequest request =
-                AnnotationTestBase.buildQueryDataSetsRequestOwnerDescription(ownerId, descriptionText);
+                AnnotationTestBase.buildQueryDataSetsRequest(datasetId, ownerId, descriptionText);
 
         final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
 
@@ -1524,6 +1532,9 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundDataSet);
             final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
             assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
+            if (datasetId != null) {
+                assertEquals(datasetId, foundDataSet.getDataSetId());
+            }
             assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
             assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
 
@@ -1578,7 +1589,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationId();
     }
 
-    protected void sendAndVerifyCreateCommentAnnotation(
+    protected String sendAndVerifyCreateCommentAnnotation(
             AnnotationTestBase.CreateCommentAnnotationParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1590,7 +1601,7 @@ public abstract class GrpcIntegrationTestBase {
 
         if (expectReject) {
             assertNull(annotationId);
-            return;
+            return null;
         }
 
         // validate response and database contents
@@ -1604,6 +1615,8 @@ public abstract class GrpcIntegrationTestBase {
 
         // save annotationId to map for use in validating queryAnnotations() result
         this.createAnnotationParamsIdMap.put(params, annotationId);
+
+        return annotationId;
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
@@ -1636,6 +1649,7 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
+            String annotationId,
             String ownerId,
             String datasetId,
             String commentText,
@@ -1644,7 +1658,7 @@ public abstract class GrpcIntegrationTestBase {
             List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
-                AnnotationTestBase.buildQueryAnnotationsRequest(ownerId, datasetId, commentText);
+                AnnotationTestBase.buildQueryAnnotationsRequest(annotationId, ownerId, datasetId, commentText);
 
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
@@ -1678,6 +1692,9 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundAnnotation);
             final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getAnnotationId()));
+            if (annotationId != null) {
+                assertEquals(annotationId, foundAnnotation.getAnnotationId());
+            }
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
             assertTrue(requestParams.dataSetId.equals(foundAnnotation.getDataSetId()));
 
@@ -1733,6 +1750,9 @@ public abstract class GrpcIntegrationTestBase {
         final AnnotationTestBase.ExportDataSetResponseObserver responseObserver =
                 new AnnotationTestBase.ExportDataSetResponseObserver();
 
+        // start performance measurment timer
+        final Instant t0 = Instant.now();
+
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
@@ -1740,6 +1760,13 @@ public abstract class GrpcIntegrationTestBase {
         }).start();
 
         responseObserver.await();
+
+        // stop performance measurement timer
+        final Instant t1 = Instant.now();
+        final long dtMillis = t0.until(t1, ChronoUnit.MILLIS);
+        final double secondsElapsed = dtMillis / 1_000.0;
+
+        System.out.println("export format " + request.getOutputFormat().name() + " elapsed seconds: " + secondsElapsed);
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
@@ -1796,8 +1823,44 @@ public abstract class GrpcIntegrationTestBase {
             return null;
         }
 
-        // validate response
+        // validate
+        assertNotNull(exportResult);
+        assertNotEquals("", exportResult.getFilePath());
 
+//         assertNotEquals("", exportResult.getFileUrl());
+//        // open file url to reproduce issue Mitch encountered from web app
+//        String command = "curl " + exportResult.getFileUrl();
+//        try {
+//            Process process = Runtime.getRuntime().exec(command);
+//            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+//            String line;
+//            while((line = reader.readLine()) != null) {
+//                System.out.println(line);
+//            }
+//            reader.close();
+//        } catch (IOException e) {
+//            fail("exception calling curl for " + exportResult.getFilePath() + ": " + e.getMessage());
+//        }
+
+        // check that file is available (this is the same as the check done by WatchService (e.g., WatchService
+        // won't solve our problem with corrupt excel file if this test succeeds)
+        Path target = Path.of(exportResult.getFilePath());
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
+            System.out.println("got file attributes for: " + target);
+        } catch (IOException ex) {
+            fail("IOException getting file attributes for: " + target);
+        }
+
+//        // copy file from url to reproduce issue Mitch enountered from web app (opening URL from Javascript)
+//        final int filenameIndex = exportResult.getFilePath().lastIndexOf('/') + 1;
+//        final String filename = exportResult.getFilePath().substring(filenameIndex);
+//        try {
+//            FileUtils.copyURLToFile(new URL(exportResult.getFileUrl()), new File("/tmp/" + filename));
+//        } catch (IOException e) {
+//            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
+//        }
+//
         // retrieve dataset for id
         DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
         assertNotNull(dataset);

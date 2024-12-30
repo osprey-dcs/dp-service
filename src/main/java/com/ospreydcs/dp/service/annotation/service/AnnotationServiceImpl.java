@@ -234,6 +234,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
             switch (criterion.getCriterionCase()) {
 
+                case IDCRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion idCriterion
+                            = criterion.getIdCriterion();
+                    if (idCriterion.getId().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
                 case OWNERCRITERION -> {
                     final QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion
                             = criterion.getOwnerCriterion();
@@ -498,6 +509,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : criterionList) {
 
             switch (criterion.getCriterionCase()) {
+
+                case IDCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion idCriterion
+                            = criterion.getIdCriterion();
+                    if (idCriterion.getId().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
 
                 case OWNERCRITERION -> {
                     final QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion

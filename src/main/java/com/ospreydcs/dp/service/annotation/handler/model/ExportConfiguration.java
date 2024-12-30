@@ -48,6 +48,9 @@ public class ExportConfiguration {
     public static final String CFG_KEY_EXPORT_SERVER_MOUNT_POINT = "Export.serverMountPoint";
     public static final String CFG_KEY_EXPORT_SHARE_MOUNT_POINT = "Export.shareMountPoint";
     public static final String CFG_KEY_EXPORT_URL_BASE = "Export.urlBase";
+    private static final String CFG_KEY_EXPORT_FILE_SIZE_LIMIT_BYTES = "Export.tabularExportFileSizeLimitBytes";
+    private static final int DEFAULT_EXPORT_FILE_SIZE_LIMIT_BYTES = 4_096_000;
+
 
     // instance variables
     public String serverMountPoint = null;
@@ -125,6 +128,12 @@ public class ExportConfiguration {
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
+    }
+
+    public static int getExportFileSizeLimitBytes() {
+        return configMgr().getConfigInteger(
+                CFG_KEY_EXPORT_FILE_SIZE_LIMIT_BYTES,
+                DEFAULT_EXPORT_FILE_SIZE_LIMIT_BYTES);
     }
 
     /*

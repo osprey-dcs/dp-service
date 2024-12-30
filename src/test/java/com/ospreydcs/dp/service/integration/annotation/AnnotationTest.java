@@ -241,13 +241,24 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryDataSetsRequest.criteria.DescriptionCriterion descriptionText must be specified";
-            sendAndVerifyQueryDataSetsOwnerDescription(
-                    ownerId, blankDescriptionText, expectReject, expectedRejectMessage, new ArrayList<>());
+            sendAndVerifyQueryDataSets(
+                    null, ownerId, blankDescriptionText, expectReject, expectedRejectMessage, new ArrayList<>());
+        }
+
+        {
+            // queryDataSets() negative test - rejected because id is empty
+
+            final String blankDatasetId = "";
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
+            sendAndVerifyQueryDataSets(
+                    blankDatasetId, null, null, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
         {
             /*
-             * queryDataSets() positive test
+             * queryDataSets() positive test - query by owner and description
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -262,8 +273,21 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(firstHalfDataSetParams);
-            sendAndVerifyQueryDataSetsOwnerDescription(
-                    ownerId, descriptionText, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+            sendAndVerifyQueryDataSets(
+                    null, ownerId, descriptionText, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+        }
+
+        {
+            /*
+             * queryDataSets() positive test - query by dataset id
+             */
+
+            final String datasetId = firstHalfDataSetId;
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(firstHalfDataSetParams);
+            sendAndVerifyQueryDataSets(
+                    datasetId, null, null, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
         {
@@ -293,6 +317,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResultAnnotations = new ArrayList<>();
+        List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
+        String annotationQueryId = "";
         {
             /*
              * createAnnotation() positive test
@@ -312,10 +338,14 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     AnnotationTestBase.CreateCommentAnnotationParams firstHalfParams =
                             new AnnotationTestBase.CreateCommentAnnotationParams(
                                     owner, firstHalfDataSetId, firstHalfComment);
-                    sendAndVerifyCreateCommentAnnotation(
+                    final String createdAnnotationId = sendAndVerifyCreateCommentAnnotation(
                             firstHalfParams, false, "");
                     if (owner.equals("craigmcc")) {
                         expectedQueryResultAnnotations.add(firstHalfParams);
+                    }
+                    if (owner.equals("craigmcc") && (commentNumber == 1)) {
+                        annotationQueryId = createdAnnotationId;
+                        expectedQueryByIdResultAnnotations.add(firstHalfParams);
                     }
 
                     // create annotation for second half data set
@@ -330,6 +360,23 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
+            // queryAnnotations() negative test: empty annotationId in query by id
+
+            final String blankAnnotationId = "";
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
+            sendAndVerifyQueryAnnotations(
+                    blankAnnotationId,
+                    null,
+                    null,
+                    null,
+                    expectReject,
+                    expectedRejectMessage,
+                    new ArrayList<>());
+        }
+
+        {
             // queryAnnotations() negative test: empty comment text in query by owner and comment
 
             final String ownerId = "craigmcc";
@@ -338,7 +385,13 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
             sendAndVerifyQueryAnnotations(
-                    ownerId, null, blankCommentText, expectReject, expectedRejectMessage, new ArrayList<>());
+                    null,
+                    ownerId,
+                    null,
+                    blankCommentText,
+                    expectReject,
+                    expectedRejectMessage,
+                    new ArrayList<>());
         }
 
         {
@@ -350,7 +403,13 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
             sendAndVerifyQueryAnnotations(
-                    ownerId, blankDatasetId, null, expectReject, expectedRejectMessage, new ArrayList<>());
+                    null,
+                    ownerId,
+                    blankDatasetId,
+                    null,
+                    expectReject,
+                    expectedRejectMessage,
+                    new ArrayList<>());
         }
 
         {
@@ -370,7 +429,13 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
             sendAndVerifyQueryAnnotations(
-                    ownerId, datasetId, null, expectReject, expectedRejectMessage, expectedQueryResultAnnotations);
+                    null,
+                    ownerId,
+                    datasetId,
+                    null,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedQueryResultAnnotations);
         }
 
         List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
@@ -391,7 +456,30 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
             annotationsQueryResult = sendAndVerifyQueryAnnotations(
-                    ownerId, null, commentText, expectReject, expectedRejectMessage, expectedQueryResultAnnotations);
+                    null,
+                    ownerId,
+                    null,
+                    commentText,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedQueryResultAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by annotation id
+             */
+            final String annotationId = annotationQueryId;
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+            sendAndVerifyQueryAnnotations(
+                    annotationQueryId,
+                    null,
+                    null,
+                    null,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedQueryByIdResultAnnotations);
         }
 
         {

@@ -10,10 +10,11 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.TimeUnit;
 
 public abstract class ExportDataSetJob extends HandlerJob {
 
@@ -74,7 +75,7 @@ public abstract class ExportDataSetJob extends HandlerJob {
         final String filename = exportFilePaths.filename;
 
         // create directories in server file path
-        Path serverDirectoryPath = Paths.get(serverDirectoryPathString);
+        final Path serverDirectoryPath = Paths.get(serverDirectoryPathString);
         try {
             Files.createDirectories(serverDirectoryPath);
         } catch (IOException e) {
@@ -86,10 +87,28 @@ public abstract class ExportDataSetJob extends HandlerJob {
         }
 
         // export data to file
-        ExportDatasetStatus status = exportDataset_(dataset, serverDirectoryPathString + filename);
+        final String serverFilePathString = serverDirectoryPathString + filename;
+        final Path serverFilePath = Paths.get(serverFilePathString);
+        final ExportDatasetStatus status = exportDataset_(dataset, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage);
             this.dispatcher.handleError(status.errorMessage);
+            return;
+        }
+
+        // log file size and check if open
+        final File serverFile = new File(serverFilePathString);
+        logger.debug("export file " + serverFilePathString + " size: " + serverFile.length());
+
+        // check that file is readable before sending API response
+        // even though Java calls like write() and close() are synchronous, the OS handling is async
+        // we encountered race conditions if not checking that file writing completes before sending api response
+        try {
+            final BasicFileAttributes exportFileAttributes = awaitFile(serverFilePath, 60*1000 /* 60 seconds */);
+        } catch (IOException | InterruptedException e) {
+            final String errorMsg = "exception waiting for export file " + serverFilePathString + ": " + e.getMessage();
+            logger.error(errorMsg);
+            this.dispatcher.handleError(errorMsg);
             return;
         }
 
@@ -98,6 +117,54 @@ public abstract class ExportDataSetJob extends HandlerJob {
                 this.getClass().getSimpleName(),
                 this.handlerRequest.responseObserver.hashCode());
         dispatcher.handleResult(exportFilePaths);
+    }
+
+    public static BasicFileAttributes awaitFile(Path target, long timeout)
+            throws IOException, InterruptedException
+    {
+        final Path name = target.getFileName();
+        final Path targetDir = target.getParent();
+
+        // If path already exists, return early
+        try {
+            logger.debug("ExportDataSetJob.awaitFile path " + target.toString() + " already exists");
+            return Files.readAttributes(target, BasicFileAttributes.class);
+        } catch (NoSuchFileException ex) {}
+
+        logger.debug("ExportDataSetJob.awaitFile using WatchService to wait for file " + target.toString());
+        final WatchService watchService = FileSystems.getDefault().newWatchService();
+        try {
+            final WatchKey watchKey = targetDir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
+            // The file could have been created in the window between Files.readAttributes and Path.register
+            try {
+                return Files.readAttributes(target, BasicFileAttributes.class);
+            } catch (NoSuchFileException ex) {}
+            // The file is absent: watch events in parent directory
+            WatchKey watchKey1 = null;
+            boolean valid = true;
+            do {
+                long t0 = System.currentTimeMillis();
+                watchKey1 = watchService.poll(timeout, TimeUnit.MILLISECONDS);
+                if (watchKey1 == null) {
+                    return null; // timed out
+                }
+                // Examine events associated with key
+                for (WatchEvent<?> event: watchKey1.pollEvents()) {
+                    Path path1 = (Path) event.context();
+                    if (path1.getFileName().equals(name)) {
+                        return Files.readAttributes(target, BasicFileAttributes.class);
+                    }
+                }
+                // Did not receive an interesting event; re-register key to queue
+                long elapsed = System.currentTimeMillis() - t0;
+                timeout = elapsed < timeout? (timeout - elapsed) : 0L;
+                valid = watchKey1.reset();
+            } while (valid);
+        } finally {
+            watchService.close();
+        }
+
+        return null;
     }
 
 }

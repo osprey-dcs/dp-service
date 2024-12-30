@@ -50,6 +50,18 @@ public abstract class BucketedDataExportJob extends ExportDataSetJob {
                 return new ExportDatasetStatus(true, errorMsg);
             }
 
+            // We could enforce an export output file size limit here, as in TabularDataExportJob.exportDataset_(),
+            // but at this point I'm not going to do so.  In the case of tabular data, we build a large table data
+            // structure before we write the data to file.  But with bucketed data (at least for HDF5 format), we write
+            // each individual bucket to the file as we read it from the database cursor.  As HDF5 is designed to handle
+            // large amounts of data, and we are considering its use as a long term archive format, I've decided not
+            // to add constraints for the file size.  If we wanted to do so, we would probably change the signature of
+            // writeBucketData() to include parameters for the previous file size and size limit, and return a structure
+            // with the new file size and a flag indicating if the size limit is exceeded.  In terms of
+            // the implementation in DatasetExportHdf5File.writeBucketData(), we could use
+            // dataColumnBytes.getSerializedSize() to get the size of the protobuf vector of data values written to the
+            // file for each bucket.
+
             while (cursor.hasNext()) {
                 final BucketDocument bucketDocument = cursor.next();
                 try {

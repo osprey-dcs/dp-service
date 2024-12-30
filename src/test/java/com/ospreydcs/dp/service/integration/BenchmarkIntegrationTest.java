@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -8,6 +10,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest.IngestionDataFrame;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
+import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
@@ -24,10 +27,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
-import java.util.Date;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -616,6 +622,84 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // run and verify ingestion scenario
         ingestionGrpcClient.runStreamingIngestionScenario();
+
+        // create dataset for large export test
+        String datasetId = null;
+        AnnotationTestBase.CreateDataSetParams datasetParams = null;
+        int pvCount = 0;
+        {
+            // create list with single data block specifying data to be exported
+            final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = new ArrayList<>();
+            final long beginSeconds = 1698767462L;
+            pvCount = 100;
+            final List<String> pvNames = new ArrayList<>();
+            for (int i = 1 ; i <= pvCount ; ++ i) {
+                pvNames.add("dpTest_" + i);
+            }
+            final AnnotationTestBase.AnnotationDataBlock dataBlock =
+                    new AnnotationTestBase.AnnotationDataBlock(
+                            beginSeconds, 0L, beginSeconds+60, 999000000L, pvNames);
+            dataBlocks.add(dataBlock);
+
+            // create dataset containing datablock created above
+            final String ownerId = "craigmcc";
+            final String datasetName = "export dataset";
+            final String datasetDescription = "large dataset export test";
+            final AnnotationTestBase.AnnotationDataSet dataset =
+                    new AnnotationTestBase.AnnotationDataSet(
+                            datasetName, ownerId, datasetDescription, dataBlocks);
+            datasetParams =
+                    new AnnotationTestBase.CreateDataSetParams(dataset);
+            datasetId =
+                    sendAndVerifyCreateDataSet(datasetParams, false, "");
+            System.out.println("created export dataset with id: " + datasetId);
+        }
+
+        // run large export to excel test, triggers export file size limit error
+        {
+            System.out.println();
+            System.out.println("========== running large export to excel ==========");
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            datasetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            60 * pvCount, // 60 buckets per pv
+                            true,
+                            "export file size limit");
+            System.out.println("========== large export to excel completed ==========");
+            System.out.println();
+        }
+
+        // run large export to csv test, triggers export file size limit error
+        {
+            System.out.println();
+            System.out.println("========== running large export to csv ==========");
+            ExportDataSetResponse.ExportDataSetResult exportResult =
+                    sendAndVerifyExportDataSet(
+                            datasetId,
+                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            60 * pvCount, // 60 buckets per pv
+                            true,
+                            "export file size limit");
+            System.out.println("========== large export to csv completed ==========");
+            System.out.println();
+        }
+
+// commenting this code for now because it creates a 172 MB file each run.  But can be uncommented to make a large hdf5 file.
+//        // run large export to hdf5 test, succeeds because export file size limit only applies to tabular files
+//        {
+//            System.out.println();
+//            System.out.println("========== running large export to hdf5 ==========");
+//            ExportDataSetResponse.ExportDataSetResult exportResult =
+//                    sendAndVerifyExportDataSet(
+//                            datasetId,
+//                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+//                            60 * pvCount, // 60 buckets per pv
+//                            false,
+//                            "");
+//            System.out.println("========== large export to hdf5 completed ==========");
+//            System.out.println();
+//        }
 
         // run and verify bidirectional stream query api scenario
         queryGrpcClient.runQueryResponseCursorScenario();
