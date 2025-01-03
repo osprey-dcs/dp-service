@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.ingest.service;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
@@ -7,6 +9,8 @@ import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
+import io.grpc.Context;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -426,5 +430,107 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         }
 
         handler.handleQueryRequestStatus(request, responseObserver);
+    }
+
+    private static SubscribeDataResponse subscribeDataResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final SubscribeDataResponse response = SubscribeDataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    private static SubscribeDataResponse subscribeDataResponseReject(String msg) {
+
+        return subscribeDataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    private static SubscribeDataResponse subscribeDataResponseError(String msg) {
+
+        return subscribeDataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    private static SubscribeDataResponse subscribeDataResponse(
+            DataTimestamps dataTimestamps,
+            List<DataColumn> dataColumns
+    ) {
+        final SubscribeDataResponse.SubscribeDataResult result =
+                SubscribeDataResponse.SubscribeDataResult.newBuilder()
+                        .setDataTimestamps(dataTimestamps)
+                        .addAllDataColumns(dataColumns)
+                        .build();
+
+        final SubscribeDataResponse response = SubscribeDataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setSubscribeDataResult(result)
+                .build();
+
+        return response;
+    }
+
+    public static void sendSubscribeDataResponseReject(
+            String msg, StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        final SubscribeDataResponse response = subscribeDataResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSubscribeDataResponseError(
+            String msg, StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        final SubscribeDataResponse response = subscribeDataResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSubscribeDataResponse(
+            DataTimestamps dataTimestamps,
+            List<DataColumn> dataColumns,
+            StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        final SubscribeDataResponse response
+                = subscribeDataResponse(dataTimestamps, dataColumns);
+        responseObserver.onNext(response);
+    }
+
+    @Override
+    public void subscribeData(
+            SubscribeDataRequest request, 
+            StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        logger.info(
+                "id: {} subscribeData request received, pvNames: {}",
+                responseObserver.hashCode(),
+                request.getPvNamesList().toString());
+
+        // validate request
+        if (request.getPvNamesList().isEmpty()) {
+            final String errorMsg = "SubscribeDataRequest.pvNames list must not be empty";
+            sendSubscribeDataResponseReject(errorMsg, responseObserver);
+            return;
+        }
+
+        // add a handler to remove subscription when client closes method connection
+        ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+        serverCallStreamObserver.setOnCancelHandler(
+                () -> {
+                    handler.cancelDataSubscriptions(responseObserver);
+                }
+        );
+
+        // handle request
+        handler.handleSubscribeData(request, responseObserver);
     }
 }

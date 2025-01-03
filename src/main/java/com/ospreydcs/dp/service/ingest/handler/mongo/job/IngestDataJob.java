@@ -135,6 +135,9 @@ public class IngestDataJob extends HandlerJob {
             }
         }
 
+        // publish new data to subscribers
+        handler.getSubscriptionManager().publishDataSubscriptions(request);
+
         // save request status and check result of insert operation
         if (providerName == null) {
             providerName = "";

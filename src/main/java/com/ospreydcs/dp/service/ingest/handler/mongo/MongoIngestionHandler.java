@@ -1,9 +1,6 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -22,10 +19,14 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     private static final Logger logger = LogManager.getLogger();
 
     // configuration
+
     public static final String CFG_KEY_NUM_WORKERS = "IngestionHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
+    // instance variables
+
     final private MongoIngestionClientInterface mongoIngestionClient;
+    final private DataSubscriptionManager subscriptionManager = new DataSubscriptionManager();
 
     public MongoIngestionHandler(MongoIngestionClientInterface client) {
         this.mongoIngestionClient = client;
@@ -41,6 +42,10 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    public DataSubscriptionManager getSubscriptionManager() {
+        return subscriptionManager;
     }
 
     @Override
@@ -117,4 +122,18 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         }
     }
 
+    @Override
+    public void handleSubscribeData(
+            SubscribeDataRequest request,
+            StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        logger.debug("handleSubscribeData adding subscription for id: {}", responseObserver.hashCode());
+        this.subscriptionManager.addSubscription(request.getPvNamesList(), responseObserver);
+    }
+
+    @Override
+    public void cancelDataSubscriptions(StreamObserver<SubscribeDataResponse> responseObserver) {
+        logger.debug("cancelDataSubscriptions removing subscriptions for id: {}", responseObserver.hashCode());
+        this.subscriptionManager.removeSubscriptions(responseObserver);
+    }
 }
