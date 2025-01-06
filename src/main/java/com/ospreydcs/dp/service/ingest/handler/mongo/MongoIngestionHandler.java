@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionCl
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
+import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -129,6 +130,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     ) {
         logger.debug("handleSubscribeData adding subscription for id: {}", responseObserver.hashCode());
         this.subscriptionManager.addSubscription(request.getPvNamesList(), responseObserver);
+        IngestionServiceImpl.sendSubscribeDataResponseAck(responseObserver);
     }
 
     @Override

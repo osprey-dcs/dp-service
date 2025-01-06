@@ -460,6 +460,20 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
+    private static SubscribeDataResponse subscribeDataResponseAck(
+    ) {
+        final SubscribeDataResponse.AckResult result =
+                SubscribeDataResponse.AckResult.newBuilder()
+                        .build();
+
+        final SubscribeDataResponse response = SubscribeDataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setAckResult(result)
+                .build();
+
+        return response;
+    }
+
     private static SubscribeDataResponse subscribeDataResponse(
             DataTimestamps dataTimestamps,
             List<DataColumn> dataColumns
@@ -492,6 +506,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         final SubscribeDataResponse response = subscribeDataResponseError(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
+    }
+
+    public static void sendSubscribeDataResponseAck(
+            StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        final SubscribeDataResponse response = subscribeDataResponseAck();
+        responseObserver.onNext(response);
     }
 
     public static void sendSubscribeDataResponse(
