@@ -547,7 +547,9 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
         serverCallStreamObserver.setOnCancelHandler(
                 () -> {
-                    handler.cancelDataSubscriptions(responseObserver);
+                    if (handler != null) {
+                        handler.cancelDataSubscriptions(responseObserver);
+                    }
                 }
         );
 

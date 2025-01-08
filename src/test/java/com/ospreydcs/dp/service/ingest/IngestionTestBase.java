@@ -2,8 +2,6 @@ package com.ospreydcs.dp.service.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -542,7 +540,10 @@ public class IngestionTestBase {
             }
         }
 
-        public boolean isError() { return isError.get(); }
+        public boolean isError() {
+            return isError.get();
+        }
+
         public String getErrorMessage() {
             if (!errorMessageList.isEmpty()) {
                 return errorMessageList.get(0);
@@ -690,6 +691,105 @@ public class IngestionTestBase {
         }
 
         return requestBuilder.build();
+    }
+
+    public static class SubscribeDataResponseObserver implements StreamObserver<SubscribeDataResponse> {
+
+        // instance variables
+        CountDownLatch ackLatch = null;
+        CountDownLatch responseLatch = null;
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<SubscribeDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+
+        public SubscribeDataResponseObserver(int expectedResponseCount) {
+            this.ackLatch = new CountDownLatch(1);
+            this.responseLatch = new CountDownLatch(expectedResponseCount);
+        }
+
+        public void awaitAckLatch() {
+            try {
+                ackLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for ackLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public void awaitResponseLatch() {
+            try {
+                responseLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for responseLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public List<SubscribeDataResponse> getResponseList() {
+            return responseList;
+        }
+
+        public boolean isError() {
+            return isError.get();
+        }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        @Override
+        public void onNext(SubscribeDataResponse response) {
+
+            if (response.hasExceptionalResult()) {
+
+                final String errorMsg = response.getExceptionalResult().getMessage();
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+
+                if (ackLatch.getCount() > 0) {
+                    // decrement ackLatch if initial response in stream
+                    ackLatch.countDown();
+                }
+
+            } else if (response.hasAckResult()) {
+                // decrement ackLatch for ack response
+                ackLatch.countDown();
+
+            } else {
+                // decrement responseLatch for all other responses
+                responseList.add(response);
+                responseLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            Status status = Status.fromThrowable(t);
+            final String errorMsg = "SubscribeDataResponseObserver onError: " + status;
+            System.err.println(errorMsg);
+            isError.set(true);
+            errorMessageList.add(errorMsg);
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static SubscribeDataRequest buildSubscribeDataRequest(List<String> pvNameList) {
+        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+                .addAllPvNames(pvNameList)
+                .build();
+        return request;
     }
 
 }

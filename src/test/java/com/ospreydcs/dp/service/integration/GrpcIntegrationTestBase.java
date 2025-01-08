@@ -923,6 +923,95 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
+    private IngestionTestBase.SubscribeDataResponseObserver sendSubscribeData(
+            SubscribeDataRequest request,
+            int expectedResponseCount,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(ingestionChannel);
+
+        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
+                new IngestionTestBase.SubscribeDataResponseObserver(expectedResponseCount);
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.subscribeData(request, responseObserver);
+        }).start();
+
+        responseObserver.awaitAckLatch();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver;
+    }
+
+    protected IngestionTestBase.SubscribeDataResponseObserver initiateSubscribeDataRequest(
+            List<String> pvNameList,
+            int expectedResponseCount,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final SubscribeDataRequest request = IngestionTestBase.buildSubscribeDataRequest(pvNameList);
+        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
+                sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
+        return responseObserver;
+    }
+
+
+    protected void verifySubscribeDataResponse(
+            IngestionTestBase.SubscribeDataResponseObserver responseObserver,
+            List<String> pvNameList,
+            Map<String, IngestionStreamInfo> ingestionValidationMap
+    ) {
+        responseObserver.awaitResponseLatch();
+
+        assertFalse(responseObserver.isError());
+
+        // verify responses against ingestion request params
+
+        final List<SubscribeDataResponse> responseList = responseObserver.getResponseList();
+
+        // create map of response dataTimestamps values by pvName
+        Map<String, List<DataTimestamps>> responsePvTimestampsMap = new HashMap<>();
+        for (SubscribeDataResponse response : responseList) {
+            final String responsePvName = response.getSubscribeDataResult().getDataColumnsList().get(0).getName();
+            final DataTimestamps responseDataTimestamps = response.getSubscribeDataResult().getDataTimestamps();
+            List<DataTimestamps> pvTimestampsList = responsePvTimestampsMap.get(responsePvName);
+            if (pvTimestampsList == null) {
+                pvTimestampsList = new ArrayList<>();
+                responsePvTimestampsMap.put(responsePvName, pvTimestampsList);
+            }
+            pvTimestampsList.add(responseDataTimestamps);
+        }
+
+        // iterate through request params for specified pvs
+        for (String pvName : pvNameList) {
+            for (IngestionTestBase.IngestionRequestParams requestParams : ingestionValidationMap.get(pvName).paramsList) {
+                // check that a response was received that matches this PV name and the request dataTimestamps
+                List<DataTimestamps> responsePvTimestampsList = responsePvTimestampsMap.get(pvName);
+                assertNotNull(responsePvTimestampsList);
+                boolean found = false;
+                for (DataTimestamps responsePvTimestamps : responsePvTimestampsList) {
+                    if ((responsePvTimestamps.getSamplingClock().getStartTime().getEpochSeconds()  == requestParams.samplingClockStartSeconds)
+                            && (responsePvTimestamps.getSamplingClock().getStartTime().getNanoseconds() == requestParams.samplingClockStartNanos)) {
+                        found = true;
+                        break;
+                    }
+                }
+                assertTrue(found);
+            }
+        }
+    }
+
     protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
@@ -945,7 +1034,6 @@ public abstract class GrpcIntegrationTestBase {
             return response.getTableResult();
         }
     }
-
     protected QueryTableResponse.TableResult queryTable(QueryTestBase.QueryTableRequestParams params) {
         final QueryTableRequest request = QueryTestBase.buildQueryTableRequest(params);
         return sendQueryTable(request);
