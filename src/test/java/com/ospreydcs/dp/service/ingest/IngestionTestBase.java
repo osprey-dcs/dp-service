@@ -782,6 +782,7 @@ public class IngestionTestBase {
 
         @Override
         public void onCompleted() {
+            System.out.println("SubscribeDataResponseObserver onCompleted");
         }
     }
 

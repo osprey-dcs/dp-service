@@ -56,11 +56,18 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("error in mongoIngestionClient.init");
             return false;
         }
+        if (!subscriptionManager.init()) {
+            logger.error("error in DataSubscriptionManager.init");
+            return false;
+        }
         return true;
     }
 
     @Override
     protected boolean fini_() {
+        if (!subscriptionManager.fini()) {
+            logger.error("error in DataSubscriptionManager.fini");
+        }
         if (!mongoIngestionClient.fini()) {
             logger.error("error in mongoIngestionClient.fini");
         }
