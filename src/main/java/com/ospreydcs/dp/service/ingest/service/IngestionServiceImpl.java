@@ -23,6 +23,26 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
     private IngestionHandlerInterface handler;
 
+    public boolean init(IngestionHandlerInterface handler) {
+        this.handler = handler;
+        if (!handler.init()) {
+            logger.error("handler.init failed");
+            return false;
+        }
+        if (!handler.start()) {
+            logger.error("handler.start failed");
+        }
+        return true;
+    }
+
+    public void fini() {
+        if (handler != null) {
+            handler.stop();
+            handler.fini();
+            handler = null;
+        }
+    }
+
     public static int getNumRequestRows(IngestDataRequest request) {
         int numRequestValues = 0;
         switch (request.getIngestionDataFrame().getDataTimestamps().getValueCase()) {
@@ -71,26 +91,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 .setAckResult(ackResult)
                 .build();
         return response;
-    }
-
-    public boolean init(IngestionHandlerInterface handler) {
-        this.handler = handler;
-        if (!handler.init()) {
-            logger.error("handler.init failed");
-            return false;
-        }
-        if (!handler.start()) {
-            logger.error("handler.start failed");
-        }
-        return true;
-    }
-
-    public void fini() {
-        if (handler != null) {
-            handler.stop();
-            handler.fini();
-            handler = null;
-        }
     }
 
     private static RegisterProviderResponse registerProviderResponseExceptionalResult(
