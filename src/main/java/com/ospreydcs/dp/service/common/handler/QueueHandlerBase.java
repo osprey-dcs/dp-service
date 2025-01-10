@@ -118,7 +118,7 @@ public abstract class QueueHandlerBase {
         }
 
         if (!fini_()) {
-            logger.error("error in mongoQueryClient.fini()");
+            logger.error("error in fini_()");
         }
 
         logger.info("fini shutdown completed");
