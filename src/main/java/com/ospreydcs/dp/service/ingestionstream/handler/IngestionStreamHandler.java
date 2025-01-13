@@ -18,6 +18,9 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     public static final String CFG_KEY_NUM_WORKERS = "IngestionStreamHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
 
+    // instance variables
+    private final DataEventSubscriptionManager subscriptionManager = new DataEventSubscriptionManager();
+
     @Override
     protected boolean init_() {
         logger.trace("init_");
@@ -40,7 +43,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
             SubscribeDataEventRequest request,
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
-        final SubscribeDataEventJob job = new SubscribeDataEventJob(request, responseObserver);
+        final SubscribeDataEventJob job = new SubscribeDataEventJob(request, responseObserver, subscriptionManager);
 
         logger.debug("adding SubscribeDataEventJob id: {} to queue", responseObserver.hashCode());
 
