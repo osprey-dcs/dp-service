@@ -786,11 +786,4 @@ public class IngestionTestBase {
         }
     }
 
-    public static SubscribeDataRequest buildSubscribeDataRequest(List<String> pvNameList) {
-        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
-                .addAllPvNames(pvNameList)
-                .build();
-        return request;
-    }
-
 }

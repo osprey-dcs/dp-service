@@ -28,6 +28,7 @@ import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterf
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
+import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -960,7 +961,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final SubscribeDataRequest request = IngestionTestBase.buildSubscribeDataRequest(pvNameList);
+        final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(pvNameList);
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
                 sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
         return responseObserver;

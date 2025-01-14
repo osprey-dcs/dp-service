@@ -14,6 +14,12 @@ MongoClient:
   # MongoClient.dbPassword: Password for dbUser for connection to MongoDB by Data Platform services.
   dbPassword: admin
 
+# GrpcClient: General settings for gRPC clients.
+GrpcClient:
+
+  # GrpcClient.hostname: Name of host running Data Platform services.
+  hostname: localhost
+
 # GrpcServer: General settings for running gRPC servers.
 GrpcServer:
 
