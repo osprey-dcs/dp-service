@@ -157,17 +157,19 @@ public class IngestionStreamServiceImpl
     public static ValidationResult validateSubscribeDataEventRequest(
             SubscribeDataEventRequest request
     ) {
+        // validate common request fields
+        if (request.getPvNamesList().isEmpty()) {
+            return new ValidationResult(
+                    true,
+                    "SubscribeDataEventRequest.pvNames must be specified");
+        }
+
+        // validate contents for various types of eventDef payloads
         switch (request.getDataEventDefCase()) {
-            // validate each alternative payload for dataEventDef field
 
             case CONDITIONEVENTDEF -> {
                 // validate request containing ConditionEventDef payload
                 SubscribeDataEventRequest.ConditionEventDef eventDef = request.getConditionEventDef();
-                if (eventDef.getPvNamesList().isEmpty()) {
-                    return new ValidationResult(
-                            true,
-                            "SubscribeDataEventRequest.ConditionEventDef.pvNames must be specified");
-                }
                 if (eventDef.getOperator() ==
                         SubscribeDataEventRequest.ConditionEventDef.ConditionOperator.CONDITION_OPERATOR_UNSPECIFIED) {
                     return new ValidationResult(

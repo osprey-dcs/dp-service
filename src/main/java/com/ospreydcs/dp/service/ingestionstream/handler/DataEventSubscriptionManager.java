@@ -11,49 +11,63 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DataEventSubscriptionManager {
 
     // instance variables
     private final Map<String, EventMonitorSubscribeDataResponseObserver> pvDataSubscriptions = new HashMap<>();
     private final Map<String, List<EventMonitor>> pvMonitors = new HashMap<>();
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwLock.readLock();
+    private final Lock writeLock = rwLock.writeLock();
 
     public void addEventMonitor(final EventMonitor eventMonitor) {
 
-        // add subscriptions for event monitor
-        for (String pvName : eventMonitor.getPvNames()) {
+        // acquire write lock since method will be called from different threads handling grpc requests/responses
+        writeLock.lock();
+        try {
 
-            // check to see if we already have a subscription for pvName
-            if (!pvDataSubscriptions.containsKey(pvName)) {
-                // create a new subscription for pvName
+            // add subscriptions for event monitor
+            for (String pvName : eventMonitor.getPvNames()) {
 
-                // build an API request
-                final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(List.of(pvName));
+                // check to see if we already have a subscription for pvName
+                if (!pvDataSubscriptions.containsKey(pvName)) {
+                    // create a new subscription for pvName
 
-                // create observer for subscribeData() API method response stream
-                final EventMonitorSubscribeDataResponseObserver responseObserver =
-                        new EventMonitorSubscribeDataResponseObserver(this);
+                    // build an API request
+                    final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(List.of(pvName));
 
-                // add entry to map for tracking subscriptions by PV name
-                pvDataSubscriptions.put(pvName, responseObserver);
+                    // create observer for subscribeData() API method response stream
+                    final EventMonitorSubscribeDataResponseObserver responseObserver =
+                            new EventMonitorSubscribeDataResponseObserver(this);
 
-                // use singleton ingestion client to create an API stub
-                IngestionServiceClientUtility.IngestionServiceClient client =
-                        IngestionServiceClientUtility.IngestionServiceClient.getInstance();
-                final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
+                    // add entry to map for tracking subscriptions by PV name
+                    pvDataSubscriptions.put(pvName, responseObserver);
 
-                // call subscribeData() API method to receive data for specified PV from Ingestion Service
-                stub.subscribeData(request, responseObserver);
+                    // use singleton ingestion client to create an API stub
+                    IngestionServiceClientUtility.IngestionServiceClient client =
+                            IngestionServiceClientUtility.IngestionServiceClient.getInstance();
+                    final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
+
+                    // call subscribeData() API method to receive data for specified PV from Ingestion Service
+                    stub.subscribeData(request, responseObserver);
+                }
+
+                // update map of PV name to list of EventMonitors that subscribe to PV data
+                List<EventMonitor> pvEventMonitorList = pvMonitors.get(pvName);
+                if (pvEventMonitorList == null) {
+                    // this is the first EventMonitor for specified PV, so create a new list
+                    pvEventMonitorList = new ArrayList<>();
+                    pvMonitors.put(pvName, pvEventMonitorList);
+                }
+                pvEventMonitorList.add(eventMonitor);
             }
 
-            // update map of PV name to list of EventMonitors that subscribe to PV data
-            List<EventMonitor> pvEventMonitorList = pvMonitors.get(pvName);
-            if (pvEventMonitorList == null) {
-                // this is the first EventMonitor for specified PV, so create a new list
-                pvEventMonitorList = new ArrayList<>();
-                pvMonitors.put(pvName, pvEventMonitorList);
-            }
-            pvEventMonitorList.add(eventMonitor);
+        } finally {
+            // make sure we always unlock by using finally
+            writeLock.unlock();
         }
     }
 
