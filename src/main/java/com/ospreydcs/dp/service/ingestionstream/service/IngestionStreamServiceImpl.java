@@ -95,19 +95,13 @@ public class IngestionStreamServiceImpl
 
     private static SubscribeDataEventResponse subscribeDataEventResponseConditionEvent(
             String pvName,
-            long timestampSeconds,
-            long timestampNanos,
+            Timestamp dataTimestamp,
             DataValue dataValue
     ) {
-        final Timestamp timestamp = Timestamp.newBuilder()
-                .setEpochSeconds(timestampSeconds)
-                .setNanoseconds(timestampNanos)
-                .build();
-
         final SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent conditionEvent =
                 SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent.newBuilder()
                         .setPvName(pvName)
-                        .setTimestamp(timestamp)
+                        .setTimestamp(dataTimestamp)
                         .setDataValue(dataValue)
                         .build();
 
@@ -144,13 +138,12 @@ public class IngestionStreamServiceImpl
 
     public static void sendSubscribeDataEventResponseConditionEvent(
             String pvName,
-            long timestampSeconds,
-            long timestampNanos,
+            Timestamp dataTimestamp,
             DataValue dataValue,
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
         final SubscribeDataEventResponse response
-                = subscribeDataEventResponseConditionEvent(pvName, timestampSeconds, timestampNanos, dataValue);
+                = subscribeDataEventResponseConditionEvent(pvName, dataTimestamp, dataValue);
         responseObserver.onNext(response);
     }
 

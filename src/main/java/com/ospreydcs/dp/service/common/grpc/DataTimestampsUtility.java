@@ -154,4 +154,25 @@ public class DataTimestampsUtility {
         }
     }
 
+    public static Timestamp timestampForIndex(
+            DataTimestamps dataTimestamps,
+            int columnValueIndex
+    ) {
+        if (dataTimestamps.hasSamplingClock()) {
+            final SamplingClock samplingClock = dataTimestamps.getSamplingClock();
+            final Timestamp startTimestamp = samplingClock.getStartTime();
+            final long periodNanos = samplingClock.getPeriodNanos();
+            Instant startInstant =
+                    Instant.ofEpochSecond(startTimestamp.getEpochSeconds(), startTimestamp.getNanoseconds());
+            Instant indexInstant = startInstant.plusNanos(columnValueIndex * periodNanos);
+            return TimestampUtility.getTimestampFromInstant(indexInstant);
+
+        } else if (dataTimestamps.hasTimestampList()) {
+            return dataTimestamps.getTimestampList().getTimestamps(columnValueIndex);
+
+        } else {
+            return null;
+        }
+    }
+
 }

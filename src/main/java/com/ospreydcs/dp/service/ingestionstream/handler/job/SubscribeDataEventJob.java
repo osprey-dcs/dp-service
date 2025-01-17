@@ -40,7 +40,7 @@ public class SubscribeDataEventJob extends HandlerJob {
         EventMonitor eventMonitor = null;
         switch (request.getDataEventDefCase()) {
             case CONDITIONEVENTDEF -> {
-                eventMonitor = new ConditionMonitor(request, responseObserver);
+                eventMonitor = new ConditionMonitor(request, responseObserver, subscriptionManager);
             }
             case DATAEVENTDEF_NOT_SET -> {
                 final String errorMsg = "invalid request, SubscribeDataEventRequest.dataEventDef must be specified";

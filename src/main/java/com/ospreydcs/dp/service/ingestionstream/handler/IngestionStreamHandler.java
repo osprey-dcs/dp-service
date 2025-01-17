@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
+import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.SubscribeDataEventJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -19,7 +20,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     public static final int DEFAULT_NUM_WORKERS = 7;
 
     // instance variables
-    private final DataEventSubscriptionManager subscriptionManager = new DataEventSubscriptionManager();
+    private final DataEventSubscriptionManager subscriptionManager = new DataEventSubscriptionManager(this);
 
     @Override
     protected boolean init_() {
@@ -36,6 +37,15 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     @Override
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    public void addJob(EventMonitorJob job) {
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
@@ -61,4 +71,5 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     ) {
         // TODO
     }
+
 }
