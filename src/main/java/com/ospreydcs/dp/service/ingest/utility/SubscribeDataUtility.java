@@ -1,10 +1,28 @@
 package com.ospreydcs.dp.service.ingest.utility;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.service.ingestionstream.handler.model.EventMonitorSubscribeDataResponseObserver;
+import io.grpc.stub.StreamObserver;
 
 import java.util.List;
 
 public class SubscribeDataUtility {
+
+    public static class SubscribeDataCall {
+
+        // instance variables
+        public final StreamObserver<SubscribeDataRequest> requestObserver;
+        public final StreamObserver<SubscribeDataResponse> responseObserver;
+
+        public SubscribeDataCall(
+                StreamObserver<SubscribeDataRequest> requestObserver,
+                StreamObserver<SubscribeDataResponse> responseObserver
+        ) {
+            this.requestObserver = requestObserver;
+            this.responseObserver = responseObserver;
+        }
+    }
 
     public static SubscribeDataRequest buildSubscribeDataRequest(final List<String> pvNames) {
 

@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.model.EventMonitorSubscribeDataResponseObserver;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,7 +26,7 @@ public class DataEventSubscriptionManager {
 
     // instance variables
     private final IngestionStreamHandler handler;
-    private final Map<String, EventMonitorSubscribeDataResponseObserver> pvDataSubscriptions = new HashMap<>();
+    private final Map<String, SubscribeDataUtility.SubscribeDataCall> pvDataSubscriptions = new HashMap<>();
     private final Map<String, List<EventMonitor>> pvMonitors = new HashMap<>();
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
@@ -55,16 +56,19 @@ public class DataEventSubscriptionManager {
                     final EventMonitorSubscribeDataResponseObserver responseObserver =
                             new EventMonitorSubscribeDataResponseObserver(pvName, this, handler);
 
-                    // add entry to map for tracking subscriptions by PV name
-                    pvDataSubscriptions.put(pvName, responseObserver);
-
                     // use singleton ingestion client to create an API stub
                     final IngestionServiceClientUtility.IngestionServiceClient client =
                             IngestionServiceClientUtility.IngestionServiceClient.getInstance();
                     final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
 
                     // call subscribeData() API method to receive data for specified PV from Ingestion Service
-                    stub.subscribeData(request, responseObserver);
+                    StreamObserver<SubscribeDataRequest> requestObserver = stub.subscribeData(responseObserver);
+
+                    SubscribeDataUtility.SubscribeDataCall subscribeDataCall
+                            = new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver);
+
+                    // add entry to map for tracking subscriptions by PV name
+                    pvDataSubscriptions.put(pvName, subscribeDataCall);
                 }
 
                 // update map of PV name to list of EventMonitors that subscribe to PV data
@@ -120,6 +124,37 @@ public class DataEventSubscriptionManager {
     }
 
     public void cancelEventMonitor(EventMonitor eventMonitor) {
-        // TODO
+
+        // acquire write lock since method will be called from different threads handling grpc requests/responses
+        writeLock.lock();
+        try {
+
+            // Iterate through EventMonitor's PVs, close calls to subscribeData() if no other EventMonitor uses the PV,
+            // and remove entries for EventMonitor from data structures.
+            for (String pvName : eventMonitor.getPvNames()) {
+
+                // remove EventMonitor from subscribed list for pvName
+                final List<EventMonitor> monitorList = pvMonitors.get(pvName);
+                if (monitorList != null) {
+                    monitorList.remove(eventMonitor);
+                }
+
+                // if list is empty, cancel the pv data subscription and clean up data structures
+                if (monitorList.isEmpty()) {
+                    pvMonitors.remove(pvName);
+                    final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = pvDataSubscriptions.get(pvName);
+                    if (subscribeDataCall != null) {
+                        // close call to subscribeData() API for this PV
+                        subscribeDataCall.requestObserver.onCompleted();
+                    }
+                    pvDataSubscriptions.remove(pvName);
+                }
+            }
+
+        } finally {
+            // make sure we always unlock by using finally
+            writeLock.unlock();
+        }
     }
+
 }
