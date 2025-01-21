@@ -35,7 +35,7 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
         switch (subscribeDataResponse.getResultCase()) {
             case EXCEPTIONALRESULT -> {
                 logger.trace("received exceptional result for pv: {}", pvName);
-                // TODO: nothing else to do because stream should also be closed? confirm
+                // TODO: nothing else to do because stream should have also been closed? confirm
             }
             case ACKRESULT -> {
                 logger.trace("received ack result for pv: {}", pvName);
@@ -58,12 +58,12 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     @Override
     public void onError(Throwable throwable) {
         // TODO - notify subscriptionManager of problem so it can clean up,
-        // remove responseObserver and list of EventMonitors for PV name and
+        // by either calling subscribeData() again or cleaning up subscription manager data structures
     }
 
     @Override
     public void onCompleted() {
         // TODO - notify subscriptionManager of problem so it can clean up,
-        // remove responseObserver and list of EventMonitors for PV name and
+        // by either calling subscribeData() again or cleaning up subscription manager data structures
     }
 }
