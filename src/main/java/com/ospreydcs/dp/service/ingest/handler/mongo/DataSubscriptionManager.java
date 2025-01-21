@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
@@ -17,12 +18,10 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class DataSubscriptionManager {
 
     // static variables
-
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-
-    private final Map<String, List<StreamObserver<SubscribeDataResponse>>> subscriptionMap = new HashMap<>();
+    private final Map<String, List<SourceMonitor>> subscriptionMap = new HashMap<>();
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
@@ -39,28 +38,17 @@ public class DataSubscriptionManager {
         readLock.lock();
 
         try {
-            // create a set of all responseObservers, eliminating duplicates for subscriptions to multiple PVs
-            Set<StreamObserver<SubscribeDataResponse>> responseObserverSet = new HashSet<>();
-            for (List<StreamObserver<SubscribeDataResponse>> responseObserverList : subscriptionMap.values()) {
-                for (StreamObserver<SubscribeDataResponse> responseObserver : responseObserverList) {
-                    responseObserverSet.add(responseObserver);
+            // create a set of all SourceMonitors, eliminating duplicates for subscriptions to multiple PVs
+            Set<SourceMonitor> sourceMonitors = new HashSet<>();
+            for (List<SourceMonitor> monitorList : subscriptionMap.values()) {
+                for (SourceMonitor monitor : monitorList) {
+                    sourceMonitors.add(monitor);
                 }
             }
 
             // close each response stream in set
-            for (StreamObserver<SubscribeDataResponse> responseObserver : responseObserverSet) {
-                ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-                if (!serverCallStreamObserver.isCancelled()) {
-                    logger.debug(
-                            "DataSubscriptionManager fini calling responseObserver.onCompleted id: {}",
-                            responseObserver.hashCode());
-                    responseObserver.onCompleted();
-                } else {
-                    logger.debug(
-                            "DataSubscriptionManager fini responseObserver already closed id: {}",
-                            responseObserver.hashCode());
-                }
+            for (SourceMonitor monitor : sourceMonitors) {
+                monitor.close();
             }
 
         } finally {
@@ -74,18 +62,21 @@ public class DataSubscriptionManager {
      * Add a subscription entry to map data structure.  We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void addSubscription(List<String> pvNames, StreamObserver<SubscribeDataResponse> observer) {
+    public void addSubscription(SourceMonitor monitor) {
+
         writeLock.lock();
         try {
             // use try...finally to make sure we unlock
-            for (String pvName : pvNames) {
-                List<StreamObserver<SubscribeDataResponse>> observers = subscriptionMap.get(pvName);
-                if (observers == null) {
-                    observers = new ArrayList<>();
-                    subscriptionMap.put(pvName, observers);
+
+            for (String pvName : monitor.pvNames) {
+                List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                if (sourceMonitors == null) {
+                    sourceMonitors = new ArrayList<>();
+                    subscriptionMap.put(pvName, sourceMonitors);
                 }
-                observers.add(observer);
+                sourceMonitors.add(monitor);
             }
+
         } finally {
             writeLock.unlock();
         }
@@ -99,71 +90,51 @@ public class DataSubscriptionManager {
     public void publishDataSubscriptions(IngestDataRequest request) {
 
         readLock.lock();
-
         try {
             // use try...finally to make sure we unlock
 
             final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
-
             // iterate request columns and send response to column PV subscribers
             for (DataColumn requestDataColumn : request.getIngestionDataFrame().getDataColumnsList()) {
-                final List<StreamObserver<SubscribeDataResponse>> observers =
-                        subscriptionMap.get(requestDataColumn.getName());
 
-                if (observers == null) {
-                    // no subscribers for this PV
-                    continue;
-
-                } else {
+                final String pvName = requestDataColumn.getName();
+                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                if (sourceMonitors != null) {
+                    // publish data via monitors
                     final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
-
-                    for (StreamObserver<SubscribeDataResponse> observer : observers) {
+                    for (SourceMonitor monitor : sourceMonitors) {
                         // publish data to subscriber if response stream is active
-
-                        final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                                (ServerCallStreamObserver<SubscribeDataResponse>) observer;
-
-                        if (!serverCallStreamObserver.isCancelled()) {
-                            logger.debug(
-                                    "publishDataSubscriptions publishing data for id: {} pv: {}",
-                                    observer.hashCode(),
-                                    requestDataColumn.getName());
-                            IngestionServiceImpl.sendSubscribeDataResponse(
-                                    requestDataTimestamps, responseDataColumns, observer);
-
-                        } else {
-                            logger.trace(
-                                    "publishDataSubscriptions skipping closed responseObserver id: {} pv: {}",
-                                    observer.hashCode(),
-                                    requestDataColumn.getName());
-                        }
+                        monitor.publishData(pvName, requestDataTimestamps, responseDataColumns);
                     }
                 }
             }
+
         } finally {
             readLock.unlock();
         }
     }
 
     /**
-     * Remove all subscriptions from map for specified responseObserver.
+     * Remove all subscriptions from map for specified SourceMonitor.
      * We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void removeSubscriptions(StreamObserver<SubscribeDataResponse> responseObserver) {
+    public void removeSubscriptions(SourceMonitor monitor) {
+
         writeLock.lock();
         try {
             // use try...finally to make sure we unlock
-            for (var mapEntries : subscriptionMap.entrySet()) {
-                final String pvName = mapEntries.getKey();
-                final List<StreamObserver<SubscribeDataResponse>> observers = mapEntries.getValue();
-                if (observers.contains(responseObserver)) {
+
+            for (String pvName : monitor.pvNames) {
+                List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                if (sourceMonitors != null) {
                     logger.debug(
                             "removeSubscriptions removing subscription for id: {} pv: {}",
-                            responseObserver.hashCode(), pvName);
-                    observers.remove(responseObserver);
+                            monitor.responseObserver.hashCode(), pvName);
+                    sourceMonitors.remove(monitor);
                 }
             }
+
         } finally {
             writeLock.unlock();
         }

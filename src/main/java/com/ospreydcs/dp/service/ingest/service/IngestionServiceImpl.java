@@ -9,8 +9,9 @@ import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
-import io.grpc.Context;
-import io.grpc.stub.ServerCallStreamObserver;
+import com.ospreydcs.dp.service.ingest.service.request.IngestDataBidiStreamRequestObserver;
+import com.ospreydcs.dp.service.ingest.service.request.IngestDataStreamRequestObserver;
+import com.ospreydcs.dp.service.ingest.service.request.SubscribeDataRequestObserver;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -216,7 +217,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         return new IngestDataBidiStreamRequestObserver(responseObserver, handler, this);
     }
     
-    protected void handleIngestionRequest(
+    public void handleIngestionRequest(
             IngestDataRequest request,
             StreamObserver<IngestDataResponse> responseObserver
     ) {
@@ -526,35 +527,10 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     @Override
-    public void subscribeData(
-            SubscribeDataRequest request, 
+    public StreamObserver<SubscribeDataRequest> subscribeData(
             StreamObserver<SubscribeDataResponse> responseObserver
     ) {
-        logger.info(
-                "id: {} subscribeData request received, pvNames: {}",
-                responseObserver.hashCode(),
-                request.getPvNamesList().toString());
-
-        // validate request
-        if (request.getPvNamesList().isEmpty()) {
-            final String errorMsg = "SubscribeDataRequest.pvNames list must not be empty";
-            sendSubscribeDataResponseReject(errorMsg, responseObserver);
-            return;
-        }
-
-        // add a handler to remove subscription when client closes method connection
-        ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-        serverCallStreamObserver.setOnCancelHandler(
-                () -> {
-                    logger.trace("onCancelHandler id: {}", responseObserver.hashCode());
-                    if (handler != null) {
-                        handler.cancelDataSubscriptions(responseObserver);
-                    }
-                }
-        );
-
-        // handle request
-        handler.handleSubscribeData(request, responseObserver);
+        return new SubscribeDataRequestObserver(responseObserver, handler);
     }
+
 }

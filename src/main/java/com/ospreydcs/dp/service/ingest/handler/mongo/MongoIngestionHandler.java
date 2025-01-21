@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionCl
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
+import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -131,18 +132,21 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     }
 
     @Override
-    public void handleSubscribeData(
-            SubscribeDataRequest request,
-            StreamObserver<SubscribeDataResponse> responseObserver
+    public void addSourceMonitor(
+            SourceMonitor monitor
     ) {
-        logger.debug("handleSubscribeData adding subscription for id: {}", responseObserver.hashCode());
-        this.subscriptionManager.addSubscription(request.getPvNamesList(), responseObserver);
-        IngestionServiceImpl.sendSubscribeDataResponseAck(responseObserver);
+        logger.debug(
+                "addSourceMonitor adding subscription for id: {}",
+                monitor.responseObserver.hashCode());
+        this.subscriptionManager.addSubscription(monitor);
+        monitor.sendAck();
     }
 
     @Override
-    public void cancelDataSubscriptions(StreamObserver<SubscribeDataResponse> responseObserver) {
-        logger.debug("cancelDataSubscriptions removing subscriptions for id: {}", responseObserver.hashCode());
-        this.subscriptionManager.removeSubscriptions(responseObserver);
+    public void removeSourceMonitor(SourceMonitor monitor) {
+        logger.debug(
+                "cancelDataSubscriptions removing subscriptions for id: {}",
+                monitor.responseObserver.hashCode());
+        this.subscriptionManager.removeSubscriptions(monitor);
     }
 }

@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler.interfaces;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
+import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
 import io.grpc.stub.StreamObserver;
 
 public interface IngestionHandlerInterface {
@@ -19,7 +20,7 @@ public interface IngestionHandlerInterface {
     void handleQueryRequestStatus(
             QueryRequestStatusRequest request, StreamObserver<QueryRequestStatusResponse> responseObserver);
 
-    void handleSubscribeData(SubscribeDataRequest request, StreamObserver<SubscribeDataResponse> responseObserver);
+    void addSourceMonitor(SourceMonitor monitor);
+    void removeSourceMonitor(SourceMonitor monitor);
 
-    void cancelDataSubscriptions(StreamObserver<SubscribeDataResponse> responseObserver);
 }

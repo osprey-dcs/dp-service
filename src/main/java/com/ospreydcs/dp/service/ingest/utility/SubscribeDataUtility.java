@@ -7,9 +7,15 @@ import java.util.List;
 public class SubscribeDataUtility {
 
     public static SubscribeDataRequest buildSubscribeDataRequest(final List<String> pvNames) {
-        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+
+        final SubscribeDataRequest.NewSubscription subscription = SubscribeDataRequest.NewSubscription.newBuilder()
                 .addAllPvNames(pvNames)
                 .build();
+
+        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+                .setNewSubscription(subscription)
+                .build();
+
         return request;
     }
 

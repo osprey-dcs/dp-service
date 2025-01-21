@@ -1,12 +1,12 @@
-package com.ospreydcs.dp.service.ingest.service;
+package com.ospreydcs.dp.service.ingest.service.request;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataStreamResponse;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
+import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.stub.StreamObserver;
 
 import java.util.ArrayList;
