@@ -924,7 +924,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    private IngestionTestBase.SubscribeDataResponseObserver sendSubscribeData(
+    private SubscribeDataUtility.SubscribeDataCall sendSubscribeData(
             SubscribeDataRequest request,
             int expectedResponseCount,
             boolean expectReject,
@@ -937,12 +937,15 @@ public abstract class GrpcIntegrationTestBase {
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
                 new IngestionTestBase.SubscribeDataResponseObserver(expectedResponseCount);
 
-        // send request in separate thread to better simulate out of process grpc,
-        // otherwise service handles request in this thread
+        // invoke subscribeData() API method, get handle to request stream
+        StreamObserver<SubscribeDataRequest> requestObserver = asyncStub.subscribeData(responseObserver);
+
+        // send NewSubscription message in request stream
         new Thread(() -> {
-            asyncStub.subscribeData(request, responseObserver);
+            requestObserver.onNext(request);
         }).start();
 
+        // wait for ack response
         responseObserver.awaitAckLatch();
 
         if (expectReject) {
@@ -952,21 +955,29 @@ public abstract class GrpcIntegrationTestBase {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
-        return responseObserver;
+        return new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver);
     }
 
-    protected IngestionTestBase.SubscribeDataResponseObserver initiateSubscribeDataRequest(
+    protected SubscribeDataUtility.SubscribeDataCall initiateSubscribeDataRequest(
+            SubscribeDataRequest request,
+            int expectedResponseCount,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        return sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
+    }
+
+    protected SubscribeDataUtility.SubscribeDataCall initiateSubscribeDataRequest(
             List<String> pvNameList,
             int expectedResponseCount,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(pvNameList);
-        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
+        final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
                 sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
-        return responseObserver;
+        return subscribeDataCall;
     }
-
 
     protected void verifySubscribeDataResponse(
             IngestionTestBase.SubscribeDataResponseObserver responseObserver,
@@ -1011,6 +1022,35 @@ public abstract class GrpcIntegrationTestBase {
                 assertTrue(found);
             }
         }
+    }
+
+    protected void cancelSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
+
+        final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataCancelRequest();
+
+        // send NewSubscription message in request stream
+        new Thread(() -> {
+            subscribeDataCall.requestObserver.onNext(request);
+        }).start();
+
+        // wait for ack response stream to close
+        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
+                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
+        responseObserver.awaitCloseLatch();
+
+    }
+
+    protected void closeSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
+
+        // close the request stream
+        new Thread(() -> {
+            subscribeDataCall.requestObserver.onCompleted();
+        }).start();
+
+        // wait for ack response stream to close
+        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
+                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
+        responseObserver.awaitCloseLatch();
     }
 
     protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {

@@ -37,10 +37,12 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
             case NEWSUBSCRIPTION -> {
 
                 if (monitor != null) {
-                    // ignore subsequent requests after initial one to create subscription
-                    logger.trace(
-                            "id: {} ignoring NewSubscription request received after subscription created",
-                            responseObserver.hashCode());
+                    // we don't support modifying the initial subscription, so send a reject to be clear that multiple
+                    // new subscription messages in the request stream is not supported
+                    final String errorMsg = "multiple NewSubscription messages not supported in request stream";
+                    logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                    monitor.requestCancel();
+                    IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
                     return;
                 }
 
@@ -80,6 +82,7 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
             case CANCELSUBSCRIPTION -> {
                 logger.debug("id: {} received CancelSubscription request, requesting cancel", responseObserver.hashCode());
                 monitor.requestCancel();
+                responseObserver.onCompleted();
             }
 
             case REQUEST_NOT_SET -> {
@@ -96,11 +99,13 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
     public void onError(Throwable throwable) {
         logger.debug("id: {} onError, requesting cancel", responseObserver.hashCode());
         monitor.requestCancel();
+        responseObserver.onCompleted();
     }
 
     @Override
     public void onCompleted() {
         logger.debug("id: {} onCompleted, requesting cancel", responseObserver.hashCode());
         monitor.requestCancel();
+        responseObserver.onCompleted();
     }
 }

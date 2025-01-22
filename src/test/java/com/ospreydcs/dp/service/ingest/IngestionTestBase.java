@@ -698,6 +698,7 @@ public class IngestionTestBase {
         // instance variables
         CountDownLatch ackLatch = null;
         CountDownLatch responseLatch = null;
+        CountDownLatch closeLatch = null;
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<SubscribeDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
@@ -705,6 +706,7 @@ public class IngestionTestBase {
         public SubscribeDataResponseObserver(int expectedResponseCount) {
             this.ackLatch = new CountDownLatch(1);
             this.responseLatch = new CountDownLatch(expectedResponseCount);
+            this.closeLatch = new CountDownLatch(1);
         }
 
         public void awaitAckLatch() {
@@ -723,6 +725,17 @@ public class IngestionTestBase {
                 responseLatch.await(1, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for responseLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public void awaitCloseLatch() {
+            try {
+                closeLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for closeLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
@@ -783,7 +796,9 @@ public class IngestionTestBase {
         @Override
         public void onCompleted() {
             System.out.println("SubscribeDataResponseObserver onCompleted");
+            closeLatch.countDown();
         }
+
     }
 
 }

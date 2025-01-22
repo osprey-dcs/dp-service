@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.ingest.utility;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
-import com.ospreydcs.dp.service.ingestionstream.handler.model.EventMonitorSubscribeDataResponseObserver;
 import io.grpc.stub.StreamObserver;
 
 import java.util.List;
@@ -26,12 +25,26 @@ public class SubscribeDataUtility {
 
     public static SubscribeDataRequest buildSubscribeDataRequest(final List<String> pvNames) {
 
-        final SubscribeDataRequest.NewSubscription subscription = SubscribeDataRequest.NewSubscription.newBuilder()
+        final SubscribeDataRequest.NewSubscription subscription =
+                SubscribeDataRequest.NewSubscription.newBuilder()
                 .addAllPvNames(pvNames)
                 .build();
 
         final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
                 .setNewSubscription(subscription)
+                .build();
+
+        return request;
+    }
+
+    public static SubscribeDataRequest buildSubscribeDataCancelRequest() {
+
+        final SubscribeDataRequest.CancelSubscription subscription =
+                SubscribeDataRequest.CancelSubscription.newBuilder()
+                .build();
+
+        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+                .setCancelSubscription(subscription)
                 .build();
 
         return request;
