@@ -132,12 +132,13 @@ public class IngestDataJob extends HandlerJob {
 
             if (isError) {
                 status = IngestionRequestStatus.ERROR;
+
+            } else {
+                // publish new data to subscribers
+                handler.getSubscriptionManager().publishDataSubscriptions(request);
             }
         }
-
-        // publish new data to subscribers
-        handler.getSubscriptionManager().publishDataSubscriptions(request);
-
+        
         // save request status and check result of insert operation
         if (providerName == null) {
             providerName = "";
