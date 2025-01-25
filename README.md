@@ -28,6 +28,8 @@ The [Data Platform Technical Overview](https://github.com/osprey-dcs/data-platfo
 * [handling for bidirectional streaming API methods](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#handling-for-bidirectional-streaming-api-methods)
 * [MongoDB interface](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#mongodb-interface)
 * [serialization of protobuf objects to MongoDB documents](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#serialization-of-protobuf-objects-to-mongodb-documents)
+* [data subscription framework](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#data-subscription-framework)
+* [data event monitoring framework](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#data-event-monitoring-framework)
 * [configuration](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#configuration)
 * [exporting data](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#exporting-data)
 * [performance benchmarking](https://github.com/osprey-dcs/data-platform/blob/main/doc/documents/dp/dp-tech.md#performance-benchmarking)
