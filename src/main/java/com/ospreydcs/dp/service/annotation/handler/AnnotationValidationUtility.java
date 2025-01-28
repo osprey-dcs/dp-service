@@ -58,42 +58,32 @@ public class AnnotationValidationUtility {
         return new ValidationResult(false, "");
     }
 
-    public static ValidationResult validateCreateAnnotationRequestCommon(CreateAnnotationRequest request) {
+    public static ValidationResult validateCreateAnnotationRequest(CreateAnnotationRequest request) {
+
+        final AnnotationDetails annotationDetails = request.getAnnotationDetails();
 
         // owner must be specified
-        final String requestOwnerId = request.getOwnerId();
+        final String requestOwnerId = annotationDetails.getOwnerId();
         if (requestOwnerId.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest must specify ownerId";
+            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.ownerId must be specified";
             return new ValidationResult(true, errorMsg);
         }
 
-        // check that dataSetId is specified, but don't check yet that it exists, that will be done by the handler job
-        final String dataSetId = request.getDataSetId();
-        if (dataSetId.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest must specify dataSetId";
-            return new ValidationResult(true, errorMsg);
-        }
-
-        // validation successful
-        return new ValidationResult(false, "");
-    }
-
-    public static ValidationResult validateCreateCommentRequest(CreateAnnotationRequest request) {
-
-        // validate correct oneof case for details payload
-        if (!request.hasCommentAnnotation()) {
-            final String errorMsg = "CreateAnnotationRequest does not contain CreateCommentDetails";
+        // check that list of datasetIds is not empty but don't validate corresponding datasets exist,
+        // that will be done by the handler job
+        if (annotationDetails.getDataSetIdsList().isEmpty()) {
+            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
             return new ValidationResult(true, errorMsg);
         }
 
         // validate details
-        final CommentAnnotation createCommentDetails = request.getCommentAnnotation();
-        final String detailsComment = createCommentDetails.getComment();
-        if (detailsComment == null || detailsComment.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest.CreateCommentDetails.comment is null or empty";
+        final String name = annotationDetails.getName();
+        if (name == null || name.isBlank()) {
+            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
             return new ValidationResult(true, errorMsg);
         }
 
+        // validation successful
         return new ValidationResult(false, "");
     }
 

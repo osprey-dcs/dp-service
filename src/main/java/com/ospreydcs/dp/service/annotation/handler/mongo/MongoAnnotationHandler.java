@@ -162,17 +162,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateCommentAnnotation(
+    public void handleCreateAnnotation(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
-        final CreateCommentAnnotationJob job = new CreateCommentAnnotationJob(
+        final CreateAnnotationJob job = new CreateAnnotationJob(
                 request,
                 responseObserver,
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding CreateCommentAnnotationJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding CreateAnnotationJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
@@ -184,19 +184,21 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     public ValidationResult validateAnnotationRequest(CreateAnnotationRequest request) {
 
-        final String dataSetId = request.getDataSetId();
-        if (dataSetId.isBlank()) {
-            // we've already checked this in the initial request validation, but check again since we'll use id for db lookup
-            final String errorMsg = "CreateAnnotationRequest must specify dataSetId";
-            return new ValidationResult(true, errorMsg);
-        }
+        // check that each id in dataSetIds exists in database
+        for (String dataSetId : request.getAnnotationDetails().getDataSetIdsList()) {
 
-        // execute query to retrieve DataSetDocument with specified id
-        final DataSetDocument dataSetDocument = mongoAnnotationClient.findDataSet(dataSetId);
-        if (dataSetDocument == null) {
-            return new ValidationResult(
-                    true,
-                    "no DataSetDocument found with id: " + dataSetId);
+            if (dataSetId.isBlank()) {
+                final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds contains blank id string";
+                return new ValidationResult(true, errorMsg);
+            }
+
+            // execute query to retrieve DataSetDocument with specified id
+            final DataSetDocument dataSetDocument = mongoAnnotationClient.findDataSet(dataSetId);
+            if (dataSetDocument == null) {
+                return new ValidationResult(
+                        true,
+                        "no DataSetDocument found with id: " + dataSetId);
+            }
         }
 
         return new ValidationResult(false, "");

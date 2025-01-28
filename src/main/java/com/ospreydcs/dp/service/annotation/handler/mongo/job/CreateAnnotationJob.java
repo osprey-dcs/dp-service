@@ -6,6 +6,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.CreateAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -13,7 +14,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public abstract class CreateAnnotationJob extends HandlerJob {
+public class CreateAnnotationJob extends HandlerJob {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -38,7 +39,10 @@ public abstract class CreateAnnotationJob extends HandlerJob {
         this.dispatcher = new CreateAnnotationDispatcher(responseObserver, request);
     }
 
-    protected abstract AnnotationDocument generateAnnotationDocument_(CreateAnnotationRequest request);
+    protected CommentAnnotationDocument generateAnnotationDocument_(CreateAnnotationRequest request) {
+        CommentAnnotationDocument document = CommentAnnotationDocument.fromCreateRequest(request);
+        return document;
+    }
 
     @Override
     public void execute() {

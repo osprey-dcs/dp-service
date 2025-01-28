@@ -361,14 +361,23 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         responseObserver.onCompleted();
     }
 
-    private void createCommentAnnotation(
+    @Override
+    public void createAnnotation(
             CreateAnnotationRequest request,
             StreamObserver<CreateAnnotationResponse> responseObserver
     ) {
-        // validate request
-        ValidationResult validationResult = AnnotationValidationUtility.validateCreateCommentRequest(request);
+        logger.info(
+                "id: {} createAnnotation request received with name: {}",
+                responseObserver.hashCode(),
+                request.getAnnotationDetails().getName());
+
+        // perform validation of base annotation details
+        // validate common annotation details
+        final ValidationResult validationResult =
+                AnnotationValidationUtility.validateCreateAnnotationRequest(request);
         if (validationResult.isError) {
-            logger.debug("id: {} createCommentAnnotation validation failed: {}",
+            logger.debug(
+                    "id: {} createAnnotation validation failed: ",
                     responseObserver.hashCode(),
                     validationResult.msg);
             sendCreateAnnotationResponseReject(
@@ -378,45 +387,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         // handle request
-        handler.handleCreateCommentAnnotation(request, responseObserver);
-    }
-
-    @Override
-    public void createAnnotation(
-            CreateAnnotationRequest request,
-            StreamObserver<CreateAnnotationResponse> responseObserver
-    ) {
-        logger.info("id: {} createAnnotation request received with type: {}",
-                responseObserver.hashCode(), request.getAnnotationCase().toString());
-
-        // perform validation of base annotation details
-        // validate common annotation details
-        final ValidationResult validationResult =
-                AnnotationValidationUtility.validateCreateAnnotationRequestCommon(request);
-        if (validationResult.isError) {
-            logger.debug("id: {} createAnnotation validation failed: ", responseObserver.hashCode(), validationResult.msg);
-            sendCreateAnnotationResponseReject(
-                    validationResult.msg,
-                    responseObserver);
-            return;
-        }
-
-        // dispatch request based on annotation type
-        switch(request.getAnnotationCase()) {
-
-            case COMMENTANNOTATION -> {
-                createCommentAnnotation(request, responseObserver);
-            }
-            case ANNOTATION_NOT_SET -> {
-                final String errorMsg = "id: " + responseObserver.hashCode()
-                        + " createAnnotation annotationTypeDetails not specified";
-                logger.debug(errorMsg);
-                sendCreateAnnotationResponseReject(
-                        errorMsg,
-                        responseObserver);
-                return;
-            }
-        }
+        handler.handleCreateAnnotation(request, responseObserver);
     }
 
     private static QueryAnnotationsResponse queryAnnotationsResponseExceptionalResult(
