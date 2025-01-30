@@ -23,7 +23,6 @@ import java.util.regex.Pattern;
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Indexes.ascending;
-import static com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument.ANNOTATION_TYPE_COMMENT;
 
 public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoAnnotationClientInterface {
 
@@ -163,9 +162,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument) {
 
-        logger.debug(
-                "inserting AnnotationDocument to mongo owner: {} type: {}",
-                annotationDocument.getOwnerId(), annotationDocument.getType());
+        logger.debug("inserting AnnotationDocument id: {}", annotationDocument.getId());
 
         // insert AnnotationDocument to mongodb
         InsertOneResult result = null;

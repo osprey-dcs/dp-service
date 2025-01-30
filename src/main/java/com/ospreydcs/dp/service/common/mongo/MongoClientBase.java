@@ -1,9 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
-import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
@@ -87,7 +85,6 @@ public abstract class MongoClientBase {
                 EventMetadataDocument.class,
                 RequestStatusDocument.class,
                 AnnotationDocument.class,
-                CommentAnnotationDocument.class,
                 DataSetDocument.class,
                 DataBlockDocument.class,
                 MetadataQueryResultDocument.class

@@ -1,5 +1,8 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
+import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+
 public class EventMetadataDocument {
 
     // instance variables
@@ -48,4 +51,56 @@ public class EventMetadataDocument {
     public void setStopNanos(long stopNanos) {
         this.stopNanos = stopNanos;
     }
+    
+    public static EventMetadataDocument fromEventMetadata(final EventMetadata eventMetadata) {
+        
+        String eventDescription = "";
+        long eventStartSeconds = 0;
+        long eventStartNanos = 0;
+        long eventStopSeconds = 0;
+        long eventStopNanos = 0;
+
+        if (eventMetadata.getDescription() != null) {
+            eventDescription = eventMetadata.getDescription();
+        }
+        if (eventMetadata.hasStartTimestamp()) {
+            eventStartSeconds = eventMetadata.getStartTimestamp().getEpochSeconds();
+            eventStartNanos = eventMetadata.getStartTimestamp().getNanoseconds();
+        }
+        if (eventMetadata.hasStopTimestamp()) {
+            eventStopSeconds = eventMetadata.getStopTimestamp().getEpochSeconds();
+            eventStopNanos = eventMetadata.getStopTimestamp().getNanoseconds();
+        }
+
+        final EventMetadataDocument eventMetadataDocument = new EventMetadataDocument();
+        eventMetadataDocument.setDescription(eventDescription);
+        eventMetadataDocument.setStartSeconds(eventStartSeconds);
+        eventMetadataDocument.setStartNanos(eventStartNanos);
+        eventMetadataDocument.setStopSeconds(eventStopSeconds);
+        eventMetadataDocument.setStopNanos(eventStopNanos);
+
+        return eventMetadataDocument;
+    }
+
+    public static EventMetadata toEventMetadata(final EventMetadataDocument eventMetadataDocument) {
+        
+        final Timestamp startTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(eventMetadataDocument.getStartSeconds())
+                .setNanoseconds(eventMetadataDocument.getStartNanos())
+                .build();
+
+        final Timestamp stopTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(eventMetadataDocument.getStopSeconds())
+                .setNanoseconds(eventMetadataDocument.getStopNanos())
+                .build();
+
+        final EventMetadata eventMetadata = EventMetadata.newBuilder()
+                .setDescription(eventMetadataDocument.getDescription())
+                .setStartTimestamp(startTimestamp)
+                .setStopTimestamp(stopTimestamp)
+                .build();
+
+        return eventMetadata;
+    }
+    
 }

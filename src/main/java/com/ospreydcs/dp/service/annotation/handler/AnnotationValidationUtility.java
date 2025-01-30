@@ -60,6 +60,12 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateCreateAnnotationRequest(CreateAnnotationRequest request) {
 
+        // request must contain AnnotationDetails
+        if (!request.hasAnnotationDetails()) {
+            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails must be specified";
+            return new ValidationResult(true, errorMsg);
+        }
+
         final AnnotationDetails annotationDetails = request.getAnnotationDetails();
 
         // owner must be specified
@@ -76,7 +82,7 @@ public class AnnotationValidationUtility {
             return new ValidationResult(true, errorMsg);
         }
 
-        // validate details
+        // name must be specified
         final String name = annotationDetails.getName();
         if (name == null || name.isBlank()) {
             final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.name must be specified";

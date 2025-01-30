@@ -6,7 +6,6 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.CreateAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
-import com.ospreydcs.dp.service.common.bson.annotation.CommentAnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -39,9 +38,14 @@ public class CreateAnnotationJob extends HandlerJob {
         this.dispatcher = new CreateAnnotationDispatcher(responseObserver, request);
     }
 
-    protected CommentAnnotationDocument generateAnnotationDocument_(CreateAnnotationRequest request) {
-        CommentAnnotationDocument document = CommentAnnotationDocument.fromCreateRequest(request);
-        return document;
+    protected AnnotationDocument generateAnnotationDocument(CreateAnnotationRequest request) {
+        if (request.hasAnnotationDetails()) {
+            return AnnotationDocument.fromAnnotationDetails(request.getAnnotationDetails());
+        } else {
+            // should not happen because it's checked in validation, but just in case...
+            logger.error("request does not contain AnnotationDetails");
+            return new AnnotationDocument();
+        }
     }
 
     @Override
@@ -52,7 +56,7 @@ public class CreateAnnotationJob extends HandlerJob {
             dispatcher.handleValidationError(validationResult);
             return;
         }
-        final AnnotationDocument annotationDocument = generateAnnotationDocument_(request);
+        final AnnotationDocument annotationDocument = generateAnnotationDocument(request);
         final MongoInsertOneResult result = this.mongoClient.insertAnnotation(annotationDocument);
         logger.debug("dispatching CreateAnnotationJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(result);

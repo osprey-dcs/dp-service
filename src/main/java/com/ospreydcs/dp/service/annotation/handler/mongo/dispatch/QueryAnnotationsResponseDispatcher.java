@@ -66,7 +66,7 @@ public class QueryAnnotationsResponseDispatcher extends Dispatcher {
 
             // build grpc response and add to result
             final QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation =
-                    annotationDocument.buildAnnotation(dataSetDocument);
+                    annotationDocument.toAnnotationDetails(dataSetDocument);
             annotationsResultBuilder.addAnnotations(responseAnnotation);
         }
 
