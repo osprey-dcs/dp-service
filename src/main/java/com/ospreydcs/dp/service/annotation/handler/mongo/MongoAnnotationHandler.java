@@ -3,13 +3,11 @@ package com.ospreydcs.dp.service.annotation.handler.mongo;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
-import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
-import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
@@ -19,7 +17,6 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
 
 import java.util.*;
 
@@ -182,10 +179,10 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ValidationResult validateAnnotationRequest(CreateAnnotationRequest request) {
+    public ValidationResult validateCreateAnnotationRequest(CreateAnnotationRequest request) {
 
         // check that each id in dataSetIds exists in database
-        for (String dataSetId : request.getAnnotationDetails().getDataSetIdsList()) {
+        for (String dataSetId : request.getDataSetIdsList()) {
 
             if (dataSetId.isBlank()) {
                 final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds contains blank id string";

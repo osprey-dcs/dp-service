@@ -39,19 +39,13 @@ public class CreateAnnotationJob extends HandlerJob {
     }
 
     protected AnnotationDocument generateAnnotationDocument(CreateAnnotationRequest request) {
-        if (request.hasAnnotationDetails()) {
-            return AnnotationDocument.fromAnnotationDetails(request.getAnnotationDetails());
-        } else {
-            // should not happen because it's checked in validation, but just in case...
-            logger.error("request does not contain AnnotationDetails");
-            return new AnnotationDocument();
-        }
+        return AnnotationDocument.fromCreateAnnotationRequest(request);
     }
 
     @Override
     public void execute() {
         logger.debug("executing CreateAnnotationJob id: {}", this.responseObserver.hashCode());
-        final ValidationResult validationResult = this.handler.validateAnnotationRequest(request);
+        final ValidationResult validationResult = this.handler.validateCreateAnnotationRequest(request);
         if (validationResult.isError) {
             dispatcher.handleValidationError(validationResult);
             return;

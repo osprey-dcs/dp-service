@@ -369,7 +369,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         logger.info(
                 "id: {} createAnnotation request received with name: {}",
                 responseObserver.hashCode(),
-                request.getAnnotationDetails().getName());
+                request.getName());
 
         // perform validation of base annotation details
         // validate common annotation details

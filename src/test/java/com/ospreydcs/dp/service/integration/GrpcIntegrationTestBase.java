@@ -39,13 +39,11 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
 import java.io.*;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -1738,7 +1736,7 @@ public abstract class GrpcIntegrationTestBase {
         assertFalse(annotationId.isBlank());
         final AnnotationDocument annotationDocument = mongoClient.findAnnotation(annotationId);
         assertNotNull(annotationDocument);
-        final List<String> requestDiffs = annotationDocument.diffRequest(request);
+        final List<String> requestDiffs = annotationDocument.diffCreateAnnotationRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.isEmpty());
 

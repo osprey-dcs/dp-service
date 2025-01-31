@@ -60,16 +60,8 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateCreateAnnotationRequest(CreateAnnotationRequest request) {
 
-        // request must contain AnnotationDetails
-        if (!request.hasAnnotationDetails()) {
-            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails must be specified";
-            return new ValidationResult(true, errorMsg);
-        }
-
-        final AnnotationDetails annotationDetails = request.getAnnotationDetails();
-
         // owner must be specified
-        final String requestOwnerId = annotationDetails.getOwnerId();
+        final String requestOwnerId = request.getOwnerId();
         if (requestOwnerId.isBlank()) {
             final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.ownerId must be specified";
             return new ValidationResult(true, errorMsg);
@@ -77,13 +69,13 @@ public class AnnotationValidationUtility {
 
         // check that list of datasetIds is not empty but don't validate corresponding datasets exist,
         // that will be done by the handler job
-        if (annotationDetails.getDataSetIdsList().isEmpty()) {
+        if (request.getDataSetIdsList().isEmpty()) {
             final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
             return new ValidationResult(true, errorMsg);
         }
 
         // name must be specified
-        final String name = annotationDetails.getName();
+        final String name = request.getName();
         if (name == null || name.isBlank()) {
             final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
             return new ValidationResult(true, errorMsg);
