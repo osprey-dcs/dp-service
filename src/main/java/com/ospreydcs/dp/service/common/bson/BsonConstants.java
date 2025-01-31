@@ -46,7 +46,7 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
     public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
     public static final String BSON_KEY_ANNOTATION_OWNER_ID = "ownerId";
-    public static final String BSON_KEY_ANNOTATION_DATASET_ID = "dataSetId";
+    public static final String BSON_KEY_ANNOTATION_DATASET_IDS = "dataSetIds";
     public static final String BSON_KEY_ANNOTATION_TAGS = "tags";
 
     public static final String BSON_KEY_METADATA_PV_NAME = "pvName";

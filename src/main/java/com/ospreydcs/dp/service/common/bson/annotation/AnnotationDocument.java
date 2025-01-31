@@ -124,7 +124,7 @@ public class AnnotationDocument {
         return document;
     }
 
-    public QueryAnnotationsResponse.AnnotationsResult.Annotation toAnnotation(DataSetDocument dataSetDocument) {
+    public QueryAnnotationsResponse.AnnotationsResult.Annotation toAnnotation(List<DataSetDocument> dataSetDocuments) {
 
         QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder annotationBuilder =
                 QueryAnnotationsResponse.AnnotationsResult.Annotation.newBuilder();

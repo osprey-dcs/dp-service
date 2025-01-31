@@ -12,6 +12,9 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class QueryAnnotationsResponseDispatcher extends Dispatcher {
 
     // static variables
@@ -56,17 +59,20 @@ public class QueryAnnotationsResponseDispatcher extends Dispatcher {
             final AnnotationDocument annotationDocument = cursor.next();
 
             // retrieve dataset for annotation
-            final String dataSetId = annotationDocument.getDataSetId();
-            final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
-            if (dataSetDocument == null) {
-                final String msg = "no DataSetDocument found with id: " + dataSetId;
-                logger.debug(msg);
-                AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+            final List<DataSetDocument> dataSetDocuments = new ArrayList<>();
+            for (String dataSetId : annotationDocument.getDataSetIds()) {
+                final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
+                if (dataSetDocument == null) {
+                    final String msg = "no DataSetDocument found with id: " + dataSetId;
+                    logger.debug(msg);
+                    AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+                }
+                dataSetDocuments.add(dataSetDocument);
             }
 
-            // build grpc response and add to result
+            // build protobuf Annotation from AnnotationDocument and list of DataSetDocuments and add to result
             final QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation =
-                    annotationDocument.toAnnotation(dataSetDocument);
+                    annotationDocument.toAnnotation(dataSetDocuments);
             annotationsResultBuilder.addAnnotations(responseAnnotation);
         }
 
