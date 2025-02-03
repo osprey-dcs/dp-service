@@ -18,7 +18,10 @@ public interface MongoAnnotationClientInterface {
 
     MongoCursor<DataSetDocument> executeQueryDataSets(QueryDataSetsRequest request);
 
+    AnnotationDocument findAnnotation(String annotationId);
+
     MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
 
     MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
+
 }

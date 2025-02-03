@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotat
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -185,7 +186,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         for (String dataSetId : request.getDataSetIdsList()) {
 
             if (dataSetId.isBlank()) {
-                final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds contains blank id string";
+                final String errorMsg = "CreateAnnotationRequest.dataSetIds contains blank id string";
                 return new ValidationResult(true, errorMsg);
             }
 
@@ -197,6 +198,24 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                         "no DataSetDocument found with id: " + dataSetId);
             }
         }
+
+        // check that each id in annotationIds exists in database
+        for (String annotationId : request.getAnnotationIdsList()) {
+
+            if (annotationId.isBlank()) {
+                final String errorMsg = "CreateAnnotationRequest.annotationIds contains blank id string";
+                return new ValidationResult(true, errorMsg);
+            }
+
+            final AnnotationDocument annotationDocument = mongoAnnotationClient.findAnnotation(annotationId);
+            if (annotationDocument == null) {
+                return new ValidationResult(
+                        true,
+                        "no AnnotationDocument found with id: " + annotationId);
+
+            }
+        }
+
 
         return new ValidationResult(false, "");
     }

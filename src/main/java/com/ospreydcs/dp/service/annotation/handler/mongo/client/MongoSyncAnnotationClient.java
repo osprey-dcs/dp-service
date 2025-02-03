@@ -16,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -158,6 +159,29 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         return resultCursor;
     }
+
+    @Override
+    public AnnotationDocument findAnnotation(String annotationId) {
+
+        // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
+        // sending request has a dataSetId, it already exists in the database.
+        List<AnnotationDocument> matchingDocuments = new ArrayList<>();
+
+        // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
+        try {
+            mongoCollectionAnnotations.find(
+                    eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId))).into(matchingDocuments);
+        } catch (Exception ex) {
+            logger.error("findAnnotation: mongo exception in find(): {}", ex.getMessage());
+            return null;
+        }
+
+        if (!matchingDocuments.isEmpty()) {
+            return matchingDocuments.get(0);
+        } else {
+            return null;
+        }
+     }
 
     @Override
     public MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument) {
