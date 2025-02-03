@@ -41,7 +41,6 @@ public class BsonConstants {
     public static final String BSON_KEY_DATA_SET_OWNER_ID = "ownerId";
     public static final String BSON_KEY_DATA_SET_DESCRIPTION = "description";
 
-    public static final String BSON_KEY_ANNOTATION_TYPE = "type";
     public static final String BSON_KEY_ANNOTATION_ID = "_id";
     public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
     public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";

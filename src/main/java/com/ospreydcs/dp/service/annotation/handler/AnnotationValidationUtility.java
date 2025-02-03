@@ -76,7 +76,7 @@ public class AnnotationValidationUtility {
 
         // name must be specified
         final String name = request.getName();
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
             return new ValidationResult(true, errorMsg);
         }

@@ -137,7 +137,9 @@ public class AnnotationDocument {
         annotationBuilder.setComment(this.getComment());
         annotationBuilder.addAllTags(this.getTags());
         annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributeMap()));
-        annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEventMetadata()));
+        if (this.getEventMetadata() != null) {
+            annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEventMetadata()));
+        }
 
         return annotationBuilder.build();
     }
@@ -208,13 +210,15 @@ public class AnnotationDocument {
         }
 
         // diff eventMetadata
-        final EventMetadata thisEventMetadata =
-                EventMetadataDocument.toEventMetadata(this.getEventMetadata());
-        if (! Objects.equals(request.getEventMetadata(), thisEventMetadata)) {
-            final String msg =
-                    "eventMetadata mismatch: " + thisEventMetadata
-                            + " expected: " + request.getEventMetadata();
-            diffs.add(msg);
+        if (this.getEventMetadata() != null) {
+            final EventMetadata thisEventMetadata =
+                    EventMetadataDocument.toEventMetadata(this.getEventMetadata());
+            if (!Objects.equals(request.getEventMetadata(), thisEventMetadata)) {
+                final String msg =
+                        "eventMetadata mismatch: " + thisEventMetadata
+                                + " expected: " + request.getEventMetadata();
+                diffs.add(msg);
+            }
         }
 
         return diffs;

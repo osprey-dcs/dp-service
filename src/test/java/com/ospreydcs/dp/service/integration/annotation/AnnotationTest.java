@@ -291,15 +291,17 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // createAnnotation() negative test - request should be rejected because dataSetId not specified.
+            // createAnnotation() negative test - request should be rejected because list of dataset ids is empty.
 
             final String ownerId = "craigmcc";
             final String emptyDataSetId = "";
+            final String name = "craigmcc negative test unspecified dataset id";
             final String comment = "negative test case - unspecified dataset id";
-            AnnotationTestBase.CreateCommentAnnotationParams params =
-                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, emptyDataSetId, comment);
-            final String expectedRejectMessage = "CreateAnnotationRequest must specify dataSetId";
-            sendAndVerifyCreateCommentAnnotation(
+            AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId, name, new ArrayList<>(), comment);
+            final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
+            sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
@@ -308,16 +310,18 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final String ownerId = "craigmcc";
             final String invalidDataSetId = "junk12345";
+            final String name = "craigmcc negative test invalid dataset id";
             final String comment = "negative test case - invalid dataset id";
-            AnnotationTestBase.CreateCommentAnnotationParams params =
-                    new AnnotationTestBase.CreateCommentAnnotationParams(ownerId, invalidDataSetId, comment);
+            AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId, name, List.of(invalidDataSetId), comment);
             final String expectedRejectMessage = "no DataSetDocument found with id";
-            sendAndVerifyCreateCommentAnnotation(
+            sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
-        List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResultAnnotations = new ArrayList<>();
-        List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResultAnnotations = new ArrayList<>();
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
         String annotationQueryId = "";
         {
             /*
@@ -335,10 +339,11 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     
                     // create annotation for first half data set
                     final String firstHalfComment = firstHalfBase + commentNumber;
-                    AnnotationTestBase.CreateCommentAnnotationParams firstHalfParams =
-                            new AnnotationTestBase.CreateCommentAnnotationParams(
-                                    owner, firstHalfDataSetId, firstHalfComment);
-                    final String createdAnnotationId = sendAndVerifyCreateCommentAnnotation(
+                    final String firstHalfName = firstHalfComment;
+                    AnnotationTestBase.CreateAnnotationRequestParams firstHalfParams =
+                            new AnnotationTestBase.CreateAnnotationRequestParams(
+                                    owner, firstHalfName, List.of(firstHalfDataSetId), firstHalfComment);
+                    final String createdAnnotationId = sendAndVerifyCreateAnnotation(
                             firstHalfParams, false, "");
                     if (owner.equals("craigmcc")) {
                         expectedQueryResultAnnotations.add(firstHalfParams);
@@ -350,10 +355,11 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
                     // create annotation for second half data set
                     final String secondHalfComment = secondHalfBase + commentNumber;
-                    AnnotationTestBase.CreateCommentAnnotationParams secondHalfParams =
-                            new AnnotationTestBase.CreateCommentAnnotationParams(
-                                    owner, secondHalfDataSetId, secondHalfComment);
-                    sendAndVerifyCreateCommentAnnotation(
+                    final String secondHalfName = secondHalfComment;
+                    AnnotationTestBase.CreateAnnotationRequestParams secondHalfParams =
+                            new AnnotationTestBase.CreateAnnotationRequestParams(
+                                    owner, secondHalfName, List.of(secondHalfDataSetId), secondHalfComment);
+                    sendAndVerifyCreateAnnotation(
                             secondHalfParams, false, "");
                 }
             }
@@ -482,51 +488,52 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     expectedQueryByIdResultAnnotations);
         }
 
-        {
-            /*
-             * query data test using result of queryAnnotations()
-             *
-             * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
-             * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
-             * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
-             * pvNames and that each bucket has the expected begin time.
-             */
-
-            for (QueryAnnotationsResponse.AnnotationsResult.Annotation queryResultAnnotation : annotationsQueryResult) {
-
-                for (DataBlock queryResultBlock : queryResultAnnotation.getDataSet().getDataBlocksList()) {
-
-                    final List<String> queryPvNames = queryResultBlock.getPvNamesList();
-                    final long queryBeginSeconds = queryResultBlock.getBeginTime().getEpochSeconds();
-                    final long queryBeginNanos = queryResultBlock.getBeginTime().getNanoseconds();
-                    final long queryEndSeconds = queryResultBlock.getEndTime().getEpochSeconds();
-                    final long queryEndNanos = queryResultBlock.getEndTime().getNanoseconds();
-
-                    final int numBucketsExpected = 2;
-
-                    final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
-                            queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
-                    assertEquals(numBucketsExpected, queryResultBuckets.size());
-                    for (String pvName : queryPvNames) {
-                        boolean foundPvBucket = false;
-                        QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
-                        for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
-                            if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
-                                foundPvBucket = true;
-                                matchingResponseBucket = responseBucket;
-                                break;
-                            }
-                        }
-                        assertTrue(foundPvBucket);
-                        final Timestamp matchingBucketTimestamp =
-                                matchingResponseBucket.getDataTimestamps().getSamplingClock().getStartTime();
-                        assertEquals(queryBeginSeconds, matchingBucketTimestamp.getEpochSeconds());
-                        assertEquals(queryBeginNanos, matchingBucketTimestamp.getNanoseconds());
-                    }
-
-                }
-            }
-        }
+        // TODO: uncomment this section after adding dataset content back to annotation
+//        {
+//            /*
+//             * query data test using result of queryAnnotations()
+//             *
+//             * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
+//             * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
+//             * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
+//             * pvNames and that each bucket has the expected begin time.
+//             */
+//
+//            for (QueryAnnotationsResponse.AnnotationsResult.Annotation queryResultAnnotation : annotationsQueryResult) {
+//
+//                for (DataBlock queryResultBlock : queryResultAnnotation.getDataSet().getDataBlocksList()) {
+//
+//                    final List<String> queryPvNames = queryResultBlock.getPvNamesList();
+//                    final long queryBeginSeconds = queryResultBlock.getBeginTime().getEpochSeconds();
+//                    final long queryBeginNanos = queryResultBlock.getBeginTime().getNanoseconds();
+//                    final long queryEndSeconds = queryResultBlock.getEndTime().getEpochSeconds();
+//                    final long queryEndNanos = queryResultBlock.getEndTime().getNanoseconds();
+//
+//                    final int numBucketsExpected = 2;
+//
+//                    final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
+//                            queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
+//                    assertEquals(numBucketsExpected, queryResultBuckets.size());
+//                    for (String pvName : queryPvNames) {
+//                        boolean foundPvBucket = false;
+//                        QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
+//                        for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
+//                            if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
+//                                foundPvBucket = true;
+//                                matchingResponseBucket = responseBucket;
+//                                break;
+//                            }
+//                        }
+//                        assertTrue(foundPvBucket);
+//                        final Timestamp matchingBucketTimestamp =
+//                                matchingResponseBucket.getDataTimestamps().getSamplingClock().getStartTime();
+//                        assertEquals(queryBeginSeconds, matchingBucketTimestamp.getEpochSeconds());
+//                        assertEquals(queryBeginNanos, matchingBucketTimestamp.getNanoseconds());
+//                    }
+//
+//                }
+//            }
+//        }
 
         {
             // export to hdf5, negative test, unspecified dataset id

@@ -74,19 +74,16 @@ public class AnnotationTestBase {
     }
 
     public static class CreateAnnotationRequestParams {
-        public final String ownerId;
-        public final String dataSetId;
-        public CreateAnnotationRequestParams(String ownerId, String dataSetId) {
-            this.ownerId = ownerId;
-            this.dataSetId = dataSetId;
-        }
-    }
 
-    public static class CreateCommentAnnotationParams extends CreateAnnotationRequestParams {
+        public final String ownerId;
+        public final String name;
+        public final List<String> dataSetIds;
         public final String comment;
-        public CreateCommentAnnotationParams(
-                String ownerId, String dataSetId, String comment) {
-            super(ownerId, dataSetId);
+
+        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds, String comment) {
+            this.ownerId = ownerId;
+            this.name = name;
+            this.dataSetIds = dataSetIds;
             this.comment = comment;
         }
     }
@@ -632,25 +629,13 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    private static CreateAnnotationRequest.Builder createAnnotationRequestBuilder(
-            CreateAnnotationRequestParams params
-    ) {
+    public static CreateAnnotationRequest buildCreateAnnotationRequest(CreateAnnotationRequestParams params) {
+
         CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
         requestBuilder.setOwnerId(params.ownerId);
-        requestBuilder.setDataSetId(params.dataSetId);
-
-        return requestBuilder;
-    }
-
-    public static CreateAnnotationRequest buildCreateCommentAnnotationRequest(CreateCommentAnnotationParams params) {
-
-        CreateAnnotationRequest.Builder requestBuilder = createAnnotationRequestBuilder(params);
-
-        CommentAnnotation.Builder commentBuilder = CommentAnnotation.newBuilder();
-        commentBuilder.setComment(params.comment);
-        commentBuilder.build();
-
-        requestBuilder.setCommentAnnotation(commentBuilder);
+        requestBuilder.setName(params.name);
+        requestBuilder.addAllDataSetIds(params.dataSetIds);
+        requestBuilder.setComment(params.comment);
         return requestBuilder.build();
     }
 

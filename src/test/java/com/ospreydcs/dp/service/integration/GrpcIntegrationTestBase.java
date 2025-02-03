@@ -1716,13 +1716,13 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationId();
     }
 
-    protected String sendAndVerifyCreateCommentAnnotation(
-            AnnotationTestBase.CreateCommentAnnotationParams params,
+    protected String sendAndVerifyCreateAnnotation(
+            AnnotationTestBase.CreateAnnotationRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final CreateAnnotationRequest request =
-                AnnotationTestBase.buildCreateCommentAnnotationRequest(params);
+                AnnotationTestBase.buildCreateAnnotationRequest(params);
 
         final String annotationId = sendCreateAnnotation(request, expectReject, expectedRejectMessage);
 
@@ -1782,7 +1782,7 @@ public abstract class GrpcIntegrationTestBase {
             String commentText,
             boolean expectReject,
             String expectedRejectMessage,
-            List<AnnotationTestBase.CreateCommentAnnotationParams> expectedQueryResult
+            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
                 AnnotationTestBase.buildQueryAnnotationsRequest(annotationId, ownerId, datasetId, commentText);
@@ -1798,17 +1798,15 @@ public abstract class GrpcIntegrationTestBase {
         // validate response
         assertEquals(expectedQueryResult.size(), resultAnnotations.size());
         // find each expected result in actual result list and match field values against request
-        for (AnnotationTestBase.CreateCommentAnnotationParams requestParams : expectedQueryResult) {
+        for (AnnotationTestBase.CreateAnnotationRequestParams requestParams : expectedQueryResult) {
             boolean found = false;
             QueryAnnotationsResponse.AnnotationsResult.Annotation foundAnnotation = null;
             for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : resultAnnotations) {
                 if (
                         (requestParams.ownerId.equals(resultAnnotation.getOwnerId())) &&
-
-                        (requestParams.dataSetId.equals(resultAnnotation.getDataSetId())) &&
-
+                        (Objects.equals(requestParams.dataSetIds, resultAnnotation.getDataSetIdsList())) &&
                         (requestParams.comment == null
-                                || (requestParams.comment.equals(resultAnnotation.getCommentAnnotation().getComment())))
+                                || (requestParams.comment.equals(resultAnnotation.getComment())))
                 ) {
                     found = true;
                     foundAnnotation = resultAnnotation;
@@ -1818,49 +1816,51 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(found);
             assertNotNull(foundAnnotation);
             final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
-            assertTrue(expectedAnnotationId.equals(foundAnnotation.getAnnotationId()));
+            assertTrue(expectedAnnotationId.equals(foundAnnotation.getId()));
             if (annotationId != null) {
-                assertEquals(annotationId, foundAnnotation.getAnnotationId());
+                assertEquals(annotationId, foundAnnotation.getId());
             }
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
-            assertTrue(requestParams.dataSetId.equals(foundAnnotation.getDataSetId()));
+            // use Objects.equals to compare list elements
+            assertTrue(Objects.equals(requestParams.dataSetIds, foundAnnotation.getDataSetIdsList()));
 
             // match annotation fields in result against query filter parameters
             if (ownerId != null) {
                 assertEquals(ownerId, foundAnnotation.getOwnerId());
             }
             if (datasetId != null) {
-                assertEquals(datasetId, foundAnnotation.getDataSetId());
+                assertTrue(foundAnnotation.getDataSetIdsList().contains(datasetId));
             }
             if (commentText != null) {
-                assertTrue(foundAnnotation.getCommentAnnotation().getComment().contains(commentText));
+                assertTrue(foundAnnotation.getComment().contains(commentText));
             }
 
-            // compare dataset content from result with what was requested when creating dataset
-            final AnnotationTestBase.CreateDataSetParams dataSetRequestParams =
-                    this.createDataSetIdParamsMap.get(requestParams.dataSetId);
-            final AnnotationTestBase.AnnotationDataSet requestDataSet = dataSetRequestParams.dataSet;
-            final DataSet responseDataSet = foundAnnotation.getDataSet();
-            assertEquals(requestDataSet.dataBlocks.size(), responseDataSet.getDataBlocksCount());
-            assertTrue(requestDataSet.name.equals(responseDataSet.getName()));
-            assertTrue(requestDataSet.ownerId.equals(responseDataSet.getOwnerId()));
-            assertTrue(requestDataSet.description.equals(responseDataSet.getDescription()));
-            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
-                boolean responseBlockFound = false;
-                for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
-                    if (
-                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
-                    ) {
-                        responseBlockFound = true;
-                        break;
-                    }
-                }
-                assertTrue(responseBlockFound);
-            }
+// TODO: uncomment to check dataset list content after making changes to create query result containing datasets
+//            // compare dataset content from result with what was requested when creating dataset
+//            final AnnotationTestBase.CreateDataSetParams dataSetRequestParams =
+//                    this.createDataSetIdParamsMap.get(requestParams.dataSetIds);
+//            final AnnotationTestBase.AnnotationDataSet requestDataSet = dataSetRequestParams.dataSet;
+//            final DataSet responseDataSet = foundAnnotation.getDataSet();
+//            assertEquals(requestDataSet.dataBlocks.size(), responseDataSet.getDataBlocksCount());
+//            assertTrue(requestDataSet.name.equals(responseDataSet.getName()));
+//            assertTrue(requestDataSet.ownerId.equals(responseDataSet.getOwnerId()));
+//            assertTrue(requestDataSet.description.equals(responseDataSet.getDescription()));
+//            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
+//                boolean responseBlockFound = false;
+//                for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
+//                    if (
+//                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
+//                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
+//                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
+//                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
+//                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
+//                    ) {
+//                        responseBlockFound = true;
+//                        break;
+//                    }
+//                }
+//                assertTrue(responseBlockFound);
+//            }
         }
 
         return resultAnnotations;
