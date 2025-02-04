@@ -635,7 +635,9 @@ public class AnnotationTestBase {
         requestBuilder.setOwnerId(params.ownerId);
         requestBuilder.setName(params.name);
         requestBuilder.addAllDataSetIds(params.dataSetIds);
-        requestBuilder.setComment(params.comment);
+        if (params.comment != null) {
+            requestBuilder.setComment(params.comment);
+        }
         return requestBuilder.build();
     }
 

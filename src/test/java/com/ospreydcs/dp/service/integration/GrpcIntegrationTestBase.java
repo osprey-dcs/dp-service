@@ -1708,6 +1708,7 @@ public abstract class GrpcIntegrationTestBase {
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertFalse(expectedRejectMessage.isBlank());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
@@ -1805,8 +1806,7 @@ public abstract class GrpcIntegrationTestBase {
                 if (
                         (requestParams.ownerId.equals(resultAnnotation.getOwnerId())) &&
                         (Objects.equals(requestParams.dataSetIds, resultAnnotation.getDataSetIdsList())) &&
-                        (requestParams.comment == null
-                                || (requestParams.comment.equals(resultAnnotation.getComment())))
+                        (requestParams.name.equals(resultAnnotation.getName()))
                 ) {
                     found = true;
                     foundAnnotation = resultAnnotation;
@@ -1820,9 +1820,20 @@ public abstract class GrpcIntegrationTestBase {
             if (annotationId != null) {
                 assertEquals(annotationId, foundAnnotation.getId());
             }
+
+            // compare required fields from request against found annotation
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
+            assertTrue(requestParams.name.equals(foundAnnotation.getName()));
             // use Objects.equals to compare list elements
             assertTrue(Objects.equals(requestParams.dataSetIds, foundAnnotation.getDataSetIdsList()));
+
+            // compare optional fields from request against found annotation
+            if (requestParams.comment != null) {
+                assertTrue(requestParams.comment.equals(foundAnnotation.getComment()));
+            }
+            // TODO: add other optional fields like tags, attributes, eventMetadata, annotationIds
+
+
 
             // match annotation fields in result against query filter parameters
             if (ownerId != null) {
