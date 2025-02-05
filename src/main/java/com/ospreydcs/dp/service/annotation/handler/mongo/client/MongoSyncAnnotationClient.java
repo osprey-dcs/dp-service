@@ -214,35 +214,89 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
+                    // annotation id filter, combined with other filters by AND operator
                     final String annotationId = criterion.getIdCriterion().getId();
-                    if (! annotationId.isBlank()) {
+                    if ( ! annotationId.isBlank()) {
                         Bson idFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId));
                         globalFilterList.add(idFilter);
                     }
                 }
 
                 case OWNERCRITERION -> {
-                    // update ownerFilter from OwnerCriterion
+                    // owner id filter, combined with other filters by AND operator
                     final String ownerId = criterion.getOwnerCriterion().getOwnerId();
-                    if (! ownerId.isBlank()) {
+                    if ( ! ownerId.isBlank()) {
                         Bson ownerFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID, ownerId);
                         globalFilterList.add(ownerFilter);
                     }
                 }
 
                 case DATASETCRITERION -> {
+                    // associated dataset id filter, combined with other filters by AND operator
                     final String dataSetId = criterion.getDataSetCriterion().getDataSetId();
-                    if (! dataSetId.isBlank()) {
+                    if ( ! dataSetId.isBlank()) {
                         Bson dataSetIdFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetId);
                         globalFilterList.add(dataSetIdFilter);
                     }
                 }
 
+                case NAMECRITERION -> {
+                    // name filter, combined with other filters by AND operator
+                    final String nameText = criterion.getNameCriterion().getNameText();
+                    if ( ! nameText.isBlank()) {
+                        final Pattern namePattern = Pattern.compile(nameText, Pattern.CASE_INSENSITIVE);
+                        final Bson nameFilter = Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME, namePattern);
+                        globalFilterList.add(nameFilter);
+                    }
+                }
+
+                case ANNOTATIONCRITERION -> {
+                    // assciated annotation ids filter, combined with other filters by OR operator
+                    final String annotationId = criterion.getAnnotationCriterion().getAnnotationId();
+                    if ( ! annotationId.isBlank()) {
+                        Bson associatedAnnotationFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS, annotationId);
+                        criteriaFilterList.add(associatedAnnotationFilter);
+                    }
+                }
+
                 case COMMENTCRITERION -> {
+                    // comment filter, combined with other filters by OR operator
                     final String commentText = criterion.getCommentCriterion().getCommentText();
                     if (! commentText.isBlank()) {
                         final Bson commentFilter = Filters.text(commentText);
                         criteriaFilterList.add(commentFilter);
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    // tags filter, combined with other filters by OR operator
+                    final String tagValue = criterion.getTagsCriterion().getTagValue();
+                    if ( ! tagValue.isBlank()) {
+                        Bson tagsFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_TAGS, tagValue);
+                        criteriaFilterList.add(tagsFilter);
+                    }
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    // attributes filter, combined with other filters by OR operator
+                    final String attributeKey = criterion.getAttributesCriterion().getKey();
+                    final String attributeValue = criterion.getAttributesCriterion().getValue();
+                    if ( ! attributeKey.isBlank() && ! attributeValue.isBlank()) {
+                        final String mapKey = BsonConstants.BSON_KEY_ANNOTATION_ATTRIBUTES + "." + attributeKey;
+                        Bson attributesFilter = Filters.eq(mapKey, attributeValue);
+                        criteriaFilterList.add(attributesFilter);
+                    }
+                }
+
+                case EVENTCRITERION -> {
+                    // event metadata filter, combined with other filters by OR operator
+                    final String descriptionText = criterion.getEventCriterion().getDescriptionText();
+                    if ( ! descriptionText.isBlank()) {
+                        Bson eventFilter =
+                                Filters.eq(
+                                        BsonConstants.BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION,
+                                        descriptionText);
+                        criteriaFilterList.add(eventFilter);
                     }
                 }
 

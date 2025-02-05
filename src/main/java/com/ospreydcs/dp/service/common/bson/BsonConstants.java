@@ -42,11 +42,15 @@ public class BsonConstants {
     public static final String BSON_KEY_DATA_SET_DESCRIPTION = "description";
 
     public static final String BSON_KEY_ANNOTATION_ID = "_id";
-    public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
-    public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
     public static final String BSON_KEY_ANNOTATION_OWNER_ID = "ownerId";
     public static final String BSON_KEY_ANNOTATION_DATASET_IDS = "dataSetIds";
+    public static final String BSON_KEY_ANNOTATION_NAME = "name";
+    public static final String BSON_KEY_ANNOTATION_ANNOTATION_IDS = "annotationIds";
+    public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
     public static final String BSON_KEY_ANNOTATION_TAGS = "tags";
+    public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
+    public static final String BSON_KEY_ANNOTATION_EVENT_METADATA = "eventMetadata";
+    public static final String BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION = "eventMetadata.description";
 
     public static final String BSON_KEY_METADATA_PV_NAME = "pvName";
     public static final String BSON_KEY_METADATA_LAST_BUCKET_ID = "lastBucketId";

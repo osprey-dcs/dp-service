@@ -514,12 +514,73 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
+                case NAMECRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion nameCriterion
+                            = criterion.getNameCriterion();
+                    if (nameCriterion.getNameText().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.NameCriterion nameText must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case ANNOTATIONCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion annotationCriterion
+                            = criterion.getAnnotationCriterion();
+                    if (annotationCriterion.getAnnotationId().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.AssociatedAnnotationIdCriterion id must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
                 case COMMENTCRITERION -> {
                     final QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion
                             = criterion.getCommentCriterion();
                     if (commentCriterion.getCommentText().isBlank()) {
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion tagsCriterion
+                            = criterion.getTagsCriterion();
+                    if (tagsCriterion.getTagValue().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.TagsCriterion tagValue must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion
+                            = criterion.getAttributesCriterion();
+                    if (attributesCriterion.getKey().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.AttributesCriterion key must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (attributesCriterion.getValue().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.AttributesCriterion value must be specified";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case EVENTCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion eventCriterion
+                            = criterion.getEventCriterion();
+                    if (eventCriterion.getDescriptionText().isBlank()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.EventCriterion descriptionText must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
