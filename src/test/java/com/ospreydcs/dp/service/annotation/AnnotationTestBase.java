@@ -9,6 +9,8 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJo
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
+import com.ospreydcs.dp.service.common.grpc.EventMetadataUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
@@ -76,15 +78,43 @@ public class AnnotationTestBase {
     public static class CreateAnnotationRequestParams {
 
         public final String ownerId;
-        public final String name;
         public final List<String> dataSetIds;
+        public final String name;
+        public final List<String> annotationIds;
         public final String comment;
+        public final List<String> tags;
+        public final Map<String, String> attributeMap;
+        public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
 
-        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds, String comment) {
+        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
             this.ownerId = ownerId;
-            this.name = name;
             this.dataSetIds = dataSetIds;
+            this.name = name;
+            this.annotationIds = null;
+            this.comment = null;
+            this.tags = null;
+            this.attributeMap = null;
+            this.eventMetadataParams = null;
+        }
+
+        public CreateAnnotationRequestParams(
+                String ownerId,
+                String name,
+                List<String> dataSetIds,
+                List<String> annotationIds,
+                String comment,
+                List<String> tags,
+                Map<String, String> attributeMap,
+                EventMetadataUtility.EventMetadataParams eventMetadataParams
+        ) {
+            this.ownerId = ownerId;
+            this.dataSetIds = dataSetIds;
+            this.name = name;
+            this.annotationIds = annotationIds;
             this.comment = comment;
+            this.tags = tags;
+            this.attributeMap = attributeMap;
+            this.eventMetadataParams = eventMetadataParams;
         }
     }
 
@@ -632,12 +662,29 @@ public class AnnotationTestBase {
     public static CreateAnnotationRequest buildCreateAnnotationRequest(CreateAnnotationRequestParams params) {
 
         CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+
+        // handle required annotation fields
         requestBuilder.setOwnerId(params.ownerId);
-        requestBuilder.setName(params.name);
         requestBuilder.addAllDataSetIds(params.dataSetIds);
+        requestBuilder.setName(params.name);
+
+        // handle optional annotation fields
+        if (params.annotationIds != null) {
+            requestBuilder.addAllAnnotationIds(params.annotationIds);
+        }
         if (params.comment != null) {
             requestBuilder.setComment(params.comment);
         }
+        if (params.tags != null) {
+            requestBuilder.addAllTags(params.tags);
+        }
+        if (params.attributeMap != null) {
+            requestBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(params.attributeMap));
+        }
+        if (params.eventMetadataParams != null) {
+            requestBuilder.setEventMetadata(EventMetadataUtility.eventMetadataFromParams(params.eventMetadataParams));
+        }
+
         return requestBuilder.build();
     }
 

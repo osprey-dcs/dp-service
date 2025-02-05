@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.common.grpc.EventMetadataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -296,10 +297,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String unspecifiedOwnerId = "";
             final String dataSetId = firstHalfDataSetId;
             final String name = "craigmcc negative test unspecified ownerId";
-            final String comment = null;
             AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            unspecifiedOwnerId, name, List.of(dataSetId), comment);
+                    new AnnotationTestBase.CreateAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
             final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.ownerId must be specified";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
@@ -311,10 +310,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String ownerId = "craigmcc";
             final String dataSetId = firstHalfDataSetId;
             final String unspecifiedName = "";
-            final String comment = null;
             AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            ownerId, unspecifiedName, List.of(dataSetId), comment);
+                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
             final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
@@ -326,10 +323,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String ownerId = "craigmcc";
             final String emptyDataSetId = "";
             final String name = "craigmcc negative test unspecified dataset id";
-            final String comment = null;
             AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            ownerId, name, new ArrayList<>(), comment);
+                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, new ArrayList<>());
             final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
@@ -341,18 +336,17 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String ownerId = "craigmcc";
             final String invalidDataSetId = "junk12345";
             final String name = "craigmcc negative test invalid dataset id";
-            final String comment = null;
             AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            ownerId, name, List.of(invalidDataSetId), comment);
+                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, List.of(invalidDataSetId));
             final String expectedRejectMessage = "no DataSetDocument found with id";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
-       List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResultAnnotations = new ArrayList<>();
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResultAnnotations = new ArrayList<>();
         List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
         String annotationQueryId = "";
+        List<String> secondHalfAnnotationIds = new ArrayList<>();
         {
             /*
              * createAnnotation() positive test
@@ -372,7 +366,14 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     final String firstHalfName = firstHalfComment;
                     AnnotationTestBase.CreateAnnotationRequestParams firstHalfParams =
                             new AnnotationTestBase.CreateAnnotationRequestParams(
-                                    owner, firstHalfName, List.of(firstHalfDataSetId), firstHalfComment);
+                                    owner,
+                                    firstHalfName,
+                                    List.of(firstHalfDataSetId),
+                                    null,
+                                    firstHalfComment,
+                                    null,
+                                    null,
+                                    null);
                     final String createdAnnotationId = sendAndVerifyCreateAnnotation(
                             firstHalfParams, false, "");
                     if (owner.equals("craigmcc")) {
@@ -388,11 +389,88 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     final String secondHalfName = secondHalfComment;
                     AnnotationTestBase.CreateAnnotationRequestParams secondHalfParams =
                             new AnnotationTestBase.CreateAnnotationRequestParams(
-                                    owner, secondHalfName, List.of(secondHalfDataSetId), secondHalfComment);
-                    sendAndVerifyCreateAnnotation(
-                            secondHalfParams, false, "");
+                                    owner,
+                                    secondHalfName,
+                                    List.of(secondHalfDataSetId),
+                                    null,
+                                    secondHalfComment,
+                                    null,
+                                    null,
+                                    null);
+                    secondHalfAnnotationIds.add(
+                            sendAndVerifyCreateAnnotation(
+                                    secondHalfParams, false, ""));
                 }
             }
+        }
+
+        {
+            // createAnnotation() negative test - request includes an invalid associated annotation id
+
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(secondHalfDataSetId);
+            final String name = "craigmcc negative test case with invalid annotation id";
+            final List<String> annotationIds = List.of("junk12345");
+            final String comment = "This negative test case covers an annotation that specifies an invalid associated annotation id.";
+            final List<String> tags = List.of("beam loss", "outage");
+            final Map<String, String> attributeMap = Map.of("sector", "01", "subsystem", "vacuum");
+            final EventMetadataUtility.EventMetadataParams eventMetadataParams =
+                    new EventMetadataUtility.EventMetadataParams(
+                            "experiment 1234",
+                            startSeconds,
+                            0L,
+                            startSeconds+60,
+                            999_000_000L);
+
+            AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            annotationIds,
+                            comment,
+                            tags,
+                            attributeMap,
+                            eventMetadataParams);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage = "no AnnotationDocument found with id: junk12345";
+            sendAndVerifyCreateAnnotation(
+                    params, expectReject, expectedRejectMessage);
+        }
+
+        {
+            // createAnnotation() positive test - request includes all required and optional annotation fields
+
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(secondHalfDataSetId);
+            final String name = "craigmcc positive test case with all fields";
+            final List<String> annotationIds = secondHalfAnnotationIds;
+            final String comment = "This positive test case covers an annotation with all required and optional fields set.";
+            final List<String> tags = List.of("beam loss", "outage");
+            final Map<String, String> attributeMap = Map.of("sector", "01", "subsystem", "vacuum");
+            final EventMetadataUtility.EventMetadataParams eventMetadataParams =
+                    new EventMetadataUtility.EventMetadataParams(
+                            "experiment 1234",
+                            startSeconds,
+                            0L,
+                            startSeconds+60,
+                            999_000_000L);
+
+            AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            annotationIds,
+                            comment,
+                            tags,
+                            attributeMap,
+                            eventMetadataParams);
+
+            final String expectedRejectMessage = null;
+            sendAndVerifyCreateAnnotation(
+                    params, false, expectedRejectMessage);
         }
 
         {
