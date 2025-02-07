@@ -18,6 +18,7 @@ import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
@@ -1777,16 +1778,13 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
-            String annotationId,
-            String ownerId,
-            String datasetId,
-            String commentText,
+            AnnotationTestBase.QueryAnnotationsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
             List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
-                AnnotationTestBase.buildQueryAnnotationsRequest(annotationId, ownerId, datasetId, commentText);
+                AnnotationTestBase.buildQueryAnnotationsRequest(queryParams);
 
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
@@ -1817,9 +1815,6 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(foundAnnotation);
             final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getId()));
-            if (annotationId != null) {
-                assertEquals(annotationId, foundAnnotation.getId());
-            }
 
             // compare required fields from request against found annotation
             assertTrue(requestParams.ownerId.equals(foundAnnotation.getOwnerId()));
@@ -1827,23 +1822,55 @@ public abstract class GrpcIntegrationTestBase {
             // use Objects.equals to compare list elements
             assertTrue(Objects.equals(requestParams.dataSetIds, foundAnnotation.getDataSetIdsList()));
 
-            // compare optional fields from request against found annotation
-            if (requestParams.comment != null) {
-                assertTrue(requestParams.comment.equals(foundAnnotation.getComment()));
+            // confirm that query results correspond to specify query criteria
+            
+            // check IdCriterion
+            if (queryParams.idCriterion != null) {
+                assertTrue(foundAnnotation.getId().equals(queryParams.idCriterion));
             }
-            // TODO: add other optional fields like tags, attributes, eventMetadata, annotationIds
-
-
-
-            // match annotation fields in result against query filter parameters
-            if (ownerId != null) {
-                assertEquals(ownerId, foundAnnotation.getOwnerId());
+            
+            // check OwnerCriterion
+            if (queryParams.ownerCriterion != null) {
+                assertTrue(foundAnnotation.getOwnerId().equals(queryParams.ownerCriterion));
             }
-            if (datasetId != null) {
-                assertTrue(foundAnnotation.getDataSetIdsList().contains(datasetId));
+
+            // check DataSetCriterion
+            if (queryParams.datasetCriterion != null) {
+                assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.datasetCriterion));
             }
-            if (commentText != null) {
-                assertTrue(foundAnnotation.getComment().contains(commentText));
+
+            // check NameCriterion
+            if (queryParams.nameCriterion != null) {
+                assertTrue(foundAnnotation.getName().contains(queryParams.nameCriterion));
+            }
+
+            // check AssociatedAnnotationCriterion
+            if (queryParams.associatedAnnotationCriterion != null) {
+                assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.associatedAnnotationCriterion));
+            }
+
+            // check CommentCriterion
+            if (queryParams.commentCriterion != null) {
+                assertTrue(foundAnnotation.getComment().contains(queryParams.commentCriterion));
+            }
+
+            // check TagsCriterion
+            if (queryParams.tagsCriterion != null) {
+                assertTrue(foundAnnotation.getTagsList().contains(queryParams.tagsCriterion));
+            }
+
+            // check AttributesCriterion
+            if (queryParams.attributeCriterionKey != null) {
+                assertNotNull(queryParams.attributeCriterionValue);
+                final Map<String, String> resultAttributeMap =
+                        AttributesUtility.attributeMapFromList(foundAnnotation.getAttributesList());
+                assertEquals(
+                        resultAttributeMap.get(queryParams.attributeCriterionKey), queryParams.attributeCriterionValue);
+            }
+
+            // check EventCriterion
+            if (queryParams.eventCriterion != null) {
+                assertTrue(foundAnnotation.getEventMetadata().getDescription().contains(queryParams.eventCriterion));
             }
 
 // TODO: uncomment to check dataset list content after making changes to create query result containing datasets

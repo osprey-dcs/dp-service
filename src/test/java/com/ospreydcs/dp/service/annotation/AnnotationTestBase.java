@@ -75,49 +75,6 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class CreateAnnotationRequestParams {
-
-        public final String ownerId;
-        public final List<String> dataSetIds;
-        public final String name;
-        public final List<String> annotationIds;
-        public final String comment;
-        public final List<String> tags;
-        public final Map<String, String> attributeMap;
-        public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
-
-        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
-            this.ownerId = ownerId;
-            this.dataSetIds = dataSetIds;
-            this.name = name;
-            this.annotationIds = null;
-            this.comment = null;
-            this.tags = null;
-            this.attributeMap = null;
-            this.eventMetadataParams = null;
-        }
-
-        public CreateAnnotationRequestParams(
-                String ownerId,
-                String name,
-                List<String> dataSetIds,
-                List<String> annotationIds,
-                String comment,
-                List<String> tags,
-                Map<String, String> attributeMap,
-                EventMetadataUtility.EventMetadataParams eventMetadataParams
-        ) {
-            this.ownerId = ownerId;
-            this.dataSetIds = dataSetIds;
-            this.name = name;
-            this.annotationIds = annotationIds;
-            this.comment = comment;
-            this.tags = tags;
-            this.attributeMap = attributeMap;
-            this.eventMetadataParams = eventMetadataParams;
-        }
-    }
-
     public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
 
         // instance variables
@@ -299,6 +256,49 @@ public class AnnotationTestBase {
         }
     }
 
+    public static class CreateAnnotationRequestParams {
+
+        public final String ownerId;
+        public final List<String> dataSetIds;
+        public final String name;
+        public final List<String> annotationIds;
+        public final String comment;
+        public final List<String> tags;
+        public final Map<String, String> attributeMap;
+        public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
+
+        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
+            this.ownerId = ownerId;
+            this.dataSetIds = dataSetIds;
+            this.name = name;
+            this.annotationIds = null;
+            this.comment = null;
+            this.tags = null;
+            this.attributeMap = null;
+            this.eventMetadataParams = null;
+        }
+
+        public CreateAnnotationRequestParams(
+                String ownerId,
+                String name,
+                List<String> dataSetIds,
+                List<String> annotationIds,
+                String comment,
+                List<String> tags,
+                Map<String, String> attributeMap,
+                EventMetadataUtility.EventMetadataParams eventMetadataParams
+        ) {
+            this.ownerId = ownerId;
+            this.dataSetIds = dataSetIds;
+            this.name = name;
+            this.annotationIds = annotationIds;
+            this.comment = comment;
+            this.tags = tags;
+            this.attributeMap = attributeMap;
+            this.eventMetadataParams = eventMetadataParams;
+        }
+    }
+
     public static class CreateAnnotationResponseObserver implements StreamObserver<CreateAnnotationResponse> {
 
         // instance variables
@@ -389,6 +389,58 @@ public class AnnotationTestBase {
         @Override
         public void onCompleted() {
         }
+    }
+
+    public static class QueryAnnotationsParams {
+
+        public String idCriterion = null;
+        public String ownerCriterion = null;
+        public String datasetCriterion = null;
+        public String nameCriterion = null;
+        public String associatedAnnotationCriterion = null;
+        public String commentCriterion = null;
+        public String tagsCriterion = null;
+        public String attributeCriterionKey = null;
+        public String attributeCriterionValue = null;
+        public String eventCriterion = null;
+
+        public void setIdCriterion(String idCriterion) {
+            this.idCriterion = idCriterion;
+        }
+
+        public void setOwnerCriterion(String ownerCriterion) {
+            this.ownerCriterion = ownerCriterion;
+        }
+
+        public void setDatasetCriterion(String datasetCriterion) {
+            this.datasetCriterion = datasetCriterion;
+        }
+
+        public void setNameCriterion(String nameCriterion) {
+            this.nameCriterion = nameCriterion;
+        }
+
+        public void setAssociatedAnnotationCriterion(String associatedAnnotationCriterion) {
+            this.associatedAnnotationCriterion = associatedAnnotationCriterion;
+        }
+
+        public void setCommentCriterion(String commentCriterion) {
+            this.commentCriterion = commentCriterion;
+        }
+
+        public void setTagsCriterion(String tagsCriterion) {
+            this.tagsCriterion = tagsCriterion;
+        }
+
+        public void setAttributeCriterionKey(String attributeCriterionKey, String attributeCriterionValue) {
+            this.attributeCriterionKey = attributeCriterionKey;
+            this.attributeCriterionValue = attributeCriterionValue;
+        }
+
+        public void setEventCriterion(String eventCriterion) {
+            this.eventCriterion = eventCriterion;
+        }
+
     }
 
     public static class QueryAnnotationsResponseObserver implements StreamObserver<QueryAnnotationsResponse> {
@@ -689,18 +741,15 @@ public class AnnotationTestBase {
     }
 
     public static QueryAnnotationsRequest buildQueryAnnotationsRequest(
-            String annotationId,
-            String ownerId,
-            String datasetId,
-            String commentText
+            final QueryAnnotationsParams params
     ) {
         QueryAnnotationsRequest.Builder requestBuilder = QueryAnnotationsRequest.newBuilder();
 
-        // add id criteria
-        if (annotationId != null) {
+        // handle IdCriterion
+        if (params.idCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion idCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()
-                            .setId(annotationId)
+                            .setId(params.idCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion idQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -709,11 +758,11 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(idQueryAnnotationsCriterion);
         }
 
-        // add owner criteria
-        if (ownerId != null) {
+        // handle OwnerCriterion
+        if (params.ownerCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(ownerId)
+                            .setOwnerId(params.ownerCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -722,11 +771,11 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(ownerQueryAnnotationsCriterion);
         }
 
-        // add datasetId criteria
-        if (datasetId != null) {
+        // handle DataSetCriterion
+        if (params.datasetCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion dataSetCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion.newBuilder()
-                            .setDataSetId(datasetId)
+                            .setDataSetId(params.datasetCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion datasetIdQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -735,17 +784,84 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(datasetIdQueryAnnotationsCriterion);
         }
 
-        // add comment criteria
-        if (commentText != null) {
+        // handle NameCriterion
+        if (params.nameCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion nameCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion.newBuilder()
+                            .setNameText(params.nameCriterion)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion nameQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setNameCriterion(nameCriterion)
+                            .build();
+            requestBuilder.addCriteria(nameQueryAnnotationsCriterion);
+        }
+
+        // handle AssociatedAnnotationIdCriterion
+        if (params.associatedAnnotationCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion associatedAnnotationCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion.newBuilder()
+                            .setAnnotationId(params.datasetCriterion)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion associatedAnnotationQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAnnotationCriterion(associatedAnnotationCriterion)
+                            .build();
+            requestBuilder.addCriteria(associatedAnnotationQueryAnnotationsCriterion);
+        }
+
+        // handle CommentCriterion
+        if (params.commentCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion.newBuilder()
-                            .setCommentText(commentText)
+                            .setCommentText(params.commentCriterion)
                             .build();
-            QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriteria =
+            QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
                             .setCommentCriterion(commentCriterion)
                             .build();
-            requestBuilder.addCriteria(commentQueryAnnotationsCriteria);
+            requestBuilder.addCriteria(commentQueryAnnotationsCriterion);
+        }
+
+        // handle TagsCriterion
+        if (params.tagsCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion tagsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                            .setTagValue(params.tagsCriterion)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion tagsQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(tagsCriterion)
+                            .build();
+            requestBuilder.addCriteria(tagsQueryAnnotationsCriterion);
+        }
+
+        // handle AttributesCriterion
+        if (params.attributeCriterionKey != null) {
+            assertNotNull(params.attributeCriterionValue);
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
+                            .setKey(params.attributeCriterionKey)
+                            .setValue(params.attributeCriterionValue)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion attributesQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAttributesCriterion(attributesCriterion)
+                            .build();
+            requestBuilder.addCriteria(attributesQueryAnnotationsCriterion);
+        }
+
+        // handle EventCriterion
+        if (params.eventCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion eventCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion.newBuilder()
+                            .setDescriptionText(params.eventCriterion)
+                            .build();
+            QueryAnnotationsRequest.QueryAnnotationsCriterion eventQueryAnnotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setEventCriterion(eventCriterion)
+                            .build();
+            requestBuilder.addCriteria(eventQueryAnnotationsCriterion);
         }
 
         return requestBuilder.build();

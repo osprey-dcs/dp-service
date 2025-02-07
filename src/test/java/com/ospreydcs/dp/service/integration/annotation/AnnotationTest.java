@@ -474,53 +474,61 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // queryAnnotations() negative test: empty annotationId in query by id
+            // queryAnnotations() negative test: empty annotationId in query by IdCriterion
 
             final String blankAnnotationId = "";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setIdCriterion(blankAnnotationId);
+
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
+
             sendAndVerifyQueryAnnotations(
-                    blankAnnotationId,
-                    null,
-                    null,
-                    null,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     new ArrayList<>());
         }
 
         {
-            // queryAnnotations() negative test: empty comment text in query by owner and comment
+            // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and CommentCriterion
 
             final String ownerId = "craigmcc";
             final String blankCommentText = "";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setCommentCriterion(blankCommentText);
+
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+
             sendAndVerifyQueryAnnotations(
-                    null,
-                    ownerId,
-                    null,
-                    blankCommentText,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     new ArrayList<>());
         }
 
         {
-            // queryAnnotations() negative test: empty datasetId in query by owner and datasetId
+            // queryAnnotations() negative test: empty datasetId in query by OwnerCriterion and DataSetCriterion.
 
             final String ownerId = "craigmcc";
             final String blankDatasetId = "";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setDatasetCriterion(blankDatasetId);
+
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
+
             sendAndVerifyQueryAnnotations(
-                    null,
-                    ownerId,
-                    blankDatasetId,
-                    null,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     new ArrayList<>());
@@ -528,7 +536,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         {
             /*
-             * queryAnnotations() positive test for query by owner and dataset id
+             * queryAnnotations() positive test for query by OwnerCriterion and DataSetCriterion.
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -540,13 +548,16 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final String ownerId = "craigmcc";
             final String datasetId = firstHalfDataSetId;
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setDatasetCriterion(datasetId);
+
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
+
             sendAndVerifyQueryAnnotations(
-                    null,
-                    ownerId,
-                    datasetId,
-                    null,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     expectedQueryResultAnnotations);
@@ -555,7 +566,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
         {
             /*
-             * queryAnnotations() positive test for query by owner and comment
+             * queryAnnotations() positive test for query by OwnerCriterion and CommentCriterion.
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -567,13 +578,16 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final String ownerId = "craigmcc";
             final String commentText = "first";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setCommentCriterion(commentText);
+
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
+
             annotationsQueryResult = sendAndVerifyQueryAnnotations(
-                    null,
-                    ownerId,
-                    null,
-                    commentText,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     expectedQueryResultAnnotations);
@@ -581,16 +595,19 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         {
             /*
-             * queryAnnotations() positive test for query by annotation id
+             * queryAnnotations() positive test for query by IdCriterion.
              */
+
             final String annotationId = annotationQueryId;
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setIdCriterion(annotationQueryId);
+
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
+
             sendAndVerifyQueryAnnotations(
-                    annotationQueryId,
-                    null,
-                    null,
-                    null,
+                    queryParams,
                     expectReject,
                     expectedRejectMessage,
                     expectedQueryByIdResultAnnotations);
