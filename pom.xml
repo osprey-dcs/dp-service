@@ -54,6 +54,14 @@
         </profile>
     </profiles>
 
+    <repositories>
+        <repository>
+            <id>sci-java</id>
+            <name>SciJava Public</name>
+            <url>https://maven.scijava.org/content/repositories/public/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
 
         <dependency>
@@ -117,15 +125,17 @@
             <version>${snakeyaml.version}</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/cisd/base -->
         <dependency>
             <groupId>cisd</groupId>
-            <artifactId>sis-base</artifactId>
+            <artifactId>base</artifactId>
             <version>18.09.0</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/cisd/jhdf5 -->
         <dependency>
             <groupId>cisd</groupId>
-            <artifactId>sis-jhdf5</artifactId>
+            <artifactId>jhdf5</artifactId>
             <version>19.04.1</version>
         </dependency>
 
