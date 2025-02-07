@@ -1839,19 +1839,16 @@ public abstract class GrpcIntegrationTestBase {
                 assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.datasetCriterion));
             }
 
-            // check NameCriterion
-            if (queryParams.nameCriterion != null) {
-                assertTrue(foundAnnotation.getName().contains(queryParams.nameCriterion));
-            }
-
             // check AssociatedAnnotationCriterion
             if (queryParams.associatedAnnotationCriterion != null) {
                 assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.associatedAnnotationCriterion));
             }
 
-            // check CommentCriterion
-            if (queryParams.commentCriterion != null) {
-                assertTrue(foundAnnotation.getComment().contains(queryParams.commentCriterion));
+            // check TextCriterion
+            if (queryParams.textCriterion != null) {
+                assertTrue(
+                        foundAnnotation.getComment().contains(queryParams.textCriterion)
+                                || foundAnnotation.getName().contains(queryParams.textCriterion));
             }
 
             // check TagsCriterion

@@ -240,16 +240,6 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
-                case NAMECRITERION -> {
-                    // name filter, combined with other filters by AND operator
-                    final String nameText = criterion.getNameCriterion().getNameText();
-                    if ( ! nameText.isBlank()) {
-                        final Pattern namePattern = Pattern.compile(nameText, Pattern.CASE_INSENSITIVE);
-                        final Bson nameFilter = Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME, namePattern);
-                        globalFilterList.add(nameFilter);
-                    }
-                }
-
                 case ANNOTATIONCRITERION -> {
                     // assciated annotation ids filter, combined with other filters by OR operator
                     final String annotationId = criterion.getAnnotationCriterion().getAnnotationId();
@@ -259,12 +249,12 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
-                case COMMENTCRITERION -> {
-                    // comment filter, combined with other filters by OR operator
-                    final String commentText = criterion.getCommentCriterion().getCommentText();
-                    if (! commentText.isBlank()) {
-                        final Bson commentFilter = Filters.text(commentText);
-                        criteriaFilterList.add(commentFilter);
+                case TEXTCRITERION -> {
+                    // name filter, combined with other filters by AND operator
+                    final String nameText = criterion.getTextCriterion().getText();
+                    if ( ! nameText.isBlank()) {
+                        final Bson nameFilter = Filters.text(nameText);
+                        globalFilterList.add(nameFilter);
                     }
                 }
 

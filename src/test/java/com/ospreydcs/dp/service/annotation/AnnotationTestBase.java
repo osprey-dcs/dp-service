@@ -396,9 +396,8 @@ public class AnnotationTestBase {
         public String idCriterion = null;
         public String ownerCriterion = null;
         public String datasetCriterion = null;
-        public String nameCriterion = null;
         public String associatedAnnotationCriterion = null;
-        public String commentCriterion = null;
+        public String textCriterion = null;
         public String tagsCriterion = null;
         public String attributeCriterionKey = null;
         public String attributeCriterionValue = null;
@@ -416,16 +415,12 @@ public class AnnotationTestBase {
             this.datasetCriterion = datasetCriterion;
         }
 
-        public void setNameCriterion(String nameCriterion) {
-            this.nameCriterion = nameCriterion;
-        }
-
         public void setAssociatedAnnotationCriterion(String associatedAnnotationCriterion) {
             this.associatedAnnotationCriterion = associatedAnnotationCriterion;
         }
 
-        public void setCommentCriterion(String commentCriterion) {
-            this.commentCriterion = commentCriterion;
+        public void setTextCriterion(String commentCriterion) {
+            this.textCriterion = commentCriterion;
         }
 
         public void setTagsCriterion(String tagsCriterion) {
@@ -784,19 +779,6 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(datasetIdQueryAnnotationsCriterion);
         }
 
-        // handle NameCriterion
-        if (params.nameCriterion != null) {
-            QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion nameCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion.newBuilder()
-                            .setNameText(params.nameCriterion)
-                            .build();
-            QueryAnnotationsRequest.QueryAnnotationsCriterion nameQueryAnnotationsCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                            .setNameCriterion(nameCriterion)
-                            .build();
-            requestBuilder.addCriteria(nameQueryAnnotationsCriterion);
-        }
-
         // handle AssociatedAnnotationIdCriterion
         if (params.associatedAnnotationCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion associatedAnnotationCriterion =
@@ -810,15 +792,15 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(associatedAnnotationQueryAnnotationsCriterion);
         }
 
-        // handle CommentCriterion
-        if (params.commentCriterion != null) {
-            QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion.newBuilder()
-                            .setCommentText(params.commentCriterion)
+        // handle TextCriterion
+        if (params.textCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion textCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion.newBuilder()
+                            .setText(params.textCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion commentQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                            .setCommentCriterion(commentCriterion)
+                            .setTextCriterion(textCriterion)
                             .build();
             requestBuilder.addCriteria(commentQueryAnnotationsCriterion);
         }

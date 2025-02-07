@@ -345,6 +345,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResultAnnotations = new ArrayList<>();
         List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();
         String annotationQueryId = "";
         List<String> secondHalfAnnotationIds = new ArrayList<>();
         {
@@ -376,6 +377,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                                     null);
                     final String createdAnnotationId = sendAndVerifyCreateAnnotation(
                             firstHalfParams, false, "");
+                    expectedQueryByNameAnnotations.add(firstHalfParams);
                     if (owner.equals("craigmcc")) {
                         expectedQueryResultAnnotations.add(firstHalfParams);
                     }
@@ -493,18 +495,18 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and CommentCriterion
+            // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and TextCriterion
 
             final String ownerId = "craigmcc";
             final String blankCommentText = "";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setOwnerCriterion(ownerId);
-            queryParams.setCommentCriterion(blankCommentText);
+            queryParams.setTextCriterion(blankCommentText);
 
             final boolean expectReject = true;
             final String expectedRejectMessage =
-                    "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+                    "QueryAnnotationsRequest.criteria.TextCriterion text must be specified";
 
             sendAndVerifyQueryAnnotations(
                     queryParams,
@@ -566,7 +568,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
         {
             /*
-             * queryAnnotations() positive test for query by OwnerCriterion and CommentCriterion.
+             * queryAnnotations() positive test for query by OwnerCriterion and TextCriterion.
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -581,7 +583,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setOwnerCriterion(ownerId);
-            queryParams.setCommentCriterion(commentText);
+            queryParams.setTextCriterion(commentText);
 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
@@ -611,6 +613,26 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     expectReject,
                     expectedRejectMessage,
                     expectedQueryByIdResultAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by TextCriterion.
+             */
+
+            final String nameText = "first";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setTextCriterion(nameText);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedQueryByNameAnnotations);
         }
 
         // TODO: uncomment this section after adding dataset content back to annotation

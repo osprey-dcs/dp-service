@@ -162,17 +162,13 @@ public abstract class MongoClientBase {
         // create regular index by ownerId
         createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID));
 
-        // create compound index on ownerId/type
-        createMongoIndexAnnotations(
-                Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID));
-
         // create compound index on type/comment to optimize searching comment annotation text
         createMongoIndexAnnotations(
                 Indexes.compoundIndex(
-                        Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID),
-                        Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)));
-
-        // TODO: might want a compound index on owner/type/text(comment) but can only have a single text index per collection.
+                        Indexes.compoundIndex(
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)),
+                        Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
 
         return true;
     }

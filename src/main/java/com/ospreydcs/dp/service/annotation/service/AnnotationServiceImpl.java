@@ -514,17 +514,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case NAMECRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion nameCriterion
-                            = criterion.getNameCriterion();
-                    if (nameCriterion.getNameText().isBlank()) {
-                        final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.NameCriterion nameText must be specified";
-                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-                        return;
-                    }
-                }
-
                 case ANNOTATIONCRITERION -> {
                     final QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion annotationCriterion
                             = criterion.getAnnotationCriterion();
@@ -536,12 +525,12 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case COMMENTCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.CommentCriterion commentCriterion
-                            = criterion.getCommentCriterion();
-                    if (commentCriterion.getCommentText().isBlank()) {
+                case TEXTCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion commentCriterion
+                            = criterion.getTextCriterion();
+                    if (commentCriterion.getText().isBlank()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.CommentCriterion commentText must be specified";
+                                "QueryAnnotationsRequest.criteria.TextCriterion text must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
