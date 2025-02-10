@@ -1624,15 +1624,13 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<DataSet> sendAndVerifyQueryDataSets(
-            String datasetId,
-            String ownerId,
-            String descriptionText,
+            AnnotationTestBase.QueryDataSetsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResult
     ) {
         final QueryDataSetsRequest request =
-                AnnotationTestBase.buildQueryDataSetsRequest(datasetId, ownerId, descriptionText);
+                AnnotationTestBase.buildQueryDataSetsRequest(queryParams);
 
         final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
 
@@ -1659,12 +1657,24 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(found);
             assertNotNull(foundDataSet);
             final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
+
+            // check required dataset fields match
             assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
-            if (datasetId != null) {
-                assertEquals(datasetId, foundDataSet.getDataSetId());
-            }
             assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
             assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
+
+            // check that result corresponds to query criteria
+            if (queryParams.idCriterion != null) {
+                assertEquals(queryParams.idCriterion, foundDataSet.getDataSetId());
+            }
+            if (queryParams.ownerCriterion != null) {
+                assertEquals(queryParams.ownerCriterion, foundDataSet.getOwnerId());
+            }
+            if (queryParams.textCriterion != null) {
+                assertTrue(
+                        foundDataSet.getName().contains(queryParams.textCriterion)
+                                || foundDataSet.getDescription().contains(queryParams.textCriterion));
+            }
 
             // compare data blocks from result with request
             final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet;

@@ -222,7 +222,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
-            final String secondHalfName = "second half dataset";
+            final String secondHalfName = "half2 second half dataset";
             final String secondHalfDescription = "second half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(
@@ -235,31 +235,40 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         }
 
         {
-            // queryDataSets() negative test - rejected because descriptionText is empty
+            // queryDataSets() negative test - rejected because TextCriterion is empty
 
             final String ownerId = "craigmcc";
             final String blankDescriptionText = "";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setTextCriterion(blankDescriptionText);
+
             final boolean expectReject = true;
             final String expectedRejectMessage =
-                    "QueryDataSetsRequest.criteria.DescriptionCriterion descriptionText must be specified";
+                    "QueryDataSetsRequest.criteria.TextCriterion text must be specified";
+
             sendAndVerifyQueryDataSets(
-                    null, ownerId, blankDescriptionText, expectReject, expectedRejectMessage, new ArrayList<>());
+                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
         {
-            // queryDataSets() negative test - rejected because id is empty
+            // queryDataSets() negative test - rejected because IdCriterion is empty
 
             final String blankDatasetId = "";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setIdCriterion(blankDatasetId);
+
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
+
             sendAndVerifyQueryDataSets(
-                    blankDatasetId, null, null, expectReject, expectedRejectMessage, new ArrayList<>());
+                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
         {
             /*
-             * queryDataSets() positive test - query by owner and description
+             * queryDataSets() positive test - query by OwnerCriterion and TextCriterion (on description field)
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -271,24 +280,50 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
             final String ownerId = "craigmcc";
             final String descriptionText = "first";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setOwnerCriterion(ownerId);
+            queryParams.setTextCriterion(descriptionText);
+
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
+
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(firstHalfDataSetParams);
             sendAndVerifyQueryDataSets(
-                    null, ownerId, descriptionText, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+                    queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
         {
             /*
-             * queryDataSets() positive test - query by dataset id
+             * queryDataSets() positive test - query by IdCriterion
              */
 
             final String datasetId = firstHalfDataSetId;
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setIdCriterion(firstHalfDataSetId);
+
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
+
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(firstHalfDataSetParams);
             sendAndVerifyQueryDataSets(
-                    datasetId, null, null, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+                    queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+        }
+
+        {
+            /*
+             * queryDataSets() positive test - query by TextCriterion (on name field)
+             */
+
+            final String datasetName = "half2";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setTextCriterion(datasetName);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets = List.of(secondHalfDataSetParams);
+            sendAndVerifyQueryDataSets(
+                    queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
         {

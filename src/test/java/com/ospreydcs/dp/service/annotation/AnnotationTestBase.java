@@ -167,6 +167,25 @@ public class AnnotationTestBase {
         }
     }
 
+    public static class QueryDataSetsParams {
+
+        public String idCriterion = null;
+        public String ownerCriterion = null;
+        public String textCriterion = null;
+
+        public void setIdCriterion(String idCriterion) {
+            this.idCriterion = idCriterion;
+        }
+
+        public void setOwnerCriterion(String ownerCriterion) {
+            this.ownerCriterion = ownerCriterion;
+        }
+
+        public void setTextCriterion(String commentCriterion) {
+            this.textCriterion = commentCriterion;
+        }
+    }
+
     public static class QueryDataSetsResponseObserver implements StreamObserver<QueryDataSetsResponse> {
 
         // instance variables
@@ -658,17 +677,15 @@ public class AnnotationTestBase {
     }
 
     public static QueryDataSetsRequest buildQueryDataSetsRequest(
-            String datasetId,
-            String ownerId,
-            String descriptionText
+            QueryDataSetsParams params
     ) {
         QueryDataSetsRequest.Builder requestBuilder = QueryDataSetsRequest.newBuilder();
 
         // add id criteria
-        if (datasetId != null) {
+        if (params.idCriterion != null) {
             QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion idCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion.newBuilder()
-                            .setId(datasetId)
+                            .setId(params.idCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion idQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -678,10 +695,10 @@ public class AnnotationTestBase {
         }
 
         // add owner criteria
-        if (ownerId != null) {
+        if (params.ownerCriterion != null) {
             QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(ownerId)
+                            .setOwnerId(params.ownerCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion ownerQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -691,14 +708,14 @@ public class AnnotationTestBase {
         }
 
         // add description criteria
-        if (descriptionText != null) {
-            QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion descriptionCriterion =
-                    QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion.newBuilder()
-                            .setDescriptionText(descriptionText)
+        if (params.textCriterion != null) {
+            QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion textCriterion =
+                    QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
+                            .setText(params.textCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion descriptionQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
-                            .setDescriptionCriterion(descriptionCriterion)
+                            .setTextCriterion(textCriterion)
                             .build();
             requestBuilder.addCriteria(descriptionQueryDataSetsCriterion);
         }

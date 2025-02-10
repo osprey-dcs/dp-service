@@ -101,19 +101,10 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
-                case NAMECRITERION -> {
-                    final String namePatternString = criterion.getNameCriterion().getNamePattern();
-                    if (! namePatternString.isBlank()) {
-                        final Pattern namePattern = Pattern.compile(namePatternString, Pattern.CASE_INSENSITIVE);
-                        final Bson nameFilter = Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME, namePattern);
-                        criteriaFilterList.add(nameFilter);
-                    }
-                }
-
-                case DESCRIPTIONCRITERION -> {
-                    final String descriptionText = criterion.getDescriptionCriterion().getDescriptionText();
-                    if (! descriptionText.isBlank()) {
-                        final Bson descriptionFilter = Filters.text(descriptionText);
+                case TEXTCRITERION -> {
+                    final String text = criterion.getTextCriterion().getText();
+                    if (! text.isBlank()) {
+                        final Bson descriptionFilter = Filters.text(text);
                         criteriaFilterList.add(descriptionFilter);
                     }
                 }

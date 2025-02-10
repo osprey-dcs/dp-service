@@ -256,23 +256,12 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case NAMECRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.NameCriterion nameCriterion
-                            = criterion.getNameCriterion();
-                    if (nameCriterion.getNamePattern().isBlank()) {
+                case TEXTCRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion textCriterion
+                            = criterion.getTextCriterion();
+                    if (textCriterion.getText().isBlank()) {
                         final String errorMsg =
-                                "QueryDataSetsRequest.criteria.NameCriterion namePattern must be specified";
-                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
-                        return;
-                    }
-                }
-
-                case DESCRIPTIONCRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.DescriptionCriterion descriptionCriterion
-                            = criterion.getDescriptionCriterion();
-                    if (descriptionCriterion.getDescriptionText().isBlank()) {
-                        final String errorMsg =
-                                "QueryDataSetsRequest.criteria.DescriptionCriterion descriptionText must be specified";
+                                "QueryDataSetsRequest.criteria.TextCriterion text must be specified";
                         sendQueryDataSetsResponseReject(errorMsg, responseObserver);
                         return;
                     }
