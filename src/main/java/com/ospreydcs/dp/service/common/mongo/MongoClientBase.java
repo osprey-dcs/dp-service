@@ -165,7 +165,8 @@ public abstract class MongoClientBase {
                 Indexes.compoundIndex(
                         Indexes.compoundIndex(
                             Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
-                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT)),
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT),
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION)),
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
 
         return true;

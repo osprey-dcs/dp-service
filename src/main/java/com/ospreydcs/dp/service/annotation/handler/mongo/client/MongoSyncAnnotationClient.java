@@ -269,18 +269,6 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
-                case EVENTCRITERION -> {
-                    // event metadata filter, combined with other filters by OR operator
-                    final String descriptionText = criterion.getEventCriterion().getDescriptionText();
-                    if ( ! descriptionText.isBlank()) {
-                        Bson eventFilter =
-                                Filters.eq(
-                                        BsonConstants.BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION,
-                                        descriptionText);
-                        criteriaFilterList.add(eventFilter);
-                    }
-                }
-
                 case CRITERION_NOT_SET -> {
                     // shouldn't happen since validation checks for this, but...
                     logger.error("executeQueryAnnotations unexpected error criterion case not set");

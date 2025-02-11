@@ -476,6 +476,8 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     params, expectReject, expectedRejectMessage);
         }
 
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByEventAnnotations =  new ArrayList<>();
+        List<String> queryByEventAnnotationIds = new ArrayList<>();
         {
             // createAnnotation() positive test - request includes all required and optional annotation fields
 
@@ -504,10 +506,11 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                             tags,
                             attributeMap,
                             eventMetadataParams);
+            expectedQueryByEventAnnotations.add(params);
 
             final String expectedRejectMessage = null;
-            sendAndVerifyCreateAnnotation(
-                    params, false, expectedRejectMessage);
+            queryByEventAnnotationIds.add(sendAndVerifyCreateAnnotation(
+                    params, false, expectedRejectMessage));
         }
 
         {
@@ -603,7 +606,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
         List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
         {
             /*
-             * queryAnnotations() positive test for query by OwnerCriterion and TextCriterion.
+             * queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
              *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
@@ -652,7 +655,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
 
         {
             /*
-             * queryAnnotations() positive test for query by TextCriterion.
+             * queryAnnotations() positive test for query by TextCriterion (over name field).
              */
 
             final String nameText = "first";
@@ -668,6 +671,26 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     expectReject,
                     expectedRejectMessage,
                     expectedQueryByNameAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by TextCriterion (over eventMetadata.description field).
+             */
+
+            final String eventDescriptionText = "1234";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setTextCriterion(eventDescriptionText);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedQueryByEventAnnotations);
         }
 
         // TODO: uncomment this section after adding dataset content back to annotation

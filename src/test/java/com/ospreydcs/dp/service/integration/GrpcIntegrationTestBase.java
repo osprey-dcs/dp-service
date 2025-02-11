@@ -1858,7 +1858,8 @@ public abstract class GrpcIntegrationTestBase {
             if (queryParams.textCriterion != null) {
                 assertTrue(
                         foundAnnotation.getComment().contains(queryParams.textCriterion)
-                                || foundAnnotation.getName().contains(queryParams.textCriterion));
+                                || foundAnnotation.getName().contains(queryParams.textCriterion)
+                                || foundAnnotation.getEventMetadata().getDescription().contains(queryParams.textCriterion));
             }
 
             // check TagsCriterion

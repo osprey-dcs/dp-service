@@ -850,19 +850,6 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(attributesQueryAnnotationsCriterion);
         }
 
-        // handle EventCriterion
-        if (params.eventCriterion != null) {
-            QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion eventCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion.newBuilder()
-                            .setDescriptionText(params.eventCriterion)
-                            .build();
-            QueryAnnotationsRequest.QueryAnnotationsCriterion eventQueryAnnotationsCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                            .setEventCriterion(eventCriterion)
-                            .build();
-            requestBuilder.addCriteria(eventQueryAnnotationsCriterion);
-        }
-
         return requestBuilder.build();
     }
 

@@ -553,17 +553,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case EVENTCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.EventCriterion eventCriterion
-                            = criterion.getEventCriterion();
-                    if (eventCriterion.getDescriptionText().isBlank()) {
-                        final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.EventCriterion descriptionText must be specified";
-                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-                        return;
-                    }
-                }
-
                 case CRITERION_NOT_SET -> {
                     final String errorMsg =
                             "QueryAnnotationsRequest.criteria criterion case not set";
