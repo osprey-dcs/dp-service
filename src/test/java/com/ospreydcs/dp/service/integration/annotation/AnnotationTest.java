@@ -1,11 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
-import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.grpc.EventMetadataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
@@ -476,8 +473,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     params, expectReject, expectedRejectMessage);
         }
 
-        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByEventAnnotations =  new ArrayList<>();
-        List<String> queryByEventAnnotationIds = new ArrayList<>();
+        List<AnnotationTestBase.CreateAnnotationRequestParams> expectedAnnotationQueryResultAnnotations =  new ArrayList<>();
         {
             // createAnnotation() positive test - request includes all required and optional annotation fields
 
@@ -506,11 +502,10 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                             tags,
                             attributeMap,
                             eventMetadataParams);
-            expectedQueryByEventAnnotations.add(params);
+            expectedAnnotationQueryResultAnnotations.add(params);
 
             final String expectedRejectMessage = null;
-            queryByEventAnnotationIds.add(sendAndVerifyCreateAnnotation(
-                    params, false, expectedRejectMessage));
+            sendAndVerifyCreateAnnotation(params, false, expectedRejectMessage);
         }
 
         {
@@ -561,7 +556,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setOwnerCriterion(ownerId);
-            queryParams.setDatasetCriterion(blankDatasetId);
+            queryParams.setDatasetsCriterion(blankDatasetId);
 
             final boolean expectReject = true;
             final String expectedRejectMessage =
@@ -591,7 +586,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setOwnerCriterion(ownerId);
-            queryParams.setDatasetCriterion(datasetId);
+            queryParams.setDatasetsCriterion(datasetId);
 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
@@ -690,7 +685,68 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    expectedQueryByEventAnnotations);
+                    expectedAnnotationQueryResultAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by AnnotationCriterion (by id of related annotation).
+             */
+
+            final String relatedAnnotationId = secondHalfAnnotationIds.get(0);
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setAnnotationsCriterion(relatedAnnotationId);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedAnnotationQueryResultAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by Tags (tag value).
+             */
+
+            final String tagValue = "beam loss";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setTagsCriterion(tagValue);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedAnnotationQueryResultAnnotations);
+        }
+
+        {
+            /*
+             * queryAnnotations() positive test for query by Attributes (attribute key and value).
+             */
+
+            final String attributeKey = "sector";
+            final String attributeValue = "01";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setAttributesCriterion(attributeKey, attributeValue);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectedAnnotationQueryResultAnnotations);
         }
 
         // TODO: uncomment this section after adding dataset content back to annotation

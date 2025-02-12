@@ -16,10 +16,8 @@ import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Filters.and;
@@ -222,18 +220,18 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
-                case DATASETCRITERION -> {
+                case DATASETSCRITERION -> {
                     // associated dataset id filter, combined with other filters by AND operator
-                    final String dataSetId = criterion.getDataSetCriterion().getDataSetId();
+                    final String dataSetId = criterion.getDataSetsCriterion().getDataSetId();
                     if ( ! dataSetId.isBlank()) {
                         Bson dataSetIdFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetId);
                         globalFilterList.add(dataSetIdFilter);
                     }
                 }
 
-                case ANNOTATIONCRITERION -> {
+                case ANNOTATIONSCRITERION -> {
                     // assciated annotation ids filter, combined with other filters by OR operator
-                    final String annotationId = criterion.getAnnotationCriterion().getAnnotationId();
+                    final String annotationId = criterion.getAnnotationsCriterion().getAnnotationId();
                     if ( ! annotationId.isBlank()) {
                         Bson associatedAnnotationFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS, annotationId);
                         criteriaFilterList.add(associatedAnnotationFilter);

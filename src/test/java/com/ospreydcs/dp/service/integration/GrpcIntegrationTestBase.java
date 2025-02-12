@@ -1845,13 +1845,13 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             // check DataSetCriterion
-            if (queryParams.datasetCriterion != null) {
-                assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.datasetCriterion));
+            if (queryParams.datasetsCriterion != null) {
+                assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.datasetsCriterion));
             }
 
             // check AssociatedAnnotationCriterion
-            if (queryParams.associatedAnnotationCriterion != null) {
-                assertTrue(foundAnnotation.getDataSetIdsList().contains(queryParams.associatedAnnotationCriterion));
+            if (queryParams.annotationsCriterion != null) {
+                assertTrue(foundAnnotation.getAnnotationIdsList().contains(queryParams.annotationsCriterion));
             }
 
             // check TextCriterion
@@ -1868,12 +1868,12 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             // check AttributesCriterion
-            if (queryParams.attributeCriterionKey != null) {
-                assertNotNull(queryParams.attributeCriterionValue);
+            if (queryParams.attributesCriterionKey != null) {
+                assertNotNull(queryParams.attributesCriterionValue);
                 final Map<String, String> resultAttributeMap =
                         AttributesUtility.attributeMapFromList(foundAnnotation.getAttributesList());
                 assertEquals(
-                        resultAttributeMap.get(queryParams.attributeCriterionKey), queryParams.attributeCriterionValue);
+                        resultAttributeMap.get(queryParams.attributesCriterionKey), queryParams.attributesCriterionValue);
             }
 
             // check EventCriterion

@@ -154,8 +154,21 @@ public abstract class MongoClientBase {
 
     private boolean createMongoIndexesAnnotations() {
 
-        // create regular index by ownerId
+        // create index by ownerId
         createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID));
+
+        // create index by id of associated datasets
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS));
+
+        // create index by id of associated annotations
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS));
+
+        // create index by tags
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TAGS));
+
+        // create index by attributes
+        createMongoIndexAnnotations(
+                Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_ATTRIBUTES + ".$**"));
 
         // create compound index on type/comment to optimize searching comment annotation text
         // NOTE - reordering so that owner id comes before the text index can lead to an error message like this:

@@ -492,10 +492,10 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case DATASETCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion dataSetCriterion
-                            = criterion.getDataSetCriterion();
-                    if (dataSetCriterion.getDataSetId().isBlank()) {
+                case DATASETSCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion dataSetsCriterion
+                            = criterion.getDataSetsCriterion();
+                    if (dataSetsCriterion.getDataSetId().isBlank()) {
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
@@ -503,10 +503,10 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
-                case ANNOTATIONCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion annotationCriterion
-                            = criterion.getAnnotationCriterion();
-                    if (annotationCriterion.getAnnotationId().isBlank()) {
+                case ANNOTATIONSCRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion annotationsCriterion
+                            = criterion.getAnnotationsCriterion();
+                    if (annotationsCriterion.getAnnotationId().isBlank()) {
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.AssociatedAnnotationIdCriterion id must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);

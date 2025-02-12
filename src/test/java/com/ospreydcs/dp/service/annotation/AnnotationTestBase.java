@@ -414,12 +414,12 @@ public class AnnotationTestBase {
 
         public String idCriterion = null;
         public String ownerCriterion = null;
-        public String datasetCriterion = null;
-        public String associatedAnnotationCriterion = null;
+        public String datasetsCriterion = null;
+        public String annotationsCriterion = null;
         public String textCriterion = null;
         public String tagsCriterion = null;
-        public String attributeCriterionKey = null;
-        public String attributeCriterionValue = null;
+        public String attributesCriterionKey = null;
+        public String attributesCriterionValue = null;
         public String eventCriterion = null;
 
         public void setIdCriterion(String idCriterion) {
@@ -430,12 +430,12 @@ public class AnnotationTestBase {
             this.ownerCriterion = ownerCriterion;
         }
 
-        public void setDatasetCriterion(String datasetCriterion) {
-            this.datasetCriterion = datasetCriterion;
+        public void setDatasetsCriterion(String datasetsCriterion) {
+            this.datasetsCriterion = datasetsCriterion;
         }
 
-        public void setAssociatedAnnotationCriterion(String associatedAnnotationCriterion) {
-            this.associatedAnnotationCriterion = associatedAnnotationCriterion;
+        public void setAnnotationsCriterion(String annotationsCriterion) {
+            this.annotationsCriterion = annotationsCriterion;
         }
 
         public void setTextCriterion(String commentCriterion) {
@@ -446,13 +446,9 @@ public class AnnotationTestBase {
             this.tagsCriterion = tagsCriterion;
         }
 
-        public void setAttributeCriterionKey(String attributeCriterionKey, String attributeCriterionValue) {
-            this.attributeCriterionKey = attributeCriterionKey;
-            this.attributeCriterionValue = attributeCriterionValue;
-        }
-
-        public void setEventCriterion(String eventCriterion) {
-            this.eventCriterion = eventCriterion;
+        public void setAttributesCriterion(String attributeCriterionKey, String attributeCriterionValue) {
+            this.attributesCriterionKey = attributeCriterionKey;
+            this.attributesCriterionValue = attributeCriterionValue;
         }
 
     }
@@ -783,28 +779,28 @@ public class AnnotationTestBase {
             requestBuilder.addCriteria(ownerQueryAnnotationsCriterion);
         }
 
-        // handle DataSetCriterion
-        if (params.datasetCriterion != null) {
-            QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion dataSetCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetCriterion.newBuilder()
-                            .setDataSetId(params.datasetCriterion)
+        // handle DataSetsCriterion
+        if (params.datasetsCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion dataSetsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()
+                            .setDataSetId(params.datasetsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion datasetIdQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                            .setDataSetCriterion(dataSetCriterion)
+                            .setDataSetsCriterion(dataSetsCriterion)
                             .build();
             requestBuilder.addCriteria(datasetIdQueryAnnotationsCriterion);
         }
 
-        // handle AssociatedAnnotationIdCriterion
-        if (params.associatedAnnotationCriterion != null) {
-            QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion associatedAnnotationCriterion =
-                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AssociatedAnnotationIdCriterion.newBuilder()
-                            .setAnnotationId(params.datasetCriterion)
+        // handle AnnotationsCriterion
+        if (params.annotationsCriterion != null) {
+            QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion annotationsCriterion =
+                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion.newBuilder()
+                            .setAnnotationId(params.annotationsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion associatedAnnotationQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
-                            .setAnnotationCriterion(associatedAnnotationCriterion)
+                            .setAnnotationsCriterion(annotationsCriterion)
                             .build();
             requestBuilder.addCriteria(associatedAnnotationQueryAnnotationsCriterion);
         }
@@ -836,12 +832,12 @@ public class AnnotationTestBase {
         }
 
         // handle AttributesCriterion
-        if (params.attributeCriterionKey != null) {
-            assertNotNull(params.attributeCriterionValue);
+        if (params.attributesCriterionKey != null) {
+            assertNotNull(params.attributesCriterionValue);
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
-                            .setKey(params.attributeCriterionKey)
-                            .setValue(params.attributeCriterionValue)
+                            .setKey(params.attributesCriterionKey)
+                            .setValue(params.attributesCriterionValue)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion attributesQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -1189,7 +1185,8 @@ public class AnnotationTestBase {
                         case FLOATVALUE -> {
                             assertEquals(
                                     expectedDataValue.getFloatValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).floatValue());
+                                    Double.valueOf(fileCell.getNumericCellValue()).floatValue(),
+                                    0.0);
                         }
                         case DOUBLEVALUE -> {
                             assertEquals(
