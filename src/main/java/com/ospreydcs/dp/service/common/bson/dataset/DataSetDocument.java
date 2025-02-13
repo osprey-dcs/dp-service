@@ -164,7 +164,7 @@ public class DataSetDocument {
         final DataSet.Builder dataSetBuilder = DataSet.newBuilder();
 
         // add base dataset fields to response object
-        dataSetBuilder.setDataSetId(this.getId().toString());
+        dataSetBuilder.setId(this.getId().toString());
         dataSetBuilder.setName(this.getName());
         dataSetBuilder.setOwnerId(this.getOwnerId());
         dataSetBuilder.setDescription(this.getDescription());

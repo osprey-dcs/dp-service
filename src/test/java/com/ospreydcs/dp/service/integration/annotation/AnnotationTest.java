@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.*;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.grpc.EventMetadataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
@@ -749,52 +749,54 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
                     expectedAnnotationQueryResultAnnotations);
         }
 
-        // TODO: uncomment this section after adding dataset content back to annotation
-//        {
-//            /*
-//             * query data test using result of queryAnnotations()
-//             *
-//             * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
-//             * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
-//             * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
-//             * pvNames and that each bucket has the expected begin time.
-//             */
-//
-//            for (QueryAnnotationsResponse.AnnotationsResult.Annotation queryResultAnnotation : annotationsQueryResult) {
-//
-//                for (DataBlock queryResultBlock : queryResultAnnotation.getDataSet().getDataBlocksList()) {
-//
-//                    final List<String> queryPvNames = queryResultBlock.getPvNamesList();
-//                    final long queryBeginSeconds = queryResultBlock.getBeginTime().getEpochSeconds();
-//                    final long queryBeginNanos = queryResultBlock.getBeginTime().getNanoseconds();
-//                    final long queryEndSeconds = queryResultBlock.getEndTime().getEpochSeconds();
-//                    final long queryEndNanos = queryResultBlock.getEndTime().getNanoseconds();
-//
-//                    final int numBucketsExpected = 2;
-//
-//                    final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
-//                            queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
-//                    assertEquals(numBucketsExpected, queryResultBuckets.size());
-//                    for (String pvName : queryPvNames) {
-//                        boolean foundPvBucket = false;
-//                        QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
-//                        for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
-//                            if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
-//                                foundPvBucket = true;
-//                                matchingResponseBucket = responseBucket;
-//                                break;
-//                            }
-//                        }
-//                        assertTrue(foundPvBucket);
-//                        final Timestamp matchingBucketTimestamp =
-//                                matchingResponseBucket.getDataTimestamps().getSamplingClock().getStartTime();
-//                        assertEquals(queryBeginSeconds, matchingBucketTimestamp.getEpochSeconds());
-//                        assertEquals(queryBeginNanos, matchingBucketTimestamp.getNanoseconds());
-//                    }
-//
-//                }
-//            }
-//        }
+        {
+            /*
+             * query data test using result of queryAnnotations()
+             *
+             * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
+             * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
+             * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
+             * pvNames and that each bucket has the expected begin time.
+             */
+
+            for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : annotationsQueryResult) {
+
+                for (DataSet resultDataSet : resultAnnotation.getDataSetsList()) {
+
+                    for (DataBlock queryResultBlock : resultDataSet.getDataBlocksList()) {
+
+                        final List<String> queryPvNames = queryResultBlock.getPvNamesList();
+                        final long queryBeginSeconds = queryResultBlock.getBeginTime().getEpochSeconds();
+                        final long queryBeginNanos = queryResultBlock.getBeginTime().getNanoseconds();
+                        final long queryEndSeconds = queryResultBlock.getEndTime().getEpochSeconds();
+                        final long queryEndNanos = queryResultBlock.getEndTime().getNanoseconds();
+
+                        final int numBucketsExpected = 2;
+
+                        final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
+                                queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
+                        assertEquals(numBucketsExpected, queryResultBuckets.size());
+                        for (String pvName : queryPvNames) {
+                            boolean foundPvBucket = false;
+                            QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
+                            for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
+                                if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
+                                    foundPvBucket = true;
+                                    matchingResponseBucket = responseBucket;
+                                    break;
+                                }
+                            }
+                            assertTrue(foundPvBucket);
+                            final Timestamp matchingBucketTimestamp =
+                                    matchingResponseBucket.getDataTimestamps().getSamplingClock().getStartTime();
+                            assertEquals(queryBeginSeconds, matchingBucketTimestamp.getEpochSeconds());
+                            assertEquals(queryBeginNanos, matchingBucketTimestamp.getNanoseconds());
+                        }
+
+                    }
+                }
+            }
+        }
 
         {
             // export to hdf5, negative test, unspecified dataset id

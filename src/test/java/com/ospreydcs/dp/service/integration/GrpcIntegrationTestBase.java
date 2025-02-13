@@ -84,9 +84,9 @@ public abstract class GrpcIntegrationTestBase {
     protected static ManagedChannel annotationChannel;
 
     // validation instance variables
-    protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
-    protected static Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
-    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap = new HashMap<>();
+    protected Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
+    protected Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
+    protected Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap = new HashMap<>();
 
     // constants
     private static final int INGESTION_PROVIDER_ID = 1;
@@ -1659,13 +1659,13 @@ public abstract class GrpcIntegrationTestBase {
             final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
 
             // check required dataset fields match
-            assertTrue(expectedDataSetId.equals(foundDataSet.getDataSetId()));
+            assertTrue(expectedDataSetId.equals(foundDataSet.getId()));
             assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
             assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
 
             // check that result corresponds to query criteria
             if (queryParams.idCriterion != null) {
-                assertEquals(queryParams.idCriterion, foundDataSet.getDataSetId());
+                assertEquals(queryParams.idCriterion, foundDataSet.getId());
             }
             if (queryParams.ownerCriterion != null) {
                 assertEquals(queryParams.ownerCriterion, foundDataSet.getOwnerId());
@@ -1881,32 +1881,31 @@ public abstract class GrpcIntegrationTestBase {
                 assertTrue(foundAnnotation.getEventMetadata().getDescription().contains(queryParams.eventCriterion));
             }
 
-// TODO: uncomment to check dataset list content after making changes to create query result containing datasets
-//            // compare dataset content from result with what was requested when creating dataset
-//            final AnnotationTestBase.CreateDataSetParams dataSetRequestParams =
-//                    this.createDataSetIdParamsMap.get(requestParams.dataSetIds);
-//            final AnnotationTestBase.AnnotationDataSet requestDataSet = dataSetRequestParams.dataSet;
-//            final DataSet responseDataSet = foundAnnotation.getDataSet();
-//            assertEquals(requestDataSet.dataBlocks.size(), responseDataSet.getDataBlocksCount());
-//            assertTrue(requestDataSet.name.equals(responseDataSet.getName()));
-//            assertTrue(requestDataSet.ownerId.equals(responseDataSet.getOwnerId()));
-//            assertTrue(requestDataSet.description.equals(responseDataSet.getDescription()));
-//            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
-//                boolean responseBlockFound = false;
-//                for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
-//                    if (
-//                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
-//                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
-//                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
-//                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
-//                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
-//                    ) {
-//                        responseBlockFound = true;
-//                        break;
-//                    }
-//                }
-//                assertTrue(responseBlockFound);
-//            }
+            // compare dataset content from result with dataset in database
+            for (DataSet responseDataSet : foundAnnotation.getDataSetsList()) {
+                final DataSetDocument dbDataSetDocument = mongoClient.findDataSet(responseDataSet.getId());
+                final DataSet dbDataSet = dbDataSetDocument.buildDataSet();
+                assertEquals(dbDataSet.getDataBlocksList().size(), responseDataSet.getDataBlocksCount());
+                assertTrue(dbDataSet.getName().equals(responseDataSet.getName()));
+                assertTrue(dbDataSet.getOwnerId().equals(responseDataSet.getOwnerId()));
+                assertTrue(dbDataSet.getDescription().equals(responseDataSet.getDescription()));
+                for (DataBlock dbDataBlock : dbDataSet.getDataBlocksList()) {
+                    boolean responseBlockFound = false;
+                    for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
+                        if (
+                                (Objects.equals(dbDataBlock.getBeginTime().getEpochSeconds(), responseBlock.getBeginTime().getEpochSeconds()))
+                                        && (Objects.equals(dbDataBlock.getBeginTime().getNanoseconds(), responseBlock.getBeginTime().getNanoseconds()))
+                                        && (Objects.equals(dbDataBlock.getEndTime().getEpochSeconds(), responseBlock.getEndTime().getEpochSeconds()))
+                                        && (Objects.equals(dbDataBlock.getEndTime().getNanoseconds(), responseBlock.getEndTime().getNanoseconds()))
+                                        && (Objects.equals(dbDataBlock.getPvNamesList(), responseBlock.getPvNamesList()))
+                        ) {
+                            responseBlockFound = true;
+                            break;
+                        }
+                    }
+                    assertTrue(responseBlockFound);
+                }
+            }
         }
 
         return resultAnnotations;

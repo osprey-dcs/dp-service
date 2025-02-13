@@ -141,6 +141,11 @@ public class AnnotationDocument {
             annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEventMetadata()));
         }
 
+        // add content of related datasets
+        for (DataSetDocument dataSetDocument : dataSetDocuments) {
+            annotationBuilder.addDataSets(dataSetDocument.buildDataSet());
+        }
+
         return annotationBuilder.build();
     }
 
