@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 
@@ -24,4 +25,5 @@ public interface MongoAnnotationClientInterface {
 
     MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
 
+    MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument);
 }

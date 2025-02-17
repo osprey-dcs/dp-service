@@ -331,7 +331,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String name = "craigmcc negative test unspecified ownerId";
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
-            final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.ownerId must be specified";
+            final String expectedRejectMessage = "CreateAnnotationRequest.ownerId must be specified";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
@@ -344,7 +344,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String unspecifiedName = "";
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
-            final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
+            final String expectedRejectMessage = "CreateAnnotationRequest.name must be specified";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
@@ -357,7 +357,7 @@ public class AnnotationTest extends GrpcIntegrationTestBase {
             final String name = "craigmcc negative test unspecified dataset id";
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, new ArrayList<>());
-            final String expectedRejectMessage = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
+            final String expectedRejectMessage = "CreateAnnotationRequest.dataSetIds must not be empty";
             sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }

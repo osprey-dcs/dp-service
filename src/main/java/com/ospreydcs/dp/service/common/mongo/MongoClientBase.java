@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
@@ -31,6 +33,7 @@ public abstract class MongoClientBase {
     public static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
     public static final String COLLECTION_NAME_DATA_SETS = "dataSets";
     public static final String COLLECTION_NAME_ANNOTATIONS = "annotations";
+    public static final String COLLECTION_NAME_CALCULATIONS = "calculations";
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
@@ -56,6 +59,8 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexDataSets(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionAnnotations(String collectionName);
     protected abstract boolean createMongoIndexAnnotations(Bson fieldNamesBson);
+    protected abstract boolean initMongoCollectionCalculations(String collectionName);
+    protected abstract boolean createMongoIndexCalculations(Bson fieldNamesBson);
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -87,7 +92,12 @@ public abstract class MongoClientBase {
                 AnnotationDocument.class,
                 DataSetDocument.class,
                 DataBlockDocument.class,
-                MetadataQueryResultDocument.class
+                MetadataQueryResultDocument.class,
+                CalculationsDocument.class,
+                CalculationsDataFrameDocument.class,
+                TimestampDocument.class,
+                DataTimestampsDocument.class,
+                DataColumnDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -185,6 +195,10 @@ public abstract class MongoClientBase {
         return true;
     }
 
+    private boolean createMongoIndexesCalculations() {
+        return true;
+    }
+
     public static String getMongoConnectString() {
 
         // mongodb://admin:admin@localhost:27017/
@@ -235,6 +249,10 @@ public abstract class MongoClientBase {
         return COLLECTION_NAME_ANNOTATIONS;
     }
 
+    protected String getCollectionNameCalculations() {
+        return COLLECTION_NAME_CALCULATIONS;
+    }
+
     public boolean init() {
 
         logger.trace("init");
@@ -246,6 +264,7 @@ public abstract class MongoClientBase {
         String collectionNameRequestStatus = getCollectionNameRequestStatus();
         String collectionNameDataSets = getCollectionNameDataSets();
         String collectionNameAnnotations = getCollectionNameAnnotations();
+        String collectionNameCalculations = getCollectionNameCalculations();
         logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
         logger.info("mongo client init collection names buckets: {} requestStatus: {} annotations: {}",
                 collectionNameBuckets, collectionNameRequestStatus, collectionNameAnnotations);
@@ -275,6 +294,10 @@ public abstract class MongoClientBase {
         // initialize annotations collection
         initMongoCollectionAnnotations(collectionNameAnnotations);
         createMongoIndexesAnnotations();
+
+        // initialize annotations collection
+        initMongoCollectionCalculations(collectionNameCalculations);
+        createMongoIndexesCalculations();
 
         return true;
     }

@@ -8,6 +8,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -185,7 +186,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             result = mongoCollectionAnnotations.insertOne(annotationDocument);
         } catch (MongoException ex) {
             isError = true;
-            errorMsg = "MongoException inserting Annotation: " + ex.getMessage();
+            errorMsg = "MongoException inserting AnnotationDocument: " + ex.getMessage();
             logger.error(errorMsg);
         }
 
@@ -307,6 +308,25 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         }
 
         return resultCursor;
+    }
+
+    @Override
+    public MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument) {
+
+        logger.debug("inserting CalculationsDocument id: {}", calculationsDocument.getId());
+
+        InsertOneResult result = null;
+        boolean isError = false;
+        String errorMsg = "";
+        try {
+            result = mongoCollectionCalculations.insertOne(calculationsDocument);
+        } catch (MongoException ex) {
+            isError = true;
+            errorMsg = "MongoException inserting CalculationsDocument: " + ex.getMessage();
+            logger.error(errorMsg);
+        }
+
+        return new MongoInsertOneResult(isError, errorMsg, result);
     }
 
 }

@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,6 +28,7 @@ public class MongoSyncClient extends MongoClientBase {
     protected MongoCollection<RequestStatusDocument> mongoCollectionRequestStatus = null;
     protected MongoCollection<DataSetDocument> mongoCollectionDataSets = null;
     protected MongoCollection<AnnotationDocument> mongoCollectionAnnotations = null;
+    protected MongoCollection<CalculationsDocument> mongoCollectionCalculations = null;
 
     @Override
     protected boolean initMongoClient(String connectString) {
@@ -98,6 +100,18 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean createMongoIndexAnnotations(Bson fieldNamesBson) {
         mongoCollectionAnnotations.createIndex(fieldNamesBson);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionCalculations(String collectionName) {
+        mongoCollectionCalculations = mongoDatabase.getCollection(collectionName, CalculationsDocument.class);  // creates collection if it doesn't exist
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexCalculations(Bson fieldNamesBson) {
+        mongoCollectionCalculations.createIndex(fieldNamesBson);
         return true;
     }
 

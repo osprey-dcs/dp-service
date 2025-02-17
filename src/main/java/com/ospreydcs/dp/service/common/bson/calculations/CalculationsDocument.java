@@ -31,7 +31,7 @@ public class CalculationsDocument {
         final CalculationsDocument calculationsDocument = new CalculationsDocument();
 
         List<CalculationsDataFrameDocument> dataFrameDocuments = new ArrayList<>();
-        for (Calculations.CalculationsDataFrame dataFrame : requestCalculations.getCalculationDataFrameList()) {
+        for (Calculations.CalculationsDataFrame dataFrame : requestCalculations.getCalculationDataFramesList()) {
             CalculationsDataFrameDocument calculationsDataFrameDocument =
                     CalculationsDataFrameDocument.fromCalculationsDataFrame(dataFrame);
             dataFrameDocuments.add(calculationsDataFrameDocument);

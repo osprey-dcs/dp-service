@@ -41,10 +41,6 @@ public class CreateAnnotationJob extends HandlerJob {
         this.dispatcher = new CreateAnnotationDispatcher(responseObserver, request);
     }
 
-    protected AnnotationDocument generateAnnotationDocument(CreateAnnotationRequest request) {
-        return AnnotationDocument.fromCreateAnnotationRequest(request);
-    }
-
     @Override
     public void execute() {
 
@@ -58,7 +54,7 @@ public class CreateAnnotationJob extends HandlerJob {
         }
 
         // handle calculations, if specified
-        String calculationsDocumentId = "";
+        String calculationsDocumentId = null;
         if (request.hasCalculations()) {
 
             // create calculations document

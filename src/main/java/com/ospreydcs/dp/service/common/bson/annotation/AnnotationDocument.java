@@ -24,6 +24,7 @@ public class AnnotationDocument {
     private List<String> tags;
     private Map<String, String> attributeMap;
     private EventMetadataDocument eventMetadata;
+    private String calculationsId;
 
     public ObjectId getId() {
         return id;
@@ -97,8 +98,18 @@ public class AnnotationDocument {
         this.eventMetadata = eventMetadata;
     }
 
-    public static AnnotationDocument fromCreateAnnotationRequest(final CreateAnnotationRequest request) {
+    public String getCalculationsId() {
+        return calculationsId;
+    }
 
+    public void setCalculationsId(String calculationsId) {
+        this.calculationsId = calculationsId;
+    }
+
+    public static AnnotationDocument fromCreateAnnotationRequest(
+            final CreateAnnotationRequest request,
+            String calculationsDocumentId
+    ) {
         final AnnotationDocument document = new AnnotationDocument();
 
         // set request fields in document
@@ -119,6 +130,10 @@ public class AnnotationDocument {
             final EventMetadataDocument eventMetadataDocument =
                     EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
             document.setEventMetadata(eventMetadataDocument);
+        }
+
+        if (calculationsDocumentId != null) {
+            document.setCalculationsId(calculationsDocumentId);
         }
 
         return document;
