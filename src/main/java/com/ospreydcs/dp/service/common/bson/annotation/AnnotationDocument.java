@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
-import com.ospreydcs.dp.service.common.bson.bucket.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import org.apache.commons.collections4.CollectionUtils;

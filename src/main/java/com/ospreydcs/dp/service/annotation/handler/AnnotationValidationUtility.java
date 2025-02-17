@@ -63,22 +63,48 @@ public class AnnotationValidationUtility {
         // owner must be specified
         final String requestOwnerId = request.getOwnerId();
         if (requestOwnerId.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.ownerId must be specified";
+            final String errorMsg = "CreateAnnotationRequest.ownerId must be specified";
             return new ValidationResult(true, errorMsg);
         }
 
         // check that list of datasetIds is not empty but don't validate corresponding datasets exist,
         // that will be done by the handler job
         if (request.getDataSetIdsList().isEmpty()) {
-            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.dataSetIds must not be empty";
+            final String errorMsg = "CreateAnnotationRequest.dataSetIds must not be empty";
             return new ValidationResult(true, errorMsg);
         }
 
         // name must be specified
         final String name = request.getName();
         if (name.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest.AnnotationDetails.name must be specified";
+            final String errorMsg = "CreateAnnotationRequest.name must be specified";
             return new ValidationResult(true, errorMsg);
+        }
+
+        // if supplied in request, validate calculations
+        if (request.hasCalculations()) {
+
+            // check that list of frames is non-empty
+            if ( ! request.getCalculations().getCalculationDataFramesList().isEmpty()) {
+                final String errorMsg = "CreateAnnotationRequest.calculations.calculationDataFrames must not be empty";
+                return new ValidationResult(true, errorMsg);
+            }
+
+            // validate each frame
+            for (Calculations.CalculationsDataFrame frame : request.getCalculations().getCalculationDataFramesList()) {
+
+                if (! frame.hasDataTimestamps()) {
+                    final String errorMsg =
+                            "CalculationDataFrame.dataTimestamps must be specified";
+                    return new ValidationResult(true, errorMsg);
+                }
+
+                if (! frame.getDataColumnsList().isEmpty()) {
+                    final String errorMsg =
+                            "CalculationDataFrame.dataColumns must not be empty";
+                    return new ValidationResult(true, errorMsg);
+                }
+            }
         }
 
         // validation successful

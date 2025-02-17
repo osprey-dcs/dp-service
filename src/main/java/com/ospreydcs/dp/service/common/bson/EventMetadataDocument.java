@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.bson.bucket;
+package com.ospreydcs.dp.service.common.bson;
 
 import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;

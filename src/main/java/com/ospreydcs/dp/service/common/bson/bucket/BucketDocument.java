@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.common.bson.bucket;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 
 import java.util.Date;
 import java.util.Map;

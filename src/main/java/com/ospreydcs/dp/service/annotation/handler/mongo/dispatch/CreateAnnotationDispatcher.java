@@ -34,6 +34,12 @@ public class CreateAnnotationDispatcher extends Dispatcher {
                 this.responseObserver);
     }
 
+    public void handleError(String errorMsg) {
+        AnnotationServiceImpl.sendCreateAnnotationResponseError(
+                errorMsg,
+                this.responseObserver);
+    }
+
     public void handleResult(MongoInsertOneResult result) {
 
         // Check to see if error flag is set in our result wrapper, this indicates that insertOne threw an exception.
@@ -47,7 +53,7 @@ public class CreateAnnotationDispatcher extends Dispatcher {
         // Otherwise check to see if the wrapped InsertOneResult indicates an error
         final InsertOneResult insertOneResult = result.insertOneResult;
         if (!insertOneResult.wasAcknowledged()) {
-            final String errorMsg = "AnnotationDocument insert failed (insertOne() not acknowledged";
+            final String errorMsg = "AnnotationDocument insert failed (insertOne() not acknowledged)";
             AnnotationServiceImpl.sendCreateAnnotationResponseError(errorMsg, responseObserver);
             return;
         }
@@ -63,4 +69,5 @@ public class CreateAnnotationDispatcher extends Dispatcher {
         AnnotationServiceImpl.sendCreateAnnotationResponseSuccess(
                 insertOneResult.getInsertedId().asObjectId().getValue().toString(), responseObserver);
     }
+
 }
