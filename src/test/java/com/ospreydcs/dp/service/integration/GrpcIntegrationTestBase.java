@@ -1884,7 +1884,7 @@ public abstract class GrpcIntegrationTestBase {
             // compare dataset content from result with dataset in database
             for (DataSet responseDataSet : foundAnnotation.getDataSetsList()) {
                 final DataSetDocument dbDataSetDocument = mongoClient.findDataSet(responseDataSet.getId());
-                final DataSet dbDataSet = dbDataSetDocument.buildDataSet();
+                final DataSet dbDataSet = dbDataSetDocument.toDataSet();
                 assertEquals(dbDataSet.getDataBlocksList().size(), responseDataSet.getDataBlocksCount());
                 assertTrue(dbDataSet.getName().equals(responseDataSet.getName()));
                 assertTrue(dbDataSet.getOwnerId().equals(responseDataSet.getOwnerId()));

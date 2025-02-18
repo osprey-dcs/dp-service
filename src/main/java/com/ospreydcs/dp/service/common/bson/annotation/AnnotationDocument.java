@@ -5,7 +5,9 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
 import org.apache.commons.collections4.CollectionUtils;
 import org.bson.types.ObjectId;
@@ -139,7 +141,8 @@ public class AnnotationDocument {
         return document;
     }
 
-    public QueryAnnotationsResponse.AnnotationsResult.Annotation toAnnotation(List<DataSetDocument> dataSetDocuments) {
+    public QueryAnnotationsResponse.AnnotationsResult.Annotation toAnnotation(
+            List<DataSetDocument> dataSetDocuments, CalculationsDocument calculationsDocument) throws DpException {
 
         QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder annotationBuilder =
                 QueryAnnotationsResponse.AnnotationsResult.Annotation.newBuilder();
@@ -158,7 +161,12 @@ public class AnnotationDocument {
 
         // add content of related datasets
         for (DataSetDocument dataSetDocument : dataSetDocuments) {
-            annotationBuilder.addDataSets(dataSetDocument.buildDataSet());
+            annotationBuilder.addDataSets(dataSetDocument.toDataSet());
+        }
+
+        // add calculations content
+        if (calculationsDocument != null) {
+            annotationBuilder.setCalculations(calculationsDocument.toCalculations());
         }
 
         return annotationBuilder.build();

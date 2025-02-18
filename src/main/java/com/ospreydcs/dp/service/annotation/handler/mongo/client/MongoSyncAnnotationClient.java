@@ -154,7 +154,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     public AnnotationDocument findAnnotation(String annotationId) {
 
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
-        // sending request has a dataSetId, it already exists in the database.
+        // sending request has an annotationId, it already exists in the database.
         List<AnnotationDocument> matchingDocuments = new ArrayList<>();
 
         // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
@@ -327,6 +327,29 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         }
 
         return new MongoInsertOneResult(isError, errorMsg, result);
+    }
+
+    @Override
+    public CalculationsDocument findCalculations(String calculationsId) {
+
+        // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
+        // sending request has a calculationsId, it already exists in the database.
+        List<CalculationsDocument> matchingDocuments = new ArrayList<>();
+
+        // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
+        try {
+            mongoCollectionCalculations.find(
+                    eq(BsonConstants.BSON_KEY_CALCULATIONS_ID, new ObjectId(calculationsId))).into(matchingDocuments);
+        } catch (Exception ex) {
+            logger.error("findCalculations: mongo exception in find(): {}", ex.getMessage());
+            return null;
+        }
+
+        if (!matchingDocuments.isEmpty()) {
+            return matchingDocuments.get(0);
+        } else {
+            return null;
+        }
     }
 
 }

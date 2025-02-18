@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.calculations;
 
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
@@ -40,4 +41,12 @@ public class CalculationsDocument {
         return calculationsDocument;
     }
 
+    public Calculations toCalculations() throws DpException {
+        final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+        for (CalculationsDataFrameDocument dataFrameDocument : getDataFrames()) {
+            final Calculations.CalculationsDataFrame dataFrame = dataFrameDocument.toCalculationsDataFrame();
+            calculationsBuilder.addCalculationDataFrames(dataFrame);
+        }
+        return calculationsBuilder.build();
+    }
 }

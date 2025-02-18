@@ -6,7 +6,9 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -58,22 +60,45 @@ public class QueryAnnotationsResponseDispatcher extends Dispatcher {
             // add grpc object for each document in cursor
             final AnnotationDocument annotationDocument = cursor.next();
 
-            // retrieve dataset for annotation
+            // retrieve datasets for annotation
             final List<DataSetDocument> dataSetDocuments = new ArrayList<>();
             for (String dataSetId : annotationDocument.getDataSetIds()) {
                 final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
                 if (dataSetDocument == null) {
-                    final String msg = "no DataSetDocument found with id: " + dataSetId;
-                    logger.debug(msg);
+                    final String msg =
+                            "error retrieving dataset for annotation: " + annotationDocument.getId()
+                                    + " no DataSetDocument found with id: " + dataSetId;
+                    logger.error(msg);
                     AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
                 }
                 dataSetDocuments.add(dataSetDocument);
             }
 
+            // retrieve calculations for annotation
+            final String calculationsId = annotationDocument.getCalculationsId();
+            CalculationsDocument calculationsDocument = null;
+            if (calculationsId != null && ! calculationsId.isBlank()) {
+                calculationsDocument = mongoClient.findCalculations(calculationsId);
+                if (calculationsDocument == null) {
+                    final String msg =
+                            "error retrieving calculations for annotation: " + annotationDocument.getId()
+                                    + " no CalculationsDocument found with id: " + calculationsId;
+                    logger.error(msg);
+                    AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+                }
+            }
+
             // build protobuf Annotation from AnnotationDocument and list of DataSetDocuments and add to result
-            final QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation =
-                    annotationDocument.toAnnotation(dataSetDocuments);
-            annotationsResultBuilder.addAnnotations(responseAnnotation);
+            final QueryAnnotationsResponse.AnnotationsResult.Annotation responseAnnotation;
+            try {
+                responseAnnotation = annotationDocument.toAnnotation(dataSetDocuments, calculationsDocument);
+                annotationsResultBuilder.addAnnotations(responseAnnotation);
+            } catch (DpException e) {
+                final String msg =
+                        "error building result Annotation: " + e.getMessage();
+                logger.error(msg);
+                AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
+            }
         }
 
         // send response and close response stream

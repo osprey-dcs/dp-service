@@ -26,4 +26,6 @@ public interface MongoAnnotationClientInterface {
     MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
 
     MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument);
+
+    CalculationsDocument findCalculations(String calculationsId);
 }

@@ -56,7 +56,7 @@ public class QueryDataSetsResponseDispatcher extends Dispatcher {
             final DataSetDocument dataSetDocument = cursor.next();
 
             // build grpc response and add to result
-            final DataSet responseDataSet = dataSetDocument.buildDataSet();
+            final DataSet responseDataSet = dataSetDocument.toDataSet();
             queryDataSetsResultBuilder.addDataSets(responseDataSet);
         }
 

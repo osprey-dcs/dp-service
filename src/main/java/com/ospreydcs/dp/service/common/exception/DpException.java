@@ -8,4 +8,8 @@ public class DpException extends Exception {
         super(e);
     }
 
+    public DpException(String message) {
+        super(message);
+    }
+
 }

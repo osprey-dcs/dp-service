@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +49,20 @@ public class CalculationsDataFrameDocument {
         dataFrameDocument.setDataColumns(dataColumnDocuments);
 
         return dataFrameDocument;
+    }
+
+    public Calculations.CalculationsDataFrame toCalculationsDataFrame() throws DpException {
+
+        final Calculations.CalculationsDataFrame.Builder dataFrameBuilder =
+                Calculations.CalculationsDataFrame.newBuilder();
+
+        dataFrameBuilder.setDataTimestamps(this.dataTimestamps.toDataTimestamps());
+
+        for (DataColumnDocument dataColumnDocument : this.dataColumns) {
+            dataFrameBuilder.addDataColumns(dataColumnDocument.toDataColumn());
+        }
+
+        return dataFrameBuilder.build();
     }
 
 }

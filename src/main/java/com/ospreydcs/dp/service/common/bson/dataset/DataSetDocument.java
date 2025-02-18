@@ -159,7 +159,7 @@ public class DataSetDocument {
         return diffs;
     }
 
-    public DataSet buildDataSet() {
+    public DataSet toDataSet() {
 
         final DataSet.Builder dataSetBuilder = DataSet.newBuilder();
 

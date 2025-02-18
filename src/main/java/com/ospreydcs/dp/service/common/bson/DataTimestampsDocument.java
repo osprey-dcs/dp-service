@@ -2,24 +2,19 @@ package com.ospreydcs.dp.service.common.bson;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.service.common.exception.DpException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class DataTimestampsDocument {
+
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     private int valueCase;
     private String valueType;
     private byte[] bytes = null;
-
-    public static DataTimestampsDocument fromDataTimestamps(
-            DataTimestamps requestDataTimestamps
-    ) {
-        DataTimestampsDocument document = new DataTimestampsDocument();
-        document.writeBytes(requestDataTimestamps);
-        final DataTimestamps.ValueCase dataTimestampsCase = requestDataTimestamps.getValueCase();
-        document.setValueCase(dataTimestampsCase.getNumber());
-        document.setValueType(dataTimestampsCase.name());
-        return document;
-    }
 
     public int getValueCase() {
         return valueCase;
@@ -59,6 +54,35 @@ public class DataTimestampsDocument {
                 throw new RuntimeException(e);
             }
         }
+    }
+
+    public static DataTimestampsDocument fromDataTimestamps(
+            DataTimestamps requestDataTimestamps
+    ) {
+        DataTimestampsDocument document = new DataTimestampsDocument();
+        document.writeBytes(requestDataTimestamps);
+        final DataTimestamps.ValueCase dataTimestampsCase = requestDataTimestamps.getValueCase();
+        document.setValueCase(dataTimestampsCase.getNumber());
+        document.setValueType(dataTimestampsCase.name());
+        return document;
+    }
+
+    public DataTimestamps toDataTimestamps() throws DpException {
+
+        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+
+        if (this.bytes != null) {
+            try {
+                return DataTimestamps.parseFrom(this.bytes);
+            } catch (InvalidProtocolBufferException e) {
+                final String errorMsg =
+                        "DataTimestampsDocument.toDataTimestamps() error parsing serialized byte array: " + e.getMessage();
+                logger.error(errorMsg);
+                throw new DpException(errorMsg);
+            }
+        }
+
+        return dataTimestampsBuilder.build();
     }
 
 }

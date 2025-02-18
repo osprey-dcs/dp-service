@@ -52,6 +52,8 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_EVENT_METADATA = "eventMetadata";
     public static final String BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION = "eventMetadata.description";
 
+    public static final String BSON_KEY_CALCULATIONS_ID = "_id";
+
     public static final String BSON_KEY_METADATA_PV_NAME = "pvName";
     public static final String BSON_KEY_METADATA_LAST_BUCKET_ID = "lastBucketId";
     public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE_CASE = "lastBucketDataTypeCase";
