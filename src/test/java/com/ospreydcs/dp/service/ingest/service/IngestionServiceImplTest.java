@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.junit.Test;
 

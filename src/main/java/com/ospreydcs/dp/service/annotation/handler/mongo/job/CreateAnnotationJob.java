@@ -88,7 +88,7 @@ public class CreateAnnotationJob extends HandlerJob {
                 return;
             }
 
-            calculationsDocumentId = insertOneResult.getInsertedId().asString().getValue();
+            calculationsDocumentId = insertOneResult.getInsertedId().asObjectId().getValue().toString();
         }
 
         // save annotation document to mongodb

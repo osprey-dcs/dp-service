@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.DpIngestionStreamServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import io.grpc.stub.ServerCallStreamObserver;

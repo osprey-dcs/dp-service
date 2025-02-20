@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;

@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;

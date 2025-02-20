@@ -37,6 +37,7 @@ public class CalculationsDocument {
                     CalculationsDataFrameDocument.fromCalculationsDataFrame(dataFrame);
             dataFrameDocuments.add(calculationsDataFrameDocument);
         }
+        calculationsDocument.setDataFrames(dataFrameDocuments);
 
         return calculationsDocument;
     }

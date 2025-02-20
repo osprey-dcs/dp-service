@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.query.service;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.Test;
 

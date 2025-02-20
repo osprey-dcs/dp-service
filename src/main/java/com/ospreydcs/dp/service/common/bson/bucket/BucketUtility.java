@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 
 import java.util.ArrayList;
 import java.util.Date;

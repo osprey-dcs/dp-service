@@ -4,8 +4,6 @@ import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import io.grpc.*;

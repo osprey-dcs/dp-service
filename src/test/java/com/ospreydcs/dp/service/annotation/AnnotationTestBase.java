@@ -9,8 +9,8 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJo
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
-import com.ospreydcs.dp.service.common.grpc.EventMetadataUtility;
+import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
@@ -285,6 +285,7 @@ public class AnnotationTestBase {
         public final List<String> tags;
         public final Map<String, String> attributeMap;
         public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
+        public final Calculations calculations;
 
         public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
             this.ownerId = ownerId;
@@ -295,6 +296,7 @@ public class AnnotationTestBase {
             this.tags = null;
             this.attributeMap = null;
             this.eventMetadataParams = null;
+            this.calculations = null;
         }
 
         public CreateAnnotationRequestParams(
@@ -305,7 +307,8 @@ public class AnnotationTestBase {
                 String comment,
                 List<String> tags,
                 Map<String, String> attributeMap,
-                EventMetadataUtility.EventMetadataParams eventMetadataParams
+                EventMetadataUtility.EventMetadataParams eventMetadataParams,
+                Calculations calculations
         ) {
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
@@ -315,6 +318,7 @@ public class AnnotationTestBase {
             this.tags = tags;
             this.attributeMap = attributeMap;
             this.eventMetadataParams = eventMetadataParams;
+            this.calculations = calculations;
         }
     }
 
@@ -743,6 +747,9 @@ public class AnnotationTestBase {
         }
         if (params.eventMetadataParams != null) {
             requestBuilder.setEventMetadata(EventMetadataUtility.eventMetadataFromParams(params.eventMetadataParams));
+        }
+        if (params.calculations != null) {
+            requestBuilder.setCalculations(params.calculations);
         }
 
         return requestBuilder.build();

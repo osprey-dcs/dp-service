@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.grpc;
+package com.ospreydcs.dp.service.common.protobuf;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;

@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.service;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.grpc.TimestampUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;

@@ -8,7 +8,7 @@ import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import org.apache.commons.collections4.CollectionUtils;
 import org.bson.types.ObjectId;
 

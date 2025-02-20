@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.grpc;
+package com.ospreydcs.dp.service.common.protobuf;
 
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -11,6 +11,44 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 public class DataTimestampsUtility {
+
+    public static DataTimestamps dataTimestampsWithSamplingClock(
+            long startSeconds,
+            long startNanos,
+            long periodNanos,
+            int count
+    ) {
+
+        final Timestamp startTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(startSeconds)
+                .setNanoseconds(startNanos)
+                .build();
+
+        final SamplingClock samplingClock = SamplingClock.newBuilder()
+                .setStartTime(startTimestamp)
+                .setPeriodNanos(periodNanos)
+                .setCount(count)
+                .build();
+
+        final DataTimestamps dataTimestamps = DataTimestamps.newBuilder()
+                .setSamplingClock(samplingClock)
+                .build();
+
+        return dataTimestamps;
+    }
+
+    public static DataTimestamps dataTimestampsWithTimestampList(List<Timestamp> timestamps) {
+
+        final TimestampList timestampList = TimestampList.newBuilder()
+                .addAllTimestamps(timestamps)
+                .build();
+
+        final DataTimestamps dataTimestamps = DataTimestamps.newBuilder()
+                .setTimestampList(timestampList)
+                .build();
+
+        return dataTimestamps;
+    }
 
     public static class DataTimestampsModel {
 

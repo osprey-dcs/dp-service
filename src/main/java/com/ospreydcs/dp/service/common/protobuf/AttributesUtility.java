@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.common.grpc;
+package com.ospreydcs.dp.service.common.protobuf;
 
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 

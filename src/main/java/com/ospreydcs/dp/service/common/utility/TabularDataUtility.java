@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.grpc.DataTimestampsUtility;
+import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 

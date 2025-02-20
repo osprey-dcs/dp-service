@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.utility;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
-import com.ospreydcs.dp.service.common.grpc.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
