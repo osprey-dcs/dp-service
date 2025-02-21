@@ -83,10 +83,11 @@ public abstract class GrpcIntegrationTestBase {
     private static AnnotationServiceImpl annotationServiceMock;
     protected static ManagedChannel annotationChannel;
 
-    // validation instance variables
-    protected Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
-    protected Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
-    protected Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap = new HashMap<>();
+    // validation static variables
+    protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
+    protected static Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
+    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap =
+            new HashMap<>();
 
     // constants
     private static final int INGESTION_PROVIDER_ID = 1;
@@ -254,7 +255,7 @@ public abstract class GrpcIntegrationTestBase {
         ingestionServiceMock = null;
     }
 
-    protected RegisterProviderResponse sendRegsiterProvider(
+    protected static RegisterProviderResponse sendRegsiterProvider(
             RegisterProviderRequest request
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
@@ -278,7 +279,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getResponseList().get(0);
     }
 
-    protected String sendAndVerifyRegisterProvider(
+    protected static String sendAndVerifyRegisterProvider(
             RegisterProviderUtility.RegisterProviderRequestParams params,
             boolean expectExceptionalResponse,
             ExceptionalResult.ExceptionalResultStatus expectedExceptionStatus,
@@ -319,7 +320,7 @@ public abstract class GrpcIntegrationTestBase {
         return providerId;
     }
 
-    protected String registerProvider(String providerName, Map<String, String> attributeMap) {
+    protected static String registerProvider(String providerName, Map<String, String> attributeMap) {
 
         String providerId = null;
 
@@ -388,7 +389,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getResponse();
     }
 
-    protected List<IngestDataResponse> sendIngestDataBidiStream(List<IngestDataRequest> requestList) {
+    protected static List<IngestDataResponse> sendIngestDataBidiStream(List<IngestDataRequest> requestList) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(ingestionChannel);
@@ -452,7 +453,7 @@ public abstract class GrpcIntegrationTestBase {
         return bucketDocumentList;
     }
 
-    protected List<BucketDocument> verifyIngestionHandling(
+    protected static List<BucketDocument> verifyIngestionHandling(
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
             List<IngestDataResponse> responseList
@@ -485,7 +486,7 @@ public abstract class GrpcIntegrationTestBase {
         return bucketDocumentList;
     }
 
-    protected List<BucketDocument> verifyIngestionHandling(
+    protected static List<BucketDocument> verifyIngestionHandling(
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest request
     ) {
@@ -633,7 +634,7 @@ public abstract class GrpcIntegrationTestBase {
         return verifyIngestionHandling(paramsList, requestList, responseList);
     }
 
-    protected IngestionStreamInfo ingestDataBidiStream(
+    protected static IngestionStreamInfo ingestDataBidiStream(
             long startSeconds,
             long startNanos,
             String providerId,
@@ -748,7 +749,7 @@ public abstract class GrpcIntegrationTestBase {
         return new IngestionStreamInfo(bucketInfoMap, valueMap, paramsList, requestList, responseList);
     }
 
-    protected Map<String, IngestionStreamInfo> ingestDataBidiStreamFromColumn(
+    protected static Map<String, IngestionStreamInfo> ingestDataBidiStreamFromColumn(
             List<IngestionColumnInfo> columnInfoList,
             long startSeconds,
             long startNanos,
@@ -1537,7 +1538,7 @@ public abstract class GrpcIntegrationTestBase {
         sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
     }
 
-    protected String sendCreateDataSet(
+    protected static String sendCreateDataSet(
             CreateDataSetRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
@@ -1564,7 +1565,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getDataSetId();
     }
 
-    protected String sendAndVerifyCreateDataSet(
+    protected static String sendAndVerifyCreateDataSet(
             AnnotationTestBase.CreateDataSetParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1588,8 +1589,8 @@ public abstract class GrpcIntegrationTestBase {
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
-        this.createDataSetIdParamsMap.put(dataSetId, params);
-        this.createDataSetParamsIdMap.put(params, dataSetId);
+        createDataSetIdParamsMap.put(dataSetId, params);
+        createDataSetParamsIdMap.put(params, dataSetId);
 
         return dataSetId;
     }
@@ -1700,7 +1701,7 @@ public abstract class GrpcIntegrationTestBase {
         return resultDataSets;
     }
 
-    protected String sendCreateAnnotation(
+    protected static String sendCreateAnnotation(
             CreateAnnotationRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
@@ -1728,7 +1729,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationId();
     }
 
-    protected String sendAndVerifyCreateAnnotation(
+    protected static String sendAndVerifyCreateAnnotation(
             AnnotationTestBase.CreateAnnotationRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1753,12 +1754,12 @@ public abstract class GrpcIntegrationTestBase {
         assertTrue(requestDiffs.isEmpty());
 
         // save annotationId to map for use in validating queryAnnotations() result
-        this.createAnnotationParamsIdMap.put(params, annotationId);
+        createAnnotationParamsIdMap.put(params, annotationId);
 
         return annotationId;
     }
 
-    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
+    protected static List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
             QueryAnnotationsRequest request,
             boolean expectReject,
             String expectedRejectMessage
@@ -1787,7 +1788,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getAnnotationsList();
     }
 
-    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
+    protected static List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
             AnnotationTestBase.QueryAnnotationsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
@@ -1823,7 +1824,7 @@ public abstract class GrpcIntegrationTestBase {
             }
             assertTrue(found);
             assertNotNull(foundAnnotation);
-            final String expectedAnnotationId = this.createAnnotationParamsIdMap.get(requestParams);
+            final String expectedAnnotationId = createAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getId()));
 
             // compare required fields from request against found annotation
