@@ -266,8 +266,15 @@ public abstract class MongoClientBase {
         String collectionNameAnnotations = getCollectionNameAnnotations();
         String collectionNameCalculations = getCollectionNameCalculations();
         logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
-        logger.info("mongo client init collection names buckets: {} requestStatus: {} annotations: {}",
-                collectionNameBuckets, collectionNameRequestStatus, collectionNameAnnotations);
+        logger.info(
+                "mongo client init collection names "
+                        + "annotations: {} buckets: {} calculations: {} datasets: {} providers: {} requestStatus: {}",
+                collectionNameAnnotations,
+                collectionNameBuckets,
+                collectionNameCalculations,
+                collectionNameDataSets,
+                collectionNameProviders,
+                collectionNameRequestStatus);
 
         // connect mongo client
         initMongoClient(connectString);
@@ -295,7 +302,7 @@ public abstract class MongoClientBase {
         initMongoCollectionAnnotations(collectionNameAnnotations);
         createMongoIndexesAnnotations();
 
-        // initialize annotations collection
+        // initialize calculations collection
         initMongoCollectionCalculations(collectionNameCalculations);
         createMongoIndexesCalculations();
 
