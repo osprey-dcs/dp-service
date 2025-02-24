@@ -3,9 +3,11 @@ package com.ospreydcs.dp.service.integration.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -13,7 +15,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegrationTestIntermediate {
+public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestIntermediate {
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -35,10 +37,9 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
         CreateDataSetScenarioResult createDataSetScenarioResult =
                 AnnotationIntegrationTestIntermediate.createDataSetScenario();
 
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: list of data frames is emtpy
         {
-            // createAnnotation() with calculations negative test -
-            // request should be rejected because: list of data frames is emtpy
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -65,10 +66,9 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
-            // createAnnotation() with calculations negative test -
-            // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -116,10 +116,9 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: DataColumns list is empty
         {
-            // createAnnotation() with calculations negative test -
-            // request should be rejected because: DataColumns list is empty
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -163,9 +162,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test: rejected because startTime is invalid
         {
-            // createAnnotation() with calculations negative test: rejected because startTime is invalid
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -216,9 +214,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test: rejected because periodNanos is invalid
         {
-            // createAnnotation() with calculations negative test: rejected because periodNanos is invalid
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -269,9 +266,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test: rejected because count is invalid
         {
-            // createAnnotation() with calculations negative test: rejected because count is invalid
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -322,9 +318,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test: rejected because DataColumn name not specified
         {
-            // createAnnotation() with calculations negative test: rejected because DataColumn name not specified
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -375,9 +370,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations negative test: rejected because DataColumn is empty
         {
-            // createAnnotation() with calculations negative test: rejected because DataColumn is empty
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "negative test";
@@ -428,9 +422,8 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
+        // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock
         {
-            // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock
-
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "positive test: SamplingClock";
@@ -477,7 +470,146 @@ public class CreateAnnotationCalculationsSamplingClock extends AnnotationIntegra
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+
+            // queryAnnotations() positive test to verify calculations in query result annotation
+            // uses calculation created above
+            {
+                final String nameText = "SamplingClock";
+                final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                        new AnnotationTestBase.QueryAnnotationsParams();
+                queryParams.setTextCriterion(nameText);
+
+                sendAndVerifyQueryAnnotations(
+                        queryParams,
+                        expectReject,
+                        expectedRejectMessage,
+                        List.of(params));
+            }
+
         }
+
+        // createAnnotation() with calculations negative test using DataTimestamps.TimestampList
+        // rejected because TimestampList is empty
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final String name = "negative test";
+
+            // create calculations for request, with 2 data frames, each with 2 columns
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0 ; i < 2 ; i++) {
+
+                // create sampling clock with TimestampList
+                final List<Timestamp> emptyTimestampList = new ArrayList<>();
+                final DataTimestamps dataTimestamps =
+                        DataTimestampsUtility.dataTimestampsWithTimestampList(emptyTimestampList);
+
+                // create data columns
+                final List<DataColumn> dataColumns = new ArrayList<>();
+                for (int j = 0 ; j < 2 ; j++) {
+                    final String columnName = "calc-" + i + "-" + j;
+                    final DataColumn dataColumn =
+                            DataColumnUtility.dataColumnWithDoubleValues(columnName, List.of(0.0, 1.1));
+                    dataColumns.add(dataColumn);
+                }
+
+                // create data frame
+                final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setDataTimestamps(dataTimestamps)
+                        .addAllDataColumns(dataColumns)
+                        .build();
+                calculationsBuilder.addCalculationDataFrames(dataFrame);
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage = "CalculationDataFrame.dataTimestamps.timestampList must not be empty";
+            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations positive test using DataTimestamps.TimestampList
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final String name = "positive test: TimestampList";
+
+            // create calculations for request, with 2 data frames, each with 2 columns
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0 ; i < 2 ; i++) {
+
+                // create sampling clock with TimestampList
+                final List<Timestamp> timestampList = new ArrayList<>();
+                final Timestamp timestamp1 =
+                        TimestampUtility.timestampFromSeconds(startSeconds+i, 500_000_000L);
+                timestampList.add(timestamp1);
+                final Timestamp timestamp2 =
+                        TimestampUtility.timestampFromSeconds(startSeconds+i, 750_000_000L);
+                timestampList.add(timestamp2);
+                final DataTimestamps dataTimestamps =
+                        DataTimestampsUtility.dataTimestampsWithTimestampList(timestampList);
+
+                // create data columns
+                final List<DataColumn> dataColumns = new ArrayList<>();
+                for (int j = 0 ; j < 2 ; j++) {
+                    final String columnName = "calc-" + i + "-" + j;
+                    final DataColumn dataColumn =
+                            DataColumnUtility.dataColumnWithDoubleValues(columnName, List.of(0.0, 1.1));
+                    dataColumns.add(dataColumn);
+                }
+
+                // create data frame
+                final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setDataTimestamps(dataTimestamps)
+                        .addAllDataColumns(dataColumns)
+                        .build();
+                calculationsBuilder.addCalculationDataFrames(dataFrame);
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+
+            // queryAnnotations() positive test to verify calculations in query result annotation
+            // uses calculation created above
+            {
+                final String nameText = "TimestampList";
+                final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                        new AnnotationTestBase.QueryAnnotationsParams();
+                queryParams.setTextCriterion(nameText);
+
+                sendAndVerifyQueryAnnotations(
+                        queryParams,
+                        expectReject,
+                        expectedRejectMessage,
+                        List.of(params));
+            }
+        }
+
     }
 
 }

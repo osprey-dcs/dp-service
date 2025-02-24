@@ -44,6 +44,7 @@ public class CalculationsDocument {
 
     public Calculations toCalculations() throws DpException {
         final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+        calculationsBuilder.setId(this.getId().toString());
         for (CalculationsDataFrameDocument dataFrameDocument : getDataFrames()) {
             final Calculations.CalculationsDataFrame dataFrame = dataFrameDocument.toCalculationsDataFrame();
             calculationsBuilder.addCalculationDataFrames(dataFrame);

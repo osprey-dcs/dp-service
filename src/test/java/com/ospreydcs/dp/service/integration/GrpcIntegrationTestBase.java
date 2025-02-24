@@ -12,12 +12,14 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
@@ -1905,6 +1907,20 @@ public abstract class GrpcIntegrationTestBase {
                         }
                     }
                     assertTrue(responseBlockFound);
+                }
+            }
+
+            // compare calculations content from result with calculations document in database
+            if (requestParams.calculations != null) {
+                assertTrue(foundAnnotation.hasCalculations());
+                final Calculations resultCalculations = foundAnnotation.getCalculations();
+                final CalculationsDocument dbCalculationsDocument =
+                        mongoClient.findCalculations(resultCalculations.getId());
+                try {
+                    final Calculations dbCalculations = dbCalculationsDocument.toCalculations();
+                    assertEquals(dbCalculations, resultCalculations);
+                } catch (DpException e) {
+                    fail("exception in CalculationsDocument.toCalculations(): " + e.getMessage());
                 }
             }
         }

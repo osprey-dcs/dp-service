@@ -6,6 +6,7 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
@@ -167,6 +168,24 @@ public class MongoTestClient extends MongoSyncClient {
         final MongoSyncQueryClient mongoSyncQueryClient = new MongoSyncQueryClient();
         mongoSyncQueryClient.init();
         return mongoSyncQueryClient.executeDataBlockQuery(dataBlock);
+    }
+
+    public CalculationsDocument findCalculations(String calculationsId) {
+        for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+            final List<CalculationsDocument> matchingDocuments = new ArrayList<>();
+            mongoCollectionCalculations.find(eq("_id", new ObjectId(calculationsId))).into(matchingDocuments);
+            if (matchingDocuments.size() > 0) {
+                return matchingDocuments.get(0);
+            } else {
+                try {
+                    logger.info("findCalculations id: " + calculationsId + " retrying");
+                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                } catch (InterruptedException ex) {
+                    // ignore and just retry
+                }
+            }
+        }
+        return null;
     }
 
 }
