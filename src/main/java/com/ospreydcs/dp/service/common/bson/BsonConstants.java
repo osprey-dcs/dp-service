@@ -40,6 +40,7 @@ public class BsonConstants {
     public static final String BSON_KEY_DATA_SET_NAME = "name";
     public static final String BSON_KEY_DATA_SET_OWNER_ID = "ownerId";
     public static final String BSON_KEY_DATA_SET_DESCRIPTION = "description";
+    public static final String BSON_KEY_DATA_SET_BLOCK_PV_NAMES = "dataBlocks.pvNames";
 
     public static final String BSON_KEY_ANNOTATION_ID = "_id";
     public static final String BSON_KEY_ANNOTATION_OWNER_ID = "ownerId";

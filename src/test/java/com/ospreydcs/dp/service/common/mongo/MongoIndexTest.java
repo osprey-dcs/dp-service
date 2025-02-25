@@ -60,13 +60,14 @@ public class MongoIndexTest {
             // check datasets collection indexes
             final List<Document> datasetsIndexesDocuments =
                     this.mongoCollectionDataSets.listIndexes().into(new ArrayList<>());
-            assertEquals(3, datasetsIndexesDocuments.size());
+            assertEquals(4, datasetsIndexesDocuments.size());
             final List<String> datasetsIndexNames = datasetsIndexesDocuments.stream()
                     .map(document -> (String) document.get("name"))
                     .collect(Collectors.toList());
             assertTrue(datasetsIndexNames.contains("_id_"));
             assertTrue(datasetsIndexNames.contains("ownerId_1"));
             assertTrue(datasetsIndexNames.contains("name_text_description_text_ownerId_1"));
+            assertTrue(datasetsIndexNames.contains("dataBlocks.pvNames_1"));
 
             // check providers collection indexes
             final List<Document> providersIndexesDocuments =

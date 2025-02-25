@@ -172,6 +172,7 @@ public class AnnotationTestBase {
         public String idCriterion = null;
         public String ownerCriterion = null;
         public String textCriterion = null;
+        public String pvNameCriterion = null;
 
         public void setIdCriterion(String idCriterion) {
             this.idCriterion = idCriterion;
@@ -183,6 +184,10 @@ public class AnnotationTestBase {
 
         public void setTextCriterion(String commentCriterion) {
             this.textCriterion = commentCriterion;
+        }
+
+        public void setPvNameCriterion(String pvNameCriterion) {
+            this.pvNameCriterion = pvNameCriterion;
         }
     }
 
@@ -718,6 +723,19 @@ public class AnnotationTestBase {
                             .setTextCriterion(textCriterion)
                             .build();
             requestBuilder.addCriteria(descriptionQueryDataSetsCriterion);
+        }
+
+        // add pvName criteria
+        if (params.pvNameCriterion != null) {
+            QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion pvNameCriterion =
+                    QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion.newBuilder()
+                            .setName(params.pvNameCriterion)
+                            .build();
+            QueryDataSetsRequest.QueryDataSetsCriterion pvNameQueryDataSetsCriterion =
+                    QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setPvNameCriterion(pvNameCriterion)
+                            .build();
+            requestBuilder.addCriteria(pvNameQueryDataSetsCriterion);
         }
 
         return requestBuilder.build();

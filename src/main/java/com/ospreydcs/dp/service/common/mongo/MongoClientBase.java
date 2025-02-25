@@ -159,6 +159,9 @@ public abstract class MongoClientBase {
                                 Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)),
                         Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID)));
 
+        // create index on data block pvNames
+        createMongoIndexDataSets(Indexes.ascending(BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES));
+
         return true;
     }
 

@@ -267,6 +267,17 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                     }
                 }
 
+                case PVNAMECRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion pvNameCriterion
+                            = criterion.getPvNameCriterion();
+                    if (pvNameCriterion.getName().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.PvNameCriterion name must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
                 case CRITERION_NOT_SET -> {
                     final String errorMsg =
                             "QueryDataSetsRequest.criteria criterion case not set";

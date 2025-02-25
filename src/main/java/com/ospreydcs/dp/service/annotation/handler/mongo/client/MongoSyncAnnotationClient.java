@@ -108,6 +108,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     }
                 }
 
+                case PVNAMECRITERION -> {
+                    final String name = criterion.getPvNameCriterion().getName();
+                    if (! name.isBlank()) {
+                        final Bson descriptionFilter = Filters.in(BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES, name);
+                        criteriaFilterList.add(descriptionFilter);
+                    }
+                }
+
                 case CRITERION_NOT_SET -> {
                     // shouldn't happen since validation checks for this, but...
                     logger.error("executeQueryDataSets unexpected error criterion case not set");

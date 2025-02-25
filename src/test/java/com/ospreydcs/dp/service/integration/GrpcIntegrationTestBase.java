@@ -1678,6 +1678,16 @@ public abstract class GrpcIntegrationTestBase {
                         foundDataSet.getName().contains(queryParams.textCriterion)
                                 || foundDataSet.getDescription().contains(queryParams.textCriterion));
             }
+            if (queryParams.pvNameCriterion != null) {
+                boolean foundPvName = false;
+                for (DataBlock foundDataSetDataBlock : foundDataSet.getDataBlocksList()) {
+                    if (foundDataSetDataBlock.getPvNamesList().contains(queryParams.pvNameCriterion)) {
+                        foundPvName = true;
+                        break;
+                    }
+                }
+                assertTrue(foundPvName);
+            }
 
             // compare data blocks from result with request
             final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet;
