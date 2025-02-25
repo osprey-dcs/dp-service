@@ -21,11 +21,10 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
     }
 
     @Test
-    public void testQueryDataSetsReject() {
+    public void testQueryDataSetsNegative() {
 
+        // queryDataSets() negative test - rejected because TextCriterion is empty
         {
-            // queryDataSets() negative test - rejected because TextCriterion is empty
-
             final String ownerId = "craigmcc";
             final String blankDescriptionText = "";
             final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
@@ -40,9 +39,8 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
+        // queryDataSets() negative test - rejected because IdCriterion is empty
         {
-            // queryDataSets() negative test - rejected because IdCriterion is empty
-
             final String blankDatasetId = "";
             final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
             queryParams.setIdCriterion(blankDatasetId);
@@ -68,6 +66,18 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
+        // queryDataSets() negative test - empty query result
+        {
+            final String unknownPvName = "JUNK";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setPvNameCriterion(unknownPvName);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage ="query returned no data";
+
+            sendAndVerifyQueryDataSets(
+                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
+        }
 
     }
 

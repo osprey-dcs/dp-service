@@ -30,10 +30,10 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
     }
 
     @Test
-    public void testQueryAnnotationsReject() {
-        {
-            // queryAnnotations() negative test: empty annotationId in query by IdCriterion
+    public void testQueryAnnotationsNegative() {
 
+        // queryAnnotations() negative test: empty annotationId in query by IdCriterion
+        {
             final String blankAnnotationId = "";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
@@ -50,9 +50,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     new ArrayList<>());
         }
 
+        // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and TextCriterion
         {
-            // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and TextCriterion
-
             final String ownerId = "craigmcc";
             final String blankCommentText = "";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
@@ -71,9 +70,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     new ArrayList<>());
         }
 
+        // queryAnnotations() negative test: empty datasetId in query by OwnerCriterion and DataSetCriterion.
         {
-            // queryAnnotations() negative test: empty datasetId in query by OwnerCriterion and DataSetCriterion.
-
             final String ownerId = "craigmcc";
             final String blankDatasetId = "";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
@@ -91,6 +89,24 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     expectedRejectMessage,
                     new ArrayList<>());
         }
+
+        // queryAnnotations() negative test: empty query result.
+        {
+            final String unknownText = "JUNK";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setTextCriterion(unknownText);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage ="query returned no dat";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    new ArrayList<>());
+        }
+
     }
 
     @Test
