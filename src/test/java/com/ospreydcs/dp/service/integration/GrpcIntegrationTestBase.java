@@ -314,6 +314,16 @@ public abstract class GrpcIntegrationTestBase {
         // verify ProviderDocument from database
         final ProviderDocument providerDocument = mongoClient.findProvider(providerId);
         assertEquals(params.name, providerDocument.getName());
+        if (params.description != null) {
+            assertEquals(params.description, providerDocument.getDescription());
+        } else {
+            assertEquals("", providerDocument.getDescription());
+        }
+        if (params.tags != null) {
+            assertEquals(params.tags, providerDocument.getTags());
+        } else {
+            assertTrue(providerDocument.getTags().isEmpty());
+        }
         if (params.attributes != null) {
             assertEquals(params.attributes, providerDocument.getAttributeMap());
         }

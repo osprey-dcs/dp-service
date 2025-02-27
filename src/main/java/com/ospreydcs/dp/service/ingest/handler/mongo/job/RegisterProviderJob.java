@@ -73,7 +73,7 @@ public class RegisterProviderJob extends HandlerJob {
             return;
         }
 
-        // find id if existing document updated by upsert (not returned in UpdateResult, unfortunately)
+        // otherwise find id if existing document was updated by upsert (not returned in UpdateResult, unfortunately)
         logger.debug("finding document for RegisterProviderJob id: {}", this.responseObserver.hashCode());
         final FindProviderResult findProviderResult = client.findProvider(request.getProviderName());
         if (findProviderResult.isException) {

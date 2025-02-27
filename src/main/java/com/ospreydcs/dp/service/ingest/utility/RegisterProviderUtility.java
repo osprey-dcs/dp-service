@@ -17,11 +17,28 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RegisterProviderUtility {
 
     public static class RegisterProviderRequestParams {
+
         public final String name;
+        public final String description;
+        public final List<String> tags;
         public final Map<String, String> attributes;
 
         public RegisterProviderRequestParams(String name, Map<String, String> attributes) {
             this.name = name;
+            this.description = null;
+            this.tags = null;
+            this.attributes = attributes;
+        }
+
+        public RegisterProviderRequestParams(
+                String name,
+                String description,
+                List<String> tags,
+                Map<String, String> attributes
+        ) {
+            this.name = name;
+            this.description = description;
+            this.tags = tags;
             this.attributes = attributes;
         }
     }
@@ -100,11 +117,25 @@ public class RegisterProviderUtility {
     }
 
     public static RegisterProviderRequest buildRegisterProviderRequest(RegisterProviderRequestParams params) {
+
         RegisterProviderRequest.Builder builder = RegisterProviderRequest.newBuilder();
-        builder.setProviderName(params.name);
+
+        if (params.name != null) {
+            builder.setProviderName(params.name);
+        }
+
+        if (params.description != null) {
+            builder.setDescription(params.description);
+        }
+
+        if (params.tags != null) {
+            builder.addAllTags(params.tags);
+        }
+
         if (params.attributes != null) {
             builder.addAllAttributes(AttributesUtility.attributeListFromMap(params.attributes));
         }
+
         return builder.build();
     }
 

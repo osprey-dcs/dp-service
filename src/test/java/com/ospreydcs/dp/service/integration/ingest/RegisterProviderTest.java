@@ -12,6 +12,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -62,13 +63,15 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
 
         String providerId = null;
         {
-            // positive registerProvider() test
+            // positive registerProvider() test with all fields
 
-            // create params, using empty provider name
             final String providerName = "Provider-1";
+            final String description = "Provides data for IOC-1 vacuum subsystem";
+            final List<String> tags = List.of("gauges");
             final Map<String, String> attributeMap = Map.of("IOC", "IOC-1", "subsystem", "vacuum");
             final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+                    = new RegisterProviderUtility.RegisterProviderRequestParams(
+                            providerName, description, tags, attributeMap);
 
             // send and verify API request
             final boolean expectExceptionalResponse = false;
@@ -89,14 +92,16 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
         String providerIdUpdate = null;
         {
             // positive registerProvider() test, call method again for same provider name
-            // pass different attributeMap contents, check that same providerId is updated with new map
+            // pass different field values in params, check that same ProviderDocument is updated correctly
 
-            // create params, using empty provider name
             final String providerName = "Provider-1";
+            final String description = "Provides data for IOC-1 vacuum subsystem in sector 1";
+            final List<String> tags = List.of("gauges", "pumps");
             final Map<String, String> attributeMap =
                     Map.of("IOC", "IOC-1", "subsystem", "vacuum", "sector", "01");
             final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+                    = new RegisterProviderUtility.RegisterProviderRequestParams(
+                    providerName, description, tags, attributeMap);
 
             // send and verify API request
             final boolean expectExceptionalResponse = false;
@@ -118,7 +123,6 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
         {
             // positive registerProvider() test for different provider name
 
-            // create params, using empty provider name
             final String providerName = "Provider-2";
             final Map<String, String> attributeMap = Map.of("IOC", "IOC-2", "subsystem", "power");
             final RegisterProviderUtility.RegisterProviderRequestParams params
