@@ -93,6 +93,7 @@ public abstract class MongoClientBase {
                 DataSetDocument.class,
                 DataBlockDocument.class,
                 MetadataQueryResultDocument.class,
+                ProviderMetadataQueryResultDocument.class,
                 CalculationsDocument.class,
                 CalculationsDataFrameDocument.class,
                 TimestampDocument.class,
@@ -108,15 +109,30 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesProviders() {
+
+        // regular index on name field
         createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_NAME));
+
+        // text index on name and description fields
+        createMongoIndexDataSets(
+                Indexes.compoundIndex(
+                        Indexes.text(BsonConstants.BSON_KEY_DATA_SET_NAME),
+                        Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)));
+
+        // create index by tags
+        createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_TAGS));
+
+        // create index by attributes
+        createMongoIndexProviders(
+                Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTES + ".$**"));
+
         return true;
     }
 
     private boolean createMongoIndexesBuckets() {
 
         // regular index by name
-        createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_PV_NAME));
+        createMongoIndexBuckets(Indexes.ascending(BsonConstants.BSON_KEY_PV_NAME));
 
         // compound index by name and time fields (used in bucket data queries)
         createMongoIndexBuckets(Indexes.ascending(
@@ -125,6 +141,9 @@ public abstract class MongoClientBase {
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
+
+        // regular index on providerId field
+        createMongoIndexBuckets(Indexes.ascending(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID));
 
         return true;
     }

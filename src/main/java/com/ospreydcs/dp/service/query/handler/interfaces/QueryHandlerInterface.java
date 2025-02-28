@@ -30,4 +30,10 @@ public interface QueryHandlerInterface {
     void handleQueryMetadata(
             QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);
 
+    void handleQueryProviders(
+            QueryProvidersRequest request, StreamObserver<QueryProvidersResponse> responseObserver);
+
+    void handleQueryProviderMetadata(
+            QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver);
+
 }

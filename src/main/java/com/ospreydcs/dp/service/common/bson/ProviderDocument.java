@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
+import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import org.bson.types.ObjectId;
 
 import java.util.Date;
@@ -65,5 +67,19 @@ public class ProviderDocument {
 
     public void setLastUpdated(Date lastUpdated) {
         this.lastUpdated = lastUpdated;
+    }
+
+    public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo() {
+
+        QueryProvidersResponse.ProvidersResult.ProviderInfo.Builder providerInfoBuilder =
+                QueryProvidersResponse.ProvidersResult.ProviderInfo.newBuilder();
+
+        providerInfoBuilder.setId(this.getId().toString());
+        providerInfoBuilder.setName(this.getName());
+        providerInfoBuilder.setDescription(this.getDescription());
+        providerInfoBuilder.addAllTags(this.getTags());
+        providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributeMap()));
+
+        return providerInfoBuilder.build();
     }
 }

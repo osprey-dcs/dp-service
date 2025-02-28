@@ -1,10 +1,10 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
+import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.ProviderDocument;
+import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import org.bson.conversions.Bson;
@@ -28,5 +28,9 @@ public interface MongoQueryClientInterface {
     MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Collection<String> pvNameList);
 
     MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(String pvNamePatternString);
+
+    MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
+
+    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(QueryProviderMetadataRequest request);
 
 }

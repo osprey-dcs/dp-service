@@ -100,6 +100,14 @@ public class QueryGrpcTest extends QueryTestBase {
         ) {
         }
 
+        @Override
+        public void handleQueryProviders(QueryProvidersRequest request, StreamObserver<QueryProvidersResponse> responseObserver) {
+        }
+
+        @Override
+        public void handleQueryProviderMetadata(QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver) {
+        }
+
     }
 
     protected static class TestQueryClient {

@@ -9,6 +9,8 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.List;
+
 public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase {
 
     // static variables
@@ -351,6 +353,241 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         }
 
         handler.handleQueryMetadata(request, responseObserver);
+    }
+
+    private static QueryProvidersResponse queryProvidersResponseExceptionalResult(
+            String msg,
+            ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryProvidersResponse response = QueryProvidersResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryProvidersResponse queryProvidersResponseReject(String msg) {
+        return queryProvidersResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryProvidersResponse queryProvidersResponseError(String msg) {
+        return queryProvidersResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryProvidersResponse queryProvidersResponseEmpty() {
+        return queryProvidersResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryProvidersResponse queryProvidersResponse(
+            QueryProvidersResponse.ProvidersResult providersResult
+    ) {
+        return QueryProvidersResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setProvidersResult(providersResult)
+                .build();
+    }
+
+    public static void sendQueryProvidersResponseReject(
+            String msg, StreamObserver<QueryProvidersResponse> responseObserver) {
+
+        final QueryProvidersResponse response = queryProvidersResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProvidersResponseError(
+            String msg, StreamObserver<QueryProvidersResponse> responseObserver
+    ) {
+        final QueryProvidersResponse response = queryProvidersResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProvidersResponseEmpty(StreamObserver<QueryProvidersResponse> responseObserver) {
+        final QueryProvidersResponse response = queryProvidersResponseEmpty();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProvidersResponse(
+            QueryProvidersResponse.ProvidersResult providersResult,
+            StreamObserver<QueryProvidersResponse> responseObserver
+    ) {
+        final QueryProvidersResponse response  = queryProvidersResponse(providersResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryProviders(QueryProvidersRequest request, StreamObserver<QueryProvidersResponse> responseObserver) {
+        logger.info("id: {} queryProviders request received", responseObserver.hashCode());
+
+        // check that request contains non-empty list of criteria
+        final List<QueryProvidersRequest.Criterion> criterionList = request.getCriteriaList();
+        if (criterionList.size() == 0) {
+            final String errorMsg = "QueryProvidersRequest.criteria list must not be empty";
+            sendQueryProvidersResponseReject(errorMsg, responseObserver);
+        }
+
+        // validate query criteria
+        for (QueryProvidersRequest.Criterion criterion: criterionList) {
+
+            switch (criterion.getCriterionCase()) {
+
+                case IDCRITERION -> {
+                    final QueryProvidersRequest.Criterion.IdCriterion idCriterion
+                            = criterion.getIdCriterion();
+                    if (idCriterion.getId().isBlank()) {
+                        final String errorMsg =
+                                "QueryProvidersRequest.criteria.IdCriterion id must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case TEXTCRITERION -> {
+                    final QueryProvidersRequest.Criterion.TextCriterion commentCriterion
+                            = criterion.getTextCriterion();
+                    if (commentCriterion.getText().isBlank()) {
+                        final String errorMsg =
+                                "QueryProvidersRequest.criteria.TextCriterion text must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    final QueryProvidersRequest.Criterion.TagsCriterion tagsCriterion
+                            = criterion.getTagsCriterion();
+                    if (tagsCriterion.getTagValue().isBlank()) {
+                        final String errorMsg =
+                                "QueryProvidersRequest.criteria.TagsCriterion tagValue must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    final QueryProvidersRequest.Criterion.AttributesCriterion attributesCriterion
+                            = criterion.getAttributesCriterion();
+                    if (attributesCriterion.getKey().isBlank()) {
+                        final String errorMsg =
+                                "QueryProvidersRequest.criteria.AttributesCriterion key must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (attributesCriterion.getValue().isBlank()) {
+                        final String errorMsg =
+                                "QueryProvidersRequest.criteria.AttributesCriterion value must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case CRITERION_NOT_SET -> {
+                    final String errorMsg =
+                            "QueryProvidersRequest.criteria criterion case not set";
+                    sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                    return;
+                }
+            }
+        }
+
+        handler.handleQueryProviders(request, responseObserver);
+    }
+
+    private static QueryProviderMetadataResponse queryProviderMetadataResponseExceptionalResult(
+            String msg,
+            ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        final QueryProviderMetadataResponse response = QueryProviderMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+
+        return response;
+    }
+
+    public static QueryProviderMetadataResponse queryProviderMetadataResponseReject(String msg) {
+        return queryProviderMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryProviderMetadataResponse queryProviderMetadataResponseError(String msg) {
+        return queryProviderMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryProviderMetadataResponse queryProviderMetadataResponseEmpty() {
+        return queryProviderMetadataResponseExceptionalResult(
+                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    }
+
+    public static QueryProviderMetadataResponse queryProviderMetadataResponse(
+            QueryProviderMetadataResponse.MetadataResult metadataResult
+    ) {
+        return QueryProviderMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setMetadataResult(metadataResult)
+                .build();
+    }
+
+    public static void sendQueryProviderMetadataResponseReject(
+            String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver) {
+
+        final QueryProviderMetadataResponse response = queryProviderMetadataResponseReject(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProviderMetadataResponseError(
+            String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver
+    ) {
+        final QueryProviderMetadataResponse response = queryProviderMetadataResponseError(msg);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProviderMetadataResponseEmpty(StreamObserver<QueryProviderMetadataResponse> responseObserver) {
+        final QueryProviderMetadataResponse response = queryProviderMetadataResponseEmpty();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryProviderMetadataResponse(
+            QueryProviderMetadataResponse.MetadataResult metadataResult,
+            StreamObserver<QueryProviderMetadataResponse> responseObserver
+    ) {
+        final QueryProviderMetadataResponse response  = queryProviderMetadataResponse(metadataResult);
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+    
+    @Override
+    public void queryProviderMetadata(
+            QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver
+    ) {
+        // check that request contains non-empty providerId
+        if (request.getProviderId().isBlank()) {
+            final String errorMsg = "QueryProviderMetadataRequest.providerId must be specified";
+            sendQueryProviderMetadataResponseReject(errorMsg, responseObserver);
+        }
+
+        handler.handleQueryProviderMetadata(request, responseObserver);
     }
 
 }
