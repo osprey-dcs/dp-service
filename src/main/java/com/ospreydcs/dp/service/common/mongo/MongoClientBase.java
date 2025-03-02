@@ -114,7 +114,7 @@ public abstract class MongoClientBase {
         createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_NAME));
 
         // text index on name and description fields
-        createMongoIndexDataSets(
+        createMongoIndexProviders(
                 Indexes.compoundIndex(
                         Indexes.text(BsonConstants.BSON_KEY_DATA_SET_NAME),
                         Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)));
