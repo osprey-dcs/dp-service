@@ -1,7 +1,5 @@
 package com.ospreydcs.dp.service.integration.query;
 
-import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataResponse;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,13 +9,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.List;
-import java.util.Map;
-
 @RunWith(JUnit4.class)
 public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
-
-    private static final Logger logger = LogManager.getLogger();
 
     @BeforeClass
     public static void setUp() throws Exception {

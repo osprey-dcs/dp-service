@@ -69,6 +69,32 @@ public class QueryTestBase {
         }
     }
 
+    public static class QueryProvidersRequestParams {
+
+        public String idCriterion = null;
+        public String textCriterion = null;
+        public String tagsCriterion = null;
+        public String attributesCriterionKey = null;
+        public String attributesCriterionValue = null;
+
+        public void setIdCriterion(String idCriterion) {
+            this.idCriterion = idCriterion;
+        }
+
+        public void setTextCriterion(String textCriterion) {
+            this.textCriterion = textCriterion;
+        }
+
+        public void setTagsCriterion(String tagsCriterion) {
+            this.tagsCriterion = tagsCriterion;
+        }
+
+        public void setAttributesCriterion(String attributeCriterionKey, String attributeCriterionValue) {
+            this.attributesCriterionKey = attributeCriterionKey;
+            this.attributesCriterionValue = attributeCriterionValue;
+        }
+    }
+
     public static QueryDataRequest buildQueryDataRequest(QueryDataRequestParams params) {
         
         // build API query request from params
@@ -385,6 +411,94 @@ public class QueryTestBase {
         }
     }
 
+    public static class QueryProvidersResponseObserver implements StreamObserver<QueryProvidersResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryProvidersResponse.ProvidersResult.ProviderInfo> providerInfoList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public List<QueryProvidersResponse.ProvidersResult.ProviderInfo> getProviderInfoList() {
+            return providerInfoList;
+        }
+
+        @Override
+        public void onNext(QueryProvidersResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received ExceptionalResult: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasProvidersResult());
+                final QueryProvidersResponse.ProvidersResult providersResult = response.getProvidersResult();
+                assertNotNull(providersResult);
+
+                // flag error if already received a response
+                if (!providerInfoList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    providerInfoList.addAll(response.getProvidersResult().getProviderInfosList());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
     public static class QueryProviderMetadataResponseObserver implements StreamObserver<QueryProviderMetadataResponse> {
 
         // instance variables
@@ -471,6 +585,58 @@ public class QueryTestBase {
         @Override
         public void onCompleted() {
         }
+    }
+
+    public static QueryProvidersRequest buildQueryProvidersRequest(QueryProvidersRequestParams params) {
+
+        QueryProvidersRequest.Builder requestBuilder = QueryProvidersRequest.newBuilder();
+
+        if (params.idCriterion != null) {
+            QueryProvidersRequest.Criterion.IdCriterion criterion =
+                    QueryProvidersRequest.Criterion.IdCriterion.newBuilder()
+                            .setId(params.idCriterion)
+                            .build();
+            QueryProvidersRequest.Criterion criteria = QueryProvidersRequest.Criterion.newBuilder()
+                    .setIdCriterion(criterion)
+                    .build();
+            requestBuilder.addCriteria(criteria);
+        }
+
+        if (params.textCriterion != null) {
+            QueryProvidersRequest.Criterion.TextCriterion criterion =
+                    QueryProvidersRequest.Criterion.TextCriterion.newBuilder()
+                            .setText(params.textCriterion)
+                            .build();
+            QueryProvidersRequest.Criterion criteria = QueryProvidersRequest.Criterion.newBuilder()
+                    .setTextCriterion(criterion)
+                    .build();
+            requestBuilder.addCriteria(criteria);
+        }
+
+        if (params.tagsCriterion != null) {
+            QueryProvidersRequest.Criterion.TagsCriterion criterion =
+                    QueryProvidersRequest.Criterion.TagsCriterion.newBuilder()
+                            .setTagValue(params.tagsCriterion)
+                            .build();
+            QueryProvidersRequest.Criterion criteria = QueryProvidersRequest.Criterion.newBuilder()
+                    .setTagsCriterion(criterion)
+                    .build();
+            requestBuilder.addCriteria(criteria);
+        }
+
+        if (params.attributesCriterionKey != null && params.attributesCriterionValue != null) {
+            QueryProvidersRequest.Criterion.AttributesCriterion criterion =
+                    QueryProvidersRequest.Criterion.AttributesCriterion.newBuilder()
+                            .setKey(params.attributesCriterionKey)
+                            .setValue(params.attributesCriterionValue)
+                            .build();
+            QueryProvidersRequest.Criterion criteria = QueryProvidersRequest.Criterion.newBuilder()
+                    .setAttributesCriterion(criterion)
+                    .build();
+            requestBuilder.addCriteria(criteria);
+        }
+
+        return requestBuilder.build();
     }
 
     public static void verifyDataBucket(

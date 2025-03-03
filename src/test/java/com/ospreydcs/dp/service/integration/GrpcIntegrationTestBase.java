@@ -377,13 +377,7 @@ public abstract class GrpcIntegrationTestBase {
         return providerId;
     }
 
-    protected static String registerProvider(String providerName, Map<String, String> attributeMap) {
-
-        String providerId = null;
-
-        // create register provider params
-        final RegisterProviderUtility.RegisterProviderRequestParams params
-                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+    protected static String registerProvider(RegisterProviderUtility.RegisterProviderRequestParams params) {
 
         // send and verify register provider API request
         final boolean expectExceptionalResponse = false;
@@ -391,7 +385,7 @@ public abstract class GrpcIntegrationTestBase {
         final String expectedExceptionMessage = null;
         boolean expectedIsNew = true;
         final String expectedProviderId = null;
-        providerId = sendAndVerifyRegisterProvider(
+        final String providerId = sendAndVerifyRegisterProvider(
                 params,
                 expectExceptionalResponse,
                 expectedExceptionStatus,
@@ -401,6 +395,15 @@ public abstract class GrpcIntegrationTestBase {
         Objects.requireNonNull(providerId);
 
         return providerId;
+    }
+
+    protected static String registerProvider(String providerName, Map<String, String> attributeMap) {
+
+        // create register provider params
+        final RegisterProviderUtility.RegisterProviderRequestParams params
+                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+
+        return registerProvider(params);
     }
 
     protected IngestDataResponse sendIngestData(IngestDataRequest request) {
@@ -1619,6 +1622,80 @@ public abstract class GrpcIntegrationTestBase {
     ) {
         final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNamePattern);
         sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
+    private static List<QueryProvidersResponse.ProvidersResult.ProviderInfo> sendQueryProviders(
+            QueryProvidersRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryProvidersResponseObserver responseObserver =
+                new QueryTestBase.QueryProvidersResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryProviders(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getProviderInfoList();
+    }
+
+    protected static void sendAndVerifyQueryProviders(
+            QueryTestBase.QueryProvidersRequestParams queryParams,
+            int numMatchesExpected,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryProvidersRequest request = QueryTestBase.buildQueryProvidersRequest(queryParams);
+
+        final List<QueryProvidersResponse.ProvidersResult.ProviderInfo> queryResultProviderList =
+                sendQueryProviders(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(0, queryResultProviderList.size());
+            return;
+        }
+
+        // verify query results
+        assertEquals(numMatchesExpected, queryResultProviderList.size());
+
+        // confirm that each query result corresponds to search criteria
+        for (QueryProvidersResponse.ProvidersResult.ProviderInfo providerInfo : queryResultProviderList) {
+
+            if (queryParams.idCriterion != null) {
+                assertEquals(queryParams.idCriterion, providerInfo.getId());
+            }
+
+            if (queryParams.textCriterion != null) {
+                assertTrue((providerInfo.getName().contains(queryParams.textCriterion)) ||
+                        (providerInfo.getDescription().contains(queryParams.textCriterion)));
+            }
+
+            if (queryParams.tagsCriterion != null) {
+                assertTrue(providerInfo.getTagsList().contains(queryParams.tagsCriterion));
+            }
+
+            if (queryParams.attributesCriterionKey != null) {
+                assertNotNull(queryParams.attributesCriterionValue);
+                final Map<String, String> resultAttributeMap =
+                        AttributesUtility.attributeMapFromList(providerInfo.getAttributesList());
+                assertEquals(
+                        queryParams.attributesCriterionValue,
+                        resultAttributeMap.get(queryParams.attributesCriterionKey));
+            }
+        }
     }
 
     private static List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> sendQueryProviderMetadata(
