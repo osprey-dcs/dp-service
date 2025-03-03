@@ -92,7 +92,9 @@ public abstract class GrpcIntegrationTestBase {
             new HashMap<>();
 
     // constants
-    private static final int INGESTION_PROVIDER_ID = 1;
+    protected static final int INGESTION_PROVIDER_ID = 1;
+    protected static final String GCC_INGESTION_PROVIDER = "GCC Provider";
+    protected static final String BPM_INGESTION_PROVIDER = "BPM Provider";
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
@@ -100,11 +102,41 @@ public abstract class GrpcIntegrationTestBase {
         return ConfigurationManager.getInstance();
     }
 
+    protected static class IngestionProviderInfo {
+
+        public final String providerId;
+        public final Set<String> pvNameSet;
+        public final long firstTimeSeconds;
+        public final long firstTimeNanos;
+        public final long lastTimeSeconds;
+        public final long lastTimeNanos;
+        public final int numBuckets;
+
+        public IngestionProviderInfo(
+                String providerId,
+                Set<String> pvNameSet,
+                long firstTimeSeconds,
+                long firstTimeNanos,
+                long lastTimeSeconds,
+                long lastTimeNanos,
+                int numBuckets
+        ) {
+            this.providerId = providerId;
+            this.pvNameSet = pvNameSet;
+            this.firstTimeSeconds = firstTimeSeconds;
+            this.firstTimeNanos = firstTimeNanos;
+            this.lastTimeSeconds = lastTimeSeconds;
+            this.lastTimeNanos = lastTimeNanos;
+            this.numBuckets = numBuckets;
+        }
+    }
+
     protected static class IngestionColumnInfo {
 
         // instance variables
         public final String columnName;
         public final String requestIdBase;
+        public final String providerId;
         public final long measurementInterval;
         public final int numBuckets;
         public final int numSecondsPerBucket;
@@ -113,13 +145,14 @@ public abstract class GrpcIntegrationTestBase {
         public IngestionColumnInfo(
                 String columnName,
                 String requestIdBase,
-                long measurementInterval,
+                String providerId, long measurementInterval,
                 int numBuckets,
                 int numSecondsPerBucket,
                 boolean useExplicitTimestampList
         ) {
             this.columnName = columnName;
             this.requestIdBase = requestIdBase;
+            this.providerId = providerId;
             this.measurementInterval = measurementInterval;
             this.numBuckets = numBuckets;
             this.numSecondsPerBucket = numSecondsPerBucket;
@@ -190,6 +223,18 @@ public abstract class GrpcIntegrationTestBase {
             this.paramsList = paramsList;
             this.requestList = requestList;
             this.responseList = responseList;
+        }
+    }
+
+    protected static class IngestionScenarioResult {
+        public final Map<String, IngestionProviderInfo> providerInfoMap;
+        public final Map<String, IngestionStreamInfo> validationMap;
+        public IngestionScenarioResult(
+                Map<String, IngestionProviderInfo> providerInfoMap,
+                Map<String, IngestionStreamInfo> validationMap
+        ) {
+            this.providerInfoMap = providerInfoMap;
+            this.validationMap = validationMap;
         }
     }
 
@@ -649,7 +694,6 @@ public abstract class GrpcIntegrationTestBase {
     protected static IngestionStreamInfo ingestDataBidiStream(
             long startSeconds,
             long startNanos,
-            String providerId,
             IngestionColumnInfo columnInfo
     ) {
         final String requestIdBase = columnInfo.requestIdBase;
@@ -705,7 +749,7 @@ public abstract class GrpcIntegrationTestBase {
             // create request parameters
             final IngestionTestBase.IngestionRequestParams params =
                     new IngestionTestBase.IngestionRequestParams(
-                            providerId,
+                            columnInfo.providerId,
                             requestId,
                             null,
                             null,
@@ -728,7 +772,7 @@ public abstract class GrpcIntegrationTestBase {
             final long bucketInfoSamplePeriod = (columnInfo.useExplicitTimestampList) ? 0 : measurementInterval;
             final IngestionBucketInfo bucketInfo =
                     new IngestionBucketInfo(
-                            providerId,
+                            columnInfo.providerId,
                             requestId,
                             currentSeconds,
                             startNanos,
@@ -764,8 +808,7 @@ public abstract class GrpcIntegrationTestBase {
     protected static Map<String, IngestionStreamInfo> ingestDataBidiStreamFromColumn(
             List<IngestionColumnInfo> columnInfoList,
             long startSeconds,
-            long startNanos,
-            String providerId
+            long startNanos
     ) {
         // create data structure for validating query result
         Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
@@ -775,7 +818,6 @@ public abstract class GrpcIntegrationTestBase {
                     ingestDataBidiStream(
                             startSeconds,
                             startNanos,
-                            providerId,
                             columnInfo);
             verifyIngestionHandling(streamInfo.paramsList, streamInfo.requestList, streamInfo.responseList);
             validationMap.put(columnInfo.columnName, streamInfo);
@@ -784,18 +826,22 @@ public abstract class GrpcIntegrationTestBase {
         return validationMap;
     }
 
-    protected Map<String, IngestionStreamInfo> simpleIngestionScenario() {
+    protected IngestionScenarioResult simpleIngestionScenario() {
 
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         final long startNanos = 0L;
 
-        // register provider used by scenario
-        final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
-        final String providerId = registerProvider(providerName, null);
+        // register providers used by scenario
+        final String gccProviderName = GCC_INGESTION_PROVIDER;
+        final String gccProviderId = registerProvider(gccProviderName, null);
+        final String bpmProviderName = BPM_INGESTION_PROVIDER;
+        final String bpmProviderId = registerProvider(bpmProviderName, null);
 
         List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
 
         // create data for 10 sectors, each containing 3 gauges and 3 bpms
+        final Set<String> gccPvNames = new TreeSet<>();
+        final Set<String> bpmPvNames = new TreeSet<>();
         for (int sectorIndex = 1 ; sectorIndex <= 10 ; ++sectorIndex) {
             final String sectorName = String.format("S%02d", sectorIndex);
 
@@ -810,10 +856,12 @@ public abstract class GrpcIntegrationTestBase {
                         new IngestionColumnInfo(
                                 gccName,
                                 requestIdBase,
+                                gccProviderId,
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
                                 false);
+                gccPvNames.add(gccName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
 
@@ -828,21 +876,44 @@ public abstract class GrpcIntegrationTestBase {
                         new IngestionColumnInfo(
                                 bpmName,
                                 requestIdBase,
+                                bpmProviderId,
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
                                 false);
+                bpmPvNames.add(bpmName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
         }
+        
+        // build map of provider info
+        final Map<String, IngestionProviderInfo> providerInfoMap = new HashMap<>();
+        final IngestionProviderInfo gccProviderInfo = new IngestionProviderInfo(
+                gccProviderId,
+                gccPvNames,
+                startSeconds,
+                startNanos,
+                startSeconds + 10 - 1,
+                0L,
+                3 * 10 * 10);
+        providerInfoMap.put(gccProviderName, gccProviderInfo);
+        final IngestionProviderInfo bpmProviderInfo = new IngestionProviderInfo(
+                bpmProviderId,
+                bpmPvNames,
+                startSeconds,
+                startNanos,
+                startSeconds + 10 - 1,
+                0L,
+                3 * 10 * 10);
+        providerInfoMap.put(bpmProviderName, bpmProviderInfo);
 
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
         }
 
-        return validationMap;
+        return new IngestionScenarioResult(providerInfoMap, validationMap);
     }
 
     private static class QueryRequestStatusResult {
@@ -1548,6 +1619,64 @@ public abstract class GrpcIntegrationTestBase {
     ) {
         final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNamePattern);
         sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+    }
+
+    private static List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> sendQueryProviderMetadata(
+            QueryProviderMetadataRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryProviderMetadataResponseObserver responseObserver =
+                new QueryTestBase.QueryProviderMetadataResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryProviderMetadata(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getProviderMetadataList();
+    }
+
+    protected static void sendAndVerifyQueryProviderMetadata(
+            String providerId,
+            IngestionProviderInfo providerInfo,
+            boolean expectReject,
+            String expectedRejectMessage) {
+
+        final QueryProviderMetadataRequest request = QueryTestBase.buildQueryProviderMetadataRequest(providerId);
+
+        final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
+                sendQueryProviderMetadata(request, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(0, providerMetadataList.size());
+            return;
+        }
+
+        // verify results, check that there is a ColumnInfo for each column in the query
+        assertEquals(1, providerMetadataList.size());
+        final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata responseProviderMetadata =
+                providerMetadataList.get(0);
+        assertEquals(providerId, responseProviderMetadata.getId());
+        assertEquals(providerInfo.numBuckets, responseProviderMetadata.getNumBuckets());
+        assertEquals(providerInfo.firstTimeSeconds, responseProviderMetadata.getFirstBucketTime().getEpochSeconds());
+        assertEquals(providerInfo.firstTimeNanos, responseProviderMetadata.getFirstBucketTime().getNanoseconds());
+        assertEquals(providerInfo.lastTimeSeconds, responseProviderMetadata.getLastBucketTime().getEpochSeconds());
+        assertEquals(providerInfo.lastTimeNanos, responseProviderMetadata.getLastBucketTime().getNanoseconds());
+        assertEquals(providerInfo.pvNameSet.size(), responseProviderMetadata.getPvNamesCount());
+        assertEquals(providerInfo.pvNameSet, new HashSet<>(responseProviderMetadata.getPvNamesList()));
     }
 
     protected static String sendCreateDataSet(

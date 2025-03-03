@@ -141,28 +141,28 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
             }
 
             // run a simple ingestion scenario that will publish to all 3 subscriptions
-            Map<String, IngestionStreamInfo> validationMap;
+            IngestionScenarioResult ingestionScenarioResult;
             {
                 // create some data for testing query APIs
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                validationMap = simpleIngestionScenario();
+                ingestionScenarioResult = simpleIngestionScenario();
             }
 
             // verify all 3 subscriptions received expected messages
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
                     subscriptionPvNames1,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
                     subscriptionPvNames2,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
                     subscriptionPvNames3,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
 
             // 2) cancel subscription with explicit cancel message
             cancelSubscribeDataCall(subscribeDataCall2);

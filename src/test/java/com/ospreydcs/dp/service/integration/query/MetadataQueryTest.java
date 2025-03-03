@@ -33,20 +33,20 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
     public void queryMetadataTest() {
 
         // use request data contained by validationMap to verify query results
-        Map<String, IngestionStreamInfo> validationMap;
+        IngestionScenarioResult ingestionScenarioResult;
         {
             // create some data for testing query APIs
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            validationMap = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario();
         }
 
         {
             // send metadata query for list of columns
             final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
             sendAndVerifyQueryMetadata(
-                    queryColumnNames, validationMap, false, null);
+                    queryColumnNames, ingestionScenarioResult.validationMap, false, null);
         }
 
         {
@@ -56,7 +56,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
                     List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
             sendAndVerifyQueryMetadata(
                     columnNamePattern,
-                    validationMap,
+                    ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     false,
                     null);
@@ -72,7 +72,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
             }
             sendAndVerifyQueryMetadata(
                     columnNamePattern,
-                    validationMap,
+                    ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     false,
                     null);
@@ -84,7 +84,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
             final List<String> expectedColumnNameMatches = new ArrayList<>();
             sendAndVerifyQueryMetadata(
                     columnNamePattern,
-                    validationMap,
+                    ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     true,
                     "QueryMetadataRequest.pvNamePattern.pattern must not be empty");

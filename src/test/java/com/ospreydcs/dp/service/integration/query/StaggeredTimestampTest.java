@@ -60,6 +60,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                     new IngestionColumnInfo(
                             columnNameTenths,
                             requestIdBaseTenths,
+                            providerId,
                             intervalTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths, 
@@ -77,6 +78,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                     new IngestionColumnInfo(
                             columnNameFifths,
                             requestIdBaseFifths,
+                            providerId,
                             intervalFifths,
                             numBucketsFifths,
                             numSecondsPerBucketFifths, 
@@ -94,6 +96,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                     new IngestionColumnInfo(
                             columnNameQuarters,
                             requestIdBaseQuarters,
+                            providerId,
                             intervalQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters, 
@@ -111,6 +114,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                     new IngestionColumnInfo(
                             columnNameEighths,
                             requestIdBaseEighths,
+                            providerId,
                             intervalEighths,
                             numBucketsEighths,
                             numSecondsPerBucketEighths,
@@ -121,7 +125,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos, providerId);
+            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos);
         }
 
         {

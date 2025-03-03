@@ -62,6 +62,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                             new IngestionColumnInfo(
                                     gccName,
                                     requestIdBase,
+                                    providerId,
                                     interval,
                                     numBuckets,
                                     numSecondsPerBucket, false);
@@ -79,6 +80,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                             new IngestionColumnInfo(
                                     bpmName,
                                     requestIdBase,
+                                    providerId,
                                     interval,
                                     numBuckets,
                                     numSecondsPerBucket, false);
@@ -89,7 +91,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             {
                 // perform ingestion for specified list of columns
                 ingestionStreamInfoMap =
-                        ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, providerId);
+                        ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
             }
         }
     }

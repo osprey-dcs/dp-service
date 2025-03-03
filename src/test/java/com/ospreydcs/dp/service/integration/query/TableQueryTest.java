@@ -31,13 +31,13 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
 
         // use request data contained by validationMap to verify query results
-        Map<String, IngestionStreamInfo> validationMap;
+        IngestionScenarioResult ingestionScenarioResult;
         {
             // create some data for testing query APIs
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            validationMap = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario();
         }
 
         {
@@ -62,7 +62,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
 
         {
@@ -90,7 +90,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
 
         {
@@ -115,7 +115,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
 
         {
@@ -140,7 +140,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
 
         {
@@ -168,7 +168,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
 
         {
@@ -193,7 +193,7 @@ public class TableQueryTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    ingestionScenarioResult.validationMap);
         }
     }
 

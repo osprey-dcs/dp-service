@@ -585,6 +585,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (request.getProviderId().isBlank()) {
             final String errorMsg = "QueryProviderMetadataRequest.providerId must be specified";
             sendQueryProviderMetadataResponseReject(errorMsg, responseObserver);
+            return;
         }
 
         handler.handleQueryProviderMetadata(request, responseObserver);

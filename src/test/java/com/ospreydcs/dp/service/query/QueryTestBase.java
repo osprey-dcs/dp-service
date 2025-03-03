@@ -171,6 +171,14 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
+    public static QueryProviderMetadataRequest buildQueryProviderMetadataRequest(String providerId) {
+
+        QueryProviderMetadataRequest.Builder requestBuilder = QueryProviderMetadataRequest.newBuilder();
+        requestBuilder.setProviderId(providerId);
+        return requestBuilder.build();
+    }
+
+
     public static class QueryResponseTableObserver implements StreamObserver<QueryTableResponse> {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -377,6 +385,94 @@ public class QueryTestBase {
         }
     }
 
+    public static class QueryProviderMetadataResponseObserver implements StreamObserver<QueryProviderMetadataResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> getProviderMetadataList() {
+            return providerMetadataList;
+        }
+
+        @Override
+        public void onNext(QueryProviderMetadataResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received ExceptionalResult: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasMetadataResult());
+                final QueryProviderMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
+                assertNotNull(metadataResult);
+
+                // flag error if already received a response
+                if (!providerMetadataList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    providerMetadataList.addAll(response.getMetadataResult().getProviderMetadatasList());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
     public static void verifyDataBucket(
             QueryDataResponse.QueryData.DataBucket responseBucket,
             DataColumn requestColumn,
@@ -403,4 +499,5 @@ public class QueryTestBase {
                 requestColumn,
                 responseBucket.getDataColumn());
     }
+
 }

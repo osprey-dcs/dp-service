@@ -354,7 +354,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
                                 // Bucket fields for grouping must appear in projection!!
                                 Aggregates.group(
-                                        "$" + BsonConstants.BSON_KEY_PROVIDER_ID,
+                                        "$" + BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID,
                                         Accumulators.addToSet(
                                                 // collect a set of unique PV names for this provider
                                                 BsonConstants.BSON_KEY_PROVIDER_METADATA_PV_NAMES,
