@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProvidersResponseDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProvidersDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +19,7 @@ public class QueryProvidersJob extends HandlerJob {
     // instance variables
     private final QueryProvidersRequest request;
     private final StreamObserver<QueryProvidersResponse> responseObserver;
-    private final QueryProvidersResponseDispatcher dispatcher;
+    private final QueryProvidersDispatcher dispatcher;
     private final MongoQueryClientInterface mongoClient;
 
     public QueryProvidersJob(
@@ -30,7 +30,7 @@ public class QueryProvidersJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryProvidersResponseDispatcher(responseObserver, request);
+        dispatcher = new QueryProvidersDispatcher(responseObserver, request);
     }
 
     @Override

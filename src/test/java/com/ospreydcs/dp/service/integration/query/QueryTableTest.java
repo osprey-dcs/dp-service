@@ -8,9 +8,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.List;
-import java.util.Map;
 
-public class TableQueryTest extends GrpcIntegrationTestBase {
+public class QueryTableTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

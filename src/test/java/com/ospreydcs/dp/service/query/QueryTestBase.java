@@ -173,9 +173,9 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryMetadataRequest buildQueryMetadataRequest(String columnNamePattern) {
+    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(String columnNamePattern) {
 
-        QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
+        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
 
         PvNamePattern.Builder pvNamePatternBuilder = PvNamePattern.newBuilder();
         pvNamePatternBuilder.setPattern(columnNamePattern);
@@ -185,9 +185,9 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryMetadataRequest buildQueryMetadataRequest(List<String> pvNames) {
+    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(List<String> pvNames) {
 
-        QueryMetadataRequest.Builder requestBuilder = QueryMetadataRequest.newBuilder();
+        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
 
         PvNameList.Builder pvNameListBuilder = PvNameList.newBuilder();
         pvNameListBuilder.addAllPvNames(pvNames);
@@ -319,13 +319,13 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryMetadataResponseObserver implements StreamObserver<QueryMetadataResponse> {
+    public static class QueryPvMetadataResponseObserver implements StreamObserver<QueryPvMetadataResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryMetadataResponse.MetadataResult.PvInfo> pvInfoList =
+        private final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -348,12 +348,12 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryMetadataResponse.MetadataResult.PvInfo> getPvInfoList() {
+        public List<QueryPvMetadataResponse.MetadataResult.PvInfo> getPvInfoList() {
             return pvInfoList;
         }
 
         @Override
-        public void onNext(QueryMetadataResponse response) {
+        public void onNext(QueryPvMetadataResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -370,7 +370,7 @@ public class QueryTestBase {
                 }
 
                 assertTrue(response.hasMetadataResult());
-                final QueryMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
+                final QueryPvMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
                 assertNotNull(metadataResult);
                 // assertTrue(metadataResult.getPvInfosCount() > 0); - MAYBE ALLOW AN EMPTY RESULT FOR NEGATIVE TEST CASE?
 
@@ -382,7 +382,7 @@ public class QueryTestBase {
                     errorMessageList.add(errorMsg);
 
                 } else {
-                    for (QueryMetadataResponse.MetadataResult.PvInfo pvInfo :
+                    for (QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo :
                             response.getMetadataResult().getPvInfosList()) {
                         pvInfoList.add(pvInfo);
                     }

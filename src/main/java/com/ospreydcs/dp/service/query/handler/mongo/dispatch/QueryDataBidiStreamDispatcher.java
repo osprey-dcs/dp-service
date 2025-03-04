@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class DataResponseBidiStreamDispatcher extends BucketDocumentResponseDispatcher {
+public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
@@ -21,7 +21,7 @@ public class DataResponseBidiStreamDispatcher extends BucketDocumentResponseDisp
     private final Object cursorLock = new Object(); // used for synchronized access to cursor which is not thread safe
     private AtomicBoolean cursorClosed = new AtomicBoolean(false);
 
-    public DataResponseBidiStreamDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
+    public QueryDataBidiStreamDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
         super(responseObserver);
     }
 

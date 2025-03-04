@@ -7,7 +7,6 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -17,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 
-public class TableResponseDispatcher extends Dispatcher {
+public class QueryTableDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -29,7 +28,7 @@ public class TableResponseDispatcher extends Dispatcher {
     // constants
     public static final String TABLE_RESULT_TIMESTAMP_COLUMN_NAME = "timestamp";
 
-    public TableResponseDispatcher(
+    public QueryTableDispatcher(
             StreamObserver<QueryTableResponse> responseObserver,
             QueryTableRequest request
     ) {

@@ -13,7 +13,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 
-public class QueryProviderMetadataResponseDispatcher extends Dispatcher {
+public class QueryProviderMetadataDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -22,7 +22,7 @@ public class QueryProviderMetadataResponseDispatcher extends Dispatcher {
     private final QueryProviderMetadataRequest request;
     private final StreamObserver<QueryProviderMetadataResponse> responseObserver;
 
-    public QueryProviderMetadataResponseDispatcher(
+    public QueryProviderMetadataDispatcher(
             StreamObserver<QueryProviderMetadataResponse> responseObserver, QueryProviderMetadataRequest request
     ) {
         this.request = request;

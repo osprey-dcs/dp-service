@@ -11,10 +11,9 @@ import org.junit.runners.JUnit4;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @RunWith(JUnit4.class)
-public class MetadataQueryTest extends GrpcIntegrationTestBase {
+public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -45,7 +44,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
         {
             // send metadata query for list of columns
             final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
-            sendAndVerifyQueryMetadata(
+            sendAndVerifyQueryPvMetadata(
                     queryColumnNames, ingestionScenarioResult.validationMap, false, null);
         }
 
@@ -54,7 +53,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
             final String columnNamePattern = "S01";
             final List<String> expectedColumnNameMatches =
                     List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
-            sendAndVerifyQueryMetadata(
+            sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
@@ -70,7 +69,7 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
                 final String sectorName = String.format("S%02d", i);
                 expectedColumnNameMatches.add(sectorName + "-GCC02");
             }
-            sendAndVerifyQueryMetadata(
+            sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
@@ -82,12 +81,12 @@ public class MetadataQueryTest extends GrpcIntegrationTestBase {
             // test rejected metadata query due to blank PV name pattern
             final String columnNamePattern = ""; // send a blank string for name pattern
             final List<String> expectedColumnNameMatches = new ArrayList<>();
-            sendAndVerifyQueryMetadata(
+            sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     true,
-                    "QueryMetadataRequest.pvNamePattern.pattern must not be empty");
+                    "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty");
         }
 
     }

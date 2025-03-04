@@ -27,8 +27,8 @@ public interface QueryHandlerInterface {
     void handleQueryTable(
             QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver);
 
-    void handleQueryMetadata(
-            QueryMetadataRequest request, StreamObserver<QueryMetadataResponse> responseObserver);
+    void handleQueryPvMetadata(
+            QueryPvMetadataRequest request, StreamObserver<QueryPvMetadataResponse> responseObserver);
 
     void handleQueryProviders(
             QueryProvidersRequest request, StreamObserver<QueryProvidersResponse> responseObserver);

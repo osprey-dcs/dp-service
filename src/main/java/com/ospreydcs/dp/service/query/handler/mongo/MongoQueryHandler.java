@@ -130,7 +130,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryDataStream(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final DataResponseStreamDispatcher dispatcher = new DataResponseStreamDispatcher(responseObserver);
+        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseStream job id: {} to queue", responseObserver.hashCode());
@@ -148,7 +148,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
 
-        final DataResponseBidiStreamDispatcher dispatcher = new DataResponseBidiStreamDispatcher(responseObserver);
+        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
@@ -168,7 +168,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryData(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final DataResponseUnaryDispatcher dispatcher = new DataResponseUnaryDispatcher(responseObserver);
+        final QueryDataDispatcher dispatcher = new QueryDataDispatcher(responseObserver);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryResponseSingle job id: {} to queue", responseObserver.hashCode());
@@ -198,12 +198,12 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryMetadata(
-            QueryMetadataRequest request, 
-            StreamObserver<QueryMetadataResponse> responseObserver
+    public void handleQueryPvMetadata(
+            QueryPvMetadataRequest request,
+            StreamObserver<QueryPvMetadataResponse> responseObserver
     ) {
-        final QueryMetadataJob job =
-                new QueryMetadataJob(request, responseObserver, mongoQueryClient);
+        final QueryPvMetadataJob job =
+                new QueryPvMetadataJob(request, responseObserver, mongoQueryClient);
 
         logger.debug("adding queryMetadata job id: {} to queue", responseObserver.hashCode());
 

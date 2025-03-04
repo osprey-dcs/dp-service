@@ -122,7 +122,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
 
-    private MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Bson columnNameFilter) {
+    private MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Bson columnNameFilter) {
 
         // NOTE: PROJECTION MUST INCLUDE KEYS FOR ALL FIELDS USED IN SORTING and GROUPING!!!
         // If not the values will silently be null and lead to unexpected results!!
@@ -204,24 +204,24 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Collection<String> pvNameList) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
-        return executeQueryMetadata(pvNameFilter);
+        return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(String pvNamePatternString) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString) {
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
         final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
-        return executeQueryMetadata(pvNameFilter);
+        return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(QueryMetadataRequest request) {
+    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request) {
         if (request.hasPvNameList()) {
-            return executeQueryMetadata(request.getPvNameList().getPvNamesList());
+            return executeQueryPvMetadata(request.getPvNameList().getPvNamesList());
         } else {
-            return executeQueryMetadata(request.getPvNamePattern().getPattern());
+            return executeQueryPvMetadata(request.getPvNamePattern().getPattern());
         }
     }
 

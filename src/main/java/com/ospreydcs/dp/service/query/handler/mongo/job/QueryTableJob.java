@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.TableResponseDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,7 +16,7 @@ public class QueryTableJob extends HandlerJob {
 
     // instance variables
     private final QueryTableRequest request;
-    private final TableResponseDispatcher dispatcher;
+    private final QueryTableDispatcher dispatcher;
     private final StreamObserver<QueryTableResponse> responseObserver;
     private final MongoQueryClientInterface mongoClient;
 
@@ -27,7 +27,7 @@ public class QueryTableJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        this.dispatcher = new TableResponseDispatcher(responseObserver, this.request);
+        this.dispatcher = new QueryTableDispatcher(responseObserver, this.request);
     }
 
     public void execute() {

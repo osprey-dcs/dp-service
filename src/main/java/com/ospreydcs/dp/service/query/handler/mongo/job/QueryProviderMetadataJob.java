@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataResponse;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProviderMetadataResponseDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProviderMetadataDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +19,7 @@ public class QueryProviderMetadataJob extends HandlerJob {
     // instance variables
     private final QueryProviderMetadataRequest request;
     private final StreamObserver<QueryProviderMetadataResponse> responseObserver;
-    private final QueryProviderMetadataResponseDispatcher dispatcher;
+    private final QueryProviderMetadataDispatcher dispatcher;
     private final MongoQueryClientInterface mongoClient;
 
     public QueryProviderMetadataJob(
@@ -30,7 +30,7 @@ public class QueryProviderMetadataJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryProviderMetadataResponseDispatcher(responseObserver, request);
+        dispatcher = new QueryProviderMetadataDispatcher(responseObserver, request);
     }
 
     @Override

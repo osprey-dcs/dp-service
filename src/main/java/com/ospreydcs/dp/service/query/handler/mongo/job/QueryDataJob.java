@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.BucketDocumentResponseDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataAbstractDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,12 +16,12 @@ public class QueryDataJob extends HandlerJob {
 
     // instance variables
     private final QueryDataRequest.QuerySpec querySpec;
-    private final BucketDocumentResponseDispatcher dispatcher;
+    private final QueryDataAbstractDispatcher dispatcher;
     private final StreamObserver<QueryDataResponse> responseObserver;
     private final MongoQueryClientInterface mongoClient;
 
     public QueryDataJob(QueryDataRequest.QuerySpec spec,
-                        BucketDocumentResponseDispatcher dispatcher,
+                        QueryDataAbstractDispatcher dispatcher,
                         StreamObserver<QueryDataResponse> responseObserver,
                         MongoQueryClientInterface mongoClient
     ) {

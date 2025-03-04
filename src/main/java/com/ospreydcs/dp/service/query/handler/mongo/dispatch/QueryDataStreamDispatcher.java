@@ -8,10 +8,10 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class DataResponseStreamDispatcher extends BucketDocumentResponseDispatcher {
+public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
     private static final Logger logger = LogManager.getLogger();
-    public DataResponseStreamDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
+    public QueryDataStreamDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
         super(responseObserver);
     }
 

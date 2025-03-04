@@ -10,7 +10,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QueryProvidersResponseDispatcher extends Dispatcher {
+public class QueryProvidersDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -19,7 +19,7 @@ public class QueryProvidersResponseDispatcher extends Dispatcher {
     private final QueryProvidersRequest request;
     private final StreamObserver<QueryProvidersResponse> responseObserver;
 
-    public QueryProvidersResponseDispatcher(
+    public QueryProvidersDispatcher(
             StreamObserver<QueryProvidersResponse> responseObserver, 
             QueryProvidersRequest request
     ) {

@@ -4,23 +4,22 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.common.server.GrpcServerBase;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public abstract class BucketDocumentResponseDispatcher extends Dispatcher {
+public abstract class QueryDataAbstractDispatcher extends Dispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
     private StreamObserver<QueryDataResponse> responseObserver;
 
-    public BucketDocumentResponseDispatcher() {
+    public QueryDataAbstractDispatcher() {
     }
 
-    public BucketDocumentResponseDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
+    public QueryDataAbstractDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
         this.responseObserver = responseObserver;
     }
 

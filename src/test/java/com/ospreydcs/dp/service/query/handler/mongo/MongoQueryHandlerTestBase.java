@@ -11,8 +11,8 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.DataResponseBidiStreamDispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.DataResponseStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataBidiStreamDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import io.grpc.stub.StreamObserver;
 
@@ -104,7 +104,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
-        final DataResponseStreamDispatcher dispatcher = new DataResponseStreamDispatcher(responseObserver);
+        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver);
         final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
@@ -113,7 +113,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
     private class ResponseCursorStreamObserver implements StreamObserver<QueryDataResponse> {
 
-        private DataResponseBidiStreamDispatcher dispatcher = null;
+        private QueryDataBidiStreamDispatcher dispatcher = null;
         final CountDownLatch finishLatch;
         final List<QueryDataResponse> responseList;
 
@@ -122,7 +122,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
             this.responseList = responseList;
         }
 
-        public void setDispatcher(DataResponseBidiStreamDispatcher dispatcher) {
+        public void setDispatcher(QueryDataBidiStreamDispatcher dispatcher) {
             this.dispatcher = dispatcher;
         }
 
@@ -162,7 +162,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
-        final DataResponseBidiStreamDispatcher dispatcher = new DataResponseBidiStreamDispatcher(responseObserver);
+        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver);
         responseObserver.setDispatcher(dispatcher);
         final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();

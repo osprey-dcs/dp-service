@@ -7,10 +7,8 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
-import org.bson.conversions.Bson;
 
 import java.util.Collection;
-import java.util.List;
 
 public interface MongoQueryClientInterface {
 
@@ -23,11 +21,11 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<BucketDocument> executeQueryTable(QueryTableRequest request);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(QueryMetadataRequest request);
+    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(Collection<String> pvNameList);
+    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryMetadata(String pvNamePatternString);
+    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString);
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

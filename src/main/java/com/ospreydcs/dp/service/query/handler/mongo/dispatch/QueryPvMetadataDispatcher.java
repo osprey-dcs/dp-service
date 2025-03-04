@@ -1,33 +1,30 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryMetadataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryMetadataResponse;
-import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataResponse;
 import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
 
 import java.time.Instant;
 import java.util.Date;
 
-public class MetadataResponseDispatcher extends Dispatcher {
+public class QueryPvMetadataDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryMetadataRequest request;
-    private final StreamObserver<QueryMetadataResponse> responseObserver;
+    private final QueryPvMetadataRequest request;
+    private final StreamObserver<QueryPvMetadataResponse> responseObserver;
 
-    public MetadataResponseDispatcher(
-            StreamObserver<QueryMetadataResponse> responseObserver, QueryMetadataRequest request
+    public QueryPvMetadataDispatcher(
+            StreamObserver<QueryPvMetadataResponse> responseObserver, QueryPvMetadataRequest request
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
@@ -40,25 +37,25 @@ public class MetadataResponseDispatcher extends Dispatcher {
             // send error response and close response stream if cursor is null
             final String msg = "metadata query returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryMetadataResponseError(msg, this.responseObserver);
+            QueryServiceImpl.sendQueryPvMetadataResponseError(msg, this.responseObserver);
             return;
         } else if (!cursor.hasNext()) {
             // send empty QueryStatus and close response stream if query matched no data
             logger.trace("metadata query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryMetadataResponseEmpty(this.responseObserver);
+            QueryServiceImpl.sendQueryPvMetadataResponseEmpty(this.responseObserver);
             return;
         }
 
-        QueryMetadataResponse.MetadataResult.Builder metadataResultBuilder =
-                QueryMetadataResponse.MetadataResult.newBuilder();
+        QueryPvMetadataResponse.MetadataResult.Builder metadataResultBuilder =
+                QueryPvMetadataResponse.MetadataResult.newBuilder();
         
         while (cursor.hasNext()) {
             // add grpc object for each document in cursor
             
             final MetadataQueryResultDocument metadataDocument = cursor.next();
             
-            final QueryMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
-                    QueryMetadataResponse.MetadataResult.PvInfo.newBuilder();
+            final QueryPvMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
+                    QueryPvMetadataResponse.MetadataResult.PvInfo.newBuilder();
             
             pvInfoBuilder.setPvName(metadataDocument.getPvName());
             pvInfoBuilder.setLastBucketId(metadataDocument.getLastBucketId());
@@ -111,7 +108,7 @@ public class MetadataResponseDispatcher extends Dispatcher {
         }
 
         // send response and close response stream
-        final QueryMetadataResponse.MetadataResult metadataResult = metadataResultBuilder.build();
-        QueryServiceImpl.sendQueryMetadataResponse(metadataResult, this.responseObserver);
+        final QueryPvMetadataResponse.MetadataResult metadataResult = metadataResultBuilder.build();
+        QueryServiceImpl.sendQueryPvMetadataResponse(metadataResult, this.responseObserver);
     }
 }

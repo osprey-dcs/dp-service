@@ -35,7 +35,7 @@ import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.TableResponseDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
@@ -1273,7 +1273,7 @@ public abstract class GrpcIntegrationTestBase {
 
         // verify result column names matches list of pv names plus timestamp column
         final List<String> resultColumnNamesList = resultRowMapTable.getColumnNamesList();
-        assertTrue(resultColumnNamesList.contains(TableResponseDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME));
+        assertTrue(resultColumnNamesList.contains(QueryTableDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME));
         for (String columnName : pvNameList) {
             assertTrue(resultColumnNamesList.contains(columnName));
         }
@@ -1294,7 +1294,7 @@ public abstract class GrpcIntegrationTestBase {
 
             // get timestamp column value for row
             final DataValue resultRowTimestampDataValue =
-                    resultRowValueMap.get(TableResponseDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME);
+                    resultRowValueMap.get(QueryTableDispatcher.TABLE_RESULT_TIMESTAMP_COLUMN_NAME);
             assertTrue(resultRowTimestampDataValue.hasTimestampValue());
             final Timestamp resultRowTimestamp = resultRowTimestampDataValue.getTimestampValue();
 
@@ -1500,18 +1500,18 @@ public abstract class GrpcIntegrationTestBase {
         assertEquals(numBucketsExpected, dataBucketList.size());
     }
 
-    protected List<QueryMetadataResponse.MetadataResult.PvInfo> sendQueryMetadata(
-            QueryMetadataRequest request, boolean expectReject, String expectedRejectMessage
+    protected List<QueryPvMetadataResponse.MetadataResult.PvInfo> sendQueryPvMetadata(
+            QueryPvMetadataRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
 
-        final QueryTestBase.QueryMetadataResponseObserver responseObserver =
-                new QueryTestBase.QueryMetadataResponseObserver();
+        final QueryTestBase.QueryPvMetadataResponseObserver responseObserver =
+                new QueryTestBase.QueryPvMetadataResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.queryMetadata(request, responseObserver);
+            asyncStub.queryPvMetadata(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -1526,15 +1526,15 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getPvInfoList();
     }
 
-    private void sendAndVerifyQueryMetadata(
-            QueryMetadataRequest request,
+    private void sendAndVerifyQueryPvMetadata(
+            QueryPvMetadataRequest request,
             List<String> columnNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final List<QueryMetadataResponse.MetadataResult.PvInfo> pvInfoList =
-                sendQueryMetadata(request, expectReject, expectedRejectMessage);
+        final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
+                sendQueryPvMetadata(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertEquals(0, pvInfoList.size());
@@ -1545,14 +1545,14 @@ public abstract class GrpcIntegrationTestBase {
         assertEquals(columnNames.size(), pvInfoList.size());
 
         // build map of column info list for convenience
-        final Map<String, QueryMetadataResponse.MetadataResult.PvInfo> pvInfoMap = new HashMap<>();
-        for (QueryMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
+        final Map<String, QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoMap = new HashMap<>();
+        for (QueryPvMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
             pvInfoMap.put(columnInfo.getPvName(), columnInfo);
         }
 
         // build list of pv names in response to verify against expected
         final List<String> responsePvNames = new ArrayList<>();
-        for (QueryMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
+        for (QueryPvMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
             responsePvNames.add(columnInfo.getPvName());
         }
 
@@ -1561,7 +1561,7 @@ public abstract class GrpcIntegrationTestBase {
 
         // check that a PvInfo was received for each name and verify its contents
         for (String columnName : columnNames) {
-            final QueryMetadataResponse.MetadataResult.PvInfo pvInfo =
+            final QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo =
                     pvInfoMap.get(columnName);
             assertNotNull(pvInfo);
             assertEquals(columnName, pvInfo.getPvName());
@@ -1603,25 +1603,25 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected void sendAndVerifyQueryMetadata(
+    protected void sendAndVerifyQueryPvMetadata(
             List<String> columnNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNames);
-        sendAndVerifyQueryMetadata(request, columnNames, validationMap, expectReject, expectedRejectMessage);
+        final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNames);
+        sendAndVerifyQueryPvMetadata(request, columnNames, validationMap, expectReject, expectedRejectMessage);
     }
 
-    protected void sendAndVerifyQueryMetadata(
+    protected void sendAndVerifyQueryPvMetadata(
             String columnNamePattern,
             Map<String, IngestionStreamInfo> validationMap,
             List<String> expectedColumnNames,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final QueryMetadataRequest request = QueryTestBase.buildQueryMetadataRequest(columnNamePattern);
-        sendAndVerifyQueryMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+        final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNamePattern);
+        sendAndVerifyQueryPvMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
     }
 
     private static List<QueryProvidersResponse.ProvidersResult.ProviderInfo> sendQueryProviders(
