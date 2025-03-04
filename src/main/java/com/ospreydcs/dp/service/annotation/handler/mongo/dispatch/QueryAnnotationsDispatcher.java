@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 
-public class QueryAnnotationsResponseDispatcher extends Dispatcher {
+public class QueryAnnotationsDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -27,7 +27,7 @@ public class QueryAnnotationsResponseDispatcher extends Dispatcher {
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
     private final MongoAnnotationClientInterface mongoClient;
 
-    public QueryAnnotationsResponseDispatcher(
+    public QueryAnnotationsDispatcher(
             StreamObserver<QueryAnnotationsResponse> responseObserver,
             QueryAnnotationsRequest request,
             MongoAnnotationClientInterface mongoClient

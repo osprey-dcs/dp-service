@@ -12,7 +12,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QueryDataSetsResponseDispatcher extends Dispatcher {
+public class QueryDataSetsDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -22,7 +22,7 @@ public class QueryDataSetsResponseDispatcher extends Dispatcher {
     private final StreamObserver<QueryDataSetsResponse> responseObserver;
     private final MongoAnnotationClientInterface mongoClient;
 
-    public QueryDataSetsResponseDispatcher(
+    public QueryDataSetsDispatcher(
             StreamObserver<QueryDataSetsResponse> responseObserver,
             QueryDataSetsRequest request,
             MongoAnnotationClientInterface mongoClient

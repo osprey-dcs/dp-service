@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryAnnotationsResponseDispatcher;
+import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryAnnotationsDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +19,7 @@ public class QueryAnnotationsJob extends HandlerJob {
     // instance variables
     private final QueryAnnotationsRequest request;
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
-    private final QueryAnnotationsResponseDispatcher dispatcher;
+    private final QueryAnnotationsDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoClient;
 
     public QueryAnnotationsJob(
@@ -30,7 +30,7 @@ public class QueryAnnotationsJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryAnnotationsResponseDispatcher(responseObserver, request, mongoClient);
+        dispatcher = new QueryAnnotationsDispatcher(responseObserver, request, mongoClient);
     }
 
     @Override

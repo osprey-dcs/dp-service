@@ -4,9 +4,7 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
-import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryAnnotationsResponseDispatcher;
-import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryDataSetsResponseDispatcher;
-import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryDataSetsDispatcher;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import io.grpc.stub.StreamObserver;
@@ -21,7 +19,7 @@ public class QueryDataSetsJob extends HandlerJob {
     // instance variables
     private final QueryDataSetsRequest request;
     private final StreamObserver<QueryDataSetsResponse> responseObserver;
-    private final QueryDataSetsResponseDispatcher dispatcher;
+    private final QueryDataSetsDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoClient;
 
     public QueryDataSetsJob(
@@ -32,7 +30,7 @@ public class QueryDataSetsJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryDataSetsResponseDispatcher(responseObserver, request, mongoClient);
+        dispatcher = new QueryDataSetsDispatcher(responseObserver, request, mongoClient);
     }
 
     @Override

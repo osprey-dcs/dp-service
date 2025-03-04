@@ -13,11 +13,10 @@ import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class TabularDataExportJob extends ExportDataSetJob {
+public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBase {
 
     // constants
     public static final String COLUMN_HEADER_SECONDS = "seconds";
@@ -26,7 +25,7 @@ public abstract class TabularDataExportJob extends ExportDataSetJob {
     // instance variables
     private TabularDataExportFileInterface exportFile;
 
-    public TabularDataExportJob(
+    public ExportDataSetJobAbstractTabular(
             HandlerExportDataSetRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient

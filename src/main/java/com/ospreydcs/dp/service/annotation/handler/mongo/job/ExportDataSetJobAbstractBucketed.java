@@ -10,14 +10,12 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-import java.io.IOException;
-
-public abstract class BucketedDataExportJob extends ExportDataSetJob {
+public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobBase {
 
     // instance variables
     private BucketedDataExportFileInterface exportFile;
 
-    public BucketedDataExportJob(
+    public ExportDataSetJobAbstractBucketed(
             HandlerExportDataSetRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
@@ -50,7 +48,7 @@ public abstract class BucketedDataExportJob extends ExportDataSetJob {
                 return new ExportDatasetStatus(true, errorMsg);
             }
 
-            // We could enforce an export output file size limit here, as in TabularDataExportJob.exportDataset_(),
+            // We could enforce an export output file size limit here, as in ExportDataSetJobAbstractTabular.exportDataset_(),
             // but at this point I'm not going to do so.  In the case of tabular data, we build a large table data
             // structure before we write the data to file.  But with bucketed data (at least for HDF5 format), we write
             // each individual bucket to the file as we read it from the database cursor.  As HDF5 is designed to handle

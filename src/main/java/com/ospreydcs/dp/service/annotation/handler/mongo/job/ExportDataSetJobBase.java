@@ -16,7 +16,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.TimeUnit;
 
-public abstract class ExportDataSetJob extends HandlerJob {
+public abstract class ExportDataSetJobBase extends HandlerJob {
 
     protected static record ExportDatasetStatus (boolean isError, String errorMessage) {}
 
@@ -30,7 +30,7 @@ public abstract class ExportDataSetJob extends HandlerJob {
     protected final MongoQueryClientInterface mongoQueryClient;
     private final ExportConfiguration exportConfiguration;
 
-    public ExportDataSetJob(
+    public ExportDataSetJobBase(
             HandlerExportDataSetRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
@@ -127,11 +127,11 @@ public abstract class ExportDataSetJob extends HandlerJob {
 
         // If path already exists, return early
         try {
-            logger.debug("ExportDataSetJob.awaitFile path " + target.toString() + " already exists");
+            logger.debug("ExportDataSetJobBase.awaitFile path " + target.toString() + " already exists");
             return Files.readAttributes(target, BasicFileAttributes.class);
         } catch (NoSuchFileException ex) {}
 
-        logger.debug("ExportDataSetJob.awaitFile using WatchService to wait for file " + target.toString());
+        logger.debug("ExportDataSetJobBase.awaitFile using WatchService to wait for file " + target.toString());
         final WatchService watchService = FileSystems.getDefault().newWatchService();
         try {
             final WatchKey watchKey = targetDir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);

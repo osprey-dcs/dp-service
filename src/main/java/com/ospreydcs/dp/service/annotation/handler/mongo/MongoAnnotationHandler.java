@@ -240,7 +240,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     @Override
     public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
 
-        ExportDataSetJob job = null;
+        ExportDataSetJobBase job = null;
         switch (handlerRequest.exportDataSetRequest.getOutputFormat()) {
             case EXPORT_FORMAT_UNSPECIFIED -> {
                 // this should be caught in validation, but just in case...
@@ -248,13 +248,13 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
             }
             case EXPORT_FORMAT_HDF5 -> {
-                job = new Hdf5ExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataSetJobHdf5(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_CSV -> {
-                job = new CsvExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataSetJobCsv(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_XLSX -> {
-                job = new ExcelExportJob(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataSetJobExcel(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case UNRECOGNIZED -> {
                 // this should be caught in validation, but just in case...
@@ -264,7 +264,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
         Objects.requireNonNull(job);
 
-        logger.debug("adding ExportDataSetJob id: {} to queue", handlerRequest.responseObserver.hashCode());
+        logger.debug("adding ExportDataSetJobBase id: {} to queue", handlerRequest.responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

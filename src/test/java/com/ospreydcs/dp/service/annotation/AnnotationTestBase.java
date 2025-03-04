@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.TabularDataExportJob;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -1055,8 +1055,8 @@ public class AnnotationTestBase {
 
             // build list of expected column headers
             final List<String> expectedHeaderValues = new ArrayList<>();
-            expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_SECONDS);
-            expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_NANOS);
+            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_SECONDS);
+            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_NANOS);
             expectedHeaderValues.addAll(expectedColumnNameList);
 
             // check content of csv header row matches expected
@@ -1145,8 +1145,8 @@ public class AnnotationTestBase {
 
             // build list of expected column headers
             final List<String> expectedHeaderValues = new ArrayList<>();
-            expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_SECONDS);
-            expectedHeaderValues.add(TabularDataExportJob.COLUMN_HEADER_NANOS);
+            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_SECONDS);
+            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_NANOS);
             expectedHeaderValues.addAll(expectedColumnNameList);
 
             for (int columnIndex = 0; columnIndex < fileHeaderRow.getLastCellNum(); columnIndex++) {
