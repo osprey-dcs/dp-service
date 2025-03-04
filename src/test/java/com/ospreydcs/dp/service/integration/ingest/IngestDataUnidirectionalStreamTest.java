@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.integration.ingest;
 
-import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
@@ -11,7 +10,7 @@ import org.junit.Test;
 import java.time.Instant;
 import java.util.*;
 
-public class UnidirectionalStreamTest extends GrpcIntegrationTestBase {
+public class IngestDataUnidirectionalStreamTest extends GrpcIntegrationTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {

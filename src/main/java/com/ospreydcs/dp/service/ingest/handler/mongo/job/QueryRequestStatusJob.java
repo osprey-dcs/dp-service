@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
-import com.ospreydcs.dp.service.ingest.handler.mongo.dispatch.QueryRequestStatusResponseDispatcher;
+import com.ospreydcs.dp.service.ingest.handler.mongo.dispatch.QueryRequestStatusDispatcher;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +19,7 @@ public class QueryRequestStatusJob extends HandlerJob {
     // instance variables
     private final QueryRequestStatusRequest request;
     private final StreamObserver<QueryRequestStatusResponse> responseObserver;
-    private final QueryRequestStatusResponseDispatcher dispatcher;
+    private final QueryRequestStatusDispatcher dispatcher;
     private final MongoIngestionClientInterface mongoClient;
 
     public QueryRequestStatusJob(
@@ -30,7 +30,7 @@ public class QueryRequestStatusJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryRequestStatusResponseDispatcher(responseObserver, request, mongoClient);
+        dispatcher = new QueryRequestStatusDispatcher(responseObserver, request, mongoClient);
     }
 
     @Override

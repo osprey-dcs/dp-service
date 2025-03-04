@@ -16,7 +16,7 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
-public abstract class DataTypesTestBase extends GrpcIntegrationTestBase {
+public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

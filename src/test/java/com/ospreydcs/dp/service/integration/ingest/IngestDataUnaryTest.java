@@ -16,7 +16,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class UnaryTest extends GrpcIntegrationTestBase {
+public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {

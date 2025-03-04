@@ -4,7 +4,6 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus;
-import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
@@ -25,7 +24,7 @@ import static org.junit.Assert.*;
 /*
  * Provides coverage for the request status query API.
  */
-public class RequestStatusTest extends GrpcIntegrationTestBase {
+public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

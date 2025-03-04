@@ -10,7 +10,7 @@ import org.junit.Test;
 
 import java.util.List;
 
-public class DataTypesStreamingTest extends DataTypesTestBase {
+public class IngestDataTypesStreamingTest extends IngestDataTypesTestBase {
 
     @Override
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(

@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class ExplicitTimestampListTest extends GrpcIntegrationTestBase {
+public class IngestDataExplicitTimestampListTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

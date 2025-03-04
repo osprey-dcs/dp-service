@@ -13,7 +13,7 @@ import org.junit.runners.JUnit4;
 import java.util.List;
 
 @RunWith(JUnit4.class)
-public class DataTypesUnaryTest extends DataTypesTestBase {
+public class IngestDataTypesUnaryTest extends IngestDataTypesTestBase {
 
     @Override
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(

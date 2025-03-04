@@ -11,7 +11,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QueryRequestStatusResponseDispatcher extends Dispatcher {
+public class QueryRequestStatusDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -21,7 +21,7 @@ public class QueryRequestStatusResponseDispatcher extends Dispatcher {
     private final StreamObserver<QueryRequestStatusResponse> responseObserver;
     private final MongoIngestionClientInterface mongoClient;
 
-    public QueryRequestStatusResponseDispatcher(
+    public QueryRequestStatusDispatcher(
             StreamObserver<QueryRequestStatusResponse> responseObserver,
             QueryRequestStatusRequest request,
             MongoIngestionClientInterface mongoClient
