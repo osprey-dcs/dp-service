@@ -591,9 +591,16 @@ public abstract class GrpcIntegrationTestBase {
 
             // check sample count params
             assertEquals((int) params.samplingClockCount, bucketDocument.getSampleCount());
+            DataColumn bucketDataColumn = null;
+            try {
+                bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
+            } catch (DpException e) {
+                throw new RuntimeException(e);
+            }
+            Objects.requireNonNull(bucketDataColumn);
             assertEquals(
                     (int) params.samplingClockCount,
-                    bucketDocument.readDataColumnContent().getDataValuesList().size());
+                    bucketDataColumn.getDataValuesList().size());
 
             // check DataTimestamps (TimestampsList or SamplingClock depending on request)
             final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
@@ -647,7 +654,6 @@ public abstract class GrpcIntegrationTestBase {
 
             // compare data value vectors
             final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
-            final DataColumn bucketDataColumn = bucketDocument.readDataColumnContent();
             final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
 
             // this compares each DataValue including ValueStatus, confirmed in debugger

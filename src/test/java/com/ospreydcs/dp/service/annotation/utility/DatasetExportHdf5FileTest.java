@@ -5,6 +5,7 @@ import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
@@ -103,7 +104,8 @@ public class DatasetExportHdf5FileTest {
                 dataColumnBuilder.addDataValues(dataValue);
             }
             final DataColumn dataColumn = dataColumnBuilder.build();
-            pv1BucketDocument.setDataColumnBytes(dataColumn.toByteArray());
+            final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
+            pv1BucketDocument.setDataColumn(dataColumnDocument);
             pv1BucketDocument.setDataTimestampsBytes(dataTimestamps.toByteArray());
             pv1BucketDocument.setAttributeMap(attributeMap);
             pv1BucketDocument.setEventMetadata(eventMetadata);
@@ -131,7 +133,8 @@ public class DatasetExportHdf5FileTest {
                 dataColumnBuilder.addDataValues(dataValue);
             }
             DataColumn dataColumn = dataColumnBuilder.build();
-            pv2BucketDocument.setDataColumnBytes(dataColumn.toByteArray());
+            final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
+            pv2BucketDocument.setDataColumn(dataColumnDocument);
             pv2BucketDocument.setDataTimestampsBytes(dataTimestamps.toByteArray());
             pv2BucketDocument.setAttributeMap(attributeMap);
             pv2BucketDocument.setEventMetadata(eventMetadata);

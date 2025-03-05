@@ -986,7 +986,7 @@ public class AnnotationTestBase {
 
         // dataColumnBytes
         final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
-        assertArrayEquals(bucketDocument.getDataColumnBytes(), reader.readAsByteArray(columnDataPath));
+        assertArrayEquals(bucketDocument.getDataColumn().getBytes(), reader.readAsByteArray(columnDataPath));
 
         // dataTimestampsBytes
         final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;

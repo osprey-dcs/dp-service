@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 
 import java.util.ArrayList;
@@ -53,7 +54,7 @@ public class BucketUtility {
                 bucket.setSamplePeriod(samplePeriod);
                 bucket.setSampleCount(sampleCount);
 
-                // fill bucket with specified number of data values
+                // create DataColumn with specified number of values and add it to BucketDocument
                 final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(pvName);
                 for (int samplesIndex = 0 ; samplesIndex < sampleCount ; samplesIndex++) {
@@ -61,7 +62,8 @@ public class BucketUtility {
                     final DataValue dataValue = DataValue.newBuilder().setDoubleValue(doubleValue).build();
                     dataColumnBuilder.addDataValues(dataValue);
                 }
-                bucket.writeDataColumnContent(dataColumnBuilder.build());
+                final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumnBuilder.build());
+                bucket.setDataColumn(dataColumnDocument);
 
                 // set DataTimestamps in bucket
                 final Timestamp startTime = TimestampUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos);

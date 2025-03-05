@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkBidiStreamingIngestion;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
@@ -197,12 +198,20 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertEquals(0, eventMetadataDocument.getStartNanos());
                     assertTrue(bucketDocument.getAttributeMap().get("sector").equals("07"));
                     assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
-                    assertEquals(params.numRows, bucketDocument.readDataColumnContent().getDataValuesList().size());
+
+                    DataColumn bucketDataColumn = null;
+                    try {
+                        bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
+                    } catch (DpException e) {
+                        throw new RuntimeException(e);
+                    }
+                    Objects.requireNonNull(bucketDataColumn);
+
+                    assertEquals(params.numRows, bucketDataColumn.getDataValuesList().size());
                     // verify each value
-                    DataColumn dataColumn = bucketDocument.readDataColumnContent();
                     for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
                         final double expectedValue = valIndex + (double) valIndex / bucketDocument.getSampleCount();
-                        assertEquals(expectedValue, dataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
+                        assertEquals(expectedValue, bucketDataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
                     }
                     dbBucketCount.incrementAndGet();
                 }

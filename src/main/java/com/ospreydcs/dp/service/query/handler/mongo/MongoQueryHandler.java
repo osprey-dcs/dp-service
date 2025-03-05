@@ -1,9 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.grpc.v1.common.*;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
@@ -74,56 +71,6 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     @Override
     public ValidationResult validateQueryTableRequest(QueryTableRequest request) {
         return QueryHandlerUtility.validateQueryTableRequest(request);
-    }
-
-    public static QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
-            BucketDocument document
-    ) {
-        final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
-                QueryDataResponse.QueryData.DataBucket.newBuilder();
-
-        // add data timestamps
-        DataTimestamps dataTimestamps = document.readDataTimestampsContent();
-        bucketBuilder.setDataTimestamps(dataTimestamps);
-
-        // add data values
-        DataColumn dataColumn = document.readDataColumnContent();
-        bucketBuilder.setDataColumn(dataColumn);
-
-        // add attributes
-        if (document.getAttributeMap() != null) {
-            for (var documentAttributeMapEntry : document.getAttributeMap().entrySet()) {
-                final String documentAttributeKey = documentAttributeMapEntry.getKey();
-                final String documentAttributeValue = documentAttributeMapEntry.getValue();
-                final Attribute responseAttribute = Attribute.newBuilder()
-                        .setName(documentAttributeKey)
-                        .setValue(documentAttributeValue)
-                        .build();
-                bucketBuilder.addAttributes(responseAttribute);
-            }
-        }
-
-        // add event metadata
-        if (document.getEventMetadata() != null) {
-            final EventMetadataDocument eventMetadataDocument = document.getEventMetadata();
-
-            Timestamp responseEventStartTimestamp = Timestamp.newBuilder()
-                    .setEpochSeconds(eventMetadataDocument.getStartSeconds())
-                    .setNanoseconds(eventMetadataDocument.getStartNanos())
-                    .build();
-            Timestamp responseEventStopTimestamp = Timestamp.newBuilder()
-                    .setEpochSeconds(eventMetadataDocument.getStopSeconds())
-                    .setNanoseconds(eventMetadataDocument.getStopNanos())
-                    .build();
-            EventMetadata responseEventMetadata = EventMetadata.newBuilder()
-                    .setDescription(eventMetadataDocument.getDescription())
-                    .setStartTimestamp(responseEventStartTimestamp)
-                    .setStopTimestamp(responseEventStopTimestamp)
-                    .build();
-            bucketBuilder.setEventMetadata(responseEventMetadata);
-        }
-
-        return bucketBuilder.build();
     }
 
     @Override

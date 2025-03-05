@@ -58,7 +58,9 @@ public class TabularDataUtility {
         final DataTimestamps bucketDataTimestamps = bucket.readDataTimestampsContent();
         final DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
                 DataTimestampsUtility.dataTimestampsIterator(bucketDataTimestamps);
-        final Iterator<DataValue> dataValueIterator = bucket.readDataColumnContent().getDataValuesList().iterator();
+
+        // derserialize DataColumn content from document and the iterate DataValues in column
+        final Iterator<DataValue> dataValueIterator = bucket.getDataColumn().readBytes().getDataValuesList().iterator();
         while (dataTimestampsIterator.hasNext() && dataValueIterator.hasNext()) {
 
             final Timestamp timestamp = dataTimestampsIterator.next();

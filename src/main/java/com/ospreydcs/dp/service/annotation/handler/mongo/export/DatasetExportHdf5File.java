@@ -172,10 +172,12 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         final String samplePeriodPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_SAMPLE_PERIOD;
         writer.writeLong(samplePeriodPath, bucketDocument.getSamplePeriod());
 
-        // dataColumnBytes
-        Objects.requireNonNull(bucketDocument.getDataColumnBytes());
+        // DataColumn serialized bytes
+        Objects.requireNonNull(bucketDocument.getDataColumn());
+        final byte[] dataColumnBytes = bucketDocument.getDataColumn().getBytes();
+        Objects.requireNonNull(dataColumnBytes);
         final String columnDataPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
-        writer.writeByteArray(columnDataPath, bucketDocument.getDataColumnBytes());
+        writer.writeByteArray(columnDataPath, dataColumnBytes);
 
         // dataTimestampsBytes
         Objects.requireNonNull(bucketDocument.getDataTimestampsBytes());

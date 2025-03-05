@@ -3,12 +3,15 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.Objects;
 
 public abstract class QueryDataAbstractDispatcher extends Dispatcher {
 
@@ -59,8 +62,18 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
-            final QueryDataResponse.QueryData.DataBucket bucket =
-                    MongoQueryHandler.dataBucketFromDocument(document);
+            QueryDataResponse.QueryData.DataBucket bucket = null;
+            try {
+                bucket = BucketDocument.dataBucketFromDocument(document);
+            } catch (DpException e) {
+                // exception deserialzing BucketDocument contents, so send error response
+                final String errorMsg =
+                        "exception deserializing protobuf data for BucketDocument id: " + responseObserver.hashCode()
+                                + " exception: " + e.getMessage();
+                logger.error(errorMsg);
+                return QueryServiceImpl.queryDataResponseError(errorMsg);
+            }
+            Objects.requireNonNull(bucket);
 
             // determine bucket size and check if too large
             int bucketSerializedSize = bucket.getSerializedSize();

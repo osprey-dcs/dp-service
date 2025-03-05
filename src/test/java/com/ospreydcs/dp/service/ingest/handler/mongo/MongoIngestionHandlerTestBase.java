@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -182,7 +183,13 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
             assertTrue(bucket.getLastNanos() == lastNanos);
 
             // compare column data values to expected
-            final DataColumn dataColumn = bucket.readDataColumnContent();
+            DataColumn dataColumn = null;
+            try {
+                dataColumn = bucket.getDataColumn().toDataColumn();
+            } catch (DpException e) {
+                fail("exception derserializing DataColumn from BucketDocument: " + e.getMessage());
+            }
+            Objects.requireNonNull(dataColumn);
             int dataValueIndex = 0;
             for (Object columnValue : columnDataList) {
                 if (columnValue instanceof Double) {

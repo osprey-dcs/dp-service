@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
@@ -172,14 +173,22 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             for (BucketDocument bucketDocument : bucketDocumentList) {
 
                 final DataColumn requestColumn = arrayDataColumnList.get(columnIndex);
-                final DataColumn bucketColumn = bucketDocument.readDataColumnContent();
+
+                DataColumn bucketDataColumn = null;
+                try {
+                    bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
+                } catch (DpException e) {
+                    throw new RuntimeException(e);
+                }
+                Objects.requireNonNull(bucketDataColumn);
+
                 final List<ArrayDataValueModel> requestValueModelList = arrayValidationMap.get(requestColumn);
-                assertEquals(requestValueModelList.size(), bucketColumn.getDataValuesCount());
+                assertEquals(requestValueModelList.size(), bucketDataColumn.getDataValuesCount());
 
                 int rowIndex = 0;
                 for (ArrayDataValueModel arrayDataValueModel : requestValueModelList) {
                     final List<List<String>> array2D = arrayDataValueModel.array2D;
-                    final DataValue bucketValue = bucketColumn.getDataValues(rowIndex);
+                    final DataValue bucketValue = bucketDataColumn.getDataValues(rowIndex);
                     assertTrue(bucketValue.hasArrayValue());
                     final Array bucketArray = bucketValue.getArrayValue();
                     verify2DArray(array2D, bucketArray);
@@ -273,10 +282,17 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             for (BucketDocument bucketDocument : bucketDocumentList) {
 
                 final DataColumn requestColumn = dataColumnList.get(columnIndex);
-                final DataColumn bucketColumn = bucketDocument.readDataColumnContent();
+
+                DataColumn bucketDataColumn = null;
+                try {
+                    bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
+                } catch (DpException e) {
+                    throw new RuntimeException(e);
+                }
+                Objects.requireNonNull(bucketDataColumn);
 
                 int rowIndex = 0;
-                for (DataValue bucketDataValue : bucketColumn.getDataValuesList()) {
+                for (DataValue bucketDataValue : bucketDataColumn.getDataValuesList()) {
                     assertTrue(bucketDataValue.hasImageValue());
                     final Image bucketImage = bucketDataValue.getImageValue();
                     assertEquals(imageByteString, bucketImage.getImage());
@@ -466,15 +482,23 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             for (BucketDocument bucketDocument : bucketDocumentList) {
 
                 final DataColumn requestColumn = dataColumnList.get(columnIndex);
-                final DataColumn bucketColumn = bucketDocument.readDataColumnContent();
+
+                DataColumn bucketDataColumn = null;
+                try {
+                    bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
+                } catch (DpException e) {
+                    throw new RuntimeException(e);
+                }
+                Objects.requireNonNull(bucketDataColumn);
+
                 final List<StructureDataValueModel> requestValueModelList = validationMap.get(requestColumn);
-                assertEquals(requestValueModelList.size(), bucketColumn.getDataValuesCount());
+                assertEquals(requestValueModelList.size(), bucketDataColumn.getDataValuesCount());
 
                 int rowIndex = 0;
                 for (StructureDataValueModel structureDataValueModel : requestValueModelList) {
 
                     // confirm DataValue is structure
-                    final DataValue bucketValue = bucketColumn.getDataValues(rowIndex);
+                    final DataValue bucketValue = bucketDataColumn.getDataValues(rowIndex);
                     assertTrue(bucketValue.hasStructureValue());
                     final Structure bucketStructure = bucketValue.getStructureValue();
 
