@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.common.bson;
 
 import java.util.Date;
 
-public class MetadataQueryResultDocument {
+public class PvMetadataQueryResultDocument {
 
     // instance variables
     private String pvName;
@@ -15,6 +15,7 @@ public class MetadataQueryResultDocument {
     private long lastBucketSamplePeriod;
     private Date firstDataTimestamp;
     private Date lastDataTimestamp;
+    private int numBuckets;
 
     public String getPvName() {
         return pvName;
@@ -95,4 +96,13 @@ public class MetadataQueryResultDocument {
     public void setLastDataTimestamp(Date lastDataTimestamp) {
         this.lastDataTimestamp = lastDataTimestamp;
     }
+
+    public int getNumBuckets() {
+        return numBuckets;
+    }
+
+    public void setNumBuckets(int numBuckets) {
+        this.numBuckets = numBuckets;
+    }
+
 }

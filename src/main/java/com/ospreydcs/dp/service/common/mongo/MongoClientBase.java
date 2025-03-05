@@ -92,7 +92,7 @@ public abstract class MongoClientBase {
                 AnnotationDocument.class,
                 DataSetDocument.class,
                 DataBlockDocument.class,
-                MetadataQueryResultDocument.class,
+                PvMetadataQueryResultDocument.class,
                 ProviderMetadataQueryResultDocument.class,
                 CalculationsDocument.class,
                 CalculationsDataFrameDocument.class,

@@ -1528,7 +1528,7 @@ public abstract class GrpcIntegrationTestBase {
 
     private void sendAndVerifyQueryPvMetadata(
             QueryPvMetadataRequest request,
-            List<String> columnNames,
+            List<String> pvNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
@@ -1542,9 +1542,9 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         // verify results, check that there is a ColumnInfo for each column in the query
-        assertEquals(columnNames.size(), pvInfoList.size());
+        assertEquals(pvNames.size(), pvInfoList.size());
 
-        // build map of column info list for convenience
+        // build map of pv info list for convenience
         final Map<String, QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoMap = new HashMap<>();
         for (QueryPvMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
             pvInfoMap.put(columnInfo.getPvName(), columnInfo);
@@ -1552,31 +1552,33 @@ public abstract class GrpcIntegrationTestBase {
 
         // build list of pv names in response to verify against expected
         final List<String> responsePvNames = new ArrayList<>();
-        for (QueryPvMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
-            responsePvNames.add(columnInfo.getPvName());
+        for (QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo : pvInfoList) {
+            responsePvNames.add(pvInfo.getPvName());
         }
 
         // check that response pvNames are sorted (against list in sorted order)
-        assertEquals(columnNames, responsePvNames);
+        assertEquals(pvNames, responsePvNames);
 
         // check that a PvInfo was received for each name and verify its contents
-        for (String columnName : columnNames) {
+        for (String pvName : pvNames) {
             final QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo =
-                    pvInfoMap.get(columnName);
+                    pvInfoMap.get(pvName);
             assertNotNull(pvInfo);
-            assertEquals(columnName, pvInfo.getPvName());
+            assertEquals(pvName, pvInfo.getPvName());
             assertEquals(8, pvInfo.getLastBucketDataTypeCase());
             assertEquals("DOUBLEVALUE", pvInfo.getLastBucketDataType());
             assertEquals(1, pvInfo.getLastBucketDataTimestampsCase());
             assertEquals("SAMPLINGCLOCK", pvInfo.getLastBucketDataTimestampsType());
 
-            // iterate through validationMap to get info for first and last bucket for column
+            // iterate through validationMap to get info for first and last bucket for pv, number of buckets
             IngestionBucketInfo firstBucketInfo = null;
             IngestionBucketInfo lastBucketInfo = null;
+            int numBuckets = 0;
             boolean first = true;
-            for (var bucketMapEntry : validationMap.get(columnName).bucketInfoMap.entrySet()) {
+            for (var bucketMapEntry : validationMap.get(pvName).bucketInfoMap.entrySet()) {
                 final var nanoMap = bucketMapEntry.getValue();
                 for (var nanoMapEntry : nanoMap.entrySet()) {
+                    numBuckets = numBuckets + 1;
                     if (first) {
                         firstBucketInfo = nanoMapEntry.getValue();
                         first = false;
@@ -1585,7 +1587,7 @@ public abstract class GrpcIntegrationTestBase {
                 }
             }
 
-            // verify ColumnInfo contents for column against last and first bucket details
+            // verify pvInfo contents for column against last and first bucket details
             assertNotNull(lastBucketInfo);
             assertEquals(lastBucketInfo.intervalNanos, pvInfo.getLastBucketSamplePeriod());
             assertEquals(lastBucketInfo.numValues, pvInfo.getLastBucketSampleCount());
@@ -1594,10 +1596,11 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(firstBucketInfo);
             assertEquals(firstBucketInfo.startSeconds, pvInfo.getFirstDataTimestamp().getEpochSeconds());
             assertEquals(firstBucketInfo.startNanos, pvInfo.getFirstDataTimestamp().getNanoseconds());
+            assertEquals(numBuckets, pvInfo.getNumBuckets());
 
             // check last bucket id
             final String expectedLastBucketId =
-                    columnName + "-" + lastBucketInfo.startSeconds + "-" + lastBucketInfo.startNanos;
+                    pvName + "-" + lastBucketInfo.startSeconds + "-" + lastBucketInfo.startNanos;
             assertEquals(expectedLastBucketId, pvInfo.getLastBucketId());
 
         }

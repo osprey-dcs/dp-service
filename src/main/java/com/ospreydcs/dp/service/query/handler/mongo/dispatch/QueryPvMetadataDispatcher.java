@@ -4,7 +4,7 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataResponse;
-import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -30,7 +30,7 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
         this.responseObserver = responseObserver;
     }
 
-    public void handleResult(MongoCursor<MetadataQueryResultDocument> cursor) {
+    public void handleResult(MongoCursor<PvMetadataQueryResultDocument> cursor) {
 
         // validate cursor
         if (cursor == null) {
@@ -52,7 +52,7 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
         while (cursor.hasNext()) {
             // add grpc object for each document in cursor
             
-            final MetadataQueryResultDocument metadataDocument = cursor.next();
+            final PvMetadataQueryResultDocument metadataDocument = cursor.next();
             
             final QueryPvMetadataResponse.MetadataResult.PvInfo.Builder pvInfoBuilder =
                     QueryPvMetadataResponse.MetadataResult.PvInfo.newBuilder();
@@ -82,6 +82,9 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
             if (lastDataTimestampsType != null) {
                 pvInfoBuilder.setLastBucketDataTimestampsType(lastDataTimestampsType);
             }
+
+            // set numBuckets
+            pvInfoBuilder.setNumBuckets(metadataDocument.getNumBuckets());
 
             // set sampling clock details
             pvInfoBuilder.setLastBucketSampleCount(metadataDocument.getLastBucketSampleCount());

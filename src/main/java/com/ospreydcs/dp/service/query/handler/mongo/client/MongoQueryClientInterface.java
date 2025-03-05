@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -21,11 +21,11 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<BucketDocument> executeQueryTable(QueryTableRequest request);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList);
 
-    MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString);
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

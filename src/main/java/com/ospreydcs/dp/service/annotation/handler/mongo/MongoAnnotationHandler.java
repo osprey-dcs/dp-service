@@ -8,7 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
-import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
@@ -136,7 +136,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
 
         // execute metadata query for list of pv names
-        final MongoCursor<MetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
+        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
         if (pvMetadata == null) {
             return new ValidationResult(true, "error executing pv metadata query to validate request");
         }
@@ -144,7 +144,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         // check that metadata is returned for each pv (try to remove each metadata from the set,
         // and make sure set end up empty)
         while (pvMetadata.hasNext()) {
-            final MetadataQueryResultDocument pvMetadataDocument = pvMetadata.next();
+            final PvMetadataQueryResultDocument pvMetadataDocument = pvMetadata.next();
             final String pvName = pvMetadataDocument.getPvName();
             if (pvName != null) {
                 uniquePvNames.remove(pvName);

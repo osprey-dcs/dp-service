@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.job;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryPvMetadataResponse;
-import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryPvMetadataDispatcher;
@@ -36,7 +36,7 @@ public class QueryPvMetadataJob extends HandlerJob {
     @Override
     public void execute() {
         logger.debug("executing QueryMetadataJob id: {}", this.responseObserver.hashCode());
-        final MongoCursor<MetadataQueryResultDocument> cursor = this.mongoClient.executeQueryPvMetadata(this.request);
+        final MongoCursor<PvMetadataQueryResultDocument> cursor = this.mongoClient.executeQueryPvMetadata(this.request);
         logger.debug("dispatching QueryMetadataJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(cursor);
     }

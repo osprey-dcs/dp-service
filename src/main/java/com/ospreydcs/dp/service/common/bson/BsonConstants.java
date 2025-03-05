@@ -58,16 +58,17 @@ public class BsonConstants {
 
     public static final String BSON_KEY_CALCULATIONS_ID = "_id";
 
-    public static final String BSON_KEY_METADATA_PV_NAME = "pvName";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_ID = "lastBucketId";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE_CASE = "lastBucketDataTypeCase";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE = "lastBucketDataType";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE = "lastBucketDataTimestampsCase";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE = "lastBucketDataTimestampsType";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_COUNT = "lastBucketSampleCount";
-    public static final String BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_PERIOD = "lastBucketSamplePeriod";
-    public static final String BSON_KEY_METADATA_FIRST_DATA_TIMESTAMP = "firstDataTimestamp";
-    public static final String BSON_KEY_METADATA_LAST_DATA_TIMESTAMP = "lastDataTimestamp";
+    public static final String BSON_KEY_PV_METADATA_PV_NAME = "pvName";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_ID = "lastBucketId";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE_CASE = "lastBucketDataTypeCase";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE = "lastBucketDataType";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE = "lastBucketDataTimestampsCase";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE = "lastBucketDataTimestampsType";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_SAMPLE_COUNT = "lastBucketSampleCount";
+    public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_SAMPLE_PERIOD = "lastBucketSamplePeriod";
+    public static final String BSON_KEY_PV_METADATA_FIRST_DATA_TIMESTAMP = "firstDataTimestamp";
+    public static final String BSON_KEY_PV_METADATA_LAST_DATA_TIMESTAMP = "lastDataTimestamp";
+    public static final String BSON_KEY_PV_METADATA_NUM_BUCKETS = "numBuckets";
 
     public static final String BSON_KEY_PROVIDER_METADATA_PV_NAMES = "pvNames";
     public static final String BSON_KEY_PROVIDER_METADATA_FIRST_BUCKET_TIMESTAMP = "firstBucketTimestamp";

@@ -7,7 +7,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
-import com.ospreydcs.dp.service.common.bson.MetadataQueryResultDocument;
+import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -122,7 +122,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
     }
 
-    private MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Bson columnNameFilter) {
+    private MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Bson columnNameFilter) {
 
         // NOTE: PROJECTION MUST INCLUDE KEYS FOR ALL FIELDS USED IN SORTING and GROUPING!!!
         // If not the values will silently be null and lead to unexpected results!!
@@ -148,11 +148,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
 
-        Bson metadataSort = ascending(BsonConstants.BSON_KEY_METADATA_PV_NAME);
+        Bson metadataSort = ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME);
 
         logger.debug("executeQueryMetadata query: {}", columnNameFilter.toString());
 
-        var aggregateIterable = mongoCollectionBuckets.withDocumentClass(MetadataQueryResultDocument.class)
+        var aggregateIterable = mongoCollectionBuckets.withDocumentClass(PvMetadataQueryResultDocument.class)
                 .aggregate(
                         Arrays.asList(
                                 Aggregates.match(columnNameFilter),
@@ -163,37 +163,41 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                 Aggregates.group(
                                         "$" + BsonConstants.BSON_KEY_PV_NAME,
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_PV_NAME,
+                                                BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
                                                 "$" + BsonConstants.BSON_KEY_PV_NAME),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_ID,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_ID,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_ID),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE_CASE,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE_CASE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TYPE,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TYPE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_CASE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TIMESTAMPS_TYPE,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_COUNT,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_SAMPLE_COUNT,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT),
                                         Accumulators.last(
-                                                BsonConstants.BSON_KEY_METADATA_LAST_BUCKET_SAMPLE_PERIOD,
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_BUCKET_SAMPLE_PERIOD,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD),
                                         Accumulators.first(
                                                 // save the first time of the first document in group to the firstTime field
-                                                BsonConstants.BSON_KEY_METADATA_FIRST_DATA_TIMESTAMP,
+                                                BsonConstants.BSON_KEY_PV_METADATA_FIRST_DATA_TIMESTAMP,
                                                 "$" + BsonConstants.BSON_KEY_BUCKET_FIRST_TIME),
                                         Accumulators.last(
                                                 // save the last time of the last document to the lastTime field
-                                                BsonConstants.BSON_KEY_METADATA_LAST_DATA_TIMESTAMP,
-                                                "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME)
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_DATA_TIMESTAMP,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_LAST_TIME),
+                                        Accumulators.sum(
+                                                // count number of bucket documents in group for this pv
+                                                BsonConstants.BSON_KEY_PV_METADATA_NUM_BUCKETS,
+                                                1)
                                 ),
                                 Aggregates.sort(metadataSort) // sort metadata documents so result is sorted
                                 ));
@@ -204,20 +208,20 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
         return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString) {
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
         final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
         return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<MetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request) {
         if (request.hasPvNameList()) {
             return executeQueryPvMetadata(request.getPvNameList().getPvNamesList());
         } else {
