@@ -921,8 +921,10 @@ public class AnnotationTestBase {
 
     public static void verifyBucketDocumentHdf5Content(IHDF5Reader reader, BucketDocument bucketDocument) {
 
-        final String firstSecondsString = String.format("%012d", bucketDocument.getFirstSeconds());
-        final String firstNanosString = String.format("%012d", bucketDocument.getFirstNanos());
+        final String firstSecondsString =
+                String.format("%012d", bucketDocument.getDataTimestamps().getFirstTime().getSeconds());
+        final String firstNanosString =
+                String.format("%012d", bucketDocument.getDataTimestamps().getFirstTime().getNanos());
 
         // check paths for pv index
         final String pvsPath = PATH_SEPARATOR + GROUP_PVS;
@@ -964,25 +966,41 @@ public class AnnotationTestBase {
     ) {
         // verify dataset contents for first seconds/nanos/time
         final String firstSecondsPath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_SECONDS;
-        assertEquals(bucketDocument.getFirstSeconds(), reader.readLong(firstSecondsPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getFirstTime().getSeconds(),
+                reader.readLong(firstSecondsPath));
         final String firstNanosPath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_NANOS;
-        assertEquals(bucketDocument.getFirstNanos(), reader.readLong(firstNanosPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getFirstTime().getNanos(),
+                reader.readLong(firstNanosPath));
         final String firstTimePath = pvBucketPath + PATH_SEPARATOR + DATASET_FIRST_TIME;
-        assertEquals(bucketDocument.getFirstTime(), reader.time().readDate(firstTimePath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getFirstTime().getDateTime(),
+                reader.time().readDate(firstTimePath));
 
         // verify dataset contents for first seconds/nanos/time
         final String lastSecondsPath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_SECONDS;
-        assertEquals(bucketDocument.getLastSeconds(), reader.readLong(lastSecondsPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getLastTime().getSeconds(),
+                reader.readLong(lastSecondsPath));
         final String lastNanosPath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_NANOS;
-        assertEquals(bucketDocument.getLastNanos(), reader.readLong(lastNanosPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getLastTime().getNanos(),
+                reader.readLong(lastNanosPath));
         final String lastTimePath = pvBucketPath + PATH_SEPARATOR + DATASET_LAST_TIME;
-        assertEquals(bucketDocument.getLastTime(), reader.time().readDate(lastTimePath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getLastTime().getDateTime(),
+                reader.time().readDate(lastTimePath));
 
         // sample period and count
         final String sampleCountPath = pvBucketPath + PATH_SEPARATOR + DATASET_SAMPLE_COUNT;
-        assertEquals(bucketDocument.getSampleCount(), reader.readInt(sampleCountPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getSampleCount(),
+                reader.readInt(sampleCountPath));
         final String samplePeriodPath = pvBucketPath + PATH_SEPARATOR + DATASET_SAMPLE_PERIOD;
-        assertEquals(bucketDocument.getSamplePeriod(), reader.readLong(samplePeriodPath));
+        assertEquals(
+                bucketDocument.getDataTimestamps().getSamplePeriod(),
+                reader.readLong(samplePeriodPath));
 
         // dataColumnBytes
         final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
@@ -990,7 +1008,9 @@ public class AnnotationTestBase {
 
         // dataTimestampsBytes
         final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
-        assertArrayEquals(bucketDocument.getDataTimestampsBytes(), reader.readAsByteArray(dataTimestampsPath));
+        assertArrayEquals(
+                bucketDocument.getDataTimestamps().getBytes(),
+                reader.readAsByteArray(dataTimestampsPath));
 
         // attributeMap - write keys to one array and values to another
         final String attributeMapKeysPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;

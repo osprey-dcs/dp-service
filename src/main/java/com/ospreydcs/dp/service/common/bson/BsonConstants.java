@@ -13,23 +13,18 @@ public class BsonConstants {
     public static final String BSON_KEY_PROVIDER_LAST_UPDATED = "lastUpdated";
 
     public static final String BSON_KEY_BUCKET_ID = "_id";
-    public static final String BSON_KEY_BUCKET_FIRST_TIME = "firstTime";
-    public static final String BSON_KEY_BUCKET_FIRST_TIME_SECS = "firstSeconds";
-    public static final String BSON_KEY_BUCKET_FIRST_TIME_NANOS = "firstNanos";
-    public static final String BSON_KEY_BUCKET_LAST_TIME = "lastTime";
-    public static final String BSON_KEY_BUCKET_LAST_TIME_SECS = "lastSeconds";
-    public static final String BSON_KEY_BUCKET_LAST_TIME_NANOS = "lastNanos";
+    public static final String BSON_KEY_BUCKET_FIRST_TIME = "dataTimestamps.firstTime.dateTime";
+    public static final String BSON_KEY_BUCKET_FIRST_TIME_SECS = "dataTimestamps.firstTime.seconds";
+    public static final String BSON_KEY_BUCKET_FIRST_TIME_NANOS = "dataTimestamps.firstTime.nanos";
+    public static final String BSON_KEY_BUCKET_LAST_TIME = "dataTimestamps.lastTime.dateTime";
+    public static final String BSON_KEY_BUCKET_LAST_TIME_SECS = "dataTimestamps.lastTime.seconds";
+    public static final String BSON_KEY_BUCKET_LAST_TIME_NANOS = "dataTimestamps.lastTime.nanos";
+    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE = "dataTimestamps.valueCase";
+    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE = "dataTimestamps.valueType";
+    public static final String BSON_KEY_BUCKET_SAMPLE_COUNT = "dataTimestamps.sampleCount";
+    public static final String BSON_KEY_BUCKET_SAMPLE_PERIOD = "dataTimestamps.samplePeriod";
     public static final String BSON_KEY_BUCKET_DATA_TYPE_CASE = "dataColumn.valueCase";
     public static final String BSON_KEY_BUCKET_DATA_TYPE = "dataColumn.valueType";
-    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_CASE = "dataTimestampsCase";
-    public static final String BSON_KEY_BUCKET_DATA_TIMESTAMPS_TYPE = "dataTimestampsType";
-    public static final String BSON_KEY_BUCKET_EVENT_DESCRIPTION = "eventDescription";
-    public static final String BSON_KEY_BUCKET_EVENT_START_SECONDS = "eventStartSeconds";
-    public static final String BSON_KEY_BUCKET_EVENT_START_NANOS = "eventStartNanos";
-    public static final String BSON_KEY_BUCKET_SAMPLE_COUNT = "sampleCount";
-    public static final String BSON_KEY_BUCKET_SAMPLE_PERIOD = "samplePeriod";
-    public static final String BSON_KEY_BUCKET_ATTRIBUTE_MAP = "attributeMap";
-    public static final String BSON_KEY_BUCKET_COLUMN_DATA_BYTES = "columnDataBytes";
     public static final String BSON_KEY_BUCKET_PROVIDER_ID = "providerId";
 
     public static final String BSON_KEY_REQ_STATUS_ID = "_id";

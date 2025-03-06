@@ -71,17 +71,23 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             final long beginNanos = dataBlock.getBeginTimeNanos();
             final long endSeconds = dataBlock.getEndTimeSeconds();
             final long endNanos = dataBlock.getEndTimeNanos();
-            TabularDataUtility.TimestampDataMapSizeStats sizeStats =
-                    TabularDataUtility.updateTimestampMapFromBucketCursor(
-                            tableValueMap,
-                            cursor,
-                            tableDataSize,
-                            ExportConfiguration.getExportFileSizeLimitBytes(),
-                            beginSeconds,
-                            beginNanos,
-                            endSeconds,
-                            endNanos
-                    );
+            TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
+            try {
+                sizeStats = TabularDataUtility.updateTimestampMapFromBucketCursor(
+                        tableValueMap,
+                        cursor,
+                        tableDataSize,
+                        ExportConfiguration.getExportFileSizeLimitBytes(),
+                        beginSeconds,
+                        beginNanos,
+                        endSeconds,
+                        endNanos
+                );
+            } catch (DpException e) {
+                final String errorMsg = "exception deserializing BucketDocument fields: " + e.getMessage();
+                logger.error(errorMsg);
+                return new ExportDatasetStatus(true, errorMsg);
+            }
 
             // check if export output file size limit exceeded
             if (sizeStats.sizeLimitExceeded()) {

@@ -82,6 +82,10 @@ public class EventMetadataDocument {
         return eventMetadataDocument;
     }
 
+    public EventMetadata toEventMetadata() {
+        return toEventMetadata(this);
+    }
+
     public static EventMetadata toEventMetadata(final EventMetadataDocument eventMetadataDocument) {
         
         final Timestamp startTimestamp = Timestamp.newBuilder()

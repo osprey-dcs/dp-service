@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Date;
 import java.util.Objects;
 
 /*
@@ -129,14 +130,14 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         if (! writer.object().isGroup(pvTimesGroup)) {
             writer.object().createGroup(pvTimesGroup);
         }
-        Objects.requireNonNull(bucketDocument.getFirstSeconds());
-        final String firstSecondsString = String.format("%012d", bucketDocument.getFirstSeconds());
+        long firstSeconds = bucketDocument.getDataTimestamps().getFirstTime().getSeconds();
+        final String firstSecondsString = String.format("%012d", firstSeconds);
         final String pvTimesSecondsGroup = pvTimesGroup + PATH_SEPARATOR + firstSecondsString;
         if (! writer.object().isGroup(pvTimesSecondsGroup)) {
             writer.object().createGroup(pvTimesSecondsGroup);
         }
-        Objects.requireNonNull(bucketDocument.getFirstNanos());
-        final String firstNanosString = String.format("%012d", bucketDocument.getFirstNanos());
+        long firstNanos = bucketDocument.getDataTimestamps().getFirstTime().getNanos();
+        final String firstNanosString = String.format("%012d", firstNanos);
         final String pvTimesSecondsNanosGroup = pvTimesSecondsGroup + PATH_SEPARATOR + firstNanosString;
         if (! writer.object().isGroup(pvTimesSecondsNanosGroup)) {
             writer.object().createGroup(pvTimesSecondsNanosGroup);
@@ -145,32 +146,36 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         // write fields from bucket document (including column data values) document under pv index
 
         // first seconds/nanos/time
-        Objects.requireNonNull(bucketDocument.getFirstTime());
+        Date firstTime = bucketDocument.getDataTimestamps().getFirstTime().getDateTime();
+        Objects.requireNonNull(firstTime);
         final String firstSecondsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_FIRST_SECONDS;
-        writer.writeLong(firstSecondsPath, bucketDocument.getFirstSeconds());
+        writer.writeLong(firstSecondsPath, firstSeconds);
         final String firstNanosPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_FIRST_NANOS;
-        writer.writeLong(firstNanosPath, bucketDocument.getFirstNanos());
+        writer.writeLong(firstNanosPath, firstNanos);
         final String firstTimePath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_FIRST_TIME;
-        writer.time().write(firstTimePath, bucketDocument.getFirstTime());
+        writer.time().write(firstTimePath, firstTime);
 
         // last seconds/nanos/time
-        Objects.requireNonNull(bucketDocument.getLastSeconds());
-        Objects.requireNonNull(bucketDocument.getLastNanos());
-        Objects.requireNonNull(bucketDocument.getLastTime());
+        long lastSeconds = bucketDocument.getDataTimestamps().getLastTime().getSeconds();
+        long lastNanos = bucketDocument.getDataTimestamps().getLastTime().getNanos();
+        Date lastTime = bucketDocument.getDataTimestamps().getLastTime().getDateTime();
+        Objects.requireNonNull(lastSeconds);
+        Objects.requireNonNull(lastNanos);
+        Objects.requireNonNull(lastTime);
         final String lastSecondsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_LAST_SECONDS;
-        writer.writeLong(lastSecondsPath, bucketDocument.getLastSeconds());
+        writer.writeLong(lastSecondsPath, lastSeconds);
         final String lastNanosPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_LAST_NANOS;
-        writer.writeLong(lastNanosPath, bucketDocument.getLastNanos());
+        writer.writeLong(lastNanosPath, lastNanos);
         final String lastTimePath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_LAST_TIME;
-        writer.time().write(lastTimePath, bucketDocument.getLastTime());
+        writer.time().write(lastTimePath, lastTime);
 
         // sample period and count
-        Objects.requireNonNull(bucketDocument.getSampleCount());
-        Objects.requireNonNull(bucketDocument.getSamplePeriod());
+        Objects.requireNonNull(bucketDocument.getDataTimestamps().getSampleCount());
+        Objects.requireNonNull(bucketDocument.getDataTimestamps().getSamplePeriod());
         final String sampleCountPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_SAMPLE_COUNT;
-        writer.writeInt(sampleCountPath, bucketDocument.getSampleCount());
+        writer.writeInt(sampleCountPath, bucketDocument.getDataTimestamps().getSampleCount());
         final String samplePeriodPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_SAMPLE_PERIOD;
-        writer.writeLong(samplePeriodPath, bucketDocument.getSamplePeriod());
+        writer.writeLong(samplePeriodPath, bucketDocument.getDataTimestamps().getSamplePeriod());
 
         // DataColumn serialized bytes
         Objects.requireNonNull(bucketDocument.getDataColumn());
@@ -180,9 +185,9 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         writer.writeByteArray(columnDataPath, dataColumnBytes);
 
         // dataTimestampsBytes
-        Objects.requireNonNull(bucketDocument.getDataTimestampsBytes());
+        Objects.requireNonNull(bucketDocument.getDataTimestamps().getBytes());
         final String dataTimestampsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
-        writer.writeByteArray(dataTimestampsPath, bucketDocument.getDataTimestampsBytes());
+        writer.writeByteArray(dataTimestampsPath, bucketDocument.getDataTimestamps().getBytes());
 
         // attributeMap - write keys to one array and values to another
         Objects.requireNonNull(bucketDocument.getAttributeMap());

@@ -45,18 +45,6 @@ public class DataColumnDocument {
         this.bytes = dataColumn.toByteArray();
     }
 
-    public DataColumn readBytes() {
-        if (this.bytes == null) {
-            return null;
-        } else {
-            try {
-                return DataColumn.parseFrom(this.bytes);
-            } catch (InvalidProtocolBufferException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-
     public static DataColumnDocument fromDataColumn(DataColumn requestDataColumn) {
         DataColumnDocument document = new DataColumnDocument();
         document.writeBytes(requestDataColumn);

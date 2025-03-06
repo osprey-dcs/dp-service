@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
+import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 
 import java.util.ArrayList;
@@ -27,32 +28,18 @@ public class BucketUtility {
 
         long firstTimeSeconds = firstSeconds;
         long firstTimeNanos = 0L;
-
         long lastTimeSeconds = firstTimeSeconds + numSecondsPerBucket - 1;
-        long lastTimeNanos = round((1L - sampleRate) * 1_000_000_000L);
 
         for (int batchIndex = 0 ; batchIndex < numBucketsPerColumn ; batchIndex++) {
 
-            final Date firstTimeDate =
-                    TimestampUtility.dateFromTimestamp(TimestampUtility.timestampFromSeconds(firstTimeSeconds, firstTimeNanos));
-            final Date lastTimeDate =
-                    TimestampUtility.dateFromTimestamp(TimestampUtility.timestampFromSeconds(lastTimeSeconds, lastTimeNanos));
-
             // create a bucket document for each column in the batch
             for (int columnIndex = 1 ; columnIndex <= numColumns ; columnIndex++) {
+
                 final String pvName = columnNameBase + columnIndex;
                 final String documentId = pvName + "-" + firstTimeSeconds + "-" + firstTimeNanos;
                 final BucketDocument bucket = new BucketDocument();
                 bucket.setId(documentId);
                 bucket.setPvName(pvName);
-                bucket.setFirstTime(firstTimeDate);
-                bucket.setFirstSeconds(firstTimeSeconds);
-                bucket.setFirstNanos(firstTimeNanos);
-                bucket.setLastTime(lastTimeDate);
-                bucket.setLastSeconds(lastTimeSeconds);
-                bucket.setLastNanos(lastTimeNanos);
-                bucket.setSamplePeriod(samplePeriod);
-                bucket.setSampleCount(sampleCount);
 
                 // create DataColumn with specified number of values and add it to BucketDocument
                 final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
@@ -72,8 +59,10 @@ public class BucketUtility {
                         .setPeriodNanos(samplePeriod)
                         .setCount(sampleCount)
                         .build();
-                DataTimestamps dataTimestamps = DataTimestamps.newBuilder().setSamplingClock(samplingClock).build();
-                bucket.writeDataTimestampsContent(dataTimestamps);
+                final DataTimestamps dataTimestamps = DataTimestamps.newBuilder().setSamplingClock(samplingClock).build();
+                final DataTimestampsDocument dataTimestampsDocument =
+                        DataTimestampsDocument.fromDataTimestamps(dataTimestamps);
+                bucket.setDataTimestamps(dataTimestampsDocument);
 
                 bucketList.add(bucket);
             }
@@ -82,7 +71,6 @@ public class BucketUtility {
             firstTimeSeconds = lastTimeSeconds + 1;
             firstTimeNanos = 0L;
             lastTimeSeconds = firstTimeSeconds + numSecondsPerBucket - 1;
-            lastTimeNanos = round((1L - sampleRate) * 1_000_000_000L);
         }
 
         return bucketList;

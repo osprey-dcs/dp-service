@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
@@ -160,17 +161,26 @@ public class QueryTableDispatcher extends Dispatcher {
         final long beginNanos = this.request.getBeginTime().getNanoseconds();
         final long endSeconds = this.request.getEndTime().getEpochSeconds();
         final long endNanos = this.request.getEndTime().getNanoseconds();
-        TabularDataUtility.TimestampDataMapSizeStats sizeStats =
-                TabularDataUtility.updateTimestampMapFromBucketCursor(
-                        tableValueMap,
-                        cursor,
-                        0,
-                        MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
-                        beginSeconds,
-                        beginNanos,
-                        endSeconds,
-                        endNanos
-                );
+        TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
+
+        try {
+            sizeStats = TabularDataUtility.updateTimestampMapFromBucketCursor(
+                    tableValueMap,
+                    cursor,
+                    0,
+                    MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
+                    beginSeconds,
+                    beginNanos,
+                    endSeconds,
+                    endNanos
+            );
+
+        } catch (DpException e) {
+            final String msg = "exception deserializing BucketDocument fields: " + e.getMessage();
+            logger.error(msg);
+            QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
+        }
+
         if (sizeStats.sizeLimitExceeded()) {
             final String msg = "result exceeds gRPC message size limit";
             logger.error(msg);

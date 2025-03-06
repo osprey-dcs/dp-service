@@ -177,10 +177,10 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
             assertTrue(bucket != null);
             assertTrue(statusDocument.getIdsCreated().contains(id));
             assertTrue(bucket.getPvName().equals(columnName));
-            assertTrue(bucket.getFirstSeconds() == firstSeconds);
-            assertTrue(bucket.getFirstNanos() == firstNanos);
-            assertTrue(bucket.getLastSeconds() == lastSeconds);
-            assertTrue(bucket.getLastNanos() == lastNanos);
+            assertTrue(bucket.getDataTimestamps().getFirstTime().getSeconds() == firstSeconds);
+            assertTrue(bucket.getDataTimestamps().getFirstTime().getNanos() == firstNanos);
+            assertTrue(bucket.getDataTimestamps().getLastTime().getSeconds() == lastSeconds);
+            assertTrue(bucket.getDataTimestamps().getLastTime().getNanos() == lastNanos);
 
             // compare column data values to expected
             DataColumn dataColumn = null;
@@ -226,8 +226,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 dataValueIndex = dataValueIndex + 1;
             }
 
-            assertTrue(bucket.getSamplePeriod() == sampleIntervalNanos);
-            assertTrue(bucket.getSampleCount() == numSamples);
+            assertTrue(bucket.getDataTimestamps().getSamplePeriod() == sampleIntervalNanos);
+            assertTrue(bucket.getDataTimestamps().getSampleCount() == numSamples);
             assertTrue(bucket.getAttributeMap().equals(params.attributes));
             final EventMetadataDocument eventMetadataDocument = bucket.getEventMetadata();
             assertTrue(eventMetadataDocument.getDescription().equals(params.eventDescription));

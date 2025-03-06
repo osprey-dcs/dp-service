@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
@@ -26,7 +27,8 @@ public class TabularDataUtility {
             long beginNanos,
             long endSeconds,
             long endNanos
-    ) {
+    ) throws DpException {
+
         int currentDataSize = previousDataSize;
         while (cursor.hasNext()) {
             // add buckets to table data structure
@@ -53,14 +55,15 @@ public class TabularDataUtility {
             long beginNanos,
             long endSeconds,
             long endNanos
-    ) {
+    ) throws DpException {
+
         int dataValueSize = 0;
-        final DataTimestamps bucketDataTimestamps = bucket.readDataTimestampsContent();
+        final DataTimestamps bucketDataTimestamps = bucket.getDataTimestamps().toDataTimestamps();
         final DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
                 DataTimestampsUtility.dataTimestampsIterator(bucketDataTimestamps);
 
         // derserialize DataColumn content from document and the iterate DataValues in column
-        final Iterator<DataValue> dataValueIterator = bucket.getDataColumn().readBytes().getDataValuesList().iterator();
+        final Iterator<DataValue> dataValueIterator = bucket.getDataColumn().toDataColumn().getDataValuesList().iterator();
         while (dataTimestampsIterator.hasNext() && dataValueIterator.hasNext()) {
 
             final Timestamp timestamp = dataTimestampsIterator.next();

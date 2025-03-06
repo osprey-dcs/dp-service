@@ -582,15 +582,21 @@ public abstract class GrpcIntegrationTestBase {
             assertEquals(expectedBucketId, bucketDocument.getId());
 
             // check bucket start times
-            assertEquals((long) params.samplingClockStartSeconds, bucketDocument.getFirstSeconds());
-            assertEquals((long) params.samplingClockStartNanos, bucketDocument.getFirstNanos());
+            assertEquals(
+                    (long) params.samplingClockStartSeconds,
+                    bucketDocument.getDataTimestamps().getFirstTime().getSeconds());
+            assertEquals(
+                    (long) params.samplingClockStartNanos,
+                    bucketDocument.getDataTimestamps().getFirstTime().getNanos());
             assertEquals(
                     Date.from(Instant.ofEpochSecond(
                             params.samplingClockStartSeconds, params.samplingClockStartNanos)),
-                    bucketDocument.getFirstTime());
+                    bucketDocument.getDataTimestamps().getFirstTime().getDateTime());
 
             // check sample count params
-            assertEquals((int) params.samplingClockCount, bucketDocument.getSampleCount());
+            assertEquals(
+                    (int) params.samplingClockCount,
+                    bucketDocument.getDataTimestamps().getSampleCount());
             DataColumn bucketDataColumn = null;
             try {
                 bucketDataColumn = bucketDocument.getDataColumn().toDataColumn();
@@ -603,22 +609,30 @@ public abstract class GrpcIntegrationTestBase {
                     bucketDataColumn.getDataValuesList().size());
 
             // check DataTimestamps (TimestampsList or SamplingClock depending on request)
-            final DataTimestamps bucketDataTimestamps = bucketDocument.readDataTimestampsContent();
+            DataTimestamps bucketDataTimestamps = null;
+            try {
+                bucketDataTimestamps = bucketDocument.getDataTimestamps().toDataTimestamps();
+            } catch (DpException e) {
+                fail("exception deserializing DataTimestampsDocument.bytes: " + e.getMessage());
+            }
+            Objects.requireNonNull(bucketDataTimestamps);
             DataTimestampsUtility.DataTimestampsModel requestDataTimestampsModel =
                     new DataTimestampsUtility.DataTimestampsModel(
                             request.getIngestionDataFrame().getDataTimestamps());
             final long endSeconds = requestDataTimestampsModel.getLastTimestamp().getEpochSeconds();
             final long endNanos = requestDataTimestampsModel.getLastTimestamp().getNanoseconds();
-            assertEquals(requestDataTimestampsModel.getSamplePeriodNanos(), bucketDocument.getSamplePeriod());
+            assertEquals(
+                    requestDataTimestampsModel.getSamplePeriodNanos(),
+                    bucketDocument.getDataTimestamps().getSamplePeriod());
 
             if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
                 // check explicit TimestampsList
                 assertEquals(
                         DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
-                        bucketDocument.getDataTimestampsCase());
+                        bucketDocument.getDataTimestamps().getValueCase());
                 assertEquals(
                         DataTimestamps.ValueCase.TIMESTAMPLIST.name(),
-                        bucketDocument.getDataTimestampsType());
+                        bucketDocument.getDataTimestamps().getValueType());
 
                 // compare list of timestamps in bucket vs. params
                 assertTrue(bucketDataTimestamps.hasTimestampList());
@@ -638,19 +652,19 @@ public abstract class GrpcIntegrationTestBase {
                 // check SamplingClock parameters
                 assertEquals(
                         DataTimestamps.ValueCase.SAMPLINGCLOCK.getNumber(),
-                        bucketDocument.getDataTimestampsCase());
+                        bucketDocument.getDataTimestamps().getValueCase());
                 assertEquals(
                         DataTimestamps.ValueCase.SAMPLINGCLOCK.name(),
-                        bucketDocument.getDataTimestampsType());
+                        bucketDocument.getDataTimestamps().getValueType());
 
             }
 
             // check bucket end times against expected values determined above
-            assertEquals(endSeconds, bucketDocument.getLastSeconds());
-            assertEquals(endNanos, bucketDocument.getLastNanos());
+            assertEquals(endSeconds, bucketDocument.getDataTimestamps().getLastTime().getSeconds());
+            assertEquals(endNanos, bucketDocument.getDataTimestamps().getLastTime().getNanos());
             assertEquals(
                     Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
-                    bucketDocument.getLastTime());
+                    bucketDocument.getDataTimestamps().getLastTime().getDateTime());
 
             // compare data value vectors
             final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
@@ -2202,7 +2216,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getResult();
     }
 
-    private TimestampDataMap getTimestampDataMapForDataset(DataSetDocument dataset) {
+    private TimestampDataMap getTimestampDataMapForDataset(DataSetDocument dataset) throws DpException {
 
         final TimestampDataMap expectedDataMap = new TimestampDataMap();
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
@@ -2308,7 +2322,13 @@ public abstract class GrpcIntegrationTestBase {
             case EXPORT_FORMAT_CSV -> {
 
                 // build temporary tabular data structure from cursor
-                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+                TimestampDataMap expectedDataMap = null;
+                try {
+                    expectedDataMap = getTimestampDataMapForDataset(dataset);
+                } catch (DpException e) {
+                    fail("exception deserializing BucketDocument: " + e.getMessage());
+                }
+                Objects.requireNonNull(expectedDataMap);
 
                 // verify file content against data map
                 AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
@@ -2317,7 +2337,13 @@ public abstract class GrpcIntegrationTestBase {
             case EXPORT_FORMAT_XLSX -> {
 
                 // build temporary tabular data structure from cursor
-                final TimestampDataMap expectedDataMap = getTimestampDataMapForDataset(dataset);
+                TimestampDataMap expectedDataMap = null;
+                try {
+                    expectedDataMap = getTimestampDataMapForDataset(dataset);
+                } catch (DpException e) {
+                    fail("exception deserializing BucketDocument: " + e.getMessage());
+                }
+                Objects.requireNonNull(expectedDataMap);
 
                 // verify file content against data map
                 AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);

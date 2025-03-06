@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
+import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
@@ -72,6 +73,7 @@ public class DatasetExportHdf5FileTest {
                         .setPeriodNanos(samplePeriod)
                         .build();
         final DataTimestamps dataTimestamps = DataTimestamps.newBuilder().setSamplingClock(samplingClock).build();
+        final DataTimestampsDocument dataTimestampsDocument = DataTimestampsDocument.fromDataTimestamps(dataTimestamps);
 
         final Map<String, String> attributeMap = Map.of("sector", "S01", "subsystem", "vacuum");
 
@@ -89,14 +91,7 @@ public class DatasetExportHdf5FileTest {
         {
             pv1BucketDocument = new BucketDocument();
             pv1BucketDocument.setPvName("S01-GCC01");
-            pv1BucketDocument.setFirstSeconds(firstSeconds);
-            pv1BucketDocument.setFirstNanos(firstNanos);
-            pv1BucketDocument.setFirstTime(firstTime);
-            pv1BucketDocument.setLastSeconds(lastSeconds);
-            pv1BucketDocument.setLastNanos(lastNanos);
-            pv1BucketDocument.setLastTime(lastTime);
-            pv1BucketDocument.setSampleCount(sampleCount);
-            pv1BucketDocument.setSamplePeriod(samplePeriod);
+            pv1BucketDocument.setDataTimestamps(dataTimestampsDocument);
             final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
             dataColumnBuilder.setName(pv1BucketDocument.getPvName());
             for (int i = 0; i < sampleCount; ++i) {
@@ -106,7 +101,6 @@ public class DatasetExportHdf5FileTest {
             final DataColumn dataColumn = dataColumnBuilder.build();
             final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
             pv1BucketDocument.setDataColumn(dataColumnDocument);
-            pv1BucketDocument.setDataTimestampsBytes(dataTimestamps.toByteArray());
             pv1BucketDocument.setAttributeMap(attributeMap);
             pv1BucketDocument.setEventMetadata(eventMetadata);
             pv1BucketDocument.setProviderId(providerId);
@@ -118,14 +112,7 @@ public class DatasetExportHdf5FileTest {
         {
             pv2BucketDocument = new BucketDocument();
             pv2BucketDocument.setPvName("S01-GCC02");
-            pv2BucketDocument.setFirstSeconds(firstSeconds);
-            pv2BucketDocument.setFirstNanos(firstNanos);
-            pv2BucketDocument.setFirstTime(firstTime);
-            pv2BucketDocument.setLastSeconds(lastSeconds);
-            pv2BucketDocument.setLastNanos(lastNanos);
-            pv2BucketDocument.setLastTime(lastTime);
-            pv2BucketDocument.setSampleCount(sampleCount);
-            pv2BucketDocument.setSamplePeriod(samplePeriod);
+            pv2BucketDocument.setDataTimestamps(dataTimestampsDocument);
             final DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
             dataColumnBuilder.setName(pv2BucketDocument.getPvName());
             for (int i = sampleCount; i < 20; ++i) {
@@ -135,7 +122,6 @@ public class DatasetExportHdf5FileTest {
             DataColumn dataColumn = dataColumnBuilder.build();
             final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
             pv2BucketDocument.setDataColumn(dataColumnDocument);
-            pv2BucketDocument.setDataTimestampsBytes(dataTimestamps.toByteArray());
             pv2BucketDocument.setAttributeMap(attributeMap);
             pv2BucketDocument.setEventMetadata(eventMetadata);
             pv2BucketDocument.setProviderId(providerId);

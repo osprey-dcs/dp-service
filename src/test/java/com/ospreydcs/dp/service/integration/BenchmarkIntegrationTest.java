@@ -180,18 +180,19 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertNotNull("bucketId: " + bucketId, bucketDocument);
                     assertEquals(columnName, bucketDocument.getPvName());
                     assertEquals(bucketId, bucketDocument.getId());
-                    assertEquals(params.numRows, bucketDocument.getSampleCount());
-                    assertEquals(1000000, bucketDocument.getSamplePeriod());
-                    assertEquals(requestInfo.startSeconds, bucketDocument.getFirstSeconds());
-                    assertEquals(0, bucketDocument.getFirstNanos());
+                    assertEquals(params.numRows, bucketDocument.getDataTimestamps().getSampleCount());
+                    assertEquals(1000000, bucketDocument.getDataTimestamps().getSamplePeriod());
+                    assertEquals(
+                            requestInfo.startSeconds, bucketDocument.getDataTimestamps().getFirstTime().getSeconds());
+                    assertEquals(0, bucketDocument.getDataTimestamps().getFirstTime().getNanos());
                     assertEquals(
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 0L)),
-                            bucketDocument.getFirstTime());
-                    assertEquals(requestInfo.startSeconds, bucketDocument.getLastSeconds());
-                    assertEquals(999000000L, bucketDocument.getLastNanos());
+                            bucketDocument.getDataTimestamps().getFirstTime().getDateTime());
+                    assertEquals(requestInfo.startSeconds, bucketDocument.getDataTimestamps().getLastTime().getSeconds());
+                    assertEquals(999000000L, bucketDocument.getDataTimestamps().getLastTime().getNanos());
                     assertEquals(
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 999000000L)),
-                            bucketDocument.getLastTime());
+                            bucketDocument.getDataTimestamps().getLastTime().getDateTime());
                     final EventMetadataDocument eventMetadataDocument = bucketDocument.getEventMetadata();
                     assertEquals("calibration test", eventMetadataDocument.getDescription());
                     assertEquals(params.startSeconds, eventMetadataDocument.getStartSeconds());
@@ -209,8 +210,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
                     assertEquals(params.numRows, bucketDataColumn.getDataValuesList().size());
                     // verify each value
-                    for (int valIndex = 0; valIndex < bucketDocument.getSampleCount() ; ++valIndex) {
-                        final double expectedValue = valIndex + (double) valIndex / bucketDocument.getSampleCount();
+                    for (int valIndex = 0; valIndex < bucketDocument.getDataTimestamps().getSampleCount() ; ++valIndex) {
+                        final double expectedValue =
+                                valIndex + (double) valIndex / bucketDocument.getDataTimestamps().getSampleCount();
                         assertEquals(expectedValue, bucketDataColumn.getDataValues(valIndex).getDoubleValue(), 0.0);
                     }
                     dbBucketCount.incrementAndGet();
