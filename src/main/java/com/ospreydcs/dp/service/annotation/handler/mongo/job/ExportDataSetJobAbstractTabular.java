@@ -67,10 +67,10 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             }
 
             // build temporary tabular data structure from cursor
-            final long beginSeconds = dataBlock.getBeginTimeSeconds();
-            final long beginNanos = dataBlock.getBeginTimeNanos();
-            final long endSeconds = dataBlock.getEndTimeSeconds();
-            final long endNanos = dataBlock.getEndTimeNanos();
+            final long beginSeconds = dataBlock.getBeginTime().getSeconds();
+            final long beginNanos = dataBlock.getBeginTime().getNanos();
+            final long endSeconds = dataBlock.getEndTime().getSeconds();
+            final long endNanos = dataBlock.getEndTime().getNanos();
             TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
             try {
                 sizeStats = TabularDataUtility.updateTimestampMapFromBucketCursor(

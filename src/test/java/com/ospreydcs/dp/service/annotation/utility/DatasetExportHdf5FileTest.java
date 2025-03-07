@@ -40,11 +40,17 @@ public class DatasetExportHdf5FileTest {
         dataset.setId(new ObjectId("1234abcd1234abcd1234abcd")); // must be 24 digit hex
         final List<DataBlockDocument> dataBlocks = new ArrayList<>();
         DataBlockDocument dataBlock1 = new DataBlockDocument();
-        dataBlock1.setPvNames(Set.of("S01-GCC01", "S01-GCC02"));
-        dataBlock1.setBeginTimeSeconds(firstSeconds);
-        dataBlock1.setBeginTimeNanos(firstNanos);
-        dataBlock1.setEndTimeSeconds(lastSeconds);
-        dataBlock1.setEndTimeNanos(lastNanos);
+        dataBlock1.setPvNames(List.of("S01-GCC01", "S01-GCC02"));
+        final Timestamp samplingClockStartTime = Timestamp.newBuilder()
+                .setEpochSeconds(firstSeconds)
+                .setNanoseconds(firstNanos)
+                .build();
+        final Timestamp stopTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(lastSeconds)
+                .setNanoseconds(lastNanos)
+                .build();
+        dataBlock1.setBeginTime(TimestampDocument.fromTimestamp(samplingClockStartTime));
+        dataBlock1.setEndTime(TimestampDocument.fromTimestamp(stopTimestamp));
         dataBlocks.add(dataBlock1);
         dataset.setDataBlocks(dataBlocks);
 
@@ -58,14 +64,6 @@ public class DatasetExportHdf5FileTest {
         }
         Objects.requireNonNull(exportHdf5File);
 
-        final Timestamp samplingClockStartTime = Timestamp.newBuilder()
-                .setEpochSeconds(firstSeconds)
-                .setNanoseconds(firstNanos)
-                .build();
-        final Timestamp stopTimestamp = Timestamp.newBuilder()
-                .setEpochSeconds(lastSeconds)
-                .setNanoseconds(lastNanos)
-                .build();
         final int sampleCount = 10;
         final long samplePeriod = 100000000L;
         final SamplingClock samplingClock =

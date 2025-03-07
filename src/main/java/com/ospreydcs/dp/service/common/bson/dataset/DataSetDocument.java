@@ -56,35 +56,39 @@ public class DataSetDocument {
     }
 
     public static DataSetDocument fromCreateRequest(CreateDataSetRequest request) {
-        DataSetDocument document = new DataSetDocument();
-        document.applyRequest(request);
-        return document;
-    }
 
-    public void applyRequest(CreateDataSetRequest request) {
+        DataSetDocument document = new DataSetDocument();
 
         final List<DataBlockDocument> dataBlocks = new ArrayList<>();
         for (DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
-            final Timestamp blockBeginTime =  dataBlock.getBeginTime();
-            final Timestamp blockEndtime = dataBlock.getEndTime();
-            final long blockBeginSeconds = blockBeginTime.getEpochSeconds();
-            final long blockBeginNanos = blockBeginTime.getNanoseconds();
-            final long blockEndSeconds = blockEndtime.getEpochSeconds();
-            final long blockEndNanos = blockEndtime.getNanoseconds();
-            List<String> blockPvNames = dataBlock.getPvNamesList();
-            DataBlockDocument documentBlock = new DataBlockDocument(
-                    blockBeginSeconds,
-                    blockBeginNanos,
-                    blockEndSeconds,
-                    blockEndNanos,
-                    blockPvNames);
+            DataBlockDocument documentBlock = DataBlockDocument.fromDataBlock(dataBlock);
             dataBlocks.add(documentBlock);
         }
-        this.setDataBlocks(dataBlocks);
+        document.setDataBlocks(dataBlocks);
 
-        this.setName(request.getDataSet().getName());
-        this.setOwnerId(request.getDataSet().getOwnerId());
-        this.setDescription(request.getDataSet().getDescription());
+        document.setName(request.getDataSet().getName());
+        document.setOwnerId(request.getDataSet().getOwnerId());
+        document.setDescription(request.getDataSet().getDescription());
+
+        return document;
+    }
+
+    public DataSet toDataSet() {
+
+        final DataSet.Builder dataSetBuilder = DataSet.newBuilder();
+
+        // add base dataset fields to response object
+        dataSetBuilder.setId(this.getId().toString());
+        dataSetBuilder.setName(this.getName());
+        dataSetBuilder.setOwnerId(this.getOwnerId());
+        dataSetBuilder.setDescription(this.getDescription());
+
+        // add dataset content to response object
+        for (DataBlockDocument dataBlockDocument : this.getDataBlocks()) {
+            dataSetBuilder.addDataBlocks(dataBlockDocument.toDataBlock());
+        }
+
+        return dataSetBuilder.build();
     }
 
     public List<String> diffRequest(CreateDataSetRequest request) {
@@ -112,82 +116,13 @@ public class DataSetDocument {
             diffs.add(msg);
         }
         for (int blockIndex = 0 ; blockIndex < request.getDataSet().getDataBlocksList().size() ; ++blockIndex) {
-
             final com.ospreydcs.dp.grpc.v1.annotation.DataBlock requestDataBlock =
                     request.getDataSet().getDataBlocksList().get(blockIndex);
-            final Timestamp requestBlockBeginTime =  requestDataBlock.getBeginTime();
-            final Timestamp requestBlockEndTime = requestDataBlock.getEndTime();
-            final long requestBlockBeginSeconds = requestBlockBeginTime.getEpochSeconds();
-            final long requestBlockBeginNanos = requestBlockBeginTime.getNanoseconds();
-            final long requestBlockEndSeconds = requestBlockEndTime.getEpochSeconds();
-            final long requestBlockEndNanos = requestBlockEndTime.getNanoseconds();
-            Set<String> requestPvNames = new TreeSet<>(requestDataBlock.getPvNamesList());
-
             final DataBlockDocument dataBlockDocument = this.getDataBlocks().get(blockIndex);
-            if (requestBlockBeginSeconds != dataBlockDocument.getBeginTimeSeconds()) {
-                final String msg = "block beginTime seconds mistmatch: " + dataBlockDocument.getBeginTimeSeconds()
-                        + " expected: " + requestBlockBeginSeconds;
-                diffs.add(msg);
-            }
-            if (requestBlockBeginNanos != dataBlockDocument.getBeginTimeNanos()) {
-                final String msg = "block beginTime nanos mistmatch: " + dataBlockDocument.getBeginTimeNanos()
-                        + " expected: " + requestBlockBeginNanos;
-                diffs.add(msg);
-            }
-            if (requestBlockEndSeconds != dataBlockDocument.getEndTimeSeconds()) {
-                final String msg = "block endTime seconds mistmatch: " + dataBlockDocument.getEndTimeSeconds()
-                        + " expected: " + requestBlockEndSeconds;
-                diffs.add(msg);
-            }
-            if (requestBlockEndNanos != dataBlockDocument.getEndTimeNanos()) {
-                final String msg = "block endTime nanos mistmatch: " + dataBlockDocument.getEndTimeNanos()
-                        + " expected: " + requestBlockEndNanos;
-                diffs.add(msg);
-            }
-            if (requestPvNames.size() != dataBlockDocument.getPvNames().size()) {
-                final String msg = "block pvNames list size mismatch: " + dataBlockDocument.getPvNames().size()
-                        + " expected: " + requestPvNames.size();
-                diffs.add(msg);
-            }
-            if (!Objects.equals(requestPvNames, dataBlockDocument.getPvNames())) {
-                final String msg = "block pvNames list mismatch: " + dataBlockDocument.getPvNames().toString()
-                        + " expected: " + requestPvNames.toString();
-                diffs.add(msg);
-            }
+            diffs.addAll(dataBlockDocument.diffDataBlock(requestDataBlock));
         }
 
         return diffs;
     }
 
-    public DataSet toDataSet() {
-
-        final DataSet.Builder dataSetBuilder = DataSet.newBuilder();
-
-        // add base dataset fields to response object
-        dataSetBuilder.setId(this.getId().toString());
-        dataSetBuilder.setName(this.getName());
-        dataSetBuilder.setOwnerId(this.getOwnerId());
-        dataSetBuilder.setDescription(this.getDescription());
-
-        // add dataset content to response object
-        for (DataBlockDocument dataBlockDocument : this.getDataBlocks()) {
-            Timestamp blockBeginTime = Timestamp.newBuilder()
-                    .setEpochSeconds(dataBlockDocument.getBeginTimeSeconds())
-                    .setNanoseconds(dataBlockDocument.getBeginTimeNanos())
-                    .build();
-            Timestamp blockEndTime = Timestamp.newBuilder()
-                    .setEpochSeconds(dataBlockDocument.getEndTimeSeconds())
-                    .setNanoseconds(dataBlockDocument.getEndTimeNanos())
-                    .build();
-            com.ospreydcs.dp.grpc.v1.annotation.DataBlock responseBlock =
-                    com.ospreydcs.dp.grpc.v1.annotation.DataBlock.newBuilder()
-                            .setBeginTime(blockBeginTime)
-                            .setEndTime(blockEndTime)
-                            .addAllPvNames(dataBlockDocument.getPvNames())
-                            .build();
-            dataSetBuilder.addDataBlocks(responseBlock);
-        }
-
-        return dataSetBuilder.build();
-    }
 }

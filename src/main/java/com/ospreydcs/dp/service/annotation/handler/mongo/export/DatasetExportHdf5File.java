@@ -107,13 +107,13 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
             final String pvNameListPath = dataBlockPathBase + DATASET_BLOCK_PV_NAME_LIST;
             writer.writeStringArray(pvNameListPath, dataBlock.getPvNames().toArray(new String[0]));
             final String beginTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_SECONDS;
-            writer.writeLong(beginTimeSecondsPath, dataBlock.getBeginTimeSeconds());
+            writer.writeLong(beginTimeSecondsPath, dataBlock.getBeginTime().getSeconds());
             final String beginTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_NANOS;
-            writer.writeLong(beginTimeNanosPath, dataBlock.getBeginTimeNanos());
+            writer.writeLong(beginTimeNanosPath, dataBlock.getBeginTime().getNanos());
             final String endTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_END_SECONDS;
-            writer.writeLong(endTimeSecondsPath, dataBlock.getEndTimeSeconds());
+            writer.writeLong(endTimeSecondsPath, dataBlock.getEndTime().getSeconds());
             final String endTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_END_NANOS;
-            writer.writeLong(endTimeNanosPath, dataBlock.getEndTimeNanos());
+            writer.writeLong(endTimeNanosPath, dataBlock.getEndTime().getNanos());
             dataBlockIndex = dataBlockIndex + 1;
         }
     }

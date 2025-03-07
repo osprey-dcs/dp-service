@@ -1,68 +1,87 @@
 package com.ospreydcs.dp.service.common.bson.dataset;
 
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
+import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.service.common.bson.TimestampDocument;
+
+import java.util.*;
 
 public class DataBlockDocument {
 
-    private long beginTimeSeconds;
-    private long beginTimeNanos;
+    private TimestampDocument beginTime;
+    private TimestampDocument endTime;
+    List<String> pvNames;
 
-    private long endTimeSeconds;
-    private long endTimeNanos;
-    Set<String> pvNames;
-
-    public DataBlockDocument() {}
-
-    public DataBlockDocument(
-            long beginTimeSeconds, long beginTimeNanos, long endTimeSeconds, long endTimeNanos, List<String> pvNames
-    ) {
-        this.beginTimeSeconds = beginTimeSeconds;
-        this.beginTimeNanos = beginTimeNanos;
-        this.endTimeSeconds = endTimeSeconds;
-        this.endTimeNanos = endTimeNanos;
-        this.pvNames = new TreeSet<>(pvNames);
+    public TimestampDocument getBeginTime() {
+        return beginTime;
     }
 
-    public long getBeginTimeSeconds() {
-        return beginTimeSeconds;
+    public void setBeginTime(TimestampDocument beginTime) {
+        this.beginTime = beginTime;
     }
 
-    public void setBeginTimeSeconds(long beginTimeSeconds) {
-        this.beginTimeSeconds = beginTimeSeconds;
+    public TimestampDocument getEndTime() {
+        return endTime;
     }
 
-    public long getBeginTimeNanos() {
-        return beginTimeNanos;
+    public void setEndTime(TimestampDocument endTime) {
+        this.endTime = endTime;
     }
 
-    public void setBeginTimeNanos(long beginTimeNanos) {
-        this.beginTimeNanos = beginTimeNanos;
-    }
-
-    public long getEndTimeSeconds() {
-        return endTimeSeconds;
-    }
-
-    public void setEndTimeSeconds(long endTimeSeconds) {
-        this.endTimeSeconds = endTimeSeconds;
-    }
-
-    public long getEndTimeNanos() {
-        return endTimeNanos;
-    }
-
-    public void setEndTimeNanos(long endTimeNanos) {
-        this.endTimeNanos = endTimeNanos;
-    }
-
-    public Set<String> getPvNames() {
+    public List<String> getPvNames() {
         return pvNames;
     }
 
-    public void setPvNames(Set<String> pvNames) {
+    public void setPvNames(List<String> pvNames) {
         this.pvNames = pvNames;
     }
 
+    public static DataBlockDocument fromDataBlock(DataBlock dataBlock) {
+        
+        DataBlockDocument document = new DataBlockDocument();
+
+        document.setPvNames(List.copyOf(dataBlock.getPvNamesList()));
+        
+        document.setBeginTime(TimestampDocument.fromTimestamp(dataBlock.getBeginTime()));
+        document.setEndTime(TimestampDocument.fromTimestamp(dataBlock.getEndTime()));
+
+        return document;
+    }
+
+    public DataBlock toDataBlock() {
+        DataBlock.Builder builder = DataBlock.newBuilder();
+        builder.setBeginTime(this.getBeginTime().toTimestamp());
+        builder.setEndTime(this.getEndTime().toTimestamp());
+        builder.addAllPvNames(this.getPvNames());
+        return builder.build();
+    }
+    
+    public List<String> diffDataBlock(DataBlock requestDataBlock) {
+        
+        final List<String> diffs = new ArrayList<>();
+        
+        final Timestamp requestBlockBeginTime =  requestDataBlock.getBeginTime();
+        final Timestamp requestBlockEndTime = requestDataBlock.getEndTime();
+
+        if ( ! Objects.equals(this.beginTime.toTimestamp(), requestBlockBeginTime) ) {
+            final String msg = "block beginTime mistmatch: " + this.getBeginTime()
+                    + " expected: " + requestBlockEndTime;
+            diffs.add(msg);
+        }
+
+        if ( ! Objects.equals(this.endTime.toTimestamp(), requestBlockEndTime) ) {
+            final String msg = "block endTime mistmatch: " + this.getEndTime()
+                    + " expected: " + requestBlockEndTime;
+            diffs.add(msg);
+        }
+
+        if ( ! Objects.equals(requestDataBlock.getPvNamesList(), this.getPvNames())) {
+            final String msg = "block pvNames list mismatch: " + this.getPvNames().toString()
+                    + " expected: " + requestDataBlock.getPvNamesList();
+            diffs.add(msg);
+        }
+
+        return diffs;
+    }
+    
 }

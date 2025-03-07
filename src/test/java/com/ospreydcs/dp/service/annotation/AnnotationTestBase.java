@@ -908,13 +908,13 @@ public class AnnotationTestBase {
             final String pvNameListPath = dataBlockPathBase + DATASET_BLOCK_PV_NAME_LIST;
             assertArrayEquals(dataBlock.getPvNames().toArray(new String[0]), reader.readStringArray(pvNameListPath));
             final String beginTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_SECONDS;
-            assertEquals(dataBlock.getBeginTimeSeconds(), reader.readLong(beginTimeSecondsPath));
+            assertEquals(dataBlock.getBeginTime().getSeconds(), reader.readLong(beginTimeSecondsPath));
             final String beginTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_BEGIN_NANOS;
-            assertEquals(dataBlock.getBeginTimeNanos(), reader.readLong(beginTimeNanosPath));
+            assertEquals(dataBlock.getBeginTime().getNanos(), reader.readLong(beginTimeNanosPath));
             final String endTimeSecondsPath = dataBlockPathBase + DATASET_BLOCK_END_SECONDS;
-            assertEquals(dataBlock.getEndTimeSeconds(), reader.readLong(endTimeSecondsPath));
+            assertEquals(dataBlock.getEndTime().getSeconds(), reader.readLong(endTimeSecondsPath));
             final String endTimeNanosPath = dataBlockPathBase + DATASET_BLOCK_END_NANOS;
-            assertEquals(dataBlock.getEndTimeNanos(), reader.readLong(endTimeNanosPath));
+            assertEquals(dataBlock.getEndTime().getNanos(), reader.readLong(endTimeNanosPath));
             dataBlockIndex = dataBlockIndex + 1;
         }
     }

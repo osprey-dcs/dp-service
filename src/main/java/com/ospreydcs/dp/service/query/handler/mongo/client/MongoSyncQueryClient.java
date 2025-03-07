@@ -65,10 +65,10 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     @Override
     public MongoCursor<BucketDocument> executeDataBlockQuery(DataBlockDocument dataBlock) {
 
-        final long startTimeSeconds = dataBlock.getBeginTimeSeconds();
-        final long startTimeNanos = dataBlock.getBeginTimeNanos();
-        final long endTimeSeconds = dataBlock.getEndTimeSeconds();
-        final long endTimeNanos = dataBlock.getEndTimeNanos();
+        final long startTimeSeconds = dataBlock.getBeginTime().getSeconds();
+        final long startTimeNanos = dataBlock.getBeginTime().getNanos();
+        final long endTimeSeconds = dataBlock.getEndTime().getSeconds();
+        final long endTimeNanos = dataBlock.getEndTime().getNanos();
 
         final Bson columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, dataBlock.getPvNames());
         return executeBucketDocumentQuery(

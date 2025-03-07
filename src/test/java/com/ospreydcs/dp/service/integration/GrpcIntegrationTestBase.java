@@ -2221,10 +2221,10 @@ public abstract class GrpcIntegrationTestBase {
         final TimestampDataMap expectedDataMap = new TimestampDataMap();
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
             final MongoCursor<BucketDocument> cursor = mongoClient.findDataBlockBuckets(dataBlock);
-            final long beginSeconds = dataBlock.getBeginTimeSeconds();
-            final long beginNanos = dataBlock.getBeginTimeNanos();
-            final long endSeconds = dataBlock.getEndTimeSeconds();
-            final long endNanos = dataBlock.getEndTimeNanos();
+            final long beginSeconds = dataBlock.getBeginTime().getSeconds();
+            final long beginNanos = dataBlock.getBeginTime().getNanos();
+            final long endSeconds = dataBlock.getEndTime().getSeconds();
+            final long endNanos = dataBlock.getEndTime().getNanos();
             final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
                     TabularDataUtility.updateTimestampMapFromBucketCursor(
                             expectedDataMap,
