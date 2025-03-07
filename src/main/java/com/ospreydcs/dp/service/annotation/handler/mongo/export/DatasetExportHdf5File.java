@@ -201,18 +201,32 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         final String eventMetadataDescriptionPath = 
                 pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
         writer.writeString(eventMetadataDescriptionPath, bucketDocument.getEventMetadata().getDescription());
-        final String eventMetadataStartSecondsPath = 
-                pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
-        writer.writeLong(eventMetadataStartSecondsPath, bucketDocument.getEventMetadata().getStartSeconds());
-        final String eventMetadataStartNanosPath = 
-                pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
-        writer.writeLong(eventMetadataStartNanosPath, bucketDocument.getEventMetadata().getStartNanos());
-        final String eventMetadataStopSecondsPath =
-                pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
-        writer.writeLong(eventMetadataStopSecondsPath, bucketDocument.getEventMetadata().getStopSeconds());
-        final String eventMetadataStopNanosPath =
-                pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
-        writer.writeLong(eventMetadataStopNanosPath, bucketDocument.getEventMetadata().getStopNanos());
+
+        if (bucketDocument.getEventMetadata().getStartTime() != null) {
+            final String eventMetadataStartSecondsPath =
+                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
+            writer.writeLong(
+                    eventMetadataStartSecondsPath,
+                    bucketDocument.getEventMetadata().getStartTime().getSeconds());
+            final String eventMetadataStartNanosPath =
+                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
+            writer.writeLong(
+                    eventMetadataStartNanosPath,
+                    bucketDocument.getEventMetadata().getStartTime().getNanos());
+        }
+
+        if (bucketDocument.getEventMetadata().getStopTime() != null) {
+            final String eventMetadataStopSecondsPath =
+                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
+            writer.writeLong(
+                    eventMetadataStopSecondsPath,
+                    bucketDocument.getEventMetadata().getStopTime().getSeconds());
+            final String eventMetadataStopNanosPath =
+                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
+            writer.writeLong(
+                    eventMetadataStopNanosPath,
+                    bucketDocument.getEventMetadata().getStopTime().getNanos());
+        }
 
         // providerId
         Objects.requireNonNull(bucketDocument.getProviderId());

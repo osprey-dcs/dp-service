@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
+import com.ospreydcs.dp.service.common.bson.TimestampDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
@@ -29,11 +30,8 @@ public class DatasetExportHdf5FileTest {
         final Instant firstInstant = instantNow.minusNanos(instantNow.getNano());
         final long firstSeconds = instantNow.getEpochSecond();
         final long firstNanos = 0;
-        final Date firstTime = Date.from(firstInstant);
         final long lastSeconds = firstSeconds;
         final long lastNanos = 900000000L;
-        final Instant lastInstant = firstInstant.plusNanos(lastNanos);
-        final Date lastTime = Date.from(lastInstant);
 
         // create dataset for export
         final DataSetDocument dataset = new DataSetDocument();
@@ -64,6 +62,10 @@ public class DatasetExportHdf5FileTest {
                 .setEpochSeconds(firstSeconds)
                 .setNanoseconds(firstNanos)
                 .build();
+        final Timestamp stopTimestamp = Timestamp.newBuilder()
+                .setEpochSeconds(lastSeconds)
+                .setNanoseconds(lastNanos)
+                .build();
         final int sampleCount = 10;
         final long samplePeriod = 100000000L;
         final SamplingClock samplingClock =
@@ -79,10 +81,8 @@ public class DatasetExportHdf5FileTest {
 
         final EventMetadataDocument eventMetadata = new EventMetadataDocument();
         eventMetadata.setDescription("S01 vacuum test");
-        eventMetadata.setStartSeconds(firstSeconds);
-        eventMetadata.setStartNanos(firstNanos);
-        eventMetadata.setStopSeconds(lastSeconds);
-        eventMetadata.setStopNanos(lastNanos);
+        eventMetadata.setStartTime(TimestampDocument.fromTimestamp(samplingClockStartTime));
+        eventMetadata.setStopTime(TimestampDocument.fromTimestamp(stopTimestamp));
 
         final String providerId = "S01 vacuum provider";
 

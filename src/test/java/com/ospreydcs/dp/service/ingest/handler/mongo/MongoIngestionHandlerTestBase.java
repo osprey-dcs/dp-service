@@ -231,10 +231,18 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
             assertTrue(bucket.getAttributeMap().equals(params.attributes));
             final EventMetadataDocument eventMetadataDocument = bucket.getEventMetadata();
             assertTrue(eventMetadataDocument.getDescription().equals(params.eventDescription));
-            assertTrue(eventMetadataDocument.getStartSeconds() == params.eventStartSeconds);
-            assertTrue(eventMetadataDocument.getStartNanos() == params.eventStartNanos);
-            assertTrue(eventMetadataDocument.getStopSeconds() == params.eventStopSeconds);
-            assertTrue(eventMetadataDocument.getStopNanos() == params.eventStopNanos);
+            assertEquals(
+                    (long) params.eventStartSeconds,
+                    eventMetadataDocument.getStartTime().getSeconds());
+            assertEquals(
+                    (long) params.eventStartNanos,
+                    eventMetadataDocument.getStartTime().getNanos());
+            assertEquals(
+                    (long) params.eventStopSeconds,
+                    eventMetadataDocument.getStopTime().getSeconds());
+            assertEquals(
+                    (long) params.eventStopNanos,
+                    eventMetadataDocument.getStopTime().getNanos());
 
             columnIndex = columnIndex + 1;
         }

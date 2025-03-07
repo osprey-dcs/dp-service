@@ -45,4 +45,11 @@ public class TimestampDocument {
 
         return timestampDocument;
     }
+
+    public Timestamp toTimestamp() {
+        return Timestamp.newBuilder()
+                .setEpochSeconds(this.getSeconds())
+                .setNanoseconds(this.getNanos())
+                .build();
+    }
 }
