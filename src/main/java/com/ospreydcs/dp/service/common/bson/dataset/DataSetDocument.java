@@ -2,11 +2,12 @@ package com.ospreydcs.dp.service.common.bson.dataset;
 
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import org.bson.types.ObjectId;
 
 import java.util.*;
 
-public class DataSetDocument {
+public class DataSetDocument extends DpBsonDocumentBase {
 
     // instance variables
     private ObjectId id;

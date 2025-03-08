@@ -4,13 +4,14 @@ public class BsonConstants {
     
     // BSON field name constants
     public static final String BSON_KEY_PV_NAME = "pvName";
+    public static final String BSON_KEY_CREATED_AT = "createdAt";
+    public static final String BSON_KEY_UPDATED_AT = "updatedAt";
 
     public static final String BSON_KEY_PROVIDER_ID = "_id";
     public static final String BSON_KEY_PROVIDER_NAME = "name";
     public static final String BSON_KEY_PROVIDER_DESCRIPTION = "description";
     public static final String BSON_KEY_PROVIDER_TAGS = "tags";
     public static final String BSON_KEY_PROVIDER_ATTRIBUTES = "attributeMap";
-    public static final String BSON_KEY_PROVIDER_LAST_UPDATED = "lastUpdated";
 
     public static final String BSON_KEY_BUCKET_ID = "_id";
     public static final String BSON_KEY_BUCKET_FIRST_TIME = "dataTimestamps.firstTime.dateTime";
@@ -32,7 +33,6 @@ public class BsonConstants {
     public static final String BSON_KEY_REQ_STATUS_PROVIDER_NAME = "providerName";
     public static final String BSON_KEY_REQ_STATUS_REQUEST_ID = "requestId";
     public static final String BSON_KEY_REQ_STATUS_STATUS = "requestStatusCase";
-    public static final String BSON_KEY_REQ_STATUS_TIME = "updateTime";
 
     public static final String BSON_KEY_DATA_SET_ID = "_id";
     public static final String BSON_KEY_DATA_SET_NAME = "name";

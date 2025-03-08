@@ -38,7 +38,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
                 AnnotationIntegrationTestIntermediate.createDataSetScenario();
 
         // createAnnotation() with calculations negative test -
-        // request should be rejected because: list of data frames is emtpy
+        // request should be rejected because: list of data frames is empty
         {
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);

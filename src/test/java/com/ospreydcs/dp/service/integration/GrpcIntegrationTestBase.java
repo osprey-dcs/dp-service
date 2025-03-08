@@ -372,6 +372,8 @@ public abstract class GrpcIntegrationTestBase {
         if (params.attributes != null) {
             assertEquals(params.attributes, providerDocument.getAttributeMap());
         }
+        assertNotNull(providerDocument.getCreatedAt());
+        assertNotNull(providerDocument.getUpdatedAt());
 
         // return id of ProviderDocument
         return providerId;
@@ -557,6 +559,8 @@ public abstract class GrpcIntegrationTestBase {
         final int numPvs = params.columnNames.size();
         final RequestStatusDocument statusDocument =
                 mongoClient.findRequestStatus(params.providerId, params.requestId);
+        assertNotNull(statusDocument);
+        assertNotNull(statusDocument.getCreatedAt());
         assertEquals(
                 IngestionRequestStatus.INGESTION_REQUEST_STATUS_SUCCESS_VALUE,
                 statusDocument.getRequestStatusCase());
@@ -580,6 +584,9 @@ public abstract class GrpcIntegrationTestBase {
             final String pvName = params.columnNames.get(pvIndex);
             assertEquals(pvName, bucketDocument.getPvName());
             assertEquals(expectedBucketId, bucketDocument.getId());
+
+            // check createdAt time
+            assertNotNull(bucketDocument.getCreatedAt());
 
             // check bucket start times
             assertEquals(
@@ -1826,6 +1833,7 @@ public abstract class GrpcIntegrationTestBase {
         assertFalse(dataSetId.isBlank());
         final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
         assertNotNull(dataSetDocument);
+        assertNotNull(dataSetDocument.getCreatedAt());
         final List<String> requestDiffs = dataSetDocument.diffRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
@@ -2000,9 +2008,25 @@ public abstract class GrpcIntegrationTestBase {
         assertFalse(annotationId.isBlank());
         final AnnotationDocument annotationDocument = mongoClient.findAnnotation(annotationId);
         assertNotNull(annotationDocument);
+        assertNotNull(annotationDocument.getCreatedAt());
         final List<String> requestDiffs = annotationDocument.diffCreateAnnotationRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.isEmpty());
+
+        // validate calculations if specified
+        if (params.calculations != null) {
+            assertNotNull(annotationDocument.getCalculationsId());
+            final CalculationsDocument calculationsDocument =
+                    mongoClient.findCalculations(annotationDocument.getCalculationsId());
+            assertNotNull(calculationsDocument);
+            assertNotNull(calculationsDocument.getCreatedAt());
+            final List<String> calculationsDiffs = calculationsDocument.diffCalculations(params.calculations);
+            assertNotNull(calculationsDiffs);
+            assertTrue(calculationsDiffs.isEmpty());
+
+        } else {
+            assertNull(annotationDocument.getCalculationsId());
+        }
 
         // save annotationId to map for use in validating queryAnnotations() result
         createAnnotationParamsIdMap.put(params, annotationId);

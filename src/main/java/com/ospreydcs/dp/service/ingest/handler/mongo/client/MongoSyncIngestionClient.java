@@ -14,6 +14,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
@@ -28,6 +29,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -45,6 +47,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
 
         Bson filter = Filters.eq(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName());
 
+        final Instant instantNow = Instant.now();
         Bson updates = Updates.combine(
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName()),
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_DESCRIPTION, request.getDescription()),
@@ -52,8 +55,8 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 Updates.set(
                         BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTES,
                         AttributesUtility.attributeMapFromList(request.getAttributesList())),
-                Updates.currentDate(
-                        BsonConstants.BSON_KEY_PROVIDER_LAST_UPDATED)
+                Updates.setOnInsert(BsonConstants.BSON_KEY_CREATED_AT, instantNow),
+                Updates.set(BsonConstants.BSON_KEY_UPDATED_AT, instantNow)
         );
 
         UpdateOptions options = new UpdateOptions().upsert(true);
@@ -121,6 +124,12 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                 "inserting batch of bucket documents to mongo provider: {} request: {}",
                 request.getProviderId(), request.getClientRequestId());
 
+        // set createdAt time field for each document
+        final Instant now = Instant.now();
+        for (DpBsonDocumentBase document : dataDocumentBatch) {
+            document.setCreatedAt(now);
+        }
+
         // insert batch of bson data documents to mongodb
         InsertManyResult result = null;
         try {
@@ -141,6 +150,9 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         logger.debug(
                 "inserting RequestStatus document to mongo provider: {} request: {}",
                 requestStatusDocument.getProviderId(), requestStatusDocument.getRequestId());
+
+        // set createdAt time field for document
+        requestStatusDocument.addCreationTime();
 
         // insert RequestStatusDocument to mongodb
         InsertOneResult result = null;
@@ -212,8 +224,8 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
                             endDate = new Date();
                         }
                         Bson filter = Filters.and(
-                                Filters.gte(BsonConstants.BSON_KEY_REQ_STATUS_TIME, beginDate),
-                                Filters.lte(BsonConstants.BSON_KEY_REQ_STATUS_TIME, endDate));
+                                Filters.gte(BsonConstants.BSON_KEY_CREATED_AT, beginDate),
+                                Filters.lte(BsonConstants.BSON_KEY_CREATED_AT, endDate));
                         criteriaFilterList.add(filter);
                     }
                 }

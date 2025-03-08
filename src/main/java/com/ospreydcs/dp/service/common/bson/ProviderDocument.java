@@ -8,7 +8,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
-public class ProviderDocument {
+public class ProviderDocument extends DpBsonDocumentBase {
 
     // instance variables
     private ObjectId id;

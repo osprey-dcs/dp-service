@@ -2,19 +2,19 @@ package com.ospreydcs.dp.service.common.bson;
 
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusResponse;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
 import org.bson.types.ObjectId;
 
 import java.time.Instant;
 import java.util.List;
 
-public class RequestStatusDocument {
+public class RequestStatusDocument extends DpBsonDocumentBase {
 
     private ObjectId id;
     private String providerId;
     private String providerName;
     private String requestId;
-    private Instant updateTime;
     private int requestStatusCase;
     private String requestStatusName;
     private String msg;
@@ -38,7 +38,6 @@ public class RequestStatusDocument {
         this.setRequestStatusName(status.name());
         this.msg = msg;
         this.idsCreated = idsCreated;
-        this.updateTime = Instant.now();
     }
 
     public ObjectId getId() {
@@ -67,14 +66,6 @@ public class RequestStatusDocument {
 
     public void setRequestId(String requestId) {
         this.requestId = requestId;
-    }
-
-    public Instant getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(Instant updateTime) {
-        this.updateTime = updateTime;
     }
 
     public int getRequestStatusCase() {
@@ -124,10 +115,7 @@ public class RequestStatusDocument {
         requestStatusBuilder.addAllIdsCreated(this.getIdsCreated());
 
         // set update time
-        Timestamp updateTimestamp = Timestamp.newBuilder()
-                .setEpochSeconds(this.getUpdateTime().getEpochSecond())
-                .setNanoseconds(this.getUpdateTime().getNano())
-                .build();
+        Timestamp updateTimestamp = TimestampUtility.getTimestampFromInstant(this.getCreatedAt());
         requestStatusBuilder.setUpdateTime(updateTimestamp);
 
         // set status enum

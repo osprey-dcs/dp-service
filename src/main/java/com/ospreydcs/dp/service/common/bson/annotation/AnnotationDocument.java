@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
+import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -14,7 +15,7 @@ import org.bson.types.ObjectId;
 
 import java.util.*;
 
-public class AnnotationDocument {
+public class AnnotationDocument extends DpBsonDocumentBase {
 
     // instance variables
     private ObjectId id;

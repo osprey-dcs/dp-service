@@ -7,18 +7,19 @@ import com.mongodb.client.result.InsertOneResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
+import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoAsyncClient;
 import com.ospreydcs.dp.service.common.mongo.UpdateResultWrapper;
 import com.ospreydcs.dp.service.ingest.handler.model.FindProviderResult;
 import com.ospreydcs.dp.service.ingest.handler.mongo.ObservableSubscriber;
-import com.ospreydcs.dp.service.ingest.model.DpIngestionException;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.reactivestreams.Publisher;
 
+import java.time.Instant;
 import java.util.List;
 
 public class MongoAsyncIngestionClient extends MongoAsyncClient implements MongoIngestionClientInterface {
@@ -44,6 +45,12 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
     public IngestionTaskResult insertBatch(IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 
         logger.debug("inserting batch of bucket documents to mongo");
+
+        // set createdAt field for each document in batch
+        final Instant now = Instant.now();
+        for (DpBsonDocumentBase document : dataDocumentBatch) {
+            document.setCreatedAt(now);
+        }
 
         // invoke mongodb insertMany for batch, create subscriber to handle results
         Publisher<InsertManyResult> publisher = mongoCollectionBuckets.insertMany(dataDocumentBatch);  // SILENTLY FAILS IF TsDataBucket DOESN'T HAVE ACCESSOR METHODS FOR ALL INST VARS!
@@ -78,6 +85,9 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
         logger.debug(
                 "inserting RequestStatus document to mongo provider: {} request: {}",
                 requestStatusDocument.getProviderId(), requestStatusDocument.getRequestId());
+
+        // set createdAt field for document
+        requestStatusDocument.setCreatedAt(Instant.now());
 
         // invoke mongodb insertOne, create subscriber to handle results
         Publisher<InsertOneResult> publisher =

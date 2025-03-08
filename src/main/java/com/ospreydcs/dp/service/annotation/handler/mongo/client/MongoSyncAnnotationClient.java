@@ -56,6 +56,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         logger.debug("inserting DataSetDocument to mongo");
 
+        // set createdAt field for document
+        dataSetDocument.addCreationTime();
+
         // insert document to mongodb
         InsertOneResult result = null;
         boolean isError = false;
@@ -185,6 +188,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     public MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument) {
 
         logger.debug("inserting AnnotationDocument id: {}", annotationDocument.getId());
+
+        // set createdAt field for document
+        annotationDocument.addCreationTime();
 
         // insert AnnotationDocument to mongodb
         InsertOneResult result = null;
@@ -322,6 +328,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     public MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument) {
 
         logger.debug("inserting CalculationsDocument id: {}", calculationsDocument.getId());
+
+        // set createdAt field for document
+        calculationsDocument.addCreationTime();
 
         InsertOneResult result = null;
         boolean isError = false;

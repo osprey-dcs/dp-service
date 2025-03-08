@@ -148,7 +148,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                 findRequestStatus(params.providerId, params.requestId, status);
         assertTrue(statusDocument != null);
         assertTrue(statusDocument.getIdsCreated().size() == 0);
-        assertTrue(statusDocument.getUpdateTime() != null);
+        assertTrue(statusDocument.getCreatedAt() != null);
         assertTrue(statusDocument.getMsg().contains(statusMsg));
     }
 
@@ -249,7 +249,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
         // check database contents for request status (success) document
         assertTrue(statusDocument.getIdsCreated().size() == params.columnNames.size());
-        assertTrue(statusDocument.getUpdateTime() != null);
+        assertTrue(statusDocument.getCreatedAt() != null);
         assertTrue(statusDocument.getMsg().isEmpty());
     }
 

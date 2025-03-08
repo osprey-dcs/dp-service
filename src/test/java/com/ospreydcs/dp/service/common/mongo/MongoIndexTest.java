@@ -118,8 +118,8 @@ public class MongoIndexTest {
                         List.of(
                                 "_id_",
                                 "providerId_1_requestId_1",
-                                "providerId_1_requestStatusCase_1_updateTime_1",
-                                "requestStatusCase_1_updateTime_1"
+                                "providerId_1_requestStatusCase_1_createdAt_1",
+                                "requestStatusCase_1_createdAt_1"
                         );
                 assertEquals(expectedIndexNames, requestStatusIndexNames);
             }

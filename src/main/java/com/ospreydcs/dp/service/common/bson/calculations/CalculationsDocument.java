@@ -1,13 +1,15 @@
 package com.ospreydcs.dp.service.common.bson.calculations;
 
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
+import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-public class CalculationsDocument {
+public class CalculationsDocument extends DpBsonDocumentBase {
 
     // instance variables
     private ObjectId id;
@@ -50,5 +52,25 @@ public class CalculationsDocument {
             calculationsBuilder.addCalculationDataFrames(dataFrame);
         }
         return calculationsBuilder.build();
+    }
+
+    public List<String> diffCalculations(Calculations calculations) {
+        List<String> diffs = new ArrayList<>();
+        if (calculations.getCalculationDataFramesCount() != this.getDataFrames().size()) {
+            diffs.add("dataFrames count");
+        } else {
+            for (int i = 0; i < calculations.getCalculationDataFramesCount(); i++) {
+                Calculations.CalculationsDataFrame dataFrame = calculations.getCalculationDataFrames(i);
+                CalculationsDataFrameDocument dataFrameDocument = this.getDataFrames().get(i);
+                try {
+                    if ( ! Objects.equals(dataFrame, dataFrameDocument.toCalculationsDataFrame())) {
+                        diffs.add("dataFrames[" + i + "]");
+                    }
+                } catch (DpException e) {
+                    diffs.add("exception deserializing dataFrame[" + i + "]: " + e.getMessage());
+                }
+            }
+        }
+        return diffs;
     }
 }
