@@ -193,14 +193,14 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertEquals(
                             Date.from(Instant.ofEpochSecond(requestInfo.startSeconds, 999000000L)),
                             bucketDocument.getDataTimestamps().getLastTime().getDateTime());
-                    final EventMetadataDocument eventMetadataDocument = bucketDocument.getEventMetadata();
+                    final EventMetadataDocument eventMetadataDocument = bucketDocument.getEvent();
                     assertEquals("calibration test", eventMetadataDocument.getDescription());
                     assertEquals(
                             params.startSeconds,
                             eventMetadataDocument.getStartTime().getSeconds());
                     assertEquals(0, eventMetadataDocument.getStartTime().getNanos());
-                    assertTrue(bucketDocument.getAttributeMap().get("sector").equals("07"));
-                    assertTrue(bucketDocument.getAttributeMap().get("subsystem").equals("vacuum"));
+                    assertTrue(bucketDocument.getAttributes().get("sector").equals("07"));
+                    assertTrue(bucketDocument.getAttributes().get("subsystem").equals("vacuum"));
 
                     DataColumn bucketDataColumn = null;
                     try {

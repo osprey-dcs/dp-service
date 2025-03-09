@@ -4,14 +4,16 @@ public class BsonConstants {
     
     // BSON field name constants
     public static final String BSON_KEY_PV_NAME = "pvName";
+    public static final String BSON_KEY_TAGS = "tags";
+    public static final String BSON_KEY_ATTRIBUTES = "attributes";
+    public static final String BSON_KEY_EVENT = "event";
+    public static final String BSON_KEY_EVENT_DESCRIPTION = "event.description";
     public static final String BSON_KEY_CREATED_AT = "createdAt";
     public static final String BSON_KEY_UPDATED_AT = "updatedAt";
 
     public static final String BSON_KEY_PROVIDER_ID = "_id";
     public static final String BSON_KEY_PROVIDER_NAME = "name";
     public static final String BSON_KEY_PROVIDER_DESCRIPTION = "description";
-    public static final String BSON_KEY_PROVIDER_TAGS = "tags";
-    public static final String BSON_KEY_PROVIDER_ATTRIBUTES = "attributeMap";
 
     public static final String BSON_KEY_BUCKET_ID = "_id";
     public static final String BSON_KEY_BUCKET_FIRST_TIME = "dataTimestamps.firstTime.dateTime";
@@ -46,10 +48,6 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_NAME = "name";
     public static final String BSON_KEY_ANNOTATION_ANNOTATION_IDS = "annotationIds";
     public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
-    public static final String BSON_KEY_ANNOTATION_TAGS = "tags";
-    public static final String BSON_KEY_ANNOTATION_ATTRIBUTES = "attributeMap";
-    public static final String BSON_KEY_ANNOTATION_EVENT_METADATA = "eventMetadata";
-    public static final String BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION = "eventMetadata.description";
 
     public static final String BSON_KEY_CALCULATIONS_ID = "_id";
 

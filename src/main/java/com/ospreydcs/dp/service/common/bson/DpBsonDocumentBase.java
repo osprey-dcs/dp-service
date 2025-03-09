@@ -2,12 +2,40 @@ package com.ospreydcs.dp.service.common.bson;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public abstract class DpBsonDocumentBase {
 
     // instance variables
+    private List<String> tags;
+    private Map<String, String> attributes;
+    private EventMetadataDocument event;
     private Instant createdAt;
     private Instant updatedAt;
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes;
+    }
+
+    public EventMetadataDocument getEvent() {
+        return event;
+    }
+
+    public void setEvent(EventMetadataDocument event) {
+        this.event = event;
+    }
 
     public Instant getCreatedAt() {
         return createdAt;

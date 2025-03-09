@@ -228,8 +228,8 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
 
             assertTrue(bucket.getDataTimestamps().getSamplePeriod() == sampleIntervalNanos);
             assertTrue(bucket.getDataTimestamps().getSampleCount() == numSamples);
-            assertTrue(bucket.getAttributeMap().equals(params.attributes));
-            final EventMetadataDocument eventMetadataDocument = bucket.getEventMetadata();
+            assertTrue(bucket.getAttributes().equals(params.attributes));
+            final EventMetadataDocument eventMetadataDocument = bucket.getEvent();
             assertTrue(eventMetadataDocument.getDescription().equals(params.eventDescription));
             assertEquals(
                     (long) params.eventStartSeconds,

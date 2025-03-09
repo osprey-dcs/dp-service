@@ -14,9 +14,6 @@ public class ProviderDocument extends DpBsonDocumentBase {
     private ObjectId id;
     private String name;
     private String description;
-    private List<String> tags;
-    private Map<String, String> attributeMap;
-    private Date lastUpdated;
 
     public ProviderDocument() {
     }
@@ -45,30 +42,6 @@ public class ProviderDocument extends DpBsonDocumentBase {
         this.description = description;
     }
 
-    public List<String> getTags() {
-        return tags;
-    }
-
-    public void setTags(List<String> tags) {
-        this.tags = tags;
-    }
-
-    public Map<String, String> getAttributeMap() {
-        return attributeMap;
-    }
-
-    public void setAttributeMap(Map<String, String> attributeMap) {
-        this.attributeMap = attributeMap;
-    }
-
-    public Date getLastUpdated() {
-        return lastUpdated;
-    }
-
-    public void setLastUpdated(Date lastUpdated) {
-        this.lastUpdated = lastUpdated;
-    }
-
     public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo() {
 
         QueryProvidersResponse.ProvidersResult.ProviderInfo.Builder providerInfoBuilder =
@@ -78,7 +51,7 @@ public class ProviderDocument extends DpBsonDocumentBase {
         providerInfoBuilder.setName(this.getName());
         providerInfoBuilder.setDescription(this.getDescription());
         providerInfoBuilder.addAllTags(this.getTags());
-        providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributeMap()));
+        providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
 
         return providerInfoBuilder.build();
     }

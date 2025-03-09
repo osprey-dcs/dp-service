@@ -370,7 +370,7 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(providerDocument.getTags().isEmpty());
         }
         if (params.attributes != null) {
-            assertEquals(params.attributes, providerDocument.getAttributeMap());
+            assertEquals(params.attributes, providerDocument.getAttributes());
         }
         assertNotNull(providerDocument.getCreatedAt());
         assertNotNull(providerDocument.getUpdatedAt());

@@ -120,11 +120,11 @@ public abstract class MongoClientBase {
                         Indexes.text(BsonConstants.BSON_KEY_DATA_SET_DESCRIPTION)));
 
         // create index by tags
-        createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_TAGS));
+        createMongoIndexProviders(Indexes.ascending(BsonConstants.BSON_KEY_TAGS));
 
         // create index by attributes
         createMongoIndexProviders(
-                Indexes.ascending(BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTES + ".$**"));
+                Indexes.ascending(BsonConstants.BSON_KEY_ATTRIBUTES + ".$**"));
 
         return true;
     }
@@ -196,11 +196,11 @@ public abstract class MongoClientBase {
         createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS));
 
         // create index by tags
-        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_TAGS));
+        createMongoIndexAnnotations(Indexes.ascending(BsonConstants.BSON_KEY_TAGS));
 
         // create index by attributes
         createMongoIndexAnnotations(
-                Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_ATTRIBUTES + ".$**"));
+                Indexes.ascending(BsonConstants.BSON_KEY_ATTRIBUTES + ".$**"));
 
         // create compound index on type/comment to optimize searching comment annotation text
         // NOTE - reordering so that owner id comes before the text index can lead to an error message like this:
@@ -211,7 +211,7 @@ public abstract class MongoClientBase {
                         Indexes.compoundIndex(
                             Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
                             Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT),
-                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_EVENT_METADATA_DESCRIPTION)),
+                            Indexes.text(BsonConstants.BSON_KEY_EVENT_DESCRIPTION)),
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
 
         return true;

@@ -99,8 +99,8 @@ public class DatasetExportHdf5FileTest {
             final DataColumn dataColumn = dataColumnBuilder.build();
             final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
             pv1BucketDocument.setDataColumn(dataColumnDocument);
-            pv1BucketDocument.setAttributeMap(attributeMap);
-            pv1BucketDocument.setEventMetadata(eventMetadata);
+            pv1BucketDocument.setAttributes(attributeMap);
+            pv1BucketDocument.setEvent(eventMetadata);
             pv1BucketDocument.setProviderId(providerId);
             exportHdf5File.writeBucketData(pv1BucketDocument);
         }
@@ -120,8 +120,8 @@ public class DatasetExportHdf5FileTest {
             DataColumn dataColumn = dataColumnBuilder.build();
             final DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
             pv2BucketDocument.setDataColumn(dataColumnDocument);
-            pv2BucketDocument.setAttributeMap(attributeMap);
-            pv2BucketDocument.setEventMetadata(eventMetadata);
+            pv2BucketDocument.setAttributes(attributeMap);
+            pv2BucketDocument.setEvent(eventMetadata);
             pv2BucketDocument.setProviderId(providerId);
             exportHdf5File.writeBucketData(pv2BucketDocument);
         }

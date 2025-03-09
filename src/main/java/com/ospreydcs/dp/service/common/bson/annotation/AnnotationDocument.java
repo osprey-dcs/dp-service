@@ -24,9 +24,6 @@ public class AnnotationDocument extends DpBsonDocumentBase {
     private String name;
     private List<String> annotationIds;
     private String comment;
-    private List<String> tags;
-    private Map<String, String> attributeMap;
-    private EventMetadataDocument eventMetadata;
     private String calculationsId;
 
     public ObjectId getId() {
@@ -77,30 +74,6 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         this.comment = comment;
     }
 
-    public List<String> getTags() {
-        return tags;
-    }
-
-    public void setTags(List<String> tags) {
-        this.tags = tags;
-    }
-
-    public Map<String, String> getAttributeMap() {
-        return attributeMap;
-    }
-
-    public void setAttributeMap(Map<String, String> attributeMap) {
-        this.attributeMap = attributeMap;
-    }
-
-    public EventMetadataDocument getEventMetadata() {
-        return eventMetadata;
-    }
-
-    public void setEventMetadata(EventMetadataDocument eventMetadata) {
-        this.eventMetadata = eventMetadata;
-    }
-
     public String getCalculationsId() {
         return calculationsId;
     }
@@ -126,13 +99,13 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         // create map of attributes and add to document
         final Map<String, String> attributeMap =
                 AttributesUtility.attributeMapFromList(request.getAttributesList());
-        document.setAttributeMap(attributeMap);
+        document.setAttributes(attributeMap);
 
         // add event metadata from request to document
         if (request.hasEventMetadata()) {
             final EventMetadataDocument eventMetadataDocument =
                     EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
-            document.setEventMetadata(eventMetadataDocument);
+            document.setEvent(eventMetadataDocument);
         }
 
         if (calculationsDocumentId != null) {
@@ -155,9 +128,9 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         annotationBuilder.addAllAnnotationIds(this.getAnnotationIds());
         annotationBuilder.setComment(this.getComment());
         annotationBuilder.addAllTags(this.getTags());
-        annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributeMap()));
-        if (this.getEventMetadata() != null) {
-            annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEventMetadata()));
+        annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        if (this.getEvent() != null) {
+            annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEvent()));
         }
 
         // add content of related datasets
@@ -230,18 +203,18 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         final Collection<Attribute> attributesDisjunction =
                 CollectionUtils.disjunction(
                         request.getAttributesList(),
-                        AttributesUtility.attributeListFromMap(this.getAttributeMap()));
+                        AttributesUtility.attributeListFromMap(this.getAttributes()));
         if ( ! attributesDisjunction.isEmpty()) {
             final String msg =
-                    "attributes mismatch: " + this.getAttributeMap()
+                    "attributes mismatch: " + this.getAttributes()
                             + " disjunction: " + attributesDisjunction;
             diffs.add(msg);
         }
 
         // diff eventMetadata
-        if (this.getEventMetadata() != null) {
+        if (this.getEvent() != null) {
             final EventMetadata thisEventMetadata =
-                    EventMetadataDocument.toEventMetadata(this.getEventMetadata());
+                    EventMetadataDocument.toEventMetadata(this.getEvent());
             if (!Objects.equals(request.getEventMetadata(), thisEventMetadata)) {
                 final String msg =
                         "eventMetadata mismatch: " + thisEventMetadata

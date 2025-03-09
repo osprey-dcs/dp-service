@@ -262,7 +262,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                     // tags filter, combined with other filters by OR operator
                     final String tagValue = criterion.getTagsCriterion().getTagValue();
                     if ( ! tagValue.isBlank()) {
-                        Bson tagsFilter = Filters.in(BsonConstants.BSON_KEY_PROVIDER_TAGS, tagValue);
+                        Bson tagsFilter = Filters.in(BsonConstants.BSON_KEY_TAGS, tagValue);
                         criteriaFilterList.add(tagsFilter);
                     }
                 }
@@ -272,7 +272,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                     final String attributeKey = criterion.getAttributesCriterion().getKey();
                     final String attributeValue = criterion.getAttributesCriterion().getValue();
                     if ( ! attributeKey.isBlank() && ! attributeValue.isBlank()) {
-                        final String mapKey = BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTES + "." + attributeKey;
+                        final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + attributeKey;
                         Bson attributesFilter = Filters.eq(mapKey, attributeValue);
                         criteriaFilterList.add(attributesFilter);
                     }

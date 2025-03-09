@@ -8,7 +8,6 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.Date;
 import java.util.Objects;
 
@@ -190,42 +189,42 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         writer.writeByteArray(dataTimestampsPath, bucketDocument.getDataTimestamps().getBytes());
 
         // attributeMap - write keys to one array and values to another
-        Objects.requireNonNull(bucketDocument.getAttributeMap());
+        Objects.requireNonNull(bucketDocument.getAttributes());
         final String attributeMapKeysPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
-        writer.writeStringArray(attributeMapKeysPath, bucketDocument.getAttributeMap().keySet().toArray(new String[0]));
+        writer.writeStringArray(attributeMapKeysPath, bucketDocument.getAttributes().keySet().toArray(new String[0]));
         final String attributeMapValuesPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
-        writer.writeStringArray(attributeMapValuesPath, bucketDocument.getAttributeMap().values().toArray(new String[0]));
+        writer.writeStringArray(attributeMapValuesPath, bucketDocument.getAttributes().values().toArray(new String[0]));
 
         // eventMetadata - description, start/stop times
-        Objects.requireNonNull(bucketDocument.getEventMetadata());
+        Objects.requireNonNull(bucketDocument.getEvent());
         final String eventMetadataDescriptionPath = 
                 pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
-        writer.writeString(eventMetadataDescriptionPath, bucketDocument.getEventMetadata().getDescription());
+        writer.writeString(eventMetadataDescriptionPath, bucketDocument.getEvent().getDescription());
 
-        if (bucketDocument.getEventMetadata().getStartTime() != null) {
+        if (bucketDocument.getEvent().getStartTime() != null) {
             final String eventMetadataStartSecondsPath =
                     pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
             writer.writeLong(
                     eventMetadataStartSecondsPath,
-                    bucketDocument.getEventMetadata().getStartTime().getSeconds());
+                    bucketDocument.getEvent().getStartTime().getSeconds());
             final String eventMetadataStartNanosPath =
                     pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
             writer.writeLong(
                     eventMetadataStartNanosPath,
-                    bucketDocument.getEventMetadata().getStartTime().getNanos());
+                    bucketDocument.getEvent().getStartTime().getNanos());
         }
 
-        if (bucketDocument.getEventMetadata().getStopTime() != null) {
+        if (bucketDocument.getEvent().getStopTime() != null) {
             final String eventMetadataStopSecondsPath =
                     pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
             writer.writeLong(
                     eventMetadataStopSecondsPath,
-                    bucketDocument.getEventMetadata().getStopTime().getSeconds());
+                    bucketDocument.getEvent().getStopTime().getSeconds());
             final String eventMetadataStopNanosPath =
                     pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
             writer.writeLong(
                     eventMetadataStopNanosPath,
-                    bucketDocument.getEventMetadata().getStopTime().getNanos());
+                    bucketDocument.getEvent().getStopTime().getNanos());
         }
 
         // providerId

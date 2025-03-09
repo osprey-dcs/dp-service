@@ -24,10 +24,8 @@ public class BucketDocument extends DpBsonDocumentBase {
 
     private String id;
     private String pvName;
-    private EventMetadataDocument eventMetadata;
     private DataColumnDocument dataColumn;
     private DataTimestampsDocument dataTimestamps;
-    private Map<String, String> attributeMap;
     private String providerId;
     private String clientRequestId;
 
@@ -47,14 +45,6 @@ public class BucketDocument extends DpBsonDocumentBase {
         this.pvName = pvName;
     }
 
-    public EventMetadataDocument getEventMetadata() {
-        return eventMetadata;
-    }
-
-    public void setEventMetadata(EventMetadataDocument eventMetadata) {
-        this.eventMetadata = eventMetadata;
-    }
-
     public DataColumnDocument getDataColumn() {
         return dataColumn;
     }
@@ -69,14 +59,6 @@ public class BucketDocument extends DpBsonDocumentBase {
 
     public void setDataTimestamps(DataTimestampsDocument dataTimestamps) {
         this.dataTimestamps = dataTimestamps;
-    }
-
-    public Map<String, String> getAttributeMap() {
-        return attributeMap;
-    }
-
-    public void setAttributeMap(Map<String, String> attributeMap) {
-        this.attributeMap = attributeMap;
     }
 
     public String getProviderId() {
@@ -139,12 +121,12 @@ public class BucketDocument extends DpBsonDocumentBase {
             // add attributes
             final Map<String, String> attributeMap =
                     AttributesUtility.attributeMapFromList(request.getAttributesList());
-            bucket.setAttributeMap(attributeMap);
+            bucket.setAttributes(attributeMap);
 
             // create EventMetadataDocument for request EventMetadata
             EventMetadataDocument eventMetadataDocument =
                     EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
-            bucket.setEventMetadata(eventMetadataDocument);
+            bucket.setEvent(eventMetadataDocument);
 
             bucketList.add(bucket);
         }
@@ -168,8 +150,8 @@ public class BucketDocument extends DpBsonDocumentBase {
         bucketBuilder.setDataColumn(dataColumn);
 
         // add attributes
-        if (document.getAttributeMap() != null) {
-            for (var documentAttributeMapEntry : document.getAttributeMap().entrySet()) {
+        if (document.getAttributes() != null) {
+            for (var documentAttributeMapEntry : document.getAttributes().entrySet()) {
                 final String documentAttributeKey = documentAttributeMapEntry.getKey();
                 final String documentAttributeValue = documentAttributeMapEntry.getValue();
                 final Attribute responseAttribute = Attribute.newBuilder()
@@ -181,8 +163,8 @@ public class BucketDocument extends DpBsonDocumentBase {
         }
 
         // add event metadata
-        if (document.getEventMetadata() != null) {
-            final EventMetadataDocument eventMetadataDocument = document.getEventMetadata();
+        if (document.getEvent() != null) {
+            final EventMetadataDocument eventMetadataDocument = document.getEvent();
             bucketBuilder.setEventMetadata(eventMetadataDocument.toEventMetadata());
         }
 

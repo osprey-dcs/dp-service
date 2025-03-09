@@ -51,9 +51,9 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         Bson updates = Updates.combine(
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName()),
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_DESCRIPTION, request.getDescription()),
-                Updates.set(BsonConstants.BSON_KEY_PROVIDER_TAGS, request.getTagsList()),
+                Updates.set(BsonConstants.BSON_KEY_TAGS, request.getTagsList()),
                 Updates.set(
-                        BsonConstants.BSON_KEY_PROVIDER_ATTRIBUTES,
+                        BsonConstants.BSON_KEY_ATTRIBUTES,
                         AttributesUtility.attributeMapFromList(request.getAttributesList())),
                 Updates.setOnInsert(BsonConstants.BSON_KEY_CREATED_AT, instantNow),
                 Updates.set(BsonConstants.BSON_KEY_UPDATED_AT, instantNow)

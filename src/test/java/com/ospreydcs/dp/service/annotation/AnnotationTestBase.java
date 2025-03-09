@@ -1016,11 +1016,11 @@ public class AnnotationTestBase {
         final String attributeMapKeysPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
         if (reader.object().getDataSetInformation(attributeMapKeysPath).getSize() > 0) {
             assertArrayEquals(
-                    bucketDocument.getAttributeMap().keySet().toArray(new String[0]),
+                    bucketDocument.getAttributes().keySet().toArray(new String[0]),
                     reader.readStringArray(attributeMapKeysPath));
             final String attributeMapValuesPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
             assertArrayEquals(
-                    bucketDocument.getAttributeMap().values().toArray(new String[0]),
+                    bucketDocument.getAttributes().values().toArray(new String[0]),
                     reader.readStringArray(attributeMapValuesPath));
         }
 
@@ -1028,32 +1028,32 @@ public class AnnotationTestBase {
         final String eventMetadataDescriptionPath =
                 pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
         assertEquals(
-                bucketDocument.getEventMetadata().getDescription(),
+                bucketDocument.getEvent().getDescription(),
                 reader.readString(eventMetadataDescriptionPath));
 
-        if (bucketDocument.getEventMetadata().getStartTime() != null) {
+        if (bucketDocument.getEvent().getStartTime() != null) {
             final String eventMetadataStartSecondsPath =
                     pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
             assertEquals(
-                    bucketDocument.getEventMetadata().getStartTime().getSeconds(),
+                    bucketDocument.getEvent().getStartTime().getSeconds(),
                     reader.readLong(eventMetadataStartSecondsPath));
             final String eventMetadataStartNanosPath =
                     pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
             assertEquals(
-                    bucketDocument.getEventMetadata().getStartTime().getNanos(),
+                    bucketDocument.getEvent().getStartTime().getNanos(),
                     reader.readLong(eventMetadataStartNanosPath));
         }
 
-        if (bucketDocument.getEventMetadata().getStopTime() != null) {
+        if (bucketDocument.getEvent().getStopTime() != null) {
             final String eventMetadataStopSecondsPath =
                     pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
             assertEquals(
-                    bucketDocument.getEventMetadata().getStopTime().getSeconds(),
+                    bucketDocument.getEvent().getStopTime().getSeconds(),
                     reader.readLong(eventMetadataStopSecondsPath));
             final String eventMetadataStopNanosPath =
                     pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
             assertEquals(
-                    bucketDocument.getEventMetadata().getStopTime().getNanos(),
+                    bucketDocument.getEvent().getStopTime().getNanos(),
                     reader.readLong(eventMetadataStopNanosPath));
         }
 
