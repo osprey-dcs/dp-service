@@ -118,15 +118,24 @@ public class BucketDocument extends DpBsonDocumentBase {
             // embed requestDataTimesetampsDocument within each BucketDocument
             bucket.setDataTimestamps(requestDataTimestampsDocument);
 
+            // add tags
+            if ( ! request.getTagsList().isEmpty()) {
+                bucket.setTags(request.getTagsList());
+            }
+
             // add attributes
-            final Map<String, String> attributeMap =
-                    AttributesUtility.attributeMapFromList(request.getAttributesList());
-            bucket.setAttributes(attributeMap);
+            if ( ! request.getAttributesList().isEmpty()) {
+                final Map<String, String> attributeMap =
+                        AttributesUtility.attributeMapFromList(request.getAttributesList());
+                bucket.setAttributes(attributeMap);
+            }
 
             // create EventMetadataDocument for request EventMetadata
-            EventMetadataDocument eventMetadataDocument =
-                    EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
-            bucket.setEvent(eventMetadataDocument);
+            if (request.hasEventMetadata()) {
+                EventMetadataDocument eventMetadataDocument =
+                        EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
+                bucket.setEvent(eventMetadataDocument);
+            }
 
             bucketList.add(bucket);
         }
@@ -148,6 +157,11 @@ public class BucketDocument extends DpBsonDocumentBase {
         // add data values
         DataColumn dataColumn = document.getDataColumn().toDataColumn();
         bucketBuilder.setDataColumn(dataColumn);
+
+        // add tags
+        if (document.getTags() != null) {
+            bucketBuilder.addAllTags(document.getTags());
+        }
 
         // add attributes
         if (document.getAttributes() != null) {

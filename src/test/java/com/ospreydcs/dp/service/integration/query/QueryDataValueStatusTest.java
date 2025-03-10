@@ -26,7 +26,7 @@ import static org.junit.Assert.assertEquals;
  * Provides coverage for ingestion and query of DataValues containing ValueStatus information.
  */
 @RunWith(JUnit4.class)
-public class ValueStatusTest extends GrpcIntegrationTestBase {
+public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

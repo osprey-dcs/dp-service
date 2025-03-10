@@ -65,7 +65,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     providerId,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket, false);
+                                    numSecondsPerBucket, false, null, null, null, null, null, null, null);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
 
@@ -83,7 +83,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     providerId,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket, false);
+                                    numSecondsPerBucket, false, null, null, null, null, null, null, null);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
             }

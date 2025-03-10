@@ -141,6 +141,13 @@ public abstract class GrpcIntegrationTestBase {
         public final int numBuckets;
         public final int numSecondsPerBucket;
         public final boolean useExplicitTimestampList;
+        public final List<String> tags;
+        public final Map<String, String> attributes;
+        public final String eventDescription;
+        public final Long eventStartSeconds;
+        public final Long eventStartNanos;
+        public final Long eventStopSeconds;
+        public final Long eventStopNanos;
 
         public IngestionColumnInfo(
                 String columnName,
@@ -148,7 +155,7 @@ public abstract class GrpcIntegrationTestBase {
                 String providerId, long measurementInterval,
                 int numBuckets,
                 int numSecondsPerBucket,
-                boolean useExplicitTimestampList
+                boolean useExplicitTimestampList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
         ) {
             this.columnName = columnName;
             this.requestIdBase = requestIdBase;
@@ -157,6 +164,13 @@ public abstract class GrpcIntegrationTestBase {
             this.numBuckets = numBuckets;
             this.numSecondsPerBucket = numSecondsPerBucket;
             this.useExplicitTimestampList = useExplicitTimestampList;
+            this.tags = tags;
+            this.attributes = attributes;
+            this.eventDescription = eventDescription;
+            this.eventStartSeconds = eventStartSeconds;
+            this.eventStartNanos = eventStartNanos;
+            this.eventStopSeconds = eventStopSeconds;
+            this.eventStopNanos = eventStopNanos;
         }
     }
 
@@ -174,6 +188,13 @@ public abstract class GrpcIntegrationTestBase {
         public final List<Object> dataValues;
         public final List<Long> timestampSecondsList;
         public final List<Long> timestampNanosList;
+        public final List<String> tags;
+        public final Map<String, String> attributes;
+        public final String eventDescription;
+        public final Long eventStartSeconds;
+        public final Long eventStartNanos;
+        public final Long eventStopSeconds;
+        public final Long eventStopNanos;
 
         public IngestionBucketInfo(
                 String providerId,
@@ -186,7 +207,7 @@ public abstract class GrpcIntegrationTestBase {
                 long intervalNanos,
                 List<Object> dataValues,
                 List<Long> timestampSecondsList,
-                List<Long> timestampNanosList
+                List<Long> timestampNanosList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
         ) {
             this.providerId = providerId;
             this.requestId = requestId;
@@ -199,6 +220,13 @@ public abstract class GrpcIntegrationTestBase {
             this.dataValues = dataValues;
             this.timestampSecondsList = timestampSecondsList;
             this.timestampNanosList = timestampNanosList;
+            this.tags = tags;
+            this.attributes = attributes;
+            this.eventDescription = eventDescription;
+            this.eventStartSeconds = eventStartSeconds;
+            this.eventStartNanos = eventStartNanos;
+            this.eventStopSeconds = eventStopSeconds;
+            this.eventStopNanos = eventStopNanos;
         }
     }
 
@@ -676,9 +704,30 @@ public abstract class GrpcIntegrationTestBase {
             // compare data value vectors
             final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
             final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
-
             // this compares each DataValue including ValueStatus, confirmed in debugger
             assertEquals(requestDataColumn, bucketDataColumn);
+
+            // check tags
+            if (params.tags != null) {
+                assertEquals(params.tags, bucketDocument.getTags());
+            } else {
+                assertTrue(bucketDocument.getTags() == null || bucketDocument.getTags().isEmpty());
+            }
+
+            // check attributes
+            if (params.attributes != null) {
+                assertEquals(params.attributes, bucketDocument.getAttributes());
+            } else {
+                assertTrue(bucketDocument.getAttributes() == null || bucketDocument.getAttributes().isEmpty());
+            }
+
+            // check event metadata
+            if (params.eventDescription != null) {
+                assertTrue(bucketDocument.getEvent() != null);
+                assertEquals(request.getEventMetadata(), bucketDocument.getEvent().toEventMetadata());
+            } else {
+                assertTrue(bucketDocument.getEvent() == null);
+            }
 
             pvIndex = pvIndex + 1;
         }
@@ -791,7 +840,14 @@ public abstract class GrpcIntegrationTestBase {
                             numSamplesPerBucket,
                             List.of(columnName),
                             IngestionTestBase.IngestionDataType.DOUBLE,
-                            columnValues, null);
+                            columnValues,
+                            columnInfo.tags,
+                            columnInfo.attributes,
+                            columnInfo.eventDescription,
+                            columnInfo.eventStartSeconds,
+                            columnInfo.eventStartNanos,
+                            columnInfo.eventStopSeconds,
+                            columnInfo.eventStopNanos);
             paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
@@ -812,7 +868,14 @@ public abstract class GrpcIntegrationTestBase {
                             bucketInfoSamplePeriod,
                             dataValuesList,
                             timestampSecondsList,
-                            timestampNanosList);
+                            timestampNanosList,
+                            columnInfo.tags,
+                            columnInfo.attributes,
+                            columnInfo.eventDescription,
+                            columnInfo.eventStartSeconds,
+                            columnInfo.eventStartNanos,
+                            columnInfo.eventStopSeconds,
+                            columnInfo.eventStopNanos);
             bucketInfoMap.put(currentSeconds, startNanos, bucketInfo);
 
             // build request
@@ -869,6 +932,15 @@ public abstract class GrpcIntegrationTestBase {
 
         List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
 
+        // create tags, attributes, and events for use in events
+        final List<String> tags = List.of("gauges", "pumps");
+        final Map<String, String> attributes = Map.of("sector", "01", "subsystem", "vacuum");
+        final String eventDescription = "Vacuum pump maintenance";
+        final long eventStartSeconds = startSeconds;
+        final long eventStartNanos = startNanos;
+        final long eventStopSeconds = startSeconds + 1;
+        final long eventStopNanos = 0L;
+
         // create data for 10 sectors, each containing 3 gauges and 3 bpms
         final Set<String> gccPvNames = new TreeSet<>();
         final Set<String> bpmPvNames = new TreeSet<>();
@@ -890,7 +962,14 @@ public abstract class GrpcIntegrationTestBase {
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
-                                false);
+                                false,
+                                tags,
+                                attributes,
+                                eventDescription,
+                                eventStartSeconds,
+                                eventStartNanos,
+                                eventStopSeconds,
+                                eventStopNanos);
                 gccPvNames.add(gccName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
@@ -910,7 +989,7 @@ public abstract class GrpcIntegrationTestBase {
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
-                                false);
+                                false, null, null, null, null, null, null, null);
                 bpmPvNames.add(bpmName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
@@ -1472,6 +1551,10 @@ public abstract class GrpcIntegrationTestBase {
         int validatedBuckets = 0;
         for (var validationMapEntry : validationMap.entrySet()) {
             final String columnName = validationMapEntry.getKey();
+            if ( ! pvNames.contains(columnName)) {
+                // skip pv if not included in query
+                continue;
+            }
             final IngestionStreamInfo columnStreamInfo = validationMapEntry.getValue();
             for (var bucketInfoMapEntry : columnStreamInfo.bucketInfoMap.entrySet()) {
                 final long bucketSecond = bucketInfoMapEntry.getKey();
@@ -1515,6 +1598,49 @@ public abstract class GrpcIntegrationTestBase {
                         assertEquals(expectedDataValue, actualDataValue, 0.0);
 
                         valueIndex = valueIndex + 1;
+                    }
+
+                    // check tags
+                    if (columnBucketInfo.tags != null) {
+                        assertEquals(columnBucketInfo.tags, responseBucket.getTagsList());
+                    } else {
+                        assertTrue(responseBucket.getTagsList().isEmpty());
+                    }
+
+                    // check attributes
+                    if (columnBucketInfo.attributes != null) {
+                        assertEquals(
+                                columnBucketInfo.attributes,
+                                AttributesUtility.attributeMapFromList(responseBucket.getAttributesList()));
+                    } else {
+                        assertTrue(responseBucket.getAttributesList().isEmpty());
+                    }
+
+                    // check event metadata
+                    if (columnBucketInfo.eventDescription != null) {
+                        assertEquals(
+                                columnBucketInfo.eventDescription,
+                                responseBucket.getEventMetadata().getDescription());
+                    }
+                    if (columnBucketInfo.eventStartSeconds != null) {
+                        assertEquals(
+                                (long) columnBucketInfo.eventStartSeconds,
+                                responseBucket.getEventMetadata().getStartTimestamp().getEpochSeconds());
+                    }
+                    if (columnBucketInfo.eventStartNanos != null) {
+                        assertEquals(
+                                (long) columnBucketInfo.eventStartNanos,
+                                responseBucket.getEventMetadata().getStartTimestamp().getNanoseconds());
+                    }
+                    if (columnBucketInfo.eventStopSeconds != null) {
+                        assertEquals(
+                                (long) columnBucketInfo.eventStopSeconds,
+                                responseBucket.getEventMetadata().getStopTimestamp().getEpochSeconds());
+                    }
+                    if (columnBucketInfo.eventStopNanos != null) {
+                        assertEquals(
+                                (long) columnBucketInfo.eventStopNanos,
+                                responseBucket.getEventMetadata().getStopTimestamp().getNanoseconds());
                     }
 
                     validatedBuckets = validatedBuckets + 1;

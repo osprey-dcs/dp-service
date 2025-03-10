@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @RunWith(JUnit4.class)
-public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
+public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -64,7 +64,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             intervalTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths, 
-                            false);
+                            false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoTenths);
         }
 
@@ -82,7 +82,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             intervalFifths,
                             numBucketsFifths,
                             numSecondsPerBucketFifths, 
-                            false);
+                            false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoFifths);
         }
 
@@ -100,7 +100,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             intervalQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters, 
-                            false);
+                            false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoQuarters);
         }
 
@@ -118,7 +118,7 @@ public class StaggeredTimestampTest extends GrpcIntegrationTestBase {
                             intervalEighths,
                             numBucketsEighths,
                             numSecondsPerBucketEighths,
-                            true); // specify that DataTimestamps in request should use explicit TimestampsList
+                            true, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
             columnInfoList.add(columnInfoEighths);
         }
 

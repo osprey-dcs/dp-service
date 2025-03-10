@@ -7,17 +7,20 @@ import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 import java.util.List;
 
-public class IngestDataTypesStreamingTest extends IngestDataTypesTestBase {
+@RunWith(JUnit4.class)
+public class IngestDataUnaryTypesTest extends IngestDataTypesTestBase {
 
     @Override
     protected List<BucketDocument> sendAndVerifyIngestionRpc_(
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest
     ) {
-        return sendAndVerifyIngestDataBidiStream(params, ingestionRequest);
+        return sendAndVerifyIngestData(params, ingestionRequest);
     }
 
     @BeforeClass

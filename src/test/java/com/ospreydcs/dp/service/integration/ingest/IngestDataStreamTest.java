@@ -10,7 +10,7 @@ import org.junit.Test;
 import java.time.Instant;
 import java.util.*;
 
-public class IngestDataUnidirectionalStreamTest extends GrpcIntegrationTestBase {
+public class IngestDataStreamTest extends GrpcIntegrationTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -59,7 +59,8 @@ public class IngestDataUnidirectionalStreamTest extends GrpcIntegrationTestBase 
                                 1,
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null);
+                                values,
+                                null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);
@@ -85,7 +86,8 @@ public class IngestDataUnidirectionalStreamTest extends GrpcIntegrationTestBase 
                                 1,
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null);
+                                values,
+                                null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);

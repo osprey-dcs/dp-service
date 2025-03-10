@@ -47,6 +47,7 @@ public class IngestionTestBase {
         public IngestionDataType dataType = null;
         public List<List<Object>> values = null;
         public List<List<DataValue.ValueStatus>> valuesStatus = null;
+        public List<String> tags = null;
         public Map<String, String> attributes = null;
         public String eventDescription = null;
         public Long eventStartSeconds = null;
@@ -100,6 +101,7 @@ public class IngestionTestBase {
                 List<String> columnNames,
                 IngestionDataType dataType,
                 List<List<Object>> values,
+                List<String> tags,
                 Map<String, String> attributes,
                 String eventDescription,
                 Long eventStartSeconds,
@@ -123,6 +125,7 @@ public class IngestionTestBase {
                     values,
                     null);
 
+            this.tags = tags;
             this.attributes = attributes;
             this.eventDescription = eventDescription;
             this.eventStartSeconds = eventStartSeconds;
@@ -275,6 +278,11 @@ public class IngestionTestBase {
                 dataColumnBuilder.build();
                 dataFrameBuilder.addDataColumns(dataColumnBuilder);
             }
+        }
+
+        // add tags if specified
+        if (params.tags != null) {
+            requestBuilder.addAllTags(params.tags);
         }
 
         // add attributes if specified
