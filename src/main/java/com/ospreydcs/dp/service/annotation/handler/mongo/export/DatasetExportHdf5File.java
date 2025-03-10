@@ -52,6 +52,7 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
     public final static String DATASET_SAMPLE_PERIOD = "samplePeriod";
     public final static String DATASET_DATA_COLUMN_BYTES = "dataColumnBytes";
     public final static String DATASET_DATA_TIMESTAMPS_BYTES = "dataTimestampsBytes";
+    public final static String DATASET_TAGS = "tags";
     public final static String DATASET_ATTRIBUTE_MAP_KEYS = "attributeMapKeys";
     public final static String DATASET_ATTRIBUTE_MAP_VALUES = "attributeMapValues";
     public final static String DATASET_EVENT_METADATA_DESCRIPTION = "eventMetadataDescription";
@@ -188,43 +189,51 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         final String dataTimestampsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
         writer.writeByteArray(dataTimestampsPath, bucketDocument.getDataTimestamps().getBytes());
 
-        // attributeMap - write keys to one array and values to another
-        Objects.requireNonNull(bucketDocument.getAttributes());
-        final String attributeMapKeysPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
-        writer.writeStringArray(attributeMapKeysPath, bucketDocument.getAttributes().keySet().toArray(new String[0]));
-        final String attributeMapValuesPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
-        writer.writeStringArray(attributeMapValuesPath, bucketDocument.getAttributes().values().toArray(new String[0]));
-
-        // eventMetadata - description, start/stop times
-        Objects.requireNonNull(bucketDocument.getEvent());
-        final String eventMetadataDescriptionPath = 
-                pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
-        writer.writeString(eventMetadataDescriptionPath, bucketDocument.getEvent().getDescription());
-
-        if (bucketDocument.getEvent().getStartTime() != null) {
-            final String eventMetadataStartSecondsPath =
-                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
-            writer.writeLong(
-                    eventMetadataStartSecondsPath,
-                    bucketDocument.getEvent().getStartTime().getSeconds());
-            final String eventMetadataStartNanosPath =
-                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
-            writer.writeLong(
-                    eventMetadataStartNanosPath,
-                    bucketDocument.getEvent().getStartTime().getNanos());
+        // tags
+        if (bucketDocument.getTags() != null) {
+            final String tagsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_TAGS;
+            writer.writeStringArray(tagsPath, bucketDocument.getTags().toArray(new String[0]));
         }
 
-        if (bucketDocument.getEvent().getStopTime() != null) {
-            final String eventMetadataStopSecondsPath =
-                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
-            writer.writeLong(
-                    eventMetadataStopSecondsPath,
-                    bucketDocument.getEvent().getStopTime().getSeconds());
-            final String eventMetadataStopNanosPath =
-                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
-            writer.writeLong(
-                    eventMetadataStopNanosPath,
-                    bucketDocument.getEvent().getStopTime().getNanos());
+        // attributeMap - write keys to one array and values to another
+        if (bucketDocument.getAttributes() != null) {
+            final String attributeMapKeysPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
+            writer.writeStringArray(attributeMapKeysPath, bucketDocument.getAttributes().keySet().toArray(new String[0]));
+            final String attributeMapValuesPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_VALUES;
+            writer.writeStringArray(attributeMapValuesPath, bucketDocument.getAttributes().values().toArray(new String[0]));
+        }
+
+        // eventMetadata - description, start/stop times
+        if (bucketDocument.getEvent() != null) {
+            final String eventMetadataDescriptionPath =
+                    pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
+            writer.writeString(eventMetadataDescriptionPath, bucketDocument.getEvent().getDescription());
+
+            if (bucketDocument.getEvent().getStartTime() != null) {
+                final String eventMetadataStartSecondsPath =
+                        pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
+                writer.writeLong(
+                        eventMetadataStartSecondsPath,
+                        bucketDocument.getEvent().getStartTime().getSeconds());
+                final String eventMetadataStartNanosPath =
+                        pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
+                writer.writeLong(
+                        eventMetadataStartNanosPath,
+                        bucketDocument.getEvent().getStartTime().getNanos());
+            }
+
+            if (bucketDocument.getEvent().getStopTime() != null) {
+                final String eventMetadataStopSecondsPath =
+                        pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
+                writer.writeLong(
+                        eventMetadataStopSecondsPath,
+                        bucketDocument.getEvent().getStopTime().getSeconds());
+                final String eventMetadataStopNanosPath =
+                        pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
+                writer.writeLong(
+                        eventMetadataStopNanosPath,
+                        bucketDocument.getEvent().getStopTime().getNanos());
+            }
         }
 
         // providerId

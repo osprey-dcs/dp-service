@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
+import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -1012,9 +1013,21 @@ public class AnnotationTestBase {
                 bucketDocument.getDataTimestamps().getBytes(),
                 reader.readAsByteArray(dataTimestampsPath));
 
-        // attributeMap - write keys to one array and values to another
+        // tags
+        final String tagsPath = pvBucketPath + PATH_SEPARATOR + DATASET_TAGS;
+        if (bucketDocument.getTags() != null) {
+            assertTrue(reader.object().exists(tagsPath));
+            assertArrayEquals(
+                    bucketDocument.getTags().toArray(new String[0]),
+                    reader.readStringArray(tagsPath));
+        } else {
+            assertFalse(reader.object().exists(tagsPath));
+        }
+
+        // attributeMap - one array for keys and one for values
         final String attributeMapKeysPath = pvBucketPath + PATH_SEPARATOR + DATASET_ATTRIBUTE_MAP_KEYS;
-        if (reader.object().getDataSetInformation(attributeMapKeysPath).getSize() > 0) {
+        if (bucketDocument.getAttributes() != null) {
+            assertTrue(reader.object().exists(attributeMapKeysPath));
             assertArrayEquals(
                     bucketDocument.getAttributes().keySet().toArray(new String[0]),
                     reader.readStringArray(attributeMapKeysPath));
@@ -1022,39 +1035,58 @@ public class AnnotationTestBase {
             assertArrayEquals(
                     bucketDocument.getAttributes().values().toArray(new String[0]),
                     reader.readStringArray(attributeMapValuesPath));
+        } else {
+            assertFalse(reader.object().exists(attributeMapKeysPath));
         }
 
         // eventMetadata - description, start/stop times
         final String eventMetadataDescriptionPath =
                 pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_DESCRIPTION;
-        assertEquals(
-                bucketDocument.getEvent().getDescription(),
-                reader.readString(eventMetadataDescriptionPath));
+        final String eventMetadataStartSecondsPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
+        final String eventMetadataStartNanosPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
+        final String eventMetadataStopSecondsPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
+        final String eventMetadataStopNanosPath =
+                pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
+        if (bucketDocument.getEvent() != null) {
+            final EventMetadataDocument bucketEvent = bucketDocument.getEvent();
+            
+            if (bucketEvent.getDescription() != null) {
+                assertTrue(reader.object().exists(eventMetadataDescriptionPath));
+                assertEquals(
+                        bucketEvent.getDescription(),
+                        reader.readString(eventMetadataDescriptionPath));
+            }
 
-        if (bucketDocument.getEvent().getStartTime() != null) {
-            final String eventMetadataStartSecondsPath =
-                    pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_SECONDS;
-            assertEquals(
-                    bucketDocument.getEvent().getStartTime().getSeconds(),
-                    reader.readLong(eventMetadataStartSecondsPath));
-            final String eventMetadataStartNanosPath =
-                    pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_START_NANOS;
-            assertEquals(
-                    bucketDocument.getEvent().getStartTime().getNanos(),
-                    reader.readLong(eventMetadataStartNanosPath));
-        }
+            if (bucketEvent.getStartTime() != null) {
+                assertTrue(reader.object().exists(eventMetadataStartSecondsPath));
+                assertEquals(
+                        bucketEvent.getStartTime().getSeconds(),
+                        reader.readLong(eventMetadataStartSecondsPath));
+                assertTrue(reader.object().exists(eventMetadataStartNanosPath));
+                assertEquals(
+                        bucketEvent.getStartTime().getNanos(),
+                        reader.readLong(eventMetadataStartNanosPath));
+            }
 
-        if (bucketDocument.getEvent().getStopTime() != null) {
-            final String eventMetadataStopSecondsPath =
-                    pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_SECONDS;
-            assertEquals(
-                    bucketDocument.getEvent().getStopTime().getSeconds(),
-                    reader.readLong(eventMetadataStopSecondsPath));
-            final String eventMetadataStopNanosPath =
-                    pvBucketPath + PATH_SEPARATOR + DATASET_EVENT_METADATA_STOP_NANOS;
-            assertEquals(
-                    bucketDocument.getEvent().getStopTime().getNanos(),
-                    reader.readLong(eventMetadataStopNanosPath));
+            if (bucketEvent.getStopTime() != null) {
+                assertTrue(reader.object().exists(eventMetadataStopSecondsPath));
+                assertEquals(
+                        bucketEvent.getStopTime().getSeconds(),
+                        reader.readLong(eventMetadataStopSecondsPath));
+                assertTrue(reader.object().exists(eventMetadataStopNanosPath));
+                assertEquals(
+                        bucketEvent.getStopTime().getNanos(),
+                        reader.readLong(eventMetadataStopNanosPath));
+            }
+        } else {
+            assertFalse(reader.object().exists(eventMetadataDescriptionPath));
+            assertFalse(reader.object().exists(eventMetadataStartSecondsPath));
+            assertFalse(reader.object().exists(eventMetadataStartNanosPath));
+            assertFalse(reader.object().exists(eventMetadataStopSecondsPath));
+            assertFalse(reader.object().exists(eventMetadataStopNanosPath));
         }
 
         // providerId
