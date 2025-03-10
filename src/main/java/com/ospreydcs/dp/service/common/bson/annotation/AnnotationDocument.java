@@ -94,12 +94,18 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         document.setName(request.getName());
         document.setAnnotationIds(request.getAnnotationIdsList());
         document.setComment(request.getComment());
-        document.setTags(request.getTagsList());
 
-        // create map of attributes and add to document
-        final Map<String, String> attributeMap =
-                AttributesUtility.attributeMapFromList(request.getAttributesList());
-        document.setAttributes(attributeMap);
+        // only set tags if specified in request
+        if (request.getTagsCount() > 0) {
+            document.setTags(request.getTagsList());
+        }
+
+        // only set attributes if specified in request
+        if (request.getAttributesCount() > 0) {
+            final Map<String, String> attributeMap =
+                    AttributesUtility.attributeMapFromList(request.getAttributesList());
+            document.setAttributes(attributeMap);
+        }
 
         // add event metadata from request to document
         if (request.hasEventMetadata()) {
@@ -127,8 +133,18 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         annotationBuilder.setName(this.getName());
         annotationBuilder.addAllAnnotationIds(this.getAnnotationIds());
         annotationBuilder.setComment(this.getComment());
-        annotationBuilder.addAllTags(this.getTags());
-        annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+
+        // only set tags if specified in document
+        if (this.getTags() != null) {
+            annotationBuilder.addAllTags(this.getTags());
+        }
+
+        // only set attributes if specified in document
+        if (this.getAttributes() != null) {
+            annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        }
+
+        // only set event metadata if specified in document
         if (this.getEvent() != null) {
             annotationBuilder.setEventMetadata(EventMetadataDocument.toEventMetadata(this.getEvent()));
         }
@@ -190,25 +206,39 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         }
 
         // diff tags list
-        final Collection<String> tagsDisjunction = 
-                CollectionUtils.disjunction(request.getTagsList(), this.getTags());
-        if ( ! tagsDisjunction.isEmpty()) {
-            final String msg =
-                    "tags mismatch: " + this.getTags()
-                            + " disjunction: " + tagsDisjunction;
-            diffs.add(msg);
+        if (this.getTags() != null) {
+            final Collection<String> tagsDisjunction =
+                    CollectionUtils.disjunction(request.getTagsList(), this.getTags());
+            if (!tagsDisjunction.isEmpty()) {
+                final String msg =
+                        "tags mismatch: " + this.getTags()
+                                + " disjunction: " + tagsDisjunction;
+                diffs.add(msg);
+            }
+        } else {
+            if (request.getTagsCount() > 0) {
+                final String msg = "tags mismatch: null expected: " + request.getTagsList();
+                diffs.add(msg);
+            }
         }
         
         // diff attributes
-        final Collection<Attribute> attributesDisjunction =
-                CollectionUtils.disjunction(
-                        request.getAttributesList(),
-                        AttributesUtility.attributeListFromMap(this.getAttributes()));
-        if ( ! attributesDisjunction.isEmpty()) {
-            final String msg =
-                    "attributes mismatch: " + this.getAttributes()
-                            + " disjunction: " + attributesDisjunction;
-            diffs.add(msg);
+        if (this.getAttributes() != null) {
+            final Collection<Attribute> attributesDisjunction =
+                    CollectionUtils.disjunction(
+                            request.getAttributesList(),
+                            AttributesUtility.attributeListFromMap(this.getAttributes()));
+            if (!attributesDisjunction.isEmpty()) {
+                final String msg =
+                        "attributes mismatch: " + this.getAttributes()
+                                + " disjunction: " + attributesDisjunction;
+                diffs.add(msg);
+            }
+        } else {
+            if (request.getAttributesCount() > 0) {
+                final String msg = "attributes mismatch: null expected: " + request.getAttributesList();
+                diffs.add(msg);
+            }
         }
 
         // diff eventMetadata
@@ -219,6 +249,11 @@ public class AnnotationDocument extends DpBsonDocumentBase {
                 final String msg =
                         "eventMetadata mismatch: " + thisEventMetadata
                                 + " expected: " + request.getEventMetadata();
+                diffs.add(msg);
+            }
+        } else {
+            if (request.hasEventMetadata()) {
+                final String msg = "eventMetadata mismatch: null expected: " + request.getEventMetadata();
                 diffs.add(msg);
             }
         }

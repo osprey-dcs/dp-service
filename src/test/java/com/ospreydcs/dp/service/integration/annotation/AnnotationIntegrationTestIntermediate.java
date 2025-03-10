@@ -65,7 +65,15 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     providerId,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket, false, null, null, null, null, null, null, null);
+                                    numSecondsPerBucket,
+                                    false,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
 
@@ -83,7 +91,15 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     providerId,
                                     interval,
                                     numBuckets,
-                                    numSecondsPerBucket, false, null, null, null, null, null, null, null);
+                                    numSecondsPerBucket,
+                                    false,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null);
                     ingestionColumnInfoList.add(columnInfoTenths);
                 }
             }
@@ -228,7 +244,20 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
              * Create annotations for two different owners, each with two different types of annotations.
              * We'll save a list of one type of annotation for one of the owners for use in verifying
              * the queryAnnotations() positive test results.
+             *
+             * The first set of annotations includes values for tags, attributes, and event metadata.  The second
+             * set of annotations does not include those descriptive fields so that we can test both cases.
              */
+
+            final List<String> tags = List.of("unit tests", "positive");
+            final Map<String, String> attributeMap = Map.of("service", "annotation", "feature", "annotation");
+            final EventMetadataUtility.EventMetadataParams eventMetadataParams =
+                    new EventMetadataUtility.EventMetadataParams(
+                            "unit test event",
+                            startSeconds,
+                            0L,
+                            null,
+                            null);
 
             final String firstHalfBase = "first half: ";
             final String secondHalfBase = "second half: ";
@@ -245,9 +274,10 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     List.of(firstHalfDataSetId),
                                     null,
                                     firstHalfComment,
-                                    null,
-                                    null,
-                                    null, null);
+                                    tags,
+                                    attributeMap,
+                                    eventMetadataParams,
+                                    null);
                     final String createdAnnotationId = sendAndVerifyCreateAnnotation(
                             firstHalfParams, false, "");
                     expectedQueryByNameAnnotations.add(firstHalfParams);
@@ -271,7 +301,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     secondHalfComment,
                                     null,
                                     null,
-                                    null, null);
+                                    null,
+                                    null);
                     secondHalfAnnotationIds.add(
                             sendAndVerifyCreateAnnotation(
                                     secondHalfParams, false, ""));

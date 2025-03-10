@@ -51,13 +51,19 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         Bson updates = Updates.combine(
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_NAME, request.getProviderName()),
                 Updates.set(BsonConstants.BSON_KEY_PROVIDER_DESCRIPTION, request.getDescription()),
-                Updates.set(BsonConstants.BSON_KEY_TAGS, request.getTagsList()),
-                Updates.set(
-                        BsonConstants.BSON_KEY_ATTRIBUTES,
-                        AttributesUtility.attributeMapFromList(request.getAttributesList())),
                 Updates.setOnInsert(BsonConstants.BSON_KEY_CREATED_AT, instantNow),
                 Updates.set(BsonConstants.BSON_KEY_UPDATED_AT, instantNow)
         );
+        if ( ! request.getTagsList().isEmpty()) {
+            updates = Updates.combine(updates, Updates.set(BsonConstants.BSON_KEY_TAGS, request.getTagsList()));
+        }
+        if ( ! request.getAttributesList().isEmpty()) {
+            updates = Updates.combine(
+                    updates,
+                    Updates.set(
+                            BsonConstants.BSON_KEY_ATTRIBUTES,
+                            AttributesUtility.attributeMapFromList(request.getAttributesList())));
+        }
 
         UpdateOptions options = new UpdateOptions().upsert(true);
 

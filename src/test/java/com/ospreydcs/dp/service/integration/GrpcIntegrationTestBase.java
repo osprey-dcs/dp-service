@@ -395,10 +395,12 @@ public abstract class GrpcIntegrationTestBase {
         if (params.tags != null) {
             assertEquals(params.tags, providerDocument.getTags());
         } else {
-            assertTrue(providerDocument.getTags().isEmpty());
+            assertTrue(providerDocument.getTags() == null);
         }
         if (params.attributes != null) {
             assertEquals(params.attributes, providerDocument.getAttributes());
+        } else {
+            assertTrue(providerDocument.getAttributes() == null);
         }
         assertNotNull(providerDocument.getCreatedAt());
         assertNotNull(providerDocument.getUpdatedAt());
@@ -2137,7 +2139,7 @@ public abstract class GrpcIntegrationTestBase {
         assertNotNull(annotationDocument.getCreatedAt());
         final List<String> requestDiffs = annotationDocument.diffCreateAnnotationRequest(request);
         assertNotNull(requestDiffs);
-        assertTrue(requestDiffs.isEmpty());
+        assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
         // validate calculations if specified
         if (params.calculations != null) {
@@ -2148,7 +2150,7 @@ public abstract class GrpcIntegrationTestBase {
             assertNotNull(calculationsDocument.getCreatedAt());
             final List<String> calculationsDiffs = calculationsDocument.diffCalculations(params.calculations);
             assertNotNull(calculationsDiffs);
-            assertTrue(calculationsDiffs.isEmpty());
+            assertTrue(calculationsDiffs.toString(), calculationsDiffs.isEmpty());
 
         } else {
             assertNull(annotationDocument.getCalculationsId());

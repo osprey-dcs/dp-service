@@ -67,22 +67,16 @@ public class EventMetadataDocument {
         if (eventMetadataDocument.getDescription() != null) {
             final String eventDescription = eventMetadataDocument.getDescription();
             eventMetadataBuilder.setDescription(eventDescription);
-        } else {
-            eventMetadataBuilder.setDescription("");
         }
 
         if (eventMetadataDocument.getStartTime() != null) {
             final Timestamp startTimestamp = eventMetadataDocument.getStartTime().toTimestamp();
             eventMetadataBuilder.setStartTimestamp(startTimestamp);
-        } else {
-            eventMetadataBuilder.setStartTimestamp(Timestamp.newBuilder().build());
         }
 
         if (eventMetadataDocument.getStopTime() != null) {
             final Timestamp stopTimestamp = eventMetadataDocument.getStopTime().toTimestamp();
             eventMetadataBuilder.setStopTimestamp(stopTimestamp);
-        } else {
-            eventMetadataBuilder.setStopTimestamp(Timestamp.newBuilder().build());
         }
 
         return eventMetadataBuilder.build();
