@@ -1,12 +1,3 @@
-# dp-service repo
-
-This repo is part of the Data Platform project.  The Data Platform consists of services for capturing and providing access to data captured from a particle accelerator facility.  The [data-platform repo](https://github.com/osprey-dcs/data-platform) provides a project overview and links to the various project componnents, as well as an installer for running the latest version.
-
-This dp-service repo contains Java implementations of the Data Platform services, including Ingestion, Query, and Annotation Services.  The Ingestion Service provides a variety of APIs for use in capturing data to the archive with a focus on the performance required to handle the data rates in an accelerator facility.  The Query Service provides APIs for retrieving raw time-series data for use in machine learning applications, and higher-level APIs for retrieving tabular time-series data as well as for querying metadata and annotations in the archive.  The Annotation Service provides APIs for annotating the data in the archive.
-
-The remainder of this document covers the patterns and frameworks used to build the services ([Section "dp-service patterns and frameworks"](#dp-service-patterns-and-frameworks)) and some details about the MongoDB database schema ([Section "dp-service MongoDB schema and data flow"](#dp-service-mongodb-schema-and-data-flow)).
-
-
 ## dp-service patterns and frameworks
 
 Some common frameworks and patterns are used in the service implementations, including gRPC server, service request handling, MongoDB interface, configuration, performance benchmarking, regression testing, and integration testing.
@@ -446,223 +437,7 @@ After adding coverage for both the Ingestion and Query service implementations, 
 
 Since the integration testing framework was added, we've preferred adding test coverage at that level when possible because it exercises the communication framework in addition to the service implementations.  For that reason, there is less low-level test coverage of the annotation service implementation than the other service, but pretty good coverage at the higher-level integration test level.  We will add more extensive low-level coverage for all the services as time goes on to cover more special / unusual cases.
 
-We've used a naming convention for classes that contain jUnit test cases to end the class name with "Test".  The names of base classes that are intended to be extended by concrete test classes end with "Base".  The base and test classes are summarized below.
-
-
-#### ConfigurationManager tests (com.ospreydcs.dp.service.common.config)
-
-
-<table>
-  <tr>
-   <td><strong>class</strong>
-   </td>
-   <td><strong>description</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>ConfigurationManagerTestBase
-   </td>
-   <td>Base class for ConfigurationManager test coverage.  Provides nested class ConfigurationManagerDerived that allows singleton instance to be reset during test execution.  Provides utility methods for working with an override config file.
-   </td>
-  </tr>
-  <tr>
-   <td>ConfigurationManagerTest
-   </td>
-   <td>Includes test01GetConfig() for testing the ConfigurationManager getter methods without default values, and test02GetConfigWithDefault() for testing the getter methods with default values. test03GetInstance() tests the singleton access method.
-   </td>
-  </tr>
-  <tr>
-   <td>ConfigurationManagerOverrideConfigFileCmdLineTest
-   </td>
-   <td>Provides coverage for overriding config file via command line.
-   </td>
-  </tr>
-  <tr>
-   <td>ConfigurationManagerOverrideConfigFileEnvVarTest
-   </td>
-   <td>Provides coverage for overriding config file via environment variable.
-   </td>
-  </tr>
-  <tr>
-   <td>ConfigurationManagerOverridePropertyCmdLineTest
-   </td>
-   <td>Provides coverage for overriding individual config resources via command line.
-   </td>
-  </tr>
-</table>
-
-
-
-#### mongo tests (com.ospreydcs.dp.service.common.mongo)
-
-
-<table>
-  <tr>
-   <td><strong>class</strong>
-   </td>
-   <td><strong>description</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>MongoTestClient
-   </td>
-   <td>Extends "MongoSyncClient" database framework class to provide database-level utilities to regression tests.  The "init()" method drops the test database if it exists and creates a new one.  Provides utilities useful for verifying database artifacts including "findBucket()", "findRequestStatus()", "findDataSet()", and "findAnnotation()".
-   </td>
-  </tr>
-  <tr>
-   <td>MongoSyncDriverTest
-   </td>
-   <td>Used to confirm expected behavior of MongoDB Java "sync" driver, independent of the Data Platform database client framework for special cases such as the behavior when a duplicate database id is inserted, etc.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoAsyncDriverTest
-   </td>
-   <td>Used to confirm expected behavior of MongoDB Java "reactivestreams" driver, independent of the Data Platform database client framework for special cases such as the behavior when a duplicate database id is inserted, etc.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoIndexTest
-   </td>
-   <td> This simple test checks that the expected indexes exist on each of the Data Platform MongoDB collections.  The indexes are created at startup by MongoClientBase.  For each collection, there is a section in the test that checks for the expected number of indexes, and checks each of the expected index names (using the standard Mongo index naming convention).
-   </td>
-  </tr>
-</table>
-
-
-
-#### ingestion service tests (com.ospreydcs.dp.service.ingest)
-
-
-<table>
-  <tr>
-   <td><strong>class</strong>
-   </td>
-   <td><strong>description</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>IngestionTestBase
-   </td>
-   <td>Base class for derived test classes providing ingestion service test coverage.  Includes nested utility classes "IngestionRequestParams" to encapsulate the parameters for an ingestion request and "IngestionResponseObserver" for handling the response stream from the streaming ingestion API.  Includes utility method variants of "buildIngestionRequest()" for building an ingestion request from a params object.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoIngestionHandlerTestBase
-   </td>
-   <td>Provides coverage for ingestion service handler framework, with detailed positive and negative test cases.  This is a base class so that it can be extended by two concrete classes, one each for testing the sync and async database client framework classes.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoSyncIngestionHandlerTest
-   </td>
-   <td>Extends MongoIngestionHandlerTestBase to run positive and negative ingestion service test cases using the MongoSyncIngestionClient database client for database operations.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoAsyncIngestionHandlerTest
-   </td>
-   <td>Extends MongoIngestionHandlerTestBase to run positive and negative ingestion service test cases using the MongoAsyncIngestionClient database client for database operations.
-   </td>
-  </tr>
-  <tr>
-   <td>IngestionValidationUtilityTest
-   </td>
-   <td> Provides coverage for various rejection scenarios in IngestionValidationUtility.validateIngestionRequest().
-   </td>
-  </tr>
-  <tr>
-   <td>IngestionServiceImplTest
-   </td>
-   <td> Provides coverage for utility methods in IngestionServiceImpl.
-   </td>
-  </tr>
-</table>
-
-
-
-#### query service tests (com.ospreydcs.dp.service.query)
-
-
-<table>
-  <tr>
-   <td><strong>class</strong>
-   </td>
-   <td><strong>description</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>QueryTestBase
-   </td>
-   <td>Base class for derived test classes providing query service test coverage.  Includes nested classes "QueryDataRequestParams" to encapsulate parameters for a time-series data query request, "QueryTableRequestParams" to encapsulate parameters for a table-formatted time-series data query request, and "QueryResponseTableObserver" / "QueryResponseStreamObserver" / "QueryMetadataResponseObserver" for handling the response stream from the table query, time-series data query, and metadata query APIs, respectively.  Provides utility methods for building gRPC request objects from params objects.
-   </td>
-  </tr>
-  <tr>
-   <td>QueryGrpcTest
-   </td>
-   <td>Provides basic coverage of query service gRPC communication using the in-process gRPC framework.
-   </td>
-  </tr>
-  <tr>
-   <td>QueryServiceImplTest
-   </td>
-   <td>Provides test coverage for QueryServiceImpl utility methods that generate gRPC responses.
-   </td>
-  </tr>
-  <tr>
-   <td>QueryHandlerUtilityTest
-   </td>
-   <td>Provides coverage for validation utility methods in QueryHandlerUtility.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoQueryHandlerTestBase
-   </td>
-   <td>Provides coverage for query service handler framework, with detailed positive and negative test cases.  This is a base class so that it can be extended by two concrete classes, one each for testing the sync and async database client framework classes.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoSyncQueryHandlerTest
-   </td>
-   <td>Extends MongoQueryHandlerTestBase to run positive and negative ingestion service test cases using the MongoSyncQueryClient database client for database operations.
-   </td>
-  </tr>
-  <tr>
-   <td>MongoQueryHandlerErrorTest
-   </td>
-   <td>Provides coverage for an error response to query request by returning a null cursor in response to a database query, which simulates an error at the MongoDB database  level (as opposed to the Query Service application level).
-   </td>
-  </tr>
-</table>
-
-#### annotation service tests (com.ospreydcs.dp.service.annotation)
-
-<table>
-  <tr>
-   <td><strong>class</strong>
-   </td>
-   <td><strong>description</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>AnnotationTestBase
-   </td>
-   <td>Base class for derived test classes providing annotation service test coverage.  Includes nested classes "CreateDataSetParams", "CreateAnnotationRequestParams", "CreateCommentAnnotationParams", "AnnotationDataSet" and "AnnotationDataBlock" to encapsulate the parameters for Annotation Service API requests.  Provides utility methods "buildCreateCommentAnnotationRequest()" and "buildQueryAnnotationsRequestOwnerComment()" for building gRPC request objects from params objects for the create annotation and query annotations APIs, respectively.
-   </td>
-  </tr>
-  <tr>
-   <td>ExportConfigurationTest
-   </td>
-   <td>Provides coverage for generating file paths and URL from export-related config resources.  Includes positive test cases for full and minimal configuration handling, and negative test cases for invalid configurations.
-   </td>
-  </tr>
-  <tr>
-   <td>DatasetExportHdf5FileTest
-   </td>
-   <td>Provides unit test coverage for writing a DataSetDocument object to HDF5 file format using class DatasetExportHdf5File.
-   </td>
-  </tr>
-</table>
+We've used a naming convention for classes that contain jUnit test cases to end the class name with "Test".  The names of base classes that are intended to be extended by concrete test classes end with "Base".
 
 ### integration testing
 
@@ -851,91 +626,67 @@ The Data Platform services utilize MongoDB for persistence.  The default databas
 ![database schema](images/uml-dp-mongodb-entity-relationship.png "database schema")
 
 
-The Data Platform MongoDB schema includes collections named "buckets", "requestStatus", "dataSets", and "annotations".  Each is described in more detail below.
-
 #### providers
 
-The "provders" collection contains a document for each data provider registered with the Data Platform via the "registerProvider()" API method.  Documents contain the following fields:
+The "provders" collection contains a ProviderDocument for each data provider registered with the Data Platform via the "registerProvider()" API method.
 
-* "-id" - unique identifier for the provider
-* "name" - name for provider as sent via registerProvider(), must be unique
-* "attributeMap" - map of key/value metadata attributes describing the provider
-* "lastUpdated" - contains time that the provider document was created or last updated (by calling registerProvider()).
+The Query Service's queryProviders() method matches documents from the providers collection against the criteria specified in the query.
 
 #### buckets
 
-The "buckets" collection manages bucketed time-series data for PVs, where each bucket contains a vector of PV measurements for a specified time range.  The collection contains documents whose Java type is "BucketDocument".
+The "buckets" collection contains bucketed time-series data for PVs and is populated by the Ingestion Service's ingestData*() methods. A BucketDocument is created for each DataColumn in the IngestDataRequest.  Each BucketDocument contains a vector of PV measurements for a specified time range.
 
-The Ingestion Service manages the "buckets" collection. It creates a "BucketDocument" for each "DataColumn" (vector of PV measurements) in the "IngestionDataFrame" for a given "IngestDataRequest".
+The domain of the Query Service methods is the "buckets" collection.  A time-series data query specifies a list of PV names and time range and the result contains those buckets matching the query parameters.  queryPvMetadata() returns results for the buckets matching the PV name(s) in the query.  queryProviderMetadata() returns statistics about BucketDocuments created with a particular providerId.
 
-The domain of the Query Service methods is the "buckets" collection.  A time-series data query specifies a list of PV names and time range and the result contains those buckets matching the query parameters.  The metadata query returns results matching the bucket PV names.
+BucketDocuments contain an embedded DataTimestampsDocument with details about the begin / end times, sample period, and number of samples for the bucket (or an explicit list of Timestamps).  The protobuf DataTimestamps object is serialized to the "bytes" field of the DataTimestampsDocument.
 
-Each bucket document includes the following fields:
+BucketDocuments also contain an embedded DataColumnDocument that contains the vector of values for the bucket.  The protobuf DataColumn object is serialized to the bytes field of the DataColumnDocument.
 
-* "_id" - unique identifier for the bucket
-* "pvName" - name of the corresponding PV
-* "providerId", "clientRequestId" - these fields are specified in the "IngestDataRequest" that created the bucket, used to find the corresponding requestStatus document with the disposition of the request
-* "firstSeconds" / "firstNanos" and "lastSeconds" / "lastNanos" - time range for bucket with first and last time (with corresponding full Java Date fields "firstTime" and "lastTime" for convenience)
-* "sampleCount" - specifies number of measurements contained in the "DataColumn" serialized to the bucket's dataColumnBytes field
-* "samplePeriod" - specifies the sample period for the bucket in nanoseconds (zero if the "DataTimestamps" object for the bucket is a "TimestampsList", otherwise equal to the bucket's "SamplingClock.periodNanos")
-* "dataTimestampsBytes" - contains serialized protobuf "DataTimestamps" object specifying the timestamps for the data vector values, using either a "SamplingClock" or "TimestampsList"
-* "dataTimestampsCase" / "dataTimestampsType" - "DataTimestamps.value" enum case and name for the serialized object contained in dataTimestampsBytes (e.g., either a "SamplingClock" or "TimestampsList")
-* "dataColumnBytes" - contains serialized protobuf "DataColumn" containing vector of values for bucket
-* "dataTypeCase" / "dataType" - "DataValue.value" enum case and name for the first "DataValue" contained in the "DataColumn" for the bucket
-* "attributeMap" - contains a list of key / value metadata pairs added to the bucket at ingestion
-* "eventDescription" / "eventSeconds" / "eventNanos" - metadata description and start time for the event associated with this bucket at ingestion
-
+An optional embedded EventMetadataDocument is used to associate BucketDocuments with an experiment or event.
 
 #### requestStatus
 
-The "requestStatus" collection contains documents whose Java type is "RequestStatusDocument".  The Ingestion Service manages the "requestStatus" collection, creating a new document for each "IngestDataRequest" that it receives.
+The "requestStatus" collection contains RequestStatusDocuments.  The Ingestion Service manages the "requestStatus" collection, creating a new document for each "IngestDataRequest" that it receives with the disposition of that request.
 
 The service performs validation on each request, and responds with either a rejection or acknowledgment.  The request is then handled asynchronously, with no further reporting back to the client making the request.  The request status document indicates whether the request succeeded or failed, and provides further information for failures.
 
 Given the asynchronous nature of the Ingestion Service, it is anticipated that a monitoring tool is needed to detect problems handling ingestion requests.  Such a tool could use the "queryRequestStatus()" API method to query over the "requestStatus" collection.
 
-Each request status document contains the following fields:
-
-* "_id" - unique identifier for the request status
-* "providerId" / "requestId" - these fields contain the corresponding values from the ingestion request and can be used by the client to match request status to the request
-* "providerName" - contains the name for the corresponding providerId
-* "requestStatusCase" / "requestStatusName" - IngestionRequestStatus enum case and name indicating the status for the request (e.g., rejected, error, success)
-* "msg" - provides additional details for failed requests
-* "updateTime" - specifies time status was updated
-* "idsCreated" - contains a list of id strings for the buckets by a successful request
-* "updateTime" - contains the time that the request status document was created
-
 #### dataSets
 
-The "dataSets" collection contains documents whose Java type is "DataSetDocument".  As mentioned above, the annotation data model uses datasets to specify the relevant data for annotations.
+The "dataSets" collection contains documents whose Java type is "DataSetDocument".  As mentioned above, the Annotation data model uses datasets to specify the relevant data for Annotations.
 
 The Annotation Service manages the "dataSets" collection.  The API method "createDataSet()" creates a new document for each successful request.  This collection is the domain for the method "queryDataSets()", which returns the documents in the collection matching the query criteria.
 
-Each dataset document contains the following fields:
+Each DataSetDocument contains a list of embedded DataBlockDocuments, each of which specifies a list of PVs and time range for a region of interest in the archive.
 
-* "_id" - unique identifier for the dataset
-* "name" - name of dataset
-* "description" - a brief textual description of the dataset
-* "ownerId"  - owner of the dataset
-* "dataBlocks" - contains a list of "DataBlock" objects, each of which contains a time range specified by "beginTimeSeconds" / "beginTimeNanos" / "endTimeSeconds" / "endTimeNanos" and a list of PV names
-
-The time range and PV names specified in a "DataBlock" correspond to the domain of the "buckets" collection, and can therefore be used directly in the parameters for any of the Query Service time-series and metadata query methods.
-
+The time range and PV names specified in a DataBlockDocument correspond to the domain of the "buckets" collection, and can therefore be used directly in the parameters for any of the Query Service time-series and metadata query methods.
 
 #### annotations
 
-The "annotations" collection contains documents whose Java type is "AnnotationDocument".  This is a polymorphic hierarchy, with concrete classes extending that class for each type of annotation that is supported.  Currently there is only one subtype, "CommentAnnotationDocument", though more will be added in an upcoming release.
+The "annotations" collection contains documents whose Java type is "AnnotationDocument".  The Annotation Service manages the "annotations" collection.  The API method "createAnnotation()" creates a new document for each successful request.   The handler for that method determines the appropriate concrete Java document class to create from the request parameters.  This collection is the domain for the "queryAnnotations()" API method, which matches annotation documents against the search criteria and returns the matching documents.
 
-The Annotation Service manages the "annotations" collection.  The API method "createAnnotation()" creates a new document for each successful request.   The handler for that method determines the appropriate concrete Java document class to create from the request parameters.  This collection is the domain for the "queryAnnotations()" API method, which matches annotation documents against the search criteria and returns the matching documents.
+An AnnotationDocument contains a list of associated unique ids for associated DataSetDocuments and other Annotations.  One or more Data Sets is the target of an Annotation.  The lists of associated Data Sets and Annotations is also used for tracking data provenance.
 
-The fields in the base document class "AnnotationDocument" include:
+An AnnotationDocument optionally contains the unique id of a CalculationsDocument if user-defined Calculations were included with the Annotation.
 
-* "_id" - unique identifier for the annotation
-* - "type" - specifies the discriminator string for the concrete document subtype, used by the MongoDB codec to map to the corresponding Java class
-* - "ownerId" - string specifying the annotation owner
-* - "dataSetId" - specifies the unique identifier string for the annotation's dataset
+#### calculations
 
+The calculations collection contains CalculationsDocuments.  There is a one-to-one relationship with the annotations collection.  That is, a single Annotation can only have 1 associated CalculationsDocument and the CalculationsDocument is only associated with a single Annotation.
 
+The CalculationsDocument is created when the corresponding AnnotationDocument is saved by the handling for the Annotation Service's createAnnotation() method.  The content of the CalculationsDocument corresponding to an AnnotationDocument is included in the queryAnnotations() result for that Annotation.
+
+Each CalculationsDocument contains a list of embedded CalculationsDataFrameDocuments.  Each of these contains an embedded DataTimestampsDocument specifying the timestamps for the list of embedded DataColumnDocuments (these are the same embedded documents used in BucketDocuments as described above).
+
+It might be helpful to think of an analogy between the CalculationsDocument and an Excel workbook.  The CalculationsDocument is the workbook, and each CalculationsDataFrameDocument is a worksheet with a column of timestamps and a list of data columns containing values for each timestamp.
+
+#### TimestmapDocument
+
+TimestampDocuments are not saved directly to a collection, but are embedded in several places where we want to save a protobuf Timestamp API object to a MongoDB document, containing fields for seconds and nanoseconds, converted to a Date field as a convenience.
+
+#### EventMetadataDocument
+
+EventMetadataDocuments are also only embedded within other documents, where an association with an event or experiment is desired for that document (e.g., BucketDocument and AnnotationDocument).
 
 # User Documentation
 
