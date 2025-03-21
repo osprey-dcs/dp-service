@@ -15,7 +15,7 @@ The main objective of this document is to give an overview of the dp-service rep
 * [Documentation for running and configuring service applications](#user-documentation)
 
 
-----
+---
 ## Repo Organization
 
 The top-level package for the classes defined in the repo is com.ospreydcs.dp.service.  The table below describes the packages contained in the top-level package.
@@ -28,7 +28,7 @@ The top-level package for the classes defined in the repo is com.ospreydcs.dp.se
 | query      | Contains the Query Service implementation.                        |
 
 
-----
+---
 ## Generic Service Structure
 
 The Data Platform utilizes the gRPC framework for API communication.  The executable application for each service, therefore, is a gRPC server.  The generic structure of each service is shown in the table below.
@@ -44,7 +44,7 @@ The Data Platform utilizes the gRPC framework for API communication.  The execut
 | Integration Tests         | Integration test coverage is provided for the handling of each service API method via one or more test classes.  Where possible, the name of an Integration Test class begins with the name of the corresponding API method.                                                                                                                                                                                                   |
 
 
-----
+---
 ## Concrete Service Classes
 
 The table below shows the concrete classes and packages corresponding to the generic service components shown above for each Data Platform service.
@@ -60,12 +60,11 @@ The table below shows the concrete classes and packages corresponding to the gen
 | Integration Tests package | integration.ingest                               | integration.query                           | integration.annotation                                |
 
 
-----
+---
 ## Example API Method Handling Flow
 
 This section shows some of the code involved for handling an incoming queryProviderMetadata() API method request by the Query Service.  This example was chosen for its simplicity.  Handling for all API methods follows a similar pattern, but using the class and method names appropriate to the specific service and API method.  See notes at each step for more details.
 
-----
 ### Service Implementation (QueryServiceImpl) receives incoming request, dispatches to Handler.
 The method name in the Service Implementation matches the name of the method as defined in the gRPC proto file corresponding to the service.
 ```
@@ -84,7 +83,6 @@ The method name in the Service Implementation matches the name of the method as 
     }
 ```
 
-----
 ### Handler (MongoSyncQueryHandler) adds Job for request to queue.
 Handler method naming convention is "handleXXX()" where "XXX" is the name of the API method being handled, within the appropriate Handler concrete class for the service defining that method.
 ```
@@ -105,7 +103,6 @@ Handler method naming convention is "handleXXX()" where "XXX" is the name of the
     }
 ```
 
-----
 ### QueueHandlerBase.Worker waits for next Job from queue and executes it.
 QueueHandlerBase is a common base class for each of the service concrete Handler implementations that provides a Job queue and worker pool for handling incoming API method requests.
 ```
@@ -142,7 +139,6 @@ QueueHandlerBase is a common base class for each of the service concrete Handler
     }
 ```
 
-----
 ### Job (QueryProviderMetadataJob) executes query for request via Database Interface Client, sends response via Dispatcher.
 For the most part, Job classes are named using the convention "XXXJob" where "XXX" is the API method name, and are contained in the handler.mongo.job package under the appropriate service package.
 ```
@@ -156,7 +152,6 @@ For the most part, Job classes are named using the convention "XXXJob" where "XX
     }
 ```
 
-----
 ### Database Interface Client (MongoSyncQueryClient) executes query.
 Where possible, the method names in the concrete Database Interface classes reflect the name of the corresponding API method.  The best place to find the appropriate Database Interface method name for an API method is to look at the execute() method for the concrete Job class that handles that API method.
 ```
@@ -209,7 +204,6 @@ Where possible, the method names in the concrete Database Interface classes refl
     }
 ```
 
-----
 ### Dispatcher (QueryProviderMetadataDispatcher) sends results from database cursor to client in response stream.
 Concrete Dispatcher class names use the convention "XXXDispatcher", where "XXX" is the API method name.  They are contained in the handler.mongo.dispatch package of the package for the service that defines that API method.
 ```
@@ -263,7 +257,6 @@ Concrete Dispatcher class names use the convention "XXXDispatcher", where "XXX" 
 
 ```
 
-----
 ### Test coverage is provided by QueryProviderMetadataTest.
 Most test coverage for API methods is contained in the test package com.ospreydcs.dp.service.integration.  That package contains packages "annotation", "ingest", and "query" corresponding to the respective service name.  The test coverage for the API methods for a particular service are contained in the integration test package for that service.  E.g., QueryProviderMetadataTest is in the test package integration.query.  Where possible, test class names begin with the name of the corresponding API method name.
 ```
@@ -290,7 +283,7 @@ Most test coverage for API methods is contained in the test package com.ospreydc
 ```
 
 
-----
+---
 ## dp-service MongoDB schema and data flow
 
 The Data Platform services utilize MongoDB for persistence.  The default database is called "dp".  Regression tests use a database called "dp-test" whose contents are removed at the start of each test.  
@@ -302,14 +295,12 @@ The diagram below shows the entity-relationship model for the Data Platform Mong
 
 Each MongoDB collection is described below, with details about the Data Platform API methods that utilize that collection.
 
-----
 #### providers
 
 The "providers" collection contains a ProviderDocument for each data provider registered with the Data Platform via the "registerProvider()" API method.
 
 The Query Service's queryProviders() method matches documents from the providers collection against the criteria specified in the query.
 
-----
 #### buckets
 
 The "buckets" collection contains bucketed time-series data for PVs and is populated by the Ingestion Service's ingestData*() methods. A BucketDocument is created for each DataColumn in the IngestDataRequest.  Each BucketDocument contains a vector of PV measurements for a specified time range.
@@ -322,7 +313,6 @@ BucketDocuments also contain an embedded DataColumnDocument that contains the ve
 
 An optional embedded EventMetadataDocument is used to associate BucketDocuments with an experiment or event.
 
-----
 #### requestStatus
 
 The "requestStatus" collection contains RequestStatusDocuments.  The Ingestion Service manages the "requestStatus" collection, creating a new document for each "IngestDataRequest" that it receives with the disposition of that request.
@@ -331,7 +321,6 @@ The service performs validation on each request, and responds with either a reje
 
 Given the asynchronous nature of the Ingestion Service, it is anticipated that a monitoring tool is needed to detect problems handling ingestion requests.  Such a tool could use the "queryRequestStatus()" API method to query over the "requestStatus" collection.
 
-----
 #### dataSets
 
 The "dataSets" collection contains documents whose Java type is "DataSetDocument".  As mentioned above, the Annotation data model uses datasets to specify the relevant data for Annotations.
@@ -342,7 +331,6 @@ Each DataSetDocument contains a list of embedded DataBlockDocuments, each of whi
 
 The time range and PV names specified in a DataBlockDocument correspond to the domain of the "buckets" collection, and can therefore be used directly in the parameters for any of the Query Service time-series and metadata query methods.
 
-----
 #### annotations
 
 The "annotations" collection contains documents whose Java type is "AnnotationDocument".  The Annotation Service manages the "annotations" collection.  The API method "createAnnotation()" creates a new document for each successful request.   The handler for that method determines the appropriate concrete Java document class to create from the request parameters.  This collection is the domain for the "queryAnnotations()" API method, which matches annotation documents against the search criteria and returns the matching documents.
@@ -351,7 +339,6 @@ An AnnotationDocument contains a list of associated unique ids for associated Da
 
 An AnnotationDocument optionally contains the unique id of a CalculationsDocument if user-defined Calculations were included with the Annotation.
 
-----
 #### calculations
 
 The calculations collection contains CalculationsDocuments.  There is a one-to-one relationship with the annotations collection.  That is, a single Annotation can only have 1 associated CalculationsDocument and the CalculationsDocument is only associated with a single Annotation.
@@ -362,19 +349,17 @@ Each CalculationsDocument contains a list of embedded CalculationsDataFrameDocum
 
 It might be helpful to think of an analogy between the CalculationsDocument and an Excel workbook.  The CalculationsDocument is the workbook, and each CalculationsDataFrameDocument is a worksheet with a column of timestamps and a list of data columns containing values for each timestamp.
 
-----
 #### TimestmapDocument
 
 TimestampDocuments are not saved directly to a collection, but are embedded in several places where we want to save a protobuf Timestamp API object to a MongoDB document, containing fields for seconds and nanoseconds, converted to a Date field as a convenience.
 
-----
 #### EventMetadataDocument
 
 EventMetadataDocuments are also only embedded within other documents, where an association with an event or experiment is desired for that document (e.g., BucketDocument and AnnotationDocument).
 
 
 
-----
+---
 # User Documentation
 
 The links below provide details for running and configuring the Services and other applications.  The [dp-support repo](https://github.com/osprey-dcs/dp-support) provides a full set of utilities for managing the Data Platform ecosystem, including running the dp-service applications.
@@ -388,7 +373,7 @@ Notes for running the Data Platform server and client applications are linked [h
 Options for configuring Data Platform services are desribed in more detail in [the configuration documentation](doc/configuration.md).
 
 
-----
+---
 # Developer Notes and UML Diagrams
 
 * [overview of key classes](./doc/developer-notes.md#dp-service-patterns-and-frameworks)
