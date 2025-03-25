@@ -45,6 +45,7 @@ public abstract class IngestionBenchmarkBase {
         final public int firstColumnIndex;
         final public int lastColumnIndex;
         final public String providerId;
+        final public boolean useTimestampList;
 
         public IngestionTaskParams(
                 long startSeconds,
@@ -54,8 +55,9 @@ public abstract class IngestionBenchmarkBase {
                 int numRows,
                 int firstColumnIndex,
                 int lastColumnIndex,
-                String providerId) {
-
+                String providerId,
+                boolean useTimestampList
+        ) {
             this.startSeconds = startSeconds;
             this.streamNumber = streamNumber;
             this.numSeconds = numSeconds;
@@ -64,6 +66,7 @@ public abstract class IngestionBenchmarkBase {
             this.firstColumnIndex = firstColumnIndex;
             this.lastColumnIndex = lastColumnIndex;
             this.providerId = providerId;
+            this.useTimestampList = useTimestampList;
         }
     }
 
@@ -186,61 +189,80 @@ public abstract class IngestionBenchmarkBase {
 
     protected static IngestDataRequest prepareIngestionRequest(
             IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder,
-            IngestionTaskParams params, Integer secondsOffset) {
-
+            IngestionTaskParams params,
+            Integer secondsOffset
+    ) {
         final String providerId = params.providerId;
         final String requestId = String.valueOf(secondsOffset);
 
-        IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
+        final IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
 
         requestBuilder.setProviderId(providerId);
         requestBuilder.setClientRequestId(requestId);
 
-        // build timestamp iterator for time spec
-        Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
-        startTimeBuilder.setEpochSeconds(params.startSeconds + secondsOffset);
-        startTimeBuilder.setNanoseconds(0);
-        startTimeBuilder.build();
-        SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
-        samplingClockBuilder.setStartTime(startTimeBuilder);
-        samplingClockBuilder.setPeriodNanos(1_000_000L);
-        samplingClockBuilder.setCount(params.numRows);
-        samplingClockBuilder.build();
-        DataTimestamps.Builder timeSpecBuilder = DataTimestamps.newBuilder();
-        timeSpecBuilder.setSamplingClock(samplingClockBuilder);
-        timeSpecBuilder.build();
-        dataFrameBuilder.setDataTimestamps(timeSpecBuilder);
+        // build DataTimestamps for request
+        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+        if (params.useTimestampList) {
+            // use TimestampList
+
+            final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
+
+             for (int i = 0 ; i < params.numRows ; i++) {
+                Timestamp.Builder timestampBuilder = Timestamp.newBuilder();
+                timestampBuilder.setEpochSeconds(params.startSeconds + secondsOffset);
+                long nanos = i * 1_000_000L;
+                timestampBuilder.setNanoseconds(nanos);
+                timestampBuilder.build();
+                 timestampListBuilder.addTimestamps(timestampBuilder);
+             }
+
+             timestampListBuilder.build();
+             dataTimestampsBuilder.setTimestampList(timestampListBuilder);
+
+        } else {
+            // use SamplingClock
+
+            final Timestamp.Builder startTimestampBuilder = Timestamp.newBuilder();
+            startTimestampBuilder.setEpochSeconds(params.startSeconds + secondsOffset);
+            startTimestampBuilder.setNanoseconds(0);
+            startTimestampBuilder.build();
+
+            final SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
+            samplingClockBuilder.setStartTime(startTimestampBuilder);
+            samplingClockBuilder.setPeriodNanos(1_000_000L);
+            samplingClockBuilder.setCount(params.numRows);
+            samplingClockBuilder.build();
+
+            dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
+        }
+        dataTimestampsBuilder.build();
+        dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
+
 
         // add some attributes and event metadata
-        EventMetadata.Builder eventMetadataBuilder = EventMetadata.newBuilder();
+        final EventMetadata.Builder eventMetadataBuilder = EventMetadata.newBuilder();
         eventMetadataBuilder.setDescription("calibration test");
-        Timestamp.Builder eventTimeBuilder = Timestamp.newBuilder();
+
+        final Timestamp.Builder eventTimeBuilder = Timestamp.newBuilder();
         eventTimeBuilder.setEpochSeconds(params.startSeconds);
         eventTimeBuilder.setNanoseconds(0);
         eventTimeBuilder.build();
+
         eventMetadataBuilder.setStartTimestamp(eventTimeBuilder);
         eventMetadataBuilder.build();
         requestBuilder.setEventMetadata(eventMetadataBuilder);
-        Attribute.Builder subsystemAttributeBuilder = Attribute.newBuilder();
+
+        final Attribute.Builder subsystemAttributeBuilder = Attribute.newBuilder();
         subsystemAttributeBuilder.setName("subsystem");
         subsystemAttributeBuilder.setValue("vacuum");
         subsystemAttributeBuilder.build();
         requestBuilder.addAttributes(subsystemAttributeBuilder);
-        Attribute.Builder sectorAttributeBuilder = Attribute.newBuilder();
+
+        final Attribute.Builder sectorAttributeBuilder = Attribute.newBuilder();
         sectorAttributeBuilder.setName("sector");
         sectorAttributeBuilder.setValue("07");
         sectorAttributeBuilder.build();
         requestBuilder.addAttributes(sectorAttributeBuilder);
-
-//        // build timestamp list
-//        for (int i = 0 ; i < params.numRows ; i++) {
-//            Timestamp.Builder timestampBuilder = Timestamp.newBuilder();
-//            timestampBuilder.setEpochSeconds(startSeconds + secondsOffset);
-//            long nanos = i * 1_000_000L;
-//            timestampBuilder.setNanoseconds(nanos);
-//            timestampBuilder.build();
-//            dataTableBuilder.addTimestamps(timestampBuilder);
-//        }
 
         dataFrameBuilder.build();
         requestBuilder.setIngestionDataFrame(dataFrameBuilder);
@@ -440,8 +462,9 @@ public abstract class IngestionBenchmarkBase {
             int numStreams,
             int numRows,
             int numColumns,
-            int numSeconds) {
-
+            int numSeconds,
+            boolean generateTimestampListRequests
+    ) {
         boolean success = true;
         long dataValuesSubmitted = 0;
         long dataBytesSubmitted = 0;
@@ -464,8 +487,31 @@ public abstract class IngestionBenchmarkBase {
 
             final int firstColumnIndex = lastColumnIndex + 1;
             lastColumnIndex = lastColumnIndex + numColumns;
+
+            boolean useTimestampList = false;
+            // create some requests with explicit timestamp list for sample data generator (not regular benchmark)
+            if (i == numStreams) {
+                // use TimestampList requests for the last request stream
+                if (generateTimestampListRequests) {
+                    useTimestampList = true;
+                    logger.info(
+                            "using DataTimestamps.TimestampList for provider: {} pv index first: {} last: {}",
+                            providerId,
+                            firstColumnIndex,
+                            lastColumnIndex);
+                }
+            }
+
             IngestionTaskParams params = new IngestionTaskParams(
-                    startSeconds, i, numSeconds, numColumns, numRows, firstColumnIndex, lastColumnIndex, providerId);
+                    startSeconds,
+                    i,
+                    numSeconds,
+                    numColumns,
+                    numRows,
+                    firstColumnIndex,
+                    lastColumnIndex,
+                    providerId,
+                    useTimestampList);
             IngestDataRequest.IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
             IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
@@ -568,7 +614,7 @@ public abstract class IngestionBenchmarkBase {
                 BenchmarkMongoClient.prepareBenchmarkDatabase();
 
                 BenchmarkScenarioResult scenarioResult =
-                        ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
+                        ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds, false);
                 if (scenarioResult.success) {
                     writeRateMap.put(mapKey, scenarioResult.valuesPerSecond);
                 } else {

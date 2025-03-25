@@ -34,10 +34,18 @@ public class TestDataGenerator extends BenchmarkBidiStreamingIngestion {
         final int numStreams = 20;
         final int numColumns = numPvs / numStreams;
         final int numRows = samplesPerSecond;
+        final boolean generateTimestampListRequests = true; // uses DataTimestamps with TimestampList for some requests
 
         logger.info("running streaming ingestion scenario, numThreads: {} numStreams: {}",
                 numThreads, numStreams);
-        benchmark.ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds);
+        benchmark.ingestionScenario(
+                channel,
+                numThreads,
+                numStreams,
+                numRows,
+                numColumns,
+                numSeconds,
+                generateTimestampListRequests);
 
         try {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
