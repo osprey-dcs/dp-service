@@ -285,8 +285,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     INGESTION_NUM_STREAMS,
                     INGESTION_NUM_ROWS,
                     numColumnsPerStream,
-                    INGESTION_NUM_SECONDS
-            );
+                    INGESTION_NUM_SECONDS,
+                    false);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== ingestion scenario completed ==========");
