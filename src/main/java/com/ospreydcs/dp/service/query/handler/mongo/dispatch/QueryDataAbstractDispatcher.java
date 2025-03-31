@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -11,12 +12,15 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.List;
 import java.util.Objects;
 
 public abstract class QueryDataAbstractDispatcher extends Dispatcher {
 
+    // static variables
     private static final Logger logger = LogManager.getLogger();
 
+    // instance variables
     private StreamObserver<QueryDataResponse> responseObserver;
 
     public QueryDataAbstractDispatcher() {
@@ -55,10 +59,10 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
     protected QueryDataResponse nextQueryResponseFromCursor(MongoCursor<BucketDocument> cursor) {
 
         // build response from query result cursor
-        QueryDataResponse.QueryData.Builder queryDataBuilder =
+        final QueryDataResponse.QueryData.Builder queryDataBuilder =
                 QueryDataResponse.QueryData.newBuilder();
-
         int messageSize = 0;
+
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();

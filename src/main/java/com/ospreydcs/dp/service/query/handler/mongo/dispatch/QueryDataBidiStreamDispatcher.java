@@ -19,7 +19,7 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
     // instance variables
     private MongoCursor<BucketDocument> mongoCursor = null;
     private final Object cursorLock = new Object(); // used for synchronized access to cursor which is not thread safe
-    private AtomicBoolean cursorClosed = new AtomicBoolean(false);
+    private final AtomicBoolean cursorClosed = new AtomicBoolean(false);
 
     public QueryDataBidiStreamDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
         super(responseObserver);

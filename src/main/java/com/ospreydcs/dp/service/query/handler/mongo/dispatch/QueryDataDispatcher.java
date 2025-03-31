@@ -32,9 +32,9 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
 
         } else {
             getResponseObserver().onNext(response);
+            getResponseObserver().onCompleted();
         }
 
-        getResponseObserver().onCompleted();
         cursor.close();
     }
 

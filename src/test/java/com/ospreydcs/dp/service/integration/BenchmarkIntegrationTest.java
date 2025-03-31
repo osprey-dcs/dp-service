@@ -57,8 +57,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static final int QUERY_NUM_THREADS = 7;
     private static final int QUERY_SINGLE_NUM_PVS = 10;
     private static final int QUERY_SINGLE_NUM_PVS_PER_REQUEST = 1;
-    private static final int QUERY_TABLE_NUM_PVS = 50;
-    private static final int QUERY_TABLE_NUM_PVS_PER_REQUEST = 5;
 
 
     private static class IntegrationTestStreamingIngestionApp extends BenchmarkBidiStreamingIngestion {
@@ -199,8 +197,8 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             params.startSeconds,
                             eventMetadataDocument.getStartTime().getSeconds());
                     assertEquals(0, eventMetadataDocument.getStartTime().getNanos());
-                    assertTrue(bucketDocument.getAttributes().get("sector").equals("07"));
-                    assertTrue(bucketDocument.getAttributes().get("subsystem").equals("vacuum"));
+                    assertEquals("07", bucketDocument.getAttributes().get("sector"));
+                    assertEquals("vacuum", bucketDocument.getAttributes().get("subsystem"));
 
                     DataColumn bucketDataColumn = null;
                     try {
@@ -371,16 +369,17 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertNotNull(samplingClock);
                     assertNotNull(samplingClock.getStartTime());
                     assertTrue(samplingClock.getStartTime().getEpochSeconds() > 0);
-                    assertNotNull(samplingClock.getPeriodNanos());
                     assertTrue(samplingClock.getPeriodNanos() > 0);
-                    assertNotNull(samplingClock.getCount());
-                    assertTrue(samplingClock.getCount() == INGESTION_NUM_ROWS);
+                    assertEquals(INGESTION_NUM_ROWS, samplingClock.getCount());
                     final long bucketSeconds = samplingClock.getStartTime().getEpochSeconds();
                     final int bucketIndex = (int) (bucketSeconds - params.startSeconds);
                     final boolean[] columnBucketArray = columnBucketMap.get(columnName);
-                    assertNotNull("response contains unexpected bucket", columnBucketArray);
+                    assertNotNull(columnBucketArray);
 
                     // mark bucket as received in tracking data structure
+                    // this code assumes that we are using whole seconds and will fail if we are using nanos
+                    // because the expected number of buckets is incorrect for partial seconds
+                    assert(bucketIndex < columnBucketArray.length);
                     columnBucketArray[bucketIndex] = true;
                 }
 

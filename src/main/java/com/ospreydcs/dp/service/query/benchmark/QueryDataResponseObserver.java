@@ -104,6 +104,11 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
                 }
                 return;
+            } catch (Exception e) {
+                System.err.println("stream: " + streamNumber + " exception: " + e.getMessage());
+                e.printStackTrace(System.err);
+                isError.set(true);
+                finishLatch.countDown();
             }
 
         } else {
@@ -115,7 +120,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
         if (success) {
 
-            final int numBucketsExpected = params.columnNames.size() * 60;
+            final int numBucketsExpected = params.columnNames.size() * params.numSeconds;
             final int numBucketsReceivedValue = numBucketsReceived.get();
 
             if  ( numBucketsReceivedValue < numBucketsExpected) {
@@ -123,7 +128,8 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
             } else {
                 // otherwise signal that we are done
-                logger.trace("stream: {} onNext received expected number of buckets", streamNumber);
+                logger.trace("stream: {} onNext received expected number of buckets: {}",
+                        streamNumber, numBucketsExpected);
                 finishLatch.countDown();
             }
 
@@ -138,7 +144,8 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
     @Override
     public void onError(Throwable t) {
-        logger.error("stream: {} responseObserver.onError with msg: {}", streamNumber, t.getMessage());
+        logger.error("stream: {} responseObserver.onError with msg: {} cause: {}",
+                streamNumber, t.getMessage(), t.getCause().getMessage());
         isError.set(true);
         if (finishLatch.getCount() > 0) {
             finishLatch.countDown();
