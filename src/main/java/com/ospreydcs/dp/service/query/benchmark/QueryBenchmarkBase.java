@@ -35,6 +35,7 @@ public abstract class QueryBenchmarkBase {
     // constants
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
+    private static final int NUM_SCENARIO_SECONDS = 60;
 
     // configuration
     public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60052";
@@ -179,15 +180,17 @@ public abstract class QueryBenchmarkBase {
         final public int streamNumber;
         final public List<String> columnNames;
         final public long startSeconds;
+        final public int numSeconds;
 
         public QueryDataRequestTaskParams(
                 int streamNumber,
                 List<String> columnNames,
-                long startSeconds
-        ) {
+                long startSeconds,
+                int numSeconds) {
             this.streamNumber = streamNumber;
             this.columnNames = columnNames;
             this.startSeconds = startSeconds;
+            this.numSeconds = numSeconds;
         }
     }
 
@@ -271,7 +274,7 @@ public abstract class QueryBenchmarkBase {
         beginTimeBuilder.setNanoseconds(0);
         beginTimeBuilder.build();
 
-        final long endSeconds = params.startSeconds + 60;
+        final long endSeconds = params.startSeconds + params.numSeconds;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
         endTimeBuilder.setEpochSeconds(endSeconds);
         endTimeBuilder.setNanoseconds(0);
@@ -306,7 +309,8 @@ public abstract class QueryBenchmarkBase {
             int numPvs,
             int pvsPerRequest,
             int numThreads,
-            long startSeconds
+            long startSeconds,
+            int numSeconds
     ) {
         boolean success = true;
         long dataValuesReceived = 0;
@@ -326,7 +330,12 @@ public abstract class QueryBenchmarkBase {
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
-                final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+                final QueryDataRequestTaskParams params =
+                        new QueryDataRequestTaskParams(
+                                currentBatchIndex,
+                                currentBatchColumns,
+                                startSeconds,
+                                numSeconds);
                 final QueryDataRequestTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
@@ -335,13 +344,18 @@ public abstract class QueryBenchmarkBase {
             }
         }
         // add task for final batch of columns, if not empty
-        if (currentBatchColumns.size() > 0) {
-            final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+        if (!currentBatchColumns.isEmpty()) {
+            final QueryDataRequestTaskParams params =
+                    new QueryDataRequestTaskParams(
+                            currentBatchIndex,
+                            currentBatchColumns,
+                            startSeconds,
+                            numSeconds);
             final QueryDataRequestTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
 
-        // start performance measurment timer
+        // start performance measurement timer
         final Instant t0 = Instant.now();
 
         // submit tasks to executor service
@@ -431,7 +445,7 @@ public abstract class QueryBenchmarkBase {
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
                     BenchmarkScenarioResult scenarioResult =
-                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds, NUM_SCENARIO_SECONDS);
                     double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
