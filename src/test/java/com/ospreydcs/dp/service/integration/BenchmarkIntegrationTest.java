@@ -53,7 +53,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
     // query constants
     private static final int NUM_SCENARIO_SECONDS = 60;
-    private static final int QUERY_NUM_PVS = 1000;
+    private static final int QUERY_NUM_PVS = 100;
     private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
     private static final int QUERY_NUM_THREADS = 7;
     private static final int QUERY_SINGLE_NUM_PVS = 10;

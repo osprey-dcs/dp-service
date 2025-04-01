@@ -106,6 +106,14 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
+    public static void sendQueryDataResponse(
+            QueryDataResponse.QueryData.Builder queryDataBuilder,
+            StreamObserver<QueryDataResponse> responseObserver
+    ) {
+        final QueryDataResponse response = queryDataResponse(queryDataBuilder);
+        responseObserver.onNext(response);
+    }
+
     private static QueryTableResponse queryTableResponseExceptionalResult(
             String msg, ExceptionalResult.ExceptionalResultStatus status
     ) {
