@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 
@@ -261,23 +262,40 @@ public class QueryTestBase {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
                 Collections.synchronizedList(new ArrayList<>());
+        private final Integer numResponsesExpected;
+        private final AtomicInteger numResponsesReceived = new AtomicInteger(0);
 
-//        public QueryResponseStreamObserver(int numBucketsExpected) {
-//            this.finishLatch = new CountDownLatch(numBucketsExpected);
-//        }
+        public QueryResponseStreamObserver() {
+            this.numResponsesExpected = null;
+        }
+
+        public QueryResponseStreamObserver(int numResponsesExpected) {
+            this.numResponsesExpected = numResponsesExpected;
+        }
 
         public void await() {
             try {
                 finishLatch.await(1, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
-                System.err.println("InterruptedException waiting for finishLatch");
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
             }
         }
 
         public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
 
         public List<QueryDataResponse.QueryData.DataBucket> getDataBucketList() {
             return dataBucketList;
@@ -289,10 +307,31 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasQueryData());
                 List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
                         response.getQueryData().getDataBucketsList();
                 for (QueryDataResponse.QueryData.DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
+                }
+
+                final int responsesReceived = numResponsesReceived.incrementAndGet();
+
+                // check if we are counting responses
+                if (numResponsesExpected != null) {
+                    if (responsesReceived >= numResponsesExpected) {
+                        finishLatch.countDown();
+                    }
                 }
             }).start();
         }
@@ -303,8 +342,10 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
                 Status status = Status.fromThrowable(t);
-                System.err.println("QueryResponseTableObserver error: " + status);
+                final String errorMsg = "QueryResponseTableObserver error: " + status;
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
                 finishLatch.countDown();
             }).start();
         }

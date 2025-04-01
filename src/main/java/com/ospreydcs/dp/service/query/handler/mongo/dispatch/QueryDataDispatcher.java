@@ -63,12 +63,10 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
             queryDataBuilder.addDataBuckets(bucket);
             messageSize = messageSize + bucketSerializedSize;
 
-            // break out of cursor handling loop if next bucket might exceed maximum size
             if (messageSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
-                QueryServiceImpl.sendQueryDataResponseError(
-                        "query returned more data than will fit in single QueryResponse message",
-                        getResponseObserver()
-                );
+                final String errorMsg = "query returned more data than will fit in single QueryResponse message";
+                logger.trace(errorMsg);
+                QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
                 return;
             }
         }

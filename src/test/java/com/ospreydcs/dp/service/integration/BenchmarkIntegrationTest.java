@@ -616,29 +616,6 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
         }
 
-        private void runQueryResponseSingleSizeLimitScenario() {
-            System.out.println();
-            System.out.println("========== runQueryResponseSingleSizeLimitScenario ==========");
-
-            final long startSeconds = configMgr().getConfigLong(
-                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
-                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
-
-            IntegrationTestQueryResponseSingleApp queryResponseSingleApp =
-                    new IntegrationTestQueryResponseSingleApp();
-            BenchmarkScenarioResult scenarioResult = queryResponseSingleApp.queryScenario(
-                    channel,
-                    10,
-                    10,
-                    1,
-                    startSeconds,
-                    37); // 370 buckets should exceed single message response size limit
-            assertFalse(scenarioResult.success); // scenario should fail because response message is too large
-
-            System.out.println("========== runQueryResponseSingleSizeLimitScenario completed ==========");
-            System.out.println();
-
-        }
     }
 
     @BeforeClass
@@ -757,7 +734,37 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         queryGrpcClient.runQueryResponseSingleScenario();
         
         // negative test for unary data query that hits response message size limit
-        queryGrpcClient.runQueryResponseSingleSizeLimitScenario();
+        {
+            // create list of 10 PV names
+            final List<String> pvNames = new ArrayList<>();
+            for (int i = 1 ; i <= 10 ; ++i) {
+                pvNames.add("dpTest_" + i);
+            }
+
+            final long beginSeconds = configMgr().getConfigLong(
+                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
+                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
+            final long beginNanos = 0L;
+            final long endSeconds = beginSeconds + 37;
+            final long endNanos = 0L;
+
+            final int numBucketsExpected = 370; // 37 buckets * 10 PVs
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "query returned more data than will fit in single QueryResponse message";
+
+            sendAndVerifyQueryData(
+                    numBucketsExpected,
+                    pvNames,
+                    beginSeconds,
+                    beginNanos,
+                    endSeconds,
+                    endNanos,
+                    expectReject,
+                    expectedRejectMessage
+            );
+        }
     }
 
 }
