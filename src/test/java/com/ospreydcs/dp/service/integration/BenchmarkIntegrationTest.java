@@ -52,6 +52,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static final int INGESTION_NUM_SECONDS = 60;
 
     // query constants
+    private static final int NUM_SCENARIO_SECONDS = 60;
     private static final int QUERY_NUM_PVS = 1000;
     private static final int QUERY_NUM_PVS_PER_REQUEST = 10;
     private static final int QUERY_NUM_THREADS = 7;
@@ -549,7 +550,12 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             IntegrationTestQueryResponseCursorApp queryResponseCursorApp =
                     new IntegrationTestQueryResponseCursorApp();
             BenchmarkScenarioResult scenarioResult = queryResponseCursorApp.queryScenario(
-                    channel, QUERY_NUM_PVS, QUERY_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+                    channel,
+                    QUERY_NUM_PVS,
+                    QUERY_NUM_PVS_PER_REQUEST,
+                    QUERY_NUM_THREADS,
+                    startSeconds,
+                    NUM_SCENARIO_SECONDS);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseCursor scenario completed ==========");
@@ -571,7 +577,12 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             IntegrationTestQueryResponseStreamApp queryResponseStreamApp =
                     new IntegrationTestQueryResponseStreamApp();
             BenchmarkScenarioResult scenarioResult = queryResponseStreamApp.queryScenario(
-                    channel, QUERY_NUM_PVS, QUERY_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+                    channel,
+                    QUERY_NUM_PVS,
+                    QUERY_NUM_PVS_PER_REQUEST,
+                    QUERY_NUM_THREADS,
+                    startSeconds,
+                    NUM_SCENARIO_SECONDS);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseStream scenario completed ==========");
@@ -593,13 +604,41 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             IntegrationTestQueryResponseSingleApp queryResponseSingleApp =
                     new IntegrationTestQueryResponseSingleApp();
             BenchmarkScenarioResult scenarioResult = queryResponseSingleApp.queryScenario(
-                    channel, QUERY_SINGLE_NUM_PVS, QUERY_SINGLE_NUM_PVS_PER_REQUEST, QUERY_NUM_THREADS, startSeconds);
+                    channel,
+                    QUERY_SINGLE_NUM_PVS,
+                    QUERY_SINGLE_NUM_PVS_PER_REQUEST,
+                    QUERY_NUM_THREADS,
+                    startSeconds,
+                    NUM_SCENARIO_SECONDS);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseSingle scenario completed ==========");
             System.out.println();
         }
 
+        private void runQueryResponseSingleSizeLimitScenario() {
+            System.out.println();
+            System.out.println("========== runQueryResponseSingleSizeLimitScenario ==========");
+
+            final long startSeconds = configMgr().getConfigLong(
+                    IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
+                    IngestionBenchmarkBase.DEFAULT_START_SECONDS);
+
+            IntegrationTestQueryResponseSingleApp queryResponseSingleApp =
+                    new IntegrationTestQueryResponseSingleApp();
+            BenchmarkScenarioResult scenarioResult = queryResponseSingleApp.queryScenario(
+                    channel,
+                    10,
+                    10,
+                    1,
+                    startSeconds,
+                    37); // 370 buckets should exceed single message response size limit
+            assertFalse(scenarioResult.success); // scenario should fail because response message is too large
+
+            System.out.println("========== runQueryResponseSingleSizeLimitScenario completed ==========");
+            System.out.println();
+
+        }
     }
 
     @BeforeClass
@@ -716,6 +755,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // run and verify single response query api scenario
         queryGrpcClient.runQueryResponseSingleScenario();
+        
+        // negative test for unary data query that hits response message size limit
+        queryGrpcClient.runQueryResponseSingleSizeLimitScenario();
     }
 
 }

@@ -35,7 +35,7 @@ public abstract class QueryBenchmarkBase {
     // constants
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
-    public static final int NUM_SCENARIO_SECONDS = 60;
+    private static final int NUM_SCENARIO_SECONDS = 60;
 
     // configuration
     public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60052";
@@ -309,7 +309,8 @@ public abstract class QueryBenchmarkBase {
             int numPvs,
             int pvsPerRequest,
             int numThreads,
-            long startSeconds
+            long startSeconds,
+            int numSeconds
     ) {
         boolean success = true;
         long dataValuesReceived = 0;
@@ -334,7 +335,7 @@ public abstract class QueryBenchmarkBase {
                                 currentBatchIndex,
                                 currentBatchColumns,
                                 startSeconds,
-                                NUM_SCENARIO_SECONDS);
+                                numSeconds);
                 final QueryDataRequestTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
@@ -349,7 +350,7 @@ public abstract class QueryBenchmarkBase {
                             currentBatchIndex,
                             currentBatchColumns,
                             startSeconds,
-                            NUM_SCENARIO_SECONDS);
+                            numSeconds);
             final QueryDataRequestTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
@@ -444,7 +445,7 @@ public abstract class QueryBenchmarkBase {
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
                     BenchmarkScenarioResult scenarioResult =
-                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds, NUM_SCENARIO_SECONDS);
                     double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
