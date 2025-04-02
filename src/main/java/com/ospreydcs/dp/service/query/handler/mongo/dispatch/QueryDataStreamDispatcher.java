@@ -30,6 +30,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
         int messageSize = 0;
 
         boolean isError = false;
+        String errorMsg = "";
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
@@ -41,11 +42,10 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             } catch (DpException e) {
                 // exception deserialzing BucketDocument contents, so send error response
                 isError = true;
-                final String errorMsg =
+                errorMsg =
                         "exception deserializing protobuf data for BucketDocument id: " + getResponseObserver().hashCode()
                                 + " exception: " + e.getMessage();
                 logger.error(errorMsg);
-                QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
                 break;
             }
             Objects.requireNonNull(bucket);
@@ -57,19 +57,16 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             if (bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 // single bucket is larger than maximum message size, so send error response
                 isError = true;
-                final String errorMsg = "bucket size: " + bucketSerializedSize
+                errorMsg = "bucket size: " + bucketSerializedSize
                         + " greater than maximum message size: "
                         + MongoQueryHandler.getOutgoingMessageSizeLimitBytes();
                 logger.error(errorMsg);
-                QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
                 break;
             }
 
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
-                logger.trace(
-                        "query data response message size limit exceeded for id: {}, sending intermediate response",
-                        getResponseObserver().hashCode());
+                logger.trace("sending intermediate response id: " + getResponseObserver().hashCode());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
                 queryDataBuilder = QueryDataResponse.QueryData.newBuilder();
                 messageSize = 0;
@@ -81,16 +78,24 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
         }
 
         // close database cursor
+        logger.trace("closing cursor id: " + getResponseObserver().hashCode());
         cursor.close();
 
-        if (!isError) {
+        if ( ! isError) {
+
             // send last response message
             if (messageSize > 0) {
+                logger.trace("sending residual response id: " + getResponseObserver().hashCode());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
             // close response stream and cursor
+            logger.trace("closing response stream id: " + getResponseObserver().hashCode());
             getResponseObserver().onCompleted();
+
+        } else {
+            logger.trace("sending error response id: " + getResponseObserver().hashCode() + " msg: " + errorMsg);
+            QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
         }
     }
 

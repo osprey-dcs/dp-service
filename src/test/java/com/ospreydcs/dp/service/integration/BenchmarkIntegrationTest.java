@@ -732,7 +732,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // run and verify single response query api scenario
         queryGrpcClient.runQueryResponseSingleScenario();
-        
+
         // negative test for unary data query that hits response message size limit
         {
             // create list of 10 PV names

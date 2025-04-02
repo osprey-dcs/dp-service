@@ -29,6 +29,8 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
                 QueryDataResponse.QueryData.newBuilder();
         int messageSize = 0;
 
+        boolean isError = false;
+        String errorMsg = "";
         while (cursor.hasNext()){
 
             final BucketDocument document = cursor.next();
@@ -37,26 +39,26 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
                 bucket = BucketDocument.dataBucketFromDocument(document);
             } catch (DpException e) {
                 // exception deserializing BucketDocument contents, so send error response
-                final String errorMsg =
+                isError = true;
+                errorMsg =
                         "exception deserializing protobuf data for BucketDocument id: "
                                 + getResponseObserver().hashCode()
                                 + " exception: " + e.getMessage();
                 logger.error(errorMsg);
-                QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
-                return;
+                break;
             }
             Objects.requireNonNull(bucket);
 
-            // determine bucket size and check if too large
+            // determine bucket size
             int bucketSerializedSize = bucket.getSerializedSize();
+
+            // check if bucket size exceeds response message size limit
             if (bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 // single bucket is larger than maximum message size, so send error response
-                QueryServiceImpl.sendQueryDataResponseError(
-                        "bucket size: " + bucketSerializedSize
-                                + " greater than maximum message size: "
-                                + MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
-                        getResponseObserver());
-                return;
+                isError = true;
+                errorMsg = "bucket size: " + bucketSerializedSize
+                        + " greater than maximum message size: " + MongoQueryHandler.getOutgoingMessageSizeLimitBytes();
+                break;
             }
 
             // add bucket to result
@@ -64,27 +66,36 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
             messageSize = messageSize + bucketSerializedSize;
 
             if (messageSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
-                final String errorMsg = "query returned more data than will fit in single QueryResponse message";
-                logger.trace(errorMsg);
-                QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
-                return;
+                // query response exceeds message size limit
+                isError = true;
+                errorMsg = "query returned more data than will fit in single QueryResponse message";
+                break;
             }
         }
 
-        // create response
-        QueryDataResponse response;
-        if (messageSize > 0) {
-            // create response from buckets in result
-            response = QueryServiceImpl.queryDataResponse(queryDataBuilder);
-        } else {
-            // create response with empty query result
-            response = QueryDataResponse.newBuilder().build();
-        }
-
-        getResponseObserver().onNext(response);
-        getResponseObserver().onCompleted();
-
         cursor.close();
+
+        if (isError) {
+            logger.trace("sending error response id: " + getResponseObserver().hashCode() + " msg: " + errorMsg);
+            QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
+
+        } else {
+            // create and send query response
+
+            QueryDataResponse response;
+            if (messageSize > 0) {
+                // create response from buckets in result
+                response = QueryServiceImpl.queryDataResponse(queryDataBuilder);
+            } else {
+                // create response with empty query result
+                logger.trace("creating empty query result id: " + getResponseObserver().hashCode());
+                response = QueryDataResponse.newBuilder().build();
+            }
+
+            logger.trace("sending query response and closing response stream id: " + getResponseObserver().hashCode());
+            getResponseObserver().onNext(response);
+            getResponseObserver().onCompleted();
+        }
     }
 
 }
