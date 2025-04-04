@@ -1062,14 +1062,7 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(responseObserver.isError());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
-            if (responseObserver.isError()
-                    && responseObserver.getErrorMessage().equals(
-                            "onNext received exception response: query returned no data")
-            ) {
-                return new QueryRequestStatusResult(responseObserver.getRequestStatusList(), true);
-            } else {
-                assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
-            }
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
         return new QueryRequestStatusResult(responseObserver.getRequestStatusList(), false);
@@ -1081,28 +1074,9 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        // NOTE
-        //
-        // This method includes retry logic for a strange behavior that I encountered, but determined that retry didn't
-        // solve (e.g., the start times for ingestion and query were not correct).  I left the retry logic here because
-        // we might decide we need it at some point.
-
         final QueryRequestStatusRequest request = IngestionTestBase.buildQueryRequestStatusRequest(params);
-        List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList = new ArrayList<>();
-        for (int retryCount = 0 ; retryCount < MongoTestClient.MONGO_FIND_RETRY_COUNT ; ++retryCount) {
-            QueryRequestStatusResult result = sendQueryRequestStatus(request, expectReject, expectedRejectMessage);
-            if (result.noData && expectedResponseMap.size() > 0) {
-                logger.info("sendAndVerifyQueryRequestStatus no data found, retrying");
-                try {
-                    Thread.sleep(MongoTestClient.MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                } catch (InterruptedException ex) {
-                    // ignore and retry
-                }
-            } else {
-                requestStatusList = result.statusList;
-                break;
-            }
-        }
+        QueryRequestStatusResult result = sendQueryRequestStatus(request, expectReject, expectedRejectMessage);
+        final List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList = result.statusList;
 
         // verify API response against expectedResponseMap
         assertEquals(expectedResponseMap.size(), requestStatusList.size());

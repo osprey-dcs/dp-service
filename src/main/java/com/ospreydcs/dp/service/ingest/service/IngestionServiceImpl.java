@@ -305,12 +305,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryRequestStatusResponse queryRequestStatusResponseEmpty(
-    ) {
-        return queryRequestStatusResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryRequestStatusResponse queryRequestStatusResponse(
             QueryRequestStatusResponse.RequestStatusResult result
     ) {
@@ -332,14 +326,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             String msg, StreamObserver<QueryRequestStatusResponse> responseObserver
     ) {
         final QueryRequestStatusResponse response = queryRequestStatusResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryRequestStatusResponseEmpty(
-            StreamObserver<QueryRequestStatusResponse> responseObserver
-    ) {
-        final QueryRequestStatusResponse response = queryRequestStatusResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
