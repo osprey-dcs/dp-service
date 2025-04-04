@@ -203,7 +203,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                             final int numBucketsExpected = 2;
 
                             final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
-                                    queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
+                                    queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos, false, "");
                             assertEquals(numBucketsExpected, queryResultBuckets.size());
                             for (String pvName : queryPvNames) {
                                 boolean foundPvBucket = false;

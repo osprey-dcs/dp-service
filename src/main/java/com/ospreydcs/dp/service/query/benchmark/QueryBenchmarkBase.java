@@ -292,7 +292,7 @@ public abstract class QueryBenchmarkBase {
         return requestBuilder.build();
     }
 
-    protected static QueryDataRequest buildNextQueryDataRequest() {
+    public static QueryDataRequest buildNextQueryDataRequest() {
         QueryDataRequest.Builder requestBuilder = QueryDataRequest.newBuilder();
         QueryDataRequest.CursorOperation.Builder cursorOperationBuilder = QueryDataRequest.CursorOperation.newBuilder();
         cursorOperationBuilder.setCursorOperationType(QueryDataRequest.CursorOperation.CursorOperationType.CURSOR_OP_NEXT);

@@ -188,33 +188,6 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         return responseObserver.responseList;
     }
 
-    public void testResponseStreamDispatcherNoData() {
-
-        // assemble query request
-        // create request with unspecified column name
-        List<String> columnNames = List.of("pv_1", "pv_2");
-        Long nowSeconds = Instant.now().getEpochSecond();
-        QueryDataRequestParams params = new QueryDataRequestParams(
-                columnNames,
-                nowSeconds,
-                0L,
-                nowSeconds + 1,
-                0L);
-        QueryDataRequest request = buildQueryDataRequest(params);
-
-        // send request
-        final int numResponesesExpected = 1;
-        List<QueryDataResponse> responseList = executeAndDispatchResponseStream(request);
-
-        // examine response
-        assertTrue(responseList.size() == numResponesesExpected);
-        QueryDataResponse response = responseList.get(0);
-        assertTrue(response.hasExceptionalResult());
-        assertEquals(
-                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY,
-                response.getExceptionalResult().getExceptionalResultStatus());
-    }
-
     private static void verifyDataBucket(
             QueryDataResponse.QueryData.DataBucket bucket,
             long bucketStartSeconds,

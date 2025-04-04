@@ -12,8 +12,7 @@ import org.junit.runners.JUnit4;
 import java.util.List;
 
 @RunWith(JUnit4.class)
-public class QueryDataStreamSimpleIngestionScenarioTest extends GrpcIntegrationTestBase {
-
+public class QueryDataBidiStreamTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
@@ -28,7 +27,7 @@ public class QueryDataStreamSimpleIngestionScenarioTest extends GrpcIntegrationT
     }
 
     @Test
-    public void queryMetadataTest() {
+    public void testQueryDataBidiStream() {
 
         // use request data contained by validationMap to verify query results
         IngestionScenarioResult ingestionScenarioResult;
@@ -40,8 +39,36 @@ public class QueryDataStreamSimpleIngestionScenarioTest extends GrpcIntegrationT
             ingestionScenarioResult = simpleIngestionScenario();
         }
 
+        // positive queryData() test case, empty query result
         {
-            final List<String> columnNames = List.of("S01-GCC01", "S01-BPM01");
+            final List<String> pvNames = List.of("junk", "stuff"); // bogus PV names
+
+            // select 5 seconds of data for each pv
+            final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+            final long beginSeconds = startSeconds + 1;
+            final long beginNanos = 0L;
+            final long endSeconds = startSeconds + 6;
+            final long endNanos = 0L;
+
+            final int numBucketsExpected = 0; // we expect an empty response
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+
+            sendAndVerifyQueryDataBidiStream(
+                    numBucketsExpected,
+                    pvNames,
+                    beginSeconds,
+                    beginNanos,
+                    endSeconds,
+                    endNanos,
+                    ingestionScenarioResult.validationMap,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // positive queryData() test case
+        {
+            final List<String> pvNames = List.of("S01-GCC01", "S01-BPM01");
 
             // select 5 seconds of data for each pv
             final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
@@ -52,15 +79,19 @@ public class QueryDataStreamSimpleIngestionScenarioTest extends GrpcIntegrationT
 
             // 2 pvs, 5 seconds, 1 bucket per second per pv
             final int numBucketsExpected = 10;
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
 
-            sendAndVerifyQueryDataStream(
+            sendAndVerifyQueryDataBidiStream(
                     numBucketsExpected,
-                    columnNames,
+                    pvNames,
                     beginSeconds,
                     beginNanos,
                     endSeconds,
                     endNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap,
+                    expectReject,
+                    expectedRejectMessage);
         }
     }
 

@@ -203,7 +203,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             final List<String> queryPvNames = Arrays.asList("array_pv_01");
             final DataColumn requestColumn = arrayDataColumnList.get(0);
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
+                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
@@ -307,7 +307,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             final List<String> queryPvNames = Arrays.asList("image_pv_01");
             final DataColumn requestColumn = dataColumnList.get(0);
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
+                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
@@ -591,7 +591,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             final List<String> queryPvNames = Arrays.asList("structure_pv_01");
             final DataColumn requestColumn = dataColumnList.get(0);
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos);
+                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);

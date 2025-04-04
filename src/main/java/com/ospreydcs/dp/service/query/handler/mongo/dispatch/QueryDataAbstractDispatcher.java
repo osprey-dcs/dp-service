@@ -46,13 +46,6 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
             return;
         }
 
-        // send empty QueryStatus and close response stream if query matched no data
-        if (!cursor.hasNext()) {
-            logger.trace("processQueryRequest: query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryDataResponseEmpty(getResponseObserver());
-            return;
-        }
-
         handleResult_(cursor);
     }
 

@@ -414,7 +414,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
     }
 
-    private static class IntegrationTestQueryResponseCursorApp extends BenchmarkQueryDataBidiStream {
+    private static class IntegrationTestQueryDataBidiStreamApp extends BenchmarkQueryDataBidiStream {
 
         private static class IntegrationTestQueryResponseCursorTask
                 extends BenchmarkQueryDataBidiStream.QueryResponseCursorTask
@@ -453,7 +453,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
     }
 
-    private static class IntegrationTestQueryResponseStreamApp extends BenchmarkQueryDataStream {
+    private static class IntegrationTestQueryDataStreamApp extends BenchmarkQueryDataStream {
 
         private static class IntegrationTestQueryResponseStreamTask
                 extends BenchmarkQueryDataStream.QueryResponseStreamTask {
@@ -490,7 +490,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         }
     }
 
-    private static class IntegrationTestQueryResponseSingleApp extends BenchmarkQueryDataUnary {
+    private static class IntegrationTestQueryDataApp extends BenchmarkQueryDataUnary {
 
         private static class IntegrationTestQueryResponseSingleTask
                 extends BenchmarkQueryDataUnary.QueryResponseSingleTask {
@@ -535,7 +535,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             this.channel = channel;
         }
 
-        private void runQueryResponseCursorScenario() {
+        private void runQueryDataBidiStreamScenario() {
 
             System.out.println();
             System.out.println("========== running queryResponseCursor scenario ==========");
@@ -547,9 +547,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
                     IngestionBenchmarkBase.DEFAULT_START_SECONDS);
 
-            IntegrationTestQueryResponseCursorApp queryResponseCursorApp =
-                    new IntegrationTestQueryResponseCursorApp();
-            BenchmarkScenarioResult scenarioResult = queryResponseCursorApp.queryScenario(
+            IntegrationTestQueryDataBidiStreamApp queryDataBidiStreamApp =
+                    new IntegrationTestQueryDataBidiStreamApp();
+            BenchmarkScenarioResult scenarioResult = queryDataBidiStreamApp.queryScenario(
                     channel,
                     QUERY_NUM_PVS,
                     QUERY_NUM_PVS_PER_REQUEST,
@@ -562,7 +562,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
         }
 
-        private void runQueryResponseStreamScenario() {
+        private void runQueryDataStreamScenario() {
 
             System.out.println();
             System.out.println("========== running queryResponseStream scenario ==========");
@@ -574,9 +574,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
                     IngestionBenchmarkBase.DEFAULT_START_SECONDS);
 
-            IntegrationTestQueryResponseStreamApp queryResponseStreamApp =
-                    new IntegrationTestQueryResponseStreamApp();
-            BenchmarkScenarioResult scenarioResult = queryResponseStreamApp.queryScenario(
+            IntegrationTestQueryDataStreamApp dataStreamApp =
+                    new IntegrationTestQueryDataStreamApp();
+            BenchmarkScenarioResult scenarioResult = dataStreamApp.queryScenario(
                     channel,
                     QUERY_NUM_PVS,
                     QUERY_NUM_PVS_PER_REQUEST,
@@ -589,7 +589,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
         }
 
-        private void runQueryResponseSingleScenario() {
+        private void runQueryDataScenario() {
 
             System.out.println();
             System.out.println("========== running queryResponseSingle scenario ==========");
@@ -601,9 +601,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     IngestionBenchmarkBase.CFG_KEY_START_SECONDS,
                     IngestionBenchmarkBase.DEFAULT_START_SECONDS);
 
-            IntegrationTestQueryResponseSingleApp queryResponseSingleApp =
-                    new IntegrationTestQueryResponseSingleApp();
-            BenchmarkScenarioResult scenarioResult = queryResponseSingleApp.queryScenario(
+            IntegrationTestQueryDataApp queryDataApp =
+                    new IntegrationTestQueryDataApp();
+            BenchmarkScenarioResult scenarioResult = queryDataApp.queryScenario(
                     channel,
                     QUERY_SINGLE_NUM_PVS,
                     QUERY_SINGLE_NUM_PVS_PER_REQUEST,
@@ -725,13 +725,13 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 //        }
 
         // run and verify bidirectional stream query api scenario
-        queryGrpcClient.runQueryResponseCursorScenario();
+        queryGrpcClient.runQueryDataBidiStreamScenario();
 
         // run and verify server-streaming query api scenario
-        queryGrpcClient.runQueryResponseStreamScenario();
+        queryGrpcClient.runQueryDataStreamScenario();
 
         // run and verify single response query api scenario
-        queryGrpcClient.runQueryResponseSingleScenario();
+        queryGrpcClient.runQueryDataScenario();
 
         // negative test for unary data query that hits response message size limit
         {
@@ -761,6 +761,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     beginNanos,
                     endSeconds,
                     endNanos,
+                    null,
                     expectReject,
                     expectedRejectMessage
             );

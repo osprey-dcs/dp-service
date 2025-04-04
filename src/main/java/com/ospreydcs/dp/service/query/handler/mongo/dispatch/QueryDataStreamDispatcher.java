@@ -29,9 +29,11 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
                 QueryDataResponse.QueryData.newBuilder();
         int messageSize = 0;
 
+        boolean emptyResponse = true;
         boolean isError = false;
         String errorMsg = "";
-        while (cursor.hasNext()){
+        while (cursor.hasNext()) {
+            emptyResponse = false;
 
             final BucketDocument document = cursor.next();
 
@@ -83,13 +85,19 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
         if ( ! isError) {
 
+            // send empty response message if cursor is empty
+            if (emptyResponse) {
+                logger.trace("sending empty response id: " + getResponseObserver().hashCode());
+                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
+            }
+
             // send last response message
-            if (messageSize > 0) {
+            else if (messageSize > 0) {
                 logger.trace("sending residual response id: " + getResponseObserver().hashCode());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
-            // close response stream and cursor
+            // close response stream
             logger.trace("closing response stream id: " + getResponseObserver().hashCode());
             getResponseObserver().onCompleted();
 

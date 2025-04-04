@@ -20,9 +20,9 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     private QueryHandlerInterface handler;
 
     // constants
-    protected static final String REQUEST_STREAM = "queryResponseStream";
-    protected static final String REQUEST_CURSOR = "queryResponseCursor";
-    protected static final String REQUEST_SINGLE = "queryResponseSingle";
+    protected static final String REQUEST_STREAM = "queryDataStream";
+    protected static final String REQUEST_BIDI_STREAM = "queryDataBidiStream";
+    protected static final String REQUEST_UNARY = "queryData";
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
@@ -68,11 +68,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryDataResponse queryDataResponseEmpty() {
-        return queryDataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryDataResponse queryDataResponseNotReady() {
         return queryDataResponseExceptionalResult(
                 "cursor not ready for operation", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_NOT_READY);
@@ -97,12 +92,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     public static void sendQueryDataResponseError(String msg, StreamObserver<QueryDataResponse> responseObserver) {
         final QueryDataResponse errorResponse = queryDataResponseError(msg);
         responseObserver.onNext(errorResponse);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryDataResponseEmpty(StreamObserver<QueryDataResponse> responseObserver) {
-        final QueryDataResponse summaryResponse = queryDataResponseEmpty();
-        responseObserver.onNext(summaryResponse);
         responseObserver.onCompleted();
     }
 
@@ -300,14 +289,14 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     @Override
     public StreamObserver<QueryDataRequest> queryDataBidiStream(StreamObserver<QueryDataResponse> responseObserver) {
         logger.trace("queryDataBidiStream");
-        return new QueryResponseBidiStreamRequestStreamObserver(responseObserver, handler, this);
+        return new QueryDataBidiStreamRequestObserver(responseObserver, handler, this);
     }
 
     @Override
     public void queryData(QueryDataRequest request, StreamObserver<QueryDataResponse> responseObserver) {
 
         // log and validate request
-        QueryDataRequest.QuerySpec querySpec = validateQueryDataRequest(REQUEST_SINGLE, request, responseObserver);
+        QueryDataRequest.QuerySpec querySpec = validateQueryDataRequest(REQUEST_UNARY, request, responseObserver);
 
         // handle request
         if (querySpec != null) {

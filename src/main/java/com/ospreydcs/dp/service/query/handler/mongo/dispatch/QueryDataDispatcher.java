@@ -80,18 +80,8 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
             QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
 
         } else {
-            // create and send query response
-
-            QueryDataResponse response;
-            if (messageSize > 0) {
-                // create response from buckets in result
-                response = QueryServiceImpl.queryDataResponse(queryDataBuilder);
-            } else {
-                // create response with empty query result
-                logger.trace("creating empty query result id: " + getResponseObserver().hashCode());
-                response = QueryDataResponse.newBuilder().build();
-            }
-
+            // create response from buckets in result
+            final QueryDataResponse response = QueryServiceImpl.queryDataResponse(queryDataBuilder);
             logger.trace("sending query response and closing response stream id: " + getResponseObserver().hashCode());
             getResponseObserver().onNext(response);
             getResponseObserver().onCompleted();

@@ -121,10 +121,9 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
                 return;
 
             } else {
-                if (messageSize > 0) {
-                    // send next query result response
-                    QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
-                }
+                // send next query result response
+                logger.trace("sending query result response id: " + getResponseObserver().hashCode());
+                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
             // close cursor if we have exhausted it

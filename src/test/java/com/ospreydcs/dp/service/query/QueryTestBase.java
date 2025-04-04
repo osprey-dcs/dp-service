@@ -3,8 +3,11 @@ package com.ospreydcs.dp.service.query;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
 public class QueryTestBase {
+
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
 
     public static class QueryDataRequestParams {
 
@@ -258,22 +264,48 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryResponseStreamObserver implements StreamObserver<QueryDataResponse> {
+    public static class QueryDataResponseStreamObserver implements StreamObserver<QueryDataResponse> {
+
+        private static enum ObserverType {
+            UNARY,
+            STREAM,
+            BIDI_STREAM
+        }
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
                 Collections.synchronizedList(new ArrayList<>());
-        private final Integer numResponsesExpected;
-        private final AtomicInteger numResponsesReceived = new AtomicInteger(0);
+        private StreamObserver<QueryDataRequest> requestObserver = null;
+        private final ObserverType observerType;
+        private final int numBucketsExpected;
+        private final AtomicInteger numBucketsReceived = new AtomicInteger(0);
 
-        public QueryResponseStreamObserver() {
-            this.numResponsesExpected = null;
+        public QueryDataResponseStreamObserver(ObserverType observerType) {
+            this.observerType = observerType;
+            this.numBucketsExpected = 0;
         }
 
-        public QueryResponseStreamObserver(int numResponsesExpected) {
-            this.numResponsesExpected = numResponsesExpected;
+        public QueryDataResponseStreamObserver(ObserverType observerType, int numBucketsExpected) {
+            this.observerType = observerType;
+            this.numBucketsExpected = numBucketsExpected;
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataStreamObserver() {
+            return new QueryDataResponseStreamObserver(ObserverType.STREAM);
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataUnaryObserver() {
+            return new QueryDataResponseStreamObserver(ObserverType.UNARY);
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataBidiStreamObserver(int numBucketsExpected) {
+            return new QueryDataResponseStreamObserver(ObserverType.BIDI_STREAM, numBucketsExpected);
+        }
+
+        public void setRequestObserver(StreamObserver<QueryDataRequest> requestObserver) {
+            this.requestObserver = requestObserver;
         }
 
         public void await() {
@@ -319,20 +351,32 @@ public class QueryTestBase {
                 }
 
                 assertTrue(response.hasQueryData());
-                List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
+                final List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
                         response.getQueryData().getDataBucketsList();
+                final int bucketsReceived = numBucketsReceived.addAndGet(responseBucketList.size());
                 for (QueryDataResponse.QueryData.DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
                 }
 
-                final int responsesReceived = numResponsesReceived.incrementAndGet();
+                if (observerType == ObserverType.UNARY) {
+                    // we only expect a single response if unary
+                    finishLatch.countDown();
+                    return;
+                }
 
-                // check if we are counting responses
-                if (numResponsesExpected != null) {
-                    if (responsesReceived >= numResponsesExpected) {
+                if (observerType == ObserverType.BIDI_STREAM) {
+
+                    if (bucketsReceived >= numBucketsExpected) {
+                        // bidi stream received expected number of result buckets
                         finishLatch.countDown();
+                        return;
+                    } else {
+                        logger.trace("requesting next query result response");
+                        QueryDataRequest nextRequest = QueryBenchmarkBase.buildNextQueryDataRequest();
+                        requestObserver.onNext(nextRequest);
                     }
                 }
+
             }).start();
         }
 
@@ -355,7 +399,9 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                finishLatch.countDown();
+                if (observerType == ObserverType.STREAM) {
+                    finishLatch.countDown();
+                }
             }).start();
         }
     }

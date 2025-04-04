@@ -1456,116 +1456,16 @@ public abstract class GrpcIntegrationTestBase {
         verifyQueryTableRowResult(params, tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryData(
-            QueryDataRequest request,
-            boolean expectReject,
-            String expectedRejectMessage
-    ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
-
-        final QueryTestBase.QueryResponseStreamObserver responseObserver =
-                new QueryTestBase.QueryResponseStreamObserver(1);
-
-        // send request in separate thread to better simulate out of process grpc,
-        // otherwise service handles request in this thread
-        new Thread(() -> {
-            asyncStub.queryData(request, responseObserver);
-        }).start();
-
-        responseObserver.await();
-
-        if (expectReject) {
-            assertTrue(responseObserver.isError());
-            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
-        } else {
-            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
-        }
-
-        return responseObserver.getDataBucketList();
-    }
-
-    protected List<QueryDataResponse.QueryData.DataBucket> queryData(
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
-            boolean expectReject,
-            String expectedRejectMessage
-    ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
-        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
-        return sendQueryData(request, expectReject, expectedRejectMessage);
-    }
-
-    protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
+    private void verifyQueryDataResult(
             int numBucketsExpected,
             List<String> pvNames,
             long startSeconds,
             long startNanos,
             long endSeconds,
             long endNanos,
-            boolean expectReject,
-            String expectedRejectMessage
+            Map<String, IngestionStreamInfo> validationMap,
+            List<QueryDataResponse.QueryData.DataBucket> dataBucketList
     ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryData(pvNames, startSeconds, startNanos, endSeconds, endNanos, expectReject, expectedRejectMessage);
-
-        if (expectReject) {
-            assertTrue(dataBucketList.isEmpty());
-            return new ArrayList<>();
-        } else {
-            return dataBucketList;
-        }
-    }
-
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
-
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
-
-        final QueryTestBase.QueryResponseStreamObserver responseObserver =
-                new QueryTestBase.QueryResponseStreamObserver();
-
-        // send request in separate thread to better simulate out of process grpc,
-        // otherwise service handles request in this thread
-        new Thread(() -> {
-            asyncStub.queryDataStream(request, responseObserver);
-        }).start();
-
-        responseObserver.await();
-
-        if (responseObserver.isError()) {
-            return null;
-        } else {
-            return responseObserver.getDataBucketList();
-        }
-    }
-
-    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos
-    ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
-        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
-        return sendQueryDataStream(request);
-    }
-
-    protected void sendAndVerifyQueryDataStream(
-            int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
-            Map<String, IngestionStreamInfo> validationMap
-    ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryDataStream(pvNames, startSeconds, startNanos, endSeconds, endNanos);
 
         // build map of buckets in query response for vallidation
         Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap =
@@ -1691,6 +1591,241 @@ public abstract class GrpcIntegrationTestBase {
         // check that we validated all buckets returned by the query, and that query returned expected number of buckets
         assertEquals(dataBucketList.size(), validatedBuckets);
         assertEquals(numBucketsExpected, dataBucketList.size());
+
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryData(
+            QueryDataRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataUnaryObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryData(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getDataBucketList();
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryData(
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryTestBase.QueryDataRequestParams params =
+                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryData(request, expectReject, expectedRejectMessage);
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
+            int numBucketsExpected,
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryData(pvNames, startSeconds, startNanos, endSeconds, endNanos, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertTrue(dataBucketList.isEmpty());
+            return dataBucketList;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected,
+                pvNames,
+                startSeconds,
+                startNanos,
+                endSeconds,
+                endNanos,
+                validationMap,
+                dataBucketList);
+
+        return dataBucketList;
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(
+            QueryDataRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataStreamObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryDataStream(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+            return responseObserver.getDataBucketList();
+        }
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryTestBase.QueryDataRequestParams params =
+                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryDataStream(request, expectReject, expectedRejectMessage);
+    }
+
+    protected void sendAndVerifyQueryDataStream(
+            int numBucketsExpected,
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryDataStream(
+                        pvNames, startSeconds, startNanos, endSeconds, endNanos, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(null, dataBucketList);
+            return;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected,
+                pvNames,
+                startSeconds,
+                startNanos,
+                endSeconds,
+                endNanos,
+                validationMap,
+                dataBucketList);
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataBidiStream(
+            QueryDataRequest request,
+            int numBucketsExpected,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataBidiStreamObserver(numBucketsExpected);
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            StreamObserver<QueryDataRequest> requestObserver = asyncStub.queryDataBidiStream(responseObserver);
+            responseObserver.setRequestObserver(requestObserver);
+            requestObserver.onNext(request);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+            return responseObserver.getDataBucketList();
+        }
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryDataBidiStream(
+            int numBucketsExpected,
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryTestBase.QueryDataRequestParams params =
+                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryDataBidiStream(request, numBucketsExpected, expectReject, expectedRejectMessage);
+    }
+
+    protected void sendAndVerifyQueryDataBidiStream(
+            int numBucketsExpected,
+            List<String> pvNames,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryDataBidiStream(
+                        numBucketsExpected,
+                        pvNames,
+                        startSeconds,
+                        startNanos,
+                        endSeconds,
+                        endNanos,
+                        expectReject,
+                        expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(null, dataBucketList);
+            return;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected,
+                pvNames,
+                startSeconds,
+                startNanos,
+                endSeconds,
+                endNanos,
+                validationMap,
+                dataBucketList);
     }
 
     protected List<QueryPvMetadataResponse.MetadataResult.PvInfo> sendQueryPvMetadata(
