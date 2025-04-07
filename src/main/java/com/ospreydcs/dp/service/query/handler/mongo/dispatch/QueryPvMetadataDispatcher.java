@@ -39,11 +39,6 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
             logger.error(msg);
             QueryServiceImpl.sendQueryPvMetadataResponseError(msg, this.responseObserver);
             return;
-        } else if (!cursor.hasNext()) {
-            // send empty QueryStatus and close response stream if query matched no data
-            logger.trace("metadata query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryPvMetadataResponseEmpty(this.responseObserver);
-            return;
         }
 
         QueryPvMetadataResponse.MetadataResult.Builder metadataResultBuilder =

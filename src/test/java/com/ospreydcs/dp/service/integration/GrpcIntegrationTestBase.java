@@ -1893,12 +1893,12 @@ public abstract class GrpcIntegrationTestBase {
             List<String> pvNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
-            String expectedRejectMessage
-    ) {
+            String expectedRejectMessage,
+            boolean expectEmpty) {
         final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
                 sendQueryPvMetadata(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectEmpty) {
             assertEquals(0, pvInfoList.size());
             return;
         }
@@ -1972,10 +1972,12 @@ public abstract class GrpcIntegrationTestBase {
             List<String> columnNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
-            String expectedRejectMessage
+            String expectedRejectMessage,
+            boolean expectEmpty
     ) {
         final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNames);
-        sendAndVerifyQueryPvMetadata(request, columnNames, validationMap, expectReject, expectedRejectMessage);
+        sendAndVerifyQueryPvMetadata(
+                request, columnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
     protected void sendAndVerifyQueryPvMetadata(
@@ -1983,10 +1985,12 @@ public abstract class GrpcIntegrationTestBase {
             Map<String, IngestionStreamInfo> validationMap,
             List<String> expectedColumnNames,
             boolean expectReject,
-            String expectedRejectMessage
+            String expectedRejectMessage,
+            boolean expectEmpty
     ) {
         final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNamePattern);
-        sendAndVerifyQueryPvMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+        sendAndVerifyQueryPvMetadata(
+                request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
     private static List<QueryProvidersResponse.ProvidersResult.ProviderInfo> sendQueryProviders(

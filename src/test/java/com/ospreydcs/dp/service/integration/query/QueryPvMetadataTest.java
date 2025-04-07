@@ -29,7 +29,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void queryMetadataTest() {
+    public void queryPvMetadataTest() {
 
         // use request data contained by validationMap to verify query results
         IngestionScenarioResult ingestionScenarioResult;
@@ -41,15 +41,61 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             ingestionScenarioResult = simpleIngestionScenario();
         }
 
+        // negative test case: test rejected metadata query due to blank PV name pattern
         {
-            // send metadata query for list of columns
-            final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
+            final String columnNamePattern = ""; // send a blank string for name pattern
+            final List<String> expectedColumnNameMatches = new ArrayList<>();
             sendAndVerifyQueryPvMetadata(
-                    queryColumnNames, ingestionScenarioResult.validationMap, false, null);
+                    columnNamePattern,
+                    ingestionScenarioResult.validationMap,
+                    expectedColumnNameMatches,
+                    true,
+                    "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty",
+                    false);
         }
 
+        // positive test case: empty query result with list of PV names
         {
-            // send metadata query for column pattern matching all "S01" devices
+            final List<String> pvNames = List.of("junk", "stuff");
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            final boolean expectEmpty = true;
+            sendAndVerifyQueryPvMetadata(
+                    pvNames,
+                    ingestionScenarioResult.validationMap,
+                    expectReject,
+                    expectedRejectMessage,
+                    expectEmpty);
+        }
+
+        // positive test case: send metadata query for list of columns
+        {
+            final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
+            sendAndVerifyQueryPvMetadata(
+                    queryColumnNames,
+                    ingestionScenarioResult.validationMap,
+                    false,
+                    null,
+                    false);
+        }
+
+        // positive test case: empty query result with PV name pattern
+        {
+            final String columnNamePattern = "junk";
+            final List<String> expectedColumnNameMatches =
+                    List.of();
+            final boolean expectEmpty = true;
+            sendAndVerifyQueryPvMetadata(
+                    columnNamePattern,
+                    ingestionScenarioResult.validationMap,
+                    expectedColumnNameMatches,
+                    false,
+                    null,
+                    expectEmpty);
+        }
+
+        // positive test case: send metadata query for column pattern matching all "S01" devices
+        {
             final String columnNamePattern = "S01";
             final List<String> expectedColumnNameMatches =
                     List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
@@ -58,11 +104,12 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
                     ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     false,
-                    null);
+                    null,
+                    false);
         }
 
+        // positive test case: send metadata query for column pattern matching all "GCC02" devices
         {
-            // send metadata query for column pattern matching all "GCC02" devices
             final String columnNamePattern = "GCC02";
             final List<String> expectedColumnNameMatches = new ArrayList<>();
             for (int i = 1 ; i <= 10 ; ++i) {
@@ -74,19 +121,8 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
                     ingestionScenarioResult.validationMap,
                     expectedColumnNameMatches,
                     false,
-                    null);
-        }
-
-        {
-            // test rejected metadata query due to blank PV name pattern
-            final String columnNamePattern = ""; // send a blank string for name pattern
-            final List<String> expectedColumnNameMatches = new ArrayList<>();
-            sendAndVerifyQueryPvMetadata(
-                    columnNamePattern,
-                    ingestionScenarioResult.validationMap,
-                    expectedColumnNameMatches,
-                    true,
-                    "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty");
+                    null,
+                    false);
         }
 
     }
