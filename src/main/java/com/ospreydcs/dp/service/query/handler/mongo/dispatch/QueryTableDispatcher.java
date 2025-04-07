@@ -141,15 +141,17 @@ public class QueryTableDispatcher extends Dispatcher {
         // send error response and close response stream if cursor is null
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
-            logger.error(msg);
+            logger.error(msg + " id: " + this.responseObserver.hashCode());
             QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
             return;
         }
 
-        // send empty QueryStatus and close response stream if query matched no data
+        // send empty result response if query matched no data
         if (!cursor.hasNext()) {
-            logger.trace("processQueryRequest: query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryTableResponseEmpty(this.responseObserver);
+            logger.trace(
+                    "processQueryRequest: query matched no data, cursor is empty id: "
+                            + this.responseObserver.hashCode());
+            QueryServiceImpl.sendQueryTableResponseEmpty(request.getFormat(), this.responseObserver);
             return;
         }
 

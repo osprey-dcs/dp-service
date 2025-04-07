@@ -155,8 +155,6 @@ public class QueryTestBase {
                     .setPattern(params.pvNamePattern)
                     .build();
             requestBuilder.setPvNamePattern(pvNamePattern);
-        } else {
-            fail("no pvName params specified (list of pattern)");
         }
 
         // set begin time
@@ -212,10 +210,11 @@ public class QueryTestBase {
     }
 
 
-    public static class QueryResponseTableObserver implements StreamObserver<QueryTableResponse> {
+    public static class QueryTableResponseObserver implements StreamObserver<QueryTableResponse> {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<QueryTableResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -229,6 +228,14 @@ public class QueryTestBase {
 
         public boolean isError() { return isError.get(); }
 
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
         public QueryTableResponse getQueryResponse() {
             return responseList.get(0);
         }
@@ -238,12 +245,22 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
+
                 responseList.add(response);
                 finishLatch.countDown();
                 if (responseList.size() > 1) {
-                    System.err.println("QueryResponseTableObserver onNext received more than one response");
+                    System.err.println("QueryTableResponseObserver onNext received more than one response");
                     isError.set(true);
                 }
+
             }).start();
 
         }
@@ -254,7 +271,7 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
                 Status status = Status.fromThrowable(t);
-                System.err.println("QueryResponseTableObserver error: " + status);
+                System.err.println("QueryTableResponseObserver error: " + status);
                 isError.set(true);
             }).start();
         }
@@ -386,7 +403,7 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
                 Status status = Status.fromThrowable(t);
-                final String errorMsg = "QueryResponseTableObserver error: " + status;
+                final String errorMsg = "onError: " + status;
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);

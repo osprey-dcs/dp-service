@@ -127,9 +127,24 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return queryTableResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryTableResponse queryTableResponseEmpty() {
-        return queryTableResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    public static QueryTableResponse queryTableResponseEmpty(QueryTableRequest.TableResultFormat format) {
+
+        QueryTableResponse.TableResult.Builder tableResultBuilder = QueryTableResponse.TableResult.newBuilder();
+
+        switch (format) {
+            case TABLE_FORMAT_ROW_MAP -> {
+                QueryTableResponse.RowMapTable rowMapTable = QueryTableResponse.RowMapTable.newBuilder().build();
+                tableResultBuilder.setRowMapTable(rowMapTable);
+            }
+            case TABLE_FORMAT_COLUMN -> {
+                QueryTableResponse.ColumnTable columnTable = QueryTableResponse.ColumnTable.newBuilder().build();
+                tableResultBuilder.setColumnTable(columnTable);
+            }
+            case UNRECOGNIZED -> {
+            }
+        }
+
+        return queryTableResponse(tableResultBuilder.build());
     }
 
     public static QueryTableResponse queryTableResponse(QueryTableResponse.TableResult tableResult) {
@@ -153,9 +168,12 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryTableResponseEmpty(StreamObserver<QueryTableResponse> responseObserver) {
-        final QueryTableResponse summaryResponse = queryTableResponseEmpty();
-        responseObserver.onNext(summaryResponse);
+    public static void sendQueryTableResponseEmpty(
+            QueryTableRequest.TableResultFormat format,
+            StreamObserver<QueryTableResponse> responseObserver
+    ) {
+        final QueryTableResponse emptyResponse = queryTableResponseEmpty(format);
+        responseObserver.onNext(emptyResponse);
         responseObserver.onCompleted();
     }
 
@@ -317,6 +335,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (validationResult.isError) {
             String validationMsg = validationResult.msg;
             sendQueryTableResponseReject(validationMsg, responseObserver);
+            return;
         }
 
         handler.handleQueryTable(request, responseObserver);

@@ -147,7 +147,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    validationMap, false, "");
         }
 
         {

@@ -39,6 +39,56 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             ingestionScenarioResult = simpleIngestionScenario();
         }
 
+        // negative test, rejected because list of PV names is empty
+        {
+            // send table query with bogus pv names
+            final int queryNumSeconds = 5;
+            final long queryStartSeconds = startSeconds + 1;
+            final long queryStartNanos = 0;
+            final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
+            final long queryEndNanos = 0;
+            final List<String> pvNames = List.of();
+
+            final int numRowsExpected = 0;
+            final boolean expectReject = true;
+            final String expectedRejectMessage = "QueryTableRequest must specify either pvNameList or pvNamePattern";
+            sendAndVerifyQueryTablePvNameListColumnResult(
+                    numRowsExpected,
+                    pvNames,
+                    queryStartSeconds,
+                    queryStartNanos,
+                    queryEndSeconds,
+                    queryEndNanos,
+                    ingestionScenarioResult.validationMap,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // positive test for empty query result with column-oriented format
+        {
+            // send table query with bogus pv names
+            final int queryNumSeconds = 5;
+            final long queryStartSeconds = startSeconds + 1;
+            final long queryStartNanos = 0;
+            final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
+            final long queryEndNanos = 0;
+            final List<String> pvNames = List.of("junk", "stuff");
+
+            final int numRowsExpected = 0;
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            sendAndVerifyQueryTablePvNameListColumnResult(
+                    numRowsExpected,
+                    pvNames,
+                    queryStartSeconds,
+                    queryStartNanos,
+                    queryEndSeconds,
+                    queryEndNanos,
+                    ingestionScenarioResult.validationMap,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
         {
             // test table query API with pvNameList and column-oriented result
 
@@ -61,7 +111,9 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap,
+                    false,
+                    "");
         }
 
         {
@@ -114,7 +166,34 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap,
+                    false,
+                    "");
+        }
+
+        // positive test case for empty query result with row-oriented format
+        {
+            // send table query for 5-second subset of ingested data,
+            // starting one second offset from start of ingestion data
+            final int queryNumSeconds = 5;
+            final long queryStartSeconds = startSeconds + 1;
+            final long queryStartNanos = 0;
+            final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
+            final long queryEndNanos = 0;
+            final List<String> queryColumnNames = List.of("junk", "");
+
+            // 5 buckets each with 10 rows for each PV, timestamps are aligned
+            final int numRowsExpected = 0;
+            sendAndVerifyQueryTablePvNameListRowResult(
+                    numRowsExpected,
+                    queryColumnNames,
+                    queryStartSeconds,
+                    queryStartNanos,
+                    queryEndSeconds,
+                    queryEndNanos,
+                    ingestionScenarioResult.validationMap,
+                    false,
+                    "");
         }
 
         {
@@ -139,7 +218,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap, false, "");
         }
 
         {
@@ -192,7 +271,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap, false, "");
         }
     }
 
