@@ -204,11 +204,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryPvMetadataResponse QueryPvMetadataResponseEmpty() {
-        return QueryPvMetadataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryPvMetadataResponse QueryPvMetadataResponse(
             QueryPvMetadataResponse.MetadataResult metadataResult
     ) {
@@ -230,12 +225,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryPvMetadataResponse> responseObserver
     ) {
         final QueryPvMetadataResponse response = QueryPvMetadataResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryPvMetadataResponseEmpty(StreamObserver<QueryPvMetadataResponse> responseObserver) {
-        final QueryPvMetadataResponse response = QueryPvMetadataResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -398,11 +387,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryProvidersResponse queryProvidersResponseEmpty() {
-        return queryProvidersResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryProvidersResponse queryProvidersResponse(
             QueryProvidersResponse.ProvidersResult providersResult
     ) {
@@ -424,12 +408,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryProvidersResponse> responseObserver
     ) {
         final QueryProvidersResponse response = queryProvidersResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryProvidersResponseEmpty(StreamObserver<QueryProvidersResponse> responseObserver) {
-        final QueryProvidersResponse response = queryProvidersResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }

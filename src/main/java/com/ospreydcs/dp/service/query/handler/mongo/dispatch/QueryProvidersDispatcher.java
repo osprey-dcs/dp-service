@@ -36,11 +36,6 @@ public class QueryProvidersDispatcher extends Dispatcher {
             logger.error(msg);
             QueryServiceImpl.sendQueryProvidersResponseError(msg, this.responseObserver);
             return;
-        } else if (!cursor.hasNext()) {
-            // send empty QueryStatus and close response stream if query matched no data
-            logger.trace("providers query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryProvidersResponseEmpty(this.responseObserver);
-            return;
         }
 
         QueryProvidersResponse.ProvidersResult.Builder providersResultBuilder =
