@@ -170,11 +170,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryDataSetsResponse queryDataSetsResponseEmpty() {
-        return queryDataSetsResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryDataSetsResponse queryDataSetsResponse(
             QueryDataSetsResponse.DataSetsResult dataSetsResult
     ) {
@@ -196,12 +191,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             String msg, StreamObserver<QueryDataSetsResponse> responseObserver
     ) {
         final QueryDataSetsResponse response = queryDataSetsResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryDataSetsResponseEmpty(StreamObserver<QueryDataSetsResponse> responseObserver) {
-        final QueryDataSetsResponse response = queryDataSetsResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }

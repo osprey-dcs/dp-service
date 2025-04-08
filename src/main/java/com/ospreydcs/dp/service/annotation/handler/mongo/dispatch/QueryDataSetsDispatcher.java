@@ -41,10 +41,6 @@ public class QueryDataSetsDispatcher extends Dispatcher {
             logger.debug(msg);
             AnnotationServiceImpl.sendQueryDataSetsResponseError(msg, this.responseObserver);
             return;
-        } else if (!cursor.hasNext()) {
-            logger.trace("query matched no data, cursor is empty");
-            AnnotationServiceImpl.sendQueryDataSetsResponseEmpty(this.responseObserver);
-            return;
         }
 
         final QueryDataSetsResponse.DataSetsResult.Builder queryDataSetsResultBuilder =

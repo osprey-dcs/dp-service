@@ -2225,7 +2225,7 @@ public abstract class GrpcIntegrationTestBase {
 
         final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectedQueryResult.isEmpty()) {
             assertTrue(resultDataSets.isEmpty());
             return new ArrayList<>();
         }
