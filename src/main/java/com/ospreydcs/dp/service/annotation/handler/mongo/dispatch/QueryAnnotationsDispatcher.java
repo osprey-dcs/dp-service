@@ -46,10 +46,6 @@ public class QueryAnnotationsDispatcher extends Dispatcher {
             logger.debug(msg);
             AnnotationServiceImpl.sendQueryAnnotationsResponseError(msg, this.responseObserver);
             return;
-        } else if (!cursor.hasNext()) {
-            logger.trace("query matched no data, cursor is empty");
-            AnnotationServiceImpl.sendQueryAnnotationsResponseEmpty(this.responseObserver);
-            return;
         }
 
         final QueryAnnotationsResponse.AnnotationsResult.Builder annotationsResultBuilder =

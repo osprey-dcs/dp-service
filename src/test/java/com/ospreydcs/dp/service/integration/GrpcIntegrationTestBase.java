@@ -2416,7 +2416,7 @@ public abstract class GrpcIntegrationTestBase {
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectedQueryResult.isEmpty()) {
             assertTrue(resultAnnotations.isEmpty());
             return new ArrayList<>();
         }
