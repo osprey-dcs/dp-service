@@ -2099,20 +2099,22 @@ public abstract class GrpcIntegrationTestBase {
             String providerId,
             IngestionProviderInfo providerInfo,
             boolean expectReject,
-            String expectedRejectMessage) {
+            String expectedRejectMessage,
+            int numMatchesExpected
+    ) {
 
         final QueryProviderMetadataRequest request = QueryTestBase.buildQueryProviderMetadataRequest(providerId);
 
         final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
                 sendQueryProviderMetadata(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || numMatchesExpected == 0) {
             assertEquals(0, providerMetadataList.size());
             return;
         }
 
         // verify results, check that there is a ColumnInfo for each column in the query
-        assertEquals(1, providerMetadataList.size());
+        assertEquals(numMatchesExpected, providerMetadataList.size());
         final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata responseProviderMetadata =
                 providerMetadataList.get(0);
         assertEquals(providerId, responseProviderMetadata.getId());

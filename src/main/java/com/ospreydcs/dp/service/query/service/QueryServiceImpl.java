@@ -526,11 +526,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryProviderMetadataResponse queryProviderMetadataResponseEmpty() {
-        return queryProviderMetadataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryProviderMetadataResponse queryProviderMetadataResponse(
             QueryProviderMetadataResponse.MetadataResult metadataResult
     ) {
@@ -552,12 +547,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver
     ) {
         final QueryProviderMetadataResponse response = queryProviderMetadataResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryProviderMetadataResponseEmpty(StreamObserver<QueryProviderMetadataResponse> responseObserver) {
-        final QueryProviderMetadataResponse response = queryProviderMetadataResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
