@@ -95,6 +95,13 @@ public class AnnotationValidationUtility {
             // validate each frame
             for (Calculations.CalculationsDataFrame frame : request.getCalculations().getCalculationDataFramesList()) {
 
+                // name field is required
+                if (frame.getName().isBlank()) {
+                    final String errorMsg =
+                            "CalculationDataFrame.name must be specified";
+                    return new ValidationResult(true, errorMsg);
+                }
+
                 // check that request includes DataTimestamps
                 if (! frame.hasDataTimestamps()) {
                     final String errorMsg =

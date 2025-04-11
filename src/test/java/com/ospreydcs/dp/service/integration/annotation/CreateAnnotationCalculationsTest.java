@@ -67,6 +67,57 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
         }
 
         // createAnnotation() with calculations negative test -
+        // request should be rejected because: data frame name not specified
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final String name = "positive test: SamplingClock";
+
+            // create calculations for request, with 2 data frames, each with 2 columns
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0; i < 2; i++) {
+
+                // create sampling clock
+                final DataTimestamps dataTimestamps =
+                        DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                                startSeconds + i, 500_000_000L, 250_000_000L, 2);
+
+                // create data columns
+                final List<DataColumn> dataColumns = new ArrayList<>();
+                for (int j = 0; j < 2; j++) {
+                    final String columnName = "calc-" + i + "-" + j;
+                    final DataColumn dataColumn =
+                            DataColumnUtility.dataColumnWithDoubleValues(columnName, List.of(0.0, 1.1));
+                    dataColumns.add(dataColumn);
+                }
+
+                // create data frame
+                final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setDataTimestamps(dataTimestamps)
+                        .addAllDataColumns(dataColumns)
+                        .build();
+                calculationsBuilder.addCalculationDataFrames(dataFrame);
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage = "CalculationDataFrame.name must be specified";
+            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
         // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
             final String ownerId = "craigmcc";
@@ -91,6 +142,58 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
+                        .setDataTimestamps(invalidDatatimestamps)
+                        .addAllDataColumns(dataColumns)
+                        .build();
+                calculationsBuilder.addCalculationDataFrames(dataFrame);
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.CreateAnnotationRequestParams params =
+                    new AnnotationTestBase.CreateAnnotationRequestParams(
+                            ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
+            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final String name = "negative test";
+
+            // create calculations for request, with 2 data frames, each with 2 columns
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0; i < 2; i++) {
+
+                // create data timestamps
+                final DataTimestamps invalidDatatimestamps = DataTimestamps.newBuilder().build();
+
+                // create data columns
+                final List<DataColumn> dataColumns = new ArrayList<>();
+                for (int j = 0; j < 2; j++) {
+                    final String columnName = "calc-" + i + "-" + j;
+                    final DataColumn dataColumn =
+                            DataColumnUtility.dataColumnWithDoubleValues(columnName, List.of(0.0, 1.1));
+                    dataColumns.add(dataColumn);
+                }
+
+                // create data frame
+                final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(invalidDatatimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -137,6 +240,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(emptyDataColumns)
                         .build();
@@ -189,6 +293,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -241,6 +346,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -293,6 +399,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -345,6 +452,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -397,6 +505,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -448,6 +557,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -515,6 +625,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
@@ -571,6 +682,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("frame-" + i)
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();

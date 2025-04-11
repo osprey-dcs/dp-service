@@ -11,8 +11,17 @@ import java.util.List;
 
 public class CalculationsDataFrameDocument {
 
+    String name;
     DataTimestampsDocument dataTimestamps;
     List<DataColumnDocument> dataColumns;
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 
     public DataTimestampsDocument getDataTimestamps() {
         return dataTimestamps;
@@ -35,6 +44,9 @@ public class CalculationsDataFrameDocument {
     ) {
         CalculationsDataFrameDocument dataFrameDocument = new CalculationsDataFrameDocument();
 
+        // set frame name
+        dataFrameDocument.setName(dataFrame.getName());
+
         // handle DataTimestamps
         DataTimestampsDocument dataTimestampsDocument =
                 DataTimestampsDocument.fromDataTimestamps(dataFrame.getDataTimestamps());
@@ -55,6 +67,8 @@ public class CalculationsDataFrameDocument {
 
         final Calculations.CalculationsDataFrame.Builder dataFrameBuilder =
                 Calculations.CalculationsDataFrame.newBuilder();
+
+        dataFrameBuilder.setName(getName());
 
         dataFrameBuilder.setDataTimestamps(this.dataTimestamps.toDataTimestamps());
 
