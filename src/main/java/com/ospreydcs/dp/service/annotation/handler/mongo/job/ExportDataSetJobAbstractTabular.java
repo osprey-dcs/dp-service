@@ -6,6 +6,7 @@ import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetReq
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.TabularDataExportFileInterface;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -37,8 +38,11 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             DataSetDocument dataset, String serverFilePath) throws DpException;
 
     @Override
-    protected ExportDatasetStatus exportDataset_(DataSetDocument dataset, String serverFilePath) {
-
+    protected ExportDatasetStatus exportDataset_(
+            DataSetDocument dataset,
+            CalculationsDocument calculationsDocument,
+            String serverFilePath
+    ) {
         // create file for export
         try {
             exportFile = createExportFile_(dataset, serverFilePath);
@@ -47,7 +51,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             return new ExportDatasetStatus(true, errorMsg);
         }
 
-        // execute query for each data block in dataset and write data to file
+        // add data for each data block in dataset to tabular data structure
         final TimestampDataMap tableValueMap = new TimestampDataMap();
         int tableDataSize = 0;
         for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
@@ -66,14 +70,13 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
                 return new ExportDatasetStatus(true, errorMsg);
             }
 
-            // build temporary tabular data structure from cursor
             final long beginSeconds = dataBlock.getBeginTime().getSeconds();
             final long beginNanos = dataBlock.getBeginTime().getNanos();
             final long endSeconds = dataBlock.getEndTime().getSeconds();
             final long endNanos = dataBlock.getEndTime().getNanos();
             TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
             try {
-                sizeStats = TabularDataUtility.updateTimestampMapFromBucketCursor(
+                sizeStats = TabularDataUtility.addBucketsToTable(
                         tableValueMap,
                         cursor,
                         tableDataSize,
@@ -89,7 +92,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
                 return new ExportDatasetStatus(true, errorMsg);
             }
 
-            // check if export output file size limit exceeded
+            // check if tabular structure execeeds export output file size limit
             if (sizeStats.sizeLimitExceeded()) {
                 final String errorMsg = "export file size limit "
                         + ExportConfiguration.getExportFileSizeLimitBytes()
@@ -100,8 +103,28 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             tableDataSize = tableDataSize + sizeStats.currentDataSize();
         }
 
-        // write data to tabular formatted file
+        // add calculations to tabular data structure
+        if (calculationsDocument != null) {
+            TabularDataUtility.TimestampDataMapSizeStats sizeStats;
+            try {
+                sizeStats =
+                        TabularDataUtility.addCalculationsToTable(
+                                tableValueMap,
+                                calculationsDocument,
+                                tableDataSize,
+                                ExportConfiguration.getExportFileSizeLimitBytes());
+            } catch (DpException e) {
+                throw new RuntimeException(e);
+            }
+            if (sizeStats.sizeLimitExceeded()) {
+                final String errorMsg = "export file size limit "
+                        + ExportConfiguration.getExportFileSizeLimitBytes()
+                        + " exceeded for: " + serverFilePath;
+                return new ExportDatasetStatus(true, errorMsg);
+            }
+        }
 
+        // write data to tabular formatted file...
         // write column headers
         final List<String> columnHeaders = new ArrayList<>();
         columnHeaders.add(COLUMN_HEADER_SECONDS);

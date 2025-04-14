@@ -47,7 +47,7 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
                             ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             true,
-                            "Dataset with id 1234abcd1234abcd1234abcd not found");
+                            "DatasetDocument with id 1234abcd1234abcd1234abcd not found");
         }
 
         {

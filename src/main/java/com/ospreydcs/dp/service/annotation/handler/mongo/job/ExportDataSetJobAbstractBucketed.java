@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetReq
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.BucketedDataExportFileInterface;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -27,8 +28,11 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
             DataSetDocument dataset, String serverFilePath) throws DpException;
 
     @Override
-    protected ExportDatasetStatus exportDataset_(DataSetDocument dataset, String serverFilePath) {
-
+    protected ExportDatasetStatus exportDataset_(
+            DataSetDocument dataset,
+            CalculationsDocument calculationsDocument,
+            String serverFilePath
+    ) {
         // create file for export
         try {
             exportFile = createExportFile_(dataset, serverFilePath);

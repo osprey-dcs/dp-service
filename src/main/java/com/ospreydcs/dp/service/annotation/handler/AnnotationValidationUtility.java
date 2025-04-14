@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler;
 
 import com.ospreydcs.dp.grpc.v1.annotation.*;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -176,10 +177,34 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateExportDataSetRequest(ExportDataSetRequest request) {
 
+        // dataSetId is required
         final String dataSetId = request.getDataSetId();
         if (dataSetId == null || dataSetId.isBlank()) {
             final String errorMsg = "ExportDataSetRequest.dataSetId must be specified";
             return new ValidationResult(true, errorMsg);
+        }
+
+        // calculationsSpec is optional, but validate content if specified
+        if (request.hasCalculationsSpec()) {
+
+            final CalculationsSpec calculationsSpec = request.getCalculationsSpec();
+            if (calculationsSpec.getCalculationsId().isBlank()) {
+                final String errorMsg = "ExportDataSetRequest.calculationsSpec.calculationsId must be specified";
+                return new ValidationResult(true, errorMsg);
+            }
+
+            for (var mapEntries : calculationsSpec.getDataFrameColumnsMap().entrySet()) {
+                final String frameName = mapEntries.getKey();
+                final CalculationsSpec.ColumnNameList frameColumnNameList = mapEntries.getValue();
+                // list can be empty, but check contents if not
+                for (String frameColumnName : frameColumnNameList.getColumnNamesList()) {
+                    if (frameColumnName.isBlank()) {
+                        final String errorMsg =
+                                "ExportDataSetRequest.calculationsSpec.dataFrameColumns includes blank column name";
+                        return new ValidationResult(true, errorMsg);
+                    }
+                }
+            }
         }
 
         final ExportDataSetRequest.ExportOutputFormat outputFormat = request.getOutputFormat();

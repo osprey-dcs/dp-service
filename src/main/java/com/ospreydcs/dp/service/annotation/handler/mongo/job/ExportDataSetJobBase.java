@@ -1,9 +1,11 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataSetDispatcher;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -43,7 +45,10 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
     }
 
     protected abstract String getFileExtension_();
-    protected abstract ExportDatasetStatus exportDataset_(DataSetDocument dataset, String serverFilePath);
+    protected abstract ExportDatasetStatus exportDataset_(
+            DataSetDocument datasetDocument,
+            CalculationsDocument calculationsDocument,
+            String serverFilePath);
 
     @Override
     public void execute() {
@@ -54,12 +59,25 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
                 this.handlerRequest.responseObserver.hashCode());
 
         // get dataset for id specified in request
-        String datasetId = this.handlerRequest.exportDataSetRequest.getDataSetId();
-        DataSetDocument dataset = mongoAnnotationClient.findDataSet(datasetId);
-        if (dataset == null) {
-            final String errorMsg = "Dataset with id " + datasetId + " not found";
+        final String datasetId = this.handlerRequest.exportDataSetRequest.getDataSetId();
+        final DataSetDocument datasetDocument = mongoAnnotationClient.findDataSet(datasetId);
+        if (datasetDocument == null) {
+            final String errorMsg = "DatasetDocument with id " + datasetId + " not found";
             this.dispatcher.handleError(errorMsg);
             return;
+        }
+
+        // get calculations for id specified in request
+        CalculationsDocument calculationsDocument = null;
+        if (this.handlerRequest.exportDataSetRequest.hasCalculationsSpec()) {
+            final CalculationsSpec calculationsSpec = this.handlerRequest.exportDataSetRequest.getCalculationsSpec();
+            final String calculationsId = calculationsSpec.getCalculationsId();
+            calculationsDocument = mongoAnnotationClient.findCalculations(calculationsId);
+            if (calculationsDocument == null) {
+                final String errorMsg = "CalculationsDocument with id " + calculationsId + " not found";
+                this.dispatcher.handleError(errorMsg);
+                return;
+            }
         }
 
         // generate server output file path for export
@@ -89,7 +107,7 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
         // export data to file
         final String serverFilePathString = serverDirectoryPathString + filename;
         final Path serverFilePath = Paths.get(serverFilePathString);
-        final ExportDatasetStatus status = exportDataset_(dataset, serverFilePathString);
+        final ExportDatasetStatus status = exportDataset_(datasetDocument, calculationsDocument, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage);
             this.dispatcher.handleError(status.errorMessage);

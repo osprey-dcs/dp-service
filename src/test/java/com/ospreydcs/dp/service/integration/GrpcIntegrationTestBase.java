@@ -2591,7 +2591,7 @@ public abstract class GrpcIntegrationTestBase {
             final long endSeconds = dataBlock.getEndTime().getSeconds();
             final long endNanos = dataBlock.getEndTime().getNanos();
             final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
-                    TabularDataUtility.updateTimestampMapFromBucketCursor(
+                    TabularDataUtility.addBucketsToTable(
                             expectedDataMap,
                             cursor,
                             0,

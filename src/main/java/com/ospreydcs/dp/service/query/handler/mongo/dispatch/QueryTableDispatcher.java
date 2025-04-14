@@ -166,7 +166,7 @@ public class QueryTableDispatcher extends Dispatcher {
         TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
 
         try {
-            sizeStats = TabularDataUtility.updateTimestampMapFromBucketCursor(
+            sizeStats = TabularDataUtility.addBucketsToTable(
                     tableValueMap,
                     cursor,
                     0,
