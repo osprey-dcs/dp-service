@@ -13,6 +13,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.Status;
@@ -1093,78 +1094,6 @@ public class AnnotationTestBase {
         final String providerIdPath = pvBucketPath + PATH_SEPARATOR + DATASET_PROVIDER_ID;
         assertEquals(bucketDocument.getProviderId(), reader.readString(providerIdPath));
 
-    }
-
-    public static void verifyCsvContentFromTimestampDataMap(
-            ExportDataSetResponse.ExportDataSetResult exportResult,
-            TimestampDataMap expectedDataMap
-    ) {
-        // open csv file and create reader
-        final Path exportFilePath = Paths.get(exportResult.getFilePath());
-        CsvReader<CsvRecord> csvReader = null;
-        try {
-            csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
-        } catch (IOException e) {
-            fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
-        }
-        assertNotNull(csvReader);
-
-        final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
-        final List<String> expectedColumnNameList = expectedDataMap.getColumnNameList();
-        final int expectedNumColumns = 2 + expectedColumnNameList.size();
-
-        // verify header row
-        {
-            assertTrue(csvRecordIterator.hasNext());
-            final CsvRecord csvRecord = csvRecordIterator.next();
-
-            // check number of csv header columns matches expected
-            assertEquals(expectedNumColumns, csvRecord.getFieldCount());
-
-            // build list of expected column headers
-            final List<String> expectedHeaderValues = new ArrayList<>();
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_SECONDS);
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_NANOS);
-            expectedHeaderValues.addAll(expectedColumnNameList);
-
-            // check content of csv header row matches expected
-            final List<String> csvRowValues = csvRecord.getFields();
-            assertEquals(expectedHeaderValues, csvRowValues);
-        }
-
-        // verify data rows
-        {
-            final TimestampDataMap.DataRowIterator expectedDataRowIterator = expectedDataMap.dataRowIterator();
-            int dataRowCount = 0;
-            while (csvRecordIterator.hasNext() && expectedDataRowIterator.hasNext()) {
-
-                // read row from csv file
-                final CsvRecord csvRecord = csvRecordIterator.next();
-                assertEquals(expectedNumColumns, csvRecord.getFieldCount());
-                final List<String> csvRowValues = csvRecord.getFields();
-
-                // read expected row from map structure
-                final TimestampDataMap.DataRow expectedDataRow = expectedDataRowIterator.next();
-
-                // verify seconds/nanos match between file and expected
-                final long csvSeconds = Long.valueOf(csvRowValues.get(0));
-                final long csvNanos = Long.valueOf(csvRowValues.get(1));
-                assertEquals(expectedDataRow.seconds(), csvSeconds);
-                assertEquals(expectedDataRow.nanos(), csvNanos);
-
-                // compare data values from csv file with expected
-                final List<String> csvDataValues = csvRowValues.subList(2, csvRowValues.size());
-                for (int columnIndex = 0; columnIndex < csvDataValues.size(); columnIndex++) {
-                    final String csvDataValue = csvDataValues.get(columnIndex);
-                    final DataValue expectedDataValue = expectedDataRow.dataValues().get(columnIndex);
-                    assertEquals(DatasetExportCsvFile.dataValueToString(expectedDataValue), csvDataValue);
-                }
-                dataRowCount = dataRowCount + 1;
-            }
-            assertFalse(csvRecordIterator.hasNext());
-            assertFalse(expectedDataRowIterator.hasNext());
-            assertEquals(expectedDataMap.size(), dataRowCount);
-        }
     }
 
     public static void verifyXlsxContentFromTimestampDataMap(

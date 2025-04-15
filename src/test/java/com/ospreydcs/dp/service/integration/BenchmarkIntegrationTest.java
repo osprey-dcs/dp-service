@@ -685,9 +685,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             ExportDataSetResponse.ExportDataSetResult exportResult =
                     sendAndVerifyExportDataSet(
                             datasetId,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            null, ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             60 * pvCount, // 60 buckets per pv
-                            true,
+                            0, null, true,
                             "export file size limit");
             System.out.println("========== large export to excel completed ==========");
             System.out.println();
@@ -700,9 +700,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             ExportDataSetResponse.ExportDataSetResult exportResult =
                     sendAndVerifyExportDataSet(
                             datasetId,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            null, ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             60 * pvCount, // 60 buckets per pv
-                            true,
+                            0, null, true,
                             "export file size limit");
             System.out.println("========== large export to csv completed ==========");
             System.out.println();

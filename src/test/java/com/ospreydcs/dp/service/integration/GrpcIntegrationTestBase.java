@@ -37,6 +37,8 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import de.siegmar.fastcsv.reader.CsvReader;
+import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -49,6 +51,7 @@ import org.junit.ClassRule;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -2608,8 +2611,11 @@ public abstract class GrpcIntegrationTestBase {
 
     protected ExportDataSetResponse.ExportDataSetResult sendAndVerifyExportDataSet(
             String dataSetId,
+            AnnotationTestBase.CreateDataSetParams createDataSetParams,
             ExportDataSetRequest.ExportOutputFormat outputFormat,
             int expectedNumBuckets,
+            int expectedNumRows,
+            Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -2672,6 +2678,13 @@ public abstract class GrpcIntegrationTestBase {
         final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
         assertEquals(expectedNumBuckets, datasetBuckets.size());
 
+        // generate collection of unique pv names for dataset from creation request params
+        // these are the columns expected in the export output file
+        Set<String> requestDatasetPvNames = new HashSet<>();
+        for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet.dataBlocks) {
+            requestDatasetPvNames.addAll(requestDataBlock.pvNames);
+        }
+
         // verify file content for specified output format
         switch (outputFormat) {
 
@@ -2685,18 +2698,8 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             case EXPORT_FORMAT_CSV -> {
-
-                // build temporary tabular data structure from cursor
-                TimestampDataMap expectedDataMap = null;
-                try {
-                    expectedDataMap = getTimestampDataMapForDataset(dataset);
-                } catch (DpException e) {
-                    fail("exception deserializing BucketDocument: " + e.getMessage());
-                }
-                Objects.requireNonNull(expectedDataMap);
-
                 // verify file content against data map
-                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
+                verifyExportTabularCsv(exportResult, requestDatasetPvNames, validationMap, expectedNumRows);
             }
 
             case EXPORT_FORMAT_XLSX -> {
@@ -2716,6 +2719,77 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return exportResult;
+    }
+
+    public static void verifyExportTabularCsv(
+            ExportDataSetResponse.ExportDataSetResult exportResult,
+            Set<String> expectedColumnNames,
+            Map<String, IngestionStreamInfo> validationMap,
+            int expectedNumRows
+    ) {
+        // open csv file and create reader
+        final Path exportFilePath = Paths.get(exportResult.getFilePath());
+        CsvReader<CsvRecord> csvReader = null;
+        try {
+            csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
+        } catch (IOException e) {
+            fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
+        }
+        assertNotNull(csvReader);
+
+        final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
+        final int expectedNumColumns = 2 + expectedColumnNames.size();
+
+        // verify header row
+        List<String> csvColumnHeaders;
+        {
+            assertTrue(csvRecordIterator.hasNext());
+            final CsvRecord csvRecord = csvRecordIterator.next();
+
+            // check number of csv header columns matches expected
+            assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+
+            // check that the csv file contains each of the expected columns
+            csvColumnHeaders = csvRecord.getFields();
+            for (String columnName : expectedColumnNames) {
+                assertTrue(csvColumnHeaders.contains(columnName));
+            }
+        }
+
+        // verify data rows
+        {
+            int dataRowCount = 0;
+            while (csvRecordIterator.hasNext()) {
+
+                // read row from csv file
+                final CsvRecord csvRecord = csvRecordIterator.next();
+                assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+                final List<String> csvRowValues = csvRecord.getFields();
+
+                // get timestamp column values
+                // we don't validate them directly, but by 1) checking the number of expected rows matches and
+                // 2) accessing data from validationMap via seconds/nanos
+                final long csvSeconds = Long.valueOf(csvRowValues.get(0));
+                final long csvNanos = Long.valueOf(csvRowValues.get(1));
+
+                // compare data values from csv file with expected
+                for (int columnIndex = 2; columnIndex < csvRowValues.size(); columnIndex++) {
+                    final String csvDataValue = csvRowValues.get(columnIndex);
+
+                    // get expected data value for column
+                    final String csvColumnName = csvColumnHeaders.get(columnIndex);
+                    final TimestampMap<Double> columnValueMap = validationMap.get(csvColumnName).valueMap;
+                    final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
+                    if (expectedColumnDoubleValue != null) {
+                        assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
+                    } else {
+                        assertEquals("0.0", csvDataValue);
+                    }
+                }
+                dataRowCount = dataRowCount + 1;
+            }
+            assertEquals(expectedNumRows, dataRowCount);
+        }
     }
 
 }

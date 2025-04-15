@@ -35,13 +35,12 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         GrpcIntegrationTestBase.tearDown();
     }
 
-    protected static void annotationIngestionScenario() {
+    protected static Map<String, IngestionStreamInfo> annotationIngestionScenario() {
 
         // register ingestion provider
         final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
         final String providerId = registerProvider(providerName, null);
 
-        Map<String, IngestionStreamInfo> ingestionStreamInfoMap = null;
         {
             // run ingestion scenario
 
@@ -106,8 +105,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
             {
                 // perform ingestion for specified list of columns
-                ingestionStreamInfoMap =
-                        ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
+                return ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
             }
         }
     }
