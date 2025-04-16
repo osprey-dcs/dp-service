@@ -9,6 +9,7 @@ import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
+import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -46,6 +47,12 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.ClassRule;
 
 import java.io.*;
@@ -2703,18 +2710,8 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             case EXPORT_FORMAT_XLSX -> {
-
-                // build temporary tabular data structure from cursor
-                TimestampDataMap expectedDataMap = null;
-                try {
-                    expectedDataMap = getTimestampDataMapForDataset(dataset);
-                } catch (DpException e) {
-                    fail("exception deserializing BucketDocument: " + e.getMessage());
-                }
-                Objects.requireNonNull(expectedDataMap);
-
                 // verify file content against data map
-                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
+                verifyExportTabularXlsx(exportResult, requestDatasetPvNames, validationMap, expectedNumRows);
             }
         }
 
@@ -2789,6 +2786,168 @@ public abstract class GrpcIntegrationTestBase {
                 dataRowCount = dataRowCount + 1;
             }
             assertEquals(expectedNumRows, dataRowCount);
+        }
+    }
+
+    public static void verifyExportTabularXlsx(
+            ExportDataSetResponse.ExportDataSetResult exportResult,
+            Set<String> expectedColumnNames,
+            Map<String, IngestionStreamInfo> validationMap,
+            int expectedNumRows
+    ) {
+        // open excel file
+        OPCPackage filePackage = null;
+        try {
+            filePackage = OPCPackage.open(new File(exportResult.getFilePath()));
+        } catch (InvalidFormatException e) {
+            fail(
+                    "InvalidFormatException opening package for excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());
+        }
+        assertNotNull(filePackage);
+
+        // open excel workbook
+        XSSFWorkbook fileWorkbook = null;
+        try {
+            fileWorkbook = new XSSFWorkbook(filePackage);
+        } catch (IOException e) {
+            fail(
+                    "IOException creating workbook from excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());;
+        }
+        assertNotNull(fileWorkbook);
+
+        // open worksheet and create iterator
+        Sheet fileSheet = fileWorkbook.getSheetAt(0);
+        assertNotNull(fileSheet);
+        final Iterator<Row> fileRowIterator = fileSheet.rowIterator();
+        assertTrue(fileRowIterator.hasNext());
+
+        final int expectedNumColumns = 2 + expectedColumnNames.size();
+
+        // verify header row from file
+        List<String> fileColumnHeaders = new ArrayList<>();
+        {
+            final Row fileHeaderRow = fileRowIterator.next();
+            assertNotNull(fileHeaderRow);
+
+            // check number of header columns matches expected
+            assertEquals(expectedNumColumns, fileHeaderRow.getLastCellNum());
+
+            // build list of actual column headers
+            for (int columnIndex = 0; columnIndex < fileHeaderRow.getLastCellNum(); columnIndex++) {
+                final String fileHeaderValue = fileHeaderRow.getCell(columnIndex).getStringCellValue();
+                fileColumnHeaders.add(fileHeaderValue);
+            }
+
+            // check that list of actual headers contains each of the expected headers
+            for (String columnName : expectedColumnNames) {
+                assertTrue(fileColumnHeaders.contains(columnName));
+            }
+        }
+
+        // verify data rows from file
+        {
+            int dataRowCount = 0;
+            while (fileRowIterator.hasNext()) {
+
+                // read row from excel file
+                final Row fileDataRow = fileRowIterator.next();
+                assertEquals(expectedNumColumns, fileDataRow.getLastCellNum());
+
+                // get timestamp column values
+                // we don't validate them directly, but by 1) checking the number of expected rows matches and
+                // 2) accessing data from validationMap via seconds/nanos
+                final long fileSeconds = Double.valueOf(fileDataRow.getCell(0).getNumericCellValue()).longValue();
+                final long fileNanos = Double.valueOf(fileDataRow.getCell(1).getNumericCellValue()).longValue();
+
+                // verify data columns
+                for (int fileColumnIndex = 2; fileColumnIndex < fileDataRow.getLastCellNum(); fileColumnIndex++) {
+
+                    // get column data value from file
+                    final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
+                    Double fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
+
+                    // get expected data value for column (we assume value is double)
+                    final String fileColumnName = fileColumnHeaders.get(fileColumnIndex);
+                    final TimestampMap<Double> columnValueMap = validationMap.get(fileColumnName).valueMap;
+                    final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
+                    assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+
+// Keeping this code around in case we want to handle expectedDataValue with other type than Double.
+//                    switch (expectedDataValue.getValueCase()) {
+//                        case STRINGVALUE -> {
+//                            assertEquals(expectedDataValue.getStringValue(), fileCell.getStringCellValue());
+//                        }
+//                        case BOOLEANVALUE -> {
+//                            assertEquals(expectedDataValue.getBooleanValue(), fileCell.getBooleanCellValue());
+//                        }
+//                        case UINTVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getUintValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
+//                        }
+//                        case ULONGVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getUlongValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
+//                        }
+//                        case INTVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getIntValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
+//                        }
+//                        case LONGVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getLongValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
+//                        }
+//                        case FLOATVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getFloatValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).floatValue(),
+//                                    0.0);
+//                        }
+//                        case DOUBLEVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getDoubleValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).doubleValue(),
+//                                    0);
+//                        }
+//                        case BYTEARRAYVALUE -> {
+//                        }
+//                        case ARRAYVALUE -> {
+//                        }
+//                        case STRUCTUREVALUE -> {
+//                        }
+//                        case IMAGEVALUE -> {
+//                        }
+//                        case TIMESTAMPVALUE -> {
+//                        }
+//                        case VALUE_NOT_SET -> {
+//                        }
+//                        default -> {
+//                            assertEquals(expectedDataValue.toString(), fileCell.getStringCellValue());
+//                        }
+//                    }
+                }
+
+                dataRowCount = dataRowCount + 1;
+            }
+
+            assertEquals(expectedNumRows, dataRowCount);
+        }
+
+        // close excel file
+        try {
+            filePackage.close();
+        } catch (IOException e) {
+            fail(
+                    "IOException closing package for excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());;
         }
     }
 
