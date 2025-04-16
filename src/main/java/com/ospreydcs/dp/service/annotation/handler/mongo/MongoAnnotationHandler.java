@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
@@ -238,33 +238,33 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleExportDataSet(HandlerExportDataSetRequest handlerRequest) {
+    public void handleExportData(HandlerExportDataRequest handlerRequest) {
 
-        ExportDataSetJobBase job = null;
-        switch (handlerRequest.exportDataSetRequest.getOutputFormat()) {
+        ExportDataJobBase job = null;
+        switch (handlerRequest.exportDataRequest.getOutputFormat()) {
             case EXPORT_FORMAT_UNSPECIFIED -> {
                 // this should be caught in validation, but just in case...
-                final String errorMsg = "ExportDataSetRequest.outputFormat must be specified";
-                AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+                final String errorMsg = "ExportDataRequest.outputFormat must be specified";
+                AnnotationServiceImpl.sendExportDataResponseError(errorMsg, handlerRequest.responseObserver);
             }
             case EXPORT_FORMAT_HDF5 -> {
-                job = new ExportDataSetJobHdf5(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataJobHdf5(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_CSV -> {
-                job = new ExportDataSetJobCsv(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataJobCsv(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case EXPORT_FORMAT_XLSX -> {
-                job = new ExportDataSetJobExcel(handlerRequest, mongoAnnotationClient, mongoQueryClient);
+                job = new ExportDataJobExcel(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case UNRECOGNIZED -> {
                 // this should be caught in validation, but just in case...
-                final String errorMsg = "ExportDataSetRequest.outputFormat unrecognized value";
-                AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+                final String errorMsg = "ExportDataRequest.outputFormat unrecognized value";
+                AnnotationServiceImpl.sendExportDataResponseError(errorMsg, handlerRequest.responseObserver);
             }
         }
         Objects.requireNonNull(job);
 
-        logger.debug("adding ExportDataSetJobBase id: {} to queue", handlerRequest.responseObserver.hashCode());
+        logger.debug("adding ExportDataJobBase id: {} to queue", handlerRequest.responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

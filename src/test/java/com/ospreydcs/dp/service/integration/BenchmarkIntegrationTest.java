@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.integration;
 
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -682,10 +682,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         {
             System.out.println();
             System.out.println("========== running large export to excel ==========");
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             datasetId,
-                            null, ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             60 * pvCount, // 60 buckets per pv
                             0, null, true,
                             "export file size limit");
@@ -697,10 +697,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         {
             System.out.println();
             System.out.println("========== running large export to csv ==========");
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             datasetId,
-                            null, ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             60 * pvCount, // 60 buckets per pv
                             0, null, true,
                             "export file size limit");
@@ -713,10 +713,10 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 //        {
 //            System.out.println();
 //            System.out.println("========== running large export to hdf5 ==========");
-//            ExportDataSetResponse.ExportDataSetResult exportResult =
-//                    sendAndVerifyExportDataSet(
+//            ExportDataResponse.ExportDataResult exportResult =
+//                    sendAndVerifyExportData(
 //                            datasetId,
-//                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+//                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
 //                            60 * pvCount, // 60 buckets per pv
 //                            false,
 //                            "");

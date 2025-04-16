@@ -175,12 +175,12 @@ public class AnnotationValidationUtility {
         return new ValidationResult(false, "");
     }
 
-    public static ValidationResult validateExportDataSetRequest(ExportDataSetRequest request) {
+    public static ValidationResult validateExportDataRequest(ExportDataRequest request) {
 
         // dataSetId is required
         final String dataSetId = request.getDataSetId();
         if (dataSetId == null || dataSetId.isBlank()) {
-            final String errorMsg = "ExportDataSetRequest.dataSetId must be specified";
+            final String errorMsg = "ExportDataRequest.dataSetId must be specified";
             return new ValidationResult(true, errorMsg);
         }
 
@@ -189,7 +189,7 @@ public class AnnotationValidationUtility {
 
             final CalculationsSpec calculationsSpec = request.getCalculationsSpec();
             if (calculationsSpec.getCalculationsId().isBlank()) {
-                final String errorMsg = "ExportDataSetRequest.calculationsSpec.calculationsId must be specified";
+                final String errorMsg = "ExportDataRequest.calculationsSpec.calculationsId must be specified";
                 return new ValidationResult(true, errorMsg);
             }
 
@@ -200,17 +200,17 @@ public class AnnotationValidationUtility {
                 for (String frameColumnName : frameColumnNameList.getColumnNamesList()) {
                     if (frameColumnName.isBlank()) {
                         final String errorMsg =
-                                "ExportDataSetRequest.calculationsSpec.dataFrameColumns includes blank column name";
+                                "ExportDataRequest.calculationsSpec.dataFrameColumns includes blank column name";
                         return new ValidationResult(true, errorMsg);
                     }
                 }
             }
         }
 
-        final ExportDataSetRequest.ExportOutputFormat outputFormat = request.getOutputFormat();
-        if (outputFormat == ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED ||
-                outputFormat == ExportDataSetRequest.ExportOutputFormat.UNRECOGNIZED) {
-            final String errorMsg = "valid ExportDataSetRequest.outputFormat must be specified";
+        final ExportDataRequest.ExportOutputFormat outputFormat = request.getOutputFormat();
+        if (outputFormat == ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED ||
+                outputFormat == ExportDataRequest.ExportOutputFormat.UNRECOGNIZED) {
+            final String errorMsg = "valid ExportDataRequest.outputFormat must be specified";
             return new ValidationResult(true, errorMsg);
         }
 

@@ -2,9 +2,9 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
-import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataSetDispatcher;
+import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataDispatcher;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
@@ -18,34 +18,34 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.TimeUnit;
 
-public abstract class ExportDataSetJobBase extends HandlerJob {
+public abstract class ExportDataJobBase extends HandlerJob {
 
-    protected static record ExportDatasetStatus (boolean isError, String errorMessage) {}
+    protected static record ExportDataStatus(boolean isError, String errorMessage) {}
 
     // static variables
     protected static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final HandlerExportDataSetRequest handlerRequest;
-    private final ExportDataSetDispatcher dispatcher;
+    private final HandlerExportDataRequest handlerRequest;
+    private final ExportDataDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoAnnotationClient;
     protected final MongoQueryClientInterface mongoQueryClient;
     private final ExportConfiguration exportConfiguration;
 
-    public ExportDataSetJobBase(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobBase(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
         this.handlerRequest = handlerRequest;
         this.mongoAnnotationClient = mongoAnnotationClient;
         this.mongoQueryClient = mongoQueryClient;
-        this.dispatcher = new ExportDataSetDispatcher(handlerRequest, mongoAnnotationClient);
+        this.dispatcher = new ExportDataDispatcher(handlerRequest, mongoAnnotationClient);
         this.exportConfiguration = new ExportConfiguration();
     }
 
     protected abstract String getFileExtension_();
-    protected abstract ExportDatasetStatus exportDataset_(
+    protected abstract ExportDataStatus exportData_(
             DataSetDocument datasetDocument,
             CalculationsDocument calculationsDocument,
             String serverFilePath);
@@ -59,7 +59,7 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
                 this.handlerRequest.responseObserver.hashCode());
 
         // get dataset for id specified in request
-        final String datasetId = this.handlerRequest.exportDataSetRequest.getDataSetId();
+        final String datasetId = this.handlerRequest.exportDataRequest.getDataSetId();
         final DataSetDocument datasetDocument = mongoAnnotationClient.findDataSet(datasetId);
         if (datasetDocument == null) {
             final String errorMsg = "DatasetDocument with id " + datasetId + " not found";
@@ -69,8 +69,8 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
 
         // get calculations for id specified in request
         CalculationsDocument calculationsDocument = null;
-        if (this.handlerRequest.exportDataSetRequest.hasCalculationsSpec()) {
-            final CalculationsSpec calculationsSpec = this.handlerRequest.exportDataSetRequest.getCalculationsSpec();
+        if (this.handlerRequest.exportDataRequest.hasCalculationsSpec()) {
+            final CalculationsSpec calculationsSpec = this.handlerRequest.exportDataRequest.getCalculationsSpec();
             final String calculationsId = calculationsSpec.getCalculationsId();
             calculationsDocument = mongoAnnotationClient.findCalculations(calculationsId);
             if (calculationsDocument == null) {
@@ -107,7 +107,7 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
         // export data to file
         final String serverFilePathString = serverDirectoryPathString + filename;
         final Path serverFilePath = Paths.get(serverFilePathString);
-        final ExportDatasetStatus status = exportDataset_(datasetDocument, calculationsDocument, serverFilePathString);
+        final ExportDataStatus status = exportData_(datasetDocument, calculationsDocument, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage);
             this.dispatcher.handleError(status.errorMessage);
@@ -145,11 +145,11 @@ public abstract class ExportDataSetJobBase extends HandlerJob {
 
         // If path already exists, return early
         try {
-            logger.debug("ExportDataSetJobBase.awaitFile path " + target.toString() + " already exists");
+            logger.debug("ExportDataJobBase.awaitFile path " + target.toString() + " already exists");
             return Files.readAttributes(target, BasicFileAttributes.class);
         } catch (NoSuchFileException ex) {}
 
-        logger.debug("ExportDataSetJobBase.awaitFile using WatchService to wait for file " + target.toString());
+        logger.debug("ExportDataJobBase.awaitFile using WatchService to wait for file " + target.toString());
         final WatchService watchService = FileSystems.getDefault().newWatchService();
         try {
             final WatchKey watchKey = targetDir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);

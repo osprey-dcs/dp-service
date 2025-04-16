@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.BucketedDataExportFileInterface;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -11,13 +11,13 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobBase {
+public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
 
     // instance variables
     private BucketedDataExportFileInterface exportFile;
 
-    public ExportDataSetJobAbstractBucketed(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobAbstractBucketed(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
@@ -28,7 +28,7 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
             DataSetDocument dataset, String serverFilePath) throws DpException;
 
     @Override
-    protected ExportDatasetStatus exportDataset_(
+    protected ExportDataStatus exportData_(
             DataSetDocument dataset,
             CalculationsDocument calculationsDocument,
             String serverFilePath
@@ -38,7 +38,7 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
             exportFile = createExportFile_(dataset, serverFilePath);
         } catch (DpException e) {
             final String errorMsg = "exception opening export file " + serverFilePath + ": " + e.getMessage();
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
         // execute query for each data block in dataset and write data to hdf5 file
@@ -49,10 +49,10 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
 
             if (cursor == null) {
                 final String errorMsg = "unknown error executing data block query";
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
 
-            // We could enforce an export output file size limit here, as in ExportDataSetJobAbstractTabular.exportDataset_(),
+            // We could enforce an export output file size limit here, as in ExportDataJobAbstractTabular.exportDataset_(),
             // but at this point I'm not going to do so.  In the case of tabular data, we build a large table data
             // structure before we write the data to file.  But with bucketed data (at least for HDF5 format), we write
             // each individual bucket to the file as we read it from the database cursor.  As HDF5 is designed to handle
@@ -71,7 +71,7 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
                 } catch (DpException e) {
                     final String errorMsg =
                             "exception writing data to export file " + serverFilePath + ": " + e.getMessage();
-                    return new ExportDatasetStatus(true, errorMsg);
+                    return new ExportDataStatus(true, errorMsg);
                 }
             }
         }
@@ -80,9 +80,9 @@ public abstract class ExportDataSetJobAbstractBucketed extends ExportDataSetJobB
             exportFile.close();
         } catch (DpException e) {
             final String errorMsg = "exception closing export file " + serverFilePath + ": " + e.getMessage();
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
-        return new ExportDatasetStatus(false, "");
+        return new ExportDataStatus(false, "");
     }
 }

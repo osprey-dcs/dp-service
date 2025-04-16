@@ -1,17 +1,17 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-public class ExportDataSetJobHdf5 extends ExportDataSetJobAbstractBucketed {
+public class ExportDataJobHdf5 extends ExportDataJobAbstractBucketed {
 
-    public ExportDataSetJobHdf5(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobHdf5(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {

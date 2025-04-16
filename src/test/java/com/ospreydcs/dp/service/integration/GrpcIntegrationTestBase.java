@@ -9,7 +9,6 @@ import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -2552,16 +2551,16 @@ public abstract class GrpcIntegrationTestBase {
         return resultAnnotations;
     }
 
-    protected ExportDataSetResponse.ExportDataSetResult sendExportDataSet(
-            ExportDataSetRequest request,
+    protected ExportDataResponse.ExportDataResult sendExportData(
+            ExportDataRequest request,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(annotationChannel);
 
-        final AnnotationTestBase.ExportDataSetResponseObserver responseObserver =
-                new AnnotationTestBase.ExportDataSetResponseObserver();
+        final AnnotationTestBase.ExportDataResponseObserver responseObserver =
+                new AnnotationTestBase.ExportDataResponseObserver();
 
         // start performance measurment timer
         final Instant t0 = Instant.now();
@@ -2569,7 +2568,7 @@ public abstract class GrpcIntegrationTestBase {
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.exportDataSet(request, responseObserver);
+            asyncStub.exportData(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -2616,23 +2615,23 @@ public abstract class GrpcIntegrationTestBase {
         return expectedDataMap;
     }
 
-    protected ExportDataSetResponse.ExportDataSetResult sendAndVerifyExportDataSet(
+    protected ExportDataResponse.ExportDataResult sendAndVerifyExportData(
             String dataSetId,
             AnnotationTestBase.CreateDataSetParams createDataSetParams,
-            ExportDataSetRequest.ExportOutputFormat outputFormat,
+            ExportDataRequest.ExportOutputFormat outputFormat,
             int expectedNumBuckets,
             int expectedNumRows,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final ExportDataSetRequest request =
-                AnnotationTestBase.buildExportDataSetRequest(
+        final ExportDataRequest request =
+                AnnotationTestBase.buildExportDataRequest(
                         dataSetId,
                         outputFormat);
 
-        final ExportDataSetResponse.ExportDataSetResult exportResult =
-                sendExportDataSet(request, expectReject, expectedRejectMessage);
+        final ExportDataResponse.ExportDataResult exportResult =
+                sendExportData(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertTrue(exportResult == null);
@@ -2719,7 +2718,7 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     public static void verifyExportTabularCsv(
-            ExportDataSetResponse.ExportDataSetResult exportResult,
+            ExportDataResponse.ExportDataResult exportResult,
             Set<String> expectedColumnNames,
             Map<String, IngestionStreamInfo> validationMap,
             int expectedNumRows
@@ -2790,7 +2789,7 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     public static void verifyExportTabularXlsx(
-            ExportDataSetResponse.ExportDataSetResult exportResult,
+            ExportDataResponse.ExportDataResult exportResult,
             Set<String> expectedColumnNames,
             Map<String, IngestionStreamInfo> validationMap,
             int expectedNumRows

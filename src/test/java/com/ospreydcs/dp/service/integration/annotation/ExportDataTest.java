@@ -1,14 +1,14 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.ExportDataSetResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.Map;
 
-public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
+public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -21,7 +21,7 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
     }
 
     @Test
-    public void testExportDataSet() {
+    public void testExportData() {
 
         // ingest some data
         final Map<String, IngestionStreamInfo> validationMap =
@@ -33,25 +33,25 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
 
         {
             // export to hdf5, negative test, unspecified dataset id
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             "",
                             null,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
                             true,
-                            "ExportDataSetRequest.dataSetId must be specified");
+                            "ExportDataRequest.dataSetId must be specified");
         }
 
         {
             // export to hdf5, negative test, invalid dataset id
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             "1234abcd1234abcd1234abcd",
                             null,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
@@ -61,25 +61,25 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
 
         {
             // export to hdf5, negative test, unspecified output format
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             null,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
                             true,
-                            "valid ExportDataSetRequest.outputFormat must be specified");
+                            "valid ExportDataRequest.outputFormat must be specified");
         }
 
         {
             // export to hdf5, positive test
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0, // expectedNumRows ignored for bucketed export
                             validationMap,
@@ -89,11 +89,11 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
 
         {
             // export to csv, positive test
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             25, // 2.5 seconds of data with 10 values per second
                             validationMap,
@@ -103,11 +103,11 @@ public class ExportDataSetTest extends AnnotationIntegrationTestIntermediate {
 
         {
             // export to xlsx, positive test
-            ExportDataSetResponse.ExportDataSetResult exportResult =
-                    sendAndVerifyExportDataSet(
+            ExportDataResponse.ExportDataResult exportResult =
+                    sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             25, // 2.5 seconds of data with 10 values per second
                             validationMap,

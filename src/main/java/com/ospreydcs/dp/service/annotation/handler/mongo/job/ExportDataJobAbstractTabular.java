@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.TabularDataExportFileInterface;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -17,7 +17,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBase {
+public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
 
     // constants
     public static final String COLUMN_HEADER_SECONDS = "seconds";
@@ -26,8 +26,8 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
     // instance variables
     private TabularDataExportFileInterface exportFile;
 
-    public ExportDataSetJobAbstractTabular(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobAbstractTabular(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
@@ -38,7 +38,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             DataSetDocument dataset, String serverFilePath) throws DpException;
 
     @Override
-    protected ExportDatasetStatus exportDataset_(
+    protected ExportDataStatus exportData_(
             DataSetDocument dataset,
             CalculationsDocument calculationsDocument,
             String serverFilePath
@@ -48,7 +48,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             exportFile = createExportFile_(dataset, serverFilePath);
         } catch (DpException e) {
             final String errorMsg = "exception opening export file " + serverFilePath + ": " + e.getMessage();
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
         // add data for each data block in dataset to tabular data structure
@@ -62,12 +62,12 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             if (cursor == null) {
                 final String errorMsg = "unknown error executing data block query for export file: " + serverFilePath;
                 logger.error(errorMsg);
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
 
             if (!cursor.hasNext()) {
                 final String errorMsg = "data block query returned no data";
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
 
             final long beginSeconds = dataBlock.getBeginTime().getSeconds();
@@ -89,7 +89,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
             } catch (DpException e) {
                 final String errorMsg = "exception deserializing BucketDocument fields: " + e.getMessage();
                 logger.error(errorMsg);
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
 
             // check if tabular structure execeeds export output file size limit
@@ -97,7 +97,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
                 final String errorMsg = "export file size limit "
                         + ExportConfiguration.getExportFileSizeLimitBytes()
                         + " exceeded for: " + serverFilePath;
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
 
             tableDataSize = tableDataSize + sizeStats.currentDataSize();
@@ -120,7 +120,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
                 final String errorMsg = "export file size limit "
                         + ExportConfiguration.getExportFileSizeLimitBytes()
                         + " exceeded for: " + serverFilePath;
-                return new ExportDatasetStatus(true, errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
         }
 
@@ -135,7 +135,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
         } catch (DpException e) {
             final String errorMsg = "exception writing header to export file " + serverFilePath + ": " + e.getMessage();
             logger.error(errorMsg);
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
         // write data
@@ -144,7 +144,7 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
         } catch (DpException e) {
             final String errorMsg = "exception writing data to export file " + serverFilePath + ": " + e.getMessage();
             logger.error(errorMsg);
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
         // close file
@@ -153,10 +153,10 @@ public abstract class ExportDataSetJobAbstractTabular extends ExportDataSetJobBa
         } catch (DpException e) {
             final String errorMsg = "exception closing export file " + serverFilePath + ": " + e.getMessage();
             logger.error(errorMsg);
-            return new ExportDatasetStatus(true, errorMsg);
+            return new ExportDataStatus(true, errorMsg);
         }
 
-        return new ExportDatasetStatus(false, "");
+        return new ExportDataStatus(false, "");
     }
 
 }

@@ -2,33 +2,16 @@ package com.ospreydcs.dp.service.annotation;
 
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
-import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import de.siegmar.fastcsv.reader.CsvReader;
-import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
-import org.apache.poi.openxml4j.opc.OPCPackage;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -553,13 +536,13 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class ExportDataSetResponseObserver implements StreamObserver<ExportDataSetResponse> {
+    public static class ExportDataResponseObserver implements StreamObserver<ExportDataResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<ExportDataSetResponse.ExportDataSetResult> resultList =
+        private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -583,7 +566,7 @@ public class AnnotationTestBase {
             }
         }
 
-        public ExportDataSetResponse.ExportDataSetResult getResult() {
+        public ExportDataResponse.ExportDataResult getResult() {
             if (!resultList.isEmpty()) {
                 return resultList.get(0);
             } else {
@@ -592,7 +575,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(ExportDataSetResponse response) {
+        public void onNext(ExportDataResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -608,8 +591,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasExportDataSetResult());
-                final ExportDataSetResponse.ExportDataSetResult result = response.getExportDataSetResult();
+                assertTrue(response.hasExportDataResult());
+                final ExportDataResponse.ExportDataResult result = response.getExportDataResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -876,11 +859,11 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    public static ExportDataSetRequest buildExportDataSetRequest(
+    public static ExportDataRequest buildExportDataRequest(
             String dataSetId,
-            ExportDataSetRequest.ExportOutputFormat outputFormat
+            ExportDataRequest.ExportOutputFormat outputFormat
     ) {
-        ExportDataSetRequest.Builder requestBuilder = ExportDataSetRequest.newBuilder();
+        ExportDataRequest.Builder requestBuilder = ExportDataRequest.newBuilder();
         requestBuilder.setDataSetId(dataSetId);
         requestBuilder.setOutputFormat(outputFormat);
         return requestBuilder.build();
