@@ -177,10 +177,10 @@ public class AnnotationValidationUtility {
 
     public static ValidationResult validateExportDataRequest(ExportDataRequest request) {
 
-        // dataSetId is required
+        // either dataSetId or calculationsSpec is required
         final String dataSetId = request.getDataSetId();
-        if (dataSetId == null || dataSetId.isBlank()) {
-            final String errorMsg = "ExportDataRequest.dataSetId must be specified";
+        if ((dataSetId == null || dataSetId.isBlank()) && ( ! request.hasCalculationsSpec())) {
+            final String errorMsg = "ExportDataRequest either dataSetId or calculationsSpec must be specified";
             return new ValidationResult(true, errorMsg);
         }
 

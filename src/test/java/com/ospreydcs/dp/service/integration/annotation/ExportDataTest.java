@@ -42,7 +42,7 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                             0,
                             null,
                             true,
-                            "ExportDataRequest.dataSetId must be specified");
+                            "ExportDataRequest either dataSetId or calculationsSpec must be specified");
         }
 
         {
