@@ -58,13 +58,20 @@ public abstract class ExportDataJobBase extends HandlerJob {
                 this.getClass().getSimpleName(),
                 this.handlerRequest.responseObserver.hashCode());
 
+        // use datasetId as filename if specified, otherwise use id from calculationsSpec
+        String exportObjectId = null;
+
         // get dataset for id specified in request
         final String datasetId = this.handlerRequest.exportDataRequest.getDataSetId();
-        final DataSetDocument datasetDocument = mongoAnnotationClient.findDataSet(datasetId);
-        if (datasetDocument == null) {
-            final String errorMsg = "DatasetDocument with id " + datasetId + " not found";
-            this.dispatcher.handleError(errorMsg);
-            return;
+        DataSetDocument datasetDocument = null;
+        if ( ! datasetId.isBlank()) {
+            datasetDocument = mongoAnnotationClient.findDataSet(datasetId);
+            if (datasetDocument == null) {
+                final String errorMsg = "DatasetDocument with id " + datasetId + " not found";
+                this.dispatcher.handleError(errorMsg);
+                return;
+            }
+            exportObjectId = datasetId;
         }
 
         // get calculations for id specified in request
@@ -78,11 +85,21 @@ public abstract class ExportDataJobBase extends HandlerJob {
                 this.dispatcher.handleError(errorMsg);
                 return;
             }
+            if (exportObjectId == null) {
+                exportObjectId = calculationsId;
+            }
+        }
+
+        // make sure we have an id to use for filename
+        if (exportObjectId == null) {
+            final String errorMsg = "Unable to generate export output filename for request";
+            this.dispatcher.handleError(errorMsg);
+            return;
         }
 
         // generate server output file path for export
         final ExportConfiguration.ExportFilePaths exportFilePaths =
-                exportConfiguration.getExportFilePaths(datasetId, getFileExtension_());
+                exportConfiguration.getExportFilePaths(exportObjectId, getFileExtension_());
         if (! exportFilePaths.valid) {
             final String errorMsg =
                     "Export mechanism is not properly configured (e.g., see resources/application.yml file)";
