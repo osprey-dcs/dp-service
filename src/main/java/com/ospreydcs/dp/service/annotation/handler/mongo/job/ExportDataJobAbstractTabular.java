@@ -51,56 +51,60 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
             return new ExportDataStatus(true, errorMsg);
         }
 
-        // add data for each data block in dataset to tabular data structure
+        // create temporary tabular data structure for writing to file
         final TimestampDataMap tableValueMap = new TimestampDataMap();
         int tableDataSize = 0;
-        for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
 
-            final MongoCursor<BucketDocument> cursor =
-                    this.mongoQueryClient.executeDataBlockQuery(dataBlock);
+        // add data for each data block in dataset to tabular data structure
+        if (dataset != null) {
+            for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
 
-            if (cursor == null) {
-                final String errorMsg = "unknown error executing data block query for export file: " + serverFilePath;
-                logger.error(errorMsg);
-                return new ExportDataStatus(true, errorMsg);
+                final MongoCursor<BucketDocument> cursor =
+                        this.mongoQueryClient.executeDataBlockQuery(dataBlock);
+
+                if (cursor == null) {
+                    final String errorMsg = "unknown error executing data block query for export file: " + serverFilePath;
+                    logger.error(errorMsg);
+                    return new ExportDataStatus(true, errorMsg);
+                }
+
+                if (!cursor.hasNext()) {
+                    final String errorMsg = "data block query returned no data";
+                    return new ExportDataStatus(true, errorMsg);
+                }
+
+                final long beginSeconds = dataBlock.getBeginTime().getSeconds();
+                final long beginNanos = dataBlock.getBeginTime().getNanos();
+                final long endSeconds = dataBlock.getEndTime().getSeconds();
+                final long endNanos = dataBlock.getEndTime().getNanos();
+                TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
+                try {
+                    sizeStats = TabularDataUtility.addBucketsToTable(
+                            tableValueMap,
+                            cursor,
+                            tableDataSize,
+                            ExportConfiguration.getExportFileSizeLimitBytes(),
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos
+                    );
+                } catch (DpException e) {
+                    final String errorMsg = "exception deserializing BucketDocument fields: " + e.getMessage();
+                    logger.error(errorMsg);
+                    return new ExportDataStatus(true, errorMsg);
+                }
+
+                // check if tabular structure execeeds export output file size limit
+                if (sizeStats.sizeLimitExceeded()) {
+                    final String errorMsg = "export file size limit "
+                            + ExportConfiguration.getExportFileSizeLimitBytes()
+                            + " exceeded for: " + serverFilePath;
+                    return new ExportDataStatus(true, errorMsg);
+                }
+
+                tableDataSize = tableDataSize + sizeStats.currentDataSize();
             }
-
-            if (!cursor.hasNext()) {
-                final String errorMsg = "data block query returned no data";
-                return new ExportDataStatus(true, errorMsg);
-            }
-
-            final long beginSeconds = dataBlock.getBeginTime().getSeconds();
-            final long beginNanos = dataBlock.getBeginTime().getNanos();
-            final long endSeconds = dataBlock.getEndTime().getSeconds();
-            final long endNanos = dataBlock.getEndTime().getNanos();
-            TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
-            try {
-                sizeStats = TabularDataUtility.addBucketsToTable(
-                        tableValueMap,
-                        cursor,
-                        tableDataSize,
-                        ExportConfiguration.getExportFileSizeLimitBytes(),
-                        beginSeconds,
-                        beginNanos,
-                        endSeconds,
-                        endNanos
-                );
-            } catch (DpException e) {
-                final String errorMsg = "exception deserializing BucketDocument fields: " + e.getMessage();
-                logger.error(errorMsg);
-                return new ExportDataStatus(true, errorMsg);
-            }
-
-            // check if tabular structure execeeds export output file size limit
-            if (sizeStats.sizeLimitExceeded()) {
-                final String errorMsg = "export file size limit "
-                        + ExportConfiguration.getExportFileSizeLimitBytes()
-                        + " exceeded for: " + serverFilePath;
-                return new ExportDataStatus(true, errorMsg);
-            }
-
-            tableDataSize = tableDataSize + sizeStats.currentDataSize();
         }
 
         // add calculations to tabular data structure

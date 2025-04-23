@@ -97,6 +97,15 @@ public abstract class ExportDataJobBase extends HandlerJob {
             return;
         }
 
+        // check that there is data to export
+        if (datasetDocument == null && calculationsDocument == null) {
+            // this is unexpected, given prior validation
+            final String errorMsg = "no data found for export request";
+            logger.error(errorMsg + " id: " + this.handlerRequest.responseObserver.hashCode());
+            this.dispatcher.handleError(errorMsg);
+            return;
+        }
+
         // generate server output file path for export
         final ExportConfiguration.ExportFilePaths exportFilePaths =
                 exportConfiguration.getExportFilePaths(exportObjectId, getFileExtension_());
@@ -116,7 +125,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
         } catch (IOException e) {
             final String errorMsg =
                     "IOException creating directories in path " + serverDirectoryPathString + ": " + e.getMessage();
-            logger.error(errorMsg);
+            logger.error(errorMsg + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(errorMsg);
             return;
         }
@@ -126,14 +135,15 @@ public abstract class ExportDataJobBase extends HandlerJob {
         final Path serverFilePath = Paths.get(serverFilePathString);
         final ExportDataStatus status = exportData_(datasetDocument, calculationsDocument, serverFilePathString);
         if (status.isError) {
-            logger.error(status.errorMessage);
+            logger.error(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(status.errorMessage);
             return;
         }
 
         // log file size and check if open
         final File serverFile = new File(serverFilePathString);
-        logger.debug("export file " + serverFilePathString + " size: " + serverFile.length());
+        logger.trace("export file " + serverFilePathString + " size: " + serverFile.length()
+                + " id: " + this.handlerRequest.responseObserver.hashCode());
 
         // check that file is readable before sending API response
         // even though Java calls like write() and close() are synchronous, the OS handling is async
@@ -142,7 +152,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
             final BasicFileAttributes exportFileAttributes = awaitFile(serverFilePath, 60*1000 /* 60 seconds */);
         } catch (IOException | InterruptedException e) {
             final String errorMsg = "exception waiting for export file " + serverFilePathString + ": " + e.getMessage();
-            logger.error(errorMsg);
+            logger.error(errorMsg + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(errorMsg);
             return;
         }
