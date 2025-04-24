@@ -685,7 +685,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             ExportDataResponse.ExportDataResult exportResult =
                     sendAndVerifyExportData(
                             datasetId,
-                            null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             60 * pvCount, // 60 buckets per pv
                             0, null, true,
                             "export file size limit");
@@ -700,7 +700,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             ExportDataResponse.ExportDataResult exportResult =
                     sendAndVerifyExportData(
                             datasetId,
-                            null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             60 * pvCount, // 60 buckets per pv
                             0, null, true,
                             "export file size limit");

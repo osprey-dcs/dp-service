@@ -1,6 +1,10 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -14,8 +18,11 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestIntermediate {
+import static org.junit.Assert.assertEquals;
+
+public class AnnotationCalculationsTest extends AnnotationIntegrationTestIntermediate {
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -28,10 +35,11 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
     }
 
     @Test
-    public void testCreateAnnotation() {
+    public void testAnnotationCalculations() {
 
         // ingest some data
-        AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        Map<String, IngestionStreamInfo> validationMap =
+                AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
 
         // create some datasets
         CreateDataSetScenarioResult createDataSetScenarioResult =
@@ -565,7 +573,7 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
+            final AnnotationTestBase.CreateAnnotationRequestParams createAnnotationRequestParams =
                     new AnnotationTestBase.CreateAnnotationRequestParams(
                             ownerId,
                             name,
@@ -579,21 +587,47 @@ public class CreateAnnotationCalculationsTest extends AnnotationIntegrationTestI
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
 
-            // queryAnnotations() positive test to verify calculations in query result annotation
-            // uses calculation created above
+            // queryAnnotations() positive test to verify calculations in query result annotation.
+            // Result includes calculations id for annotation created above.
+            String calculationsId;
             {
                 final String nameText = "SamplingClock";
-                final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                final AnnotationTestBase.QueryAnnotationsParams queryAnnotationsParams =
                         new AnnotationTestBase.QueryAnnotationsParams();
-                queryParams.setTextCriterion(nameText);
+                queryAnnotationsParams.setTextCriterion(nameText);
 
-                sendAndVerifyQueryAnnotations(
-                        queryParams,
-                        expectReject,
-                        expectedRejectMessage,
-                        List.of(params));
+                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> queryResultAnnotations =
+                        sendAndVerifyQueryAnnotations(
+                                queryAnnotationsParams,
+                                expectReject,
+                                expectedRejectMessage,
+                                List.of(createAnnotationRequestParams));
+                assertEquals(1, queryResultAnnotations.size());
+                calculationsId = queryResultAnnotations.get(0).getCalculations().getId();
+            }
+
+            // positive test: export of dataset with calculations to csv.
+            {
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .build();
+
+                // export to csv, positive test
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId,
+                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                                10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                                25, // 2.5 seconds of data with 10 values per second
+                                validationMap,
+                                false,
+                                "");
             }
 
         }

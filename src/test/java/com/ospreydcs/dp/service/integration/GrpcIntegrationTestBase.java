@@ -21,6 +21,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
@@ -2618,16 +2619,19 @@ public abstract class GrpcIntegrationTestBase {
     protected ExportDataResponse.ExportDataResult sendAndVerifyExportData(
             String dataSetId,
             AnnotationTestBase.CreateDataSetParams createDataSetParams,
+            CalculationsSpec calculationsSpec,
+            Calculations calculationsRequestParams,
             ExportDataRequest.ExportOutputFormat outputFormat,
             int expectedNumBuckets,
             int expectedNumRows,
-            Map<String, IngestionStreamInfo> validationMap,
+            Map<String, IngestionStreamInfo> pvValidationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final ExportDataRequest request =
                 AnnotationTestBase.buildExportDataRequest(
                         dataSetId,
+                        calculationsSpec,
                         outputFormat);
 
         final ExportDataResponse.ExportDataResult exportResult =
@@ -2659,9 +2663,9 @@ public abstract class GrpcIntegrationTestBase {
 
         // check that file is available (this is the same as the check done by WatchService (e.g., WatchService
         // won't solve our problem with corrupt excel file if this test succeeds)
-        Path target = Path.of(exportResult.getFilePath());
+        final Path target = Path.of(exportResult.getFilePath());
         try {
-            BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
+            final BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
             System.out.println("got file attributes for: " + target);
         } catch (IOException ex) {
             fail("IOException getting file attributes for: " + target);
@@ -2676,27 +2680,90 @@ public abstract class GrpcIntegrationTestBase {
 //            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
 //        }
 //
-        // retrieve dataset for id
-        DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
-        assertNotNull(dataset);
 
-        // retrieve BucketDocuments for specified dataset
-        final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
-        assertEquals(expectedNumBuckets, datasetBuckets.size());
+        // create list of expected PV column names
+        Set<String> expectedPvColumnNames = new HashSet<>();
+        DataSetDocument datasetDocument = null;
+        List<BucketDocument> datasetBuckets = null;
+        if (dataSetId != null) {
 
-        // generate collection of unique pv names for dataset from creation request params
-        // these are the columns expected in the export output file
-        Set<String> requestDatasetPvNames = new HashSet<>();
-        for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet.dataBlocks) {
-            requestDatasetPvNames.addAll(requestDataBlock.pvNames);
+            // retrieve dataset for id
+            datasetDocument = mongoClient.findDataSet(dataSetId);
+            assertNotNull(datasetDocument);
+
+            // retrieve BucketDocuments for specified dataset
+            datasetBuckets = mongoClient.findDataSetBuckets(datasetDocument);
+            assertEquals(expectedNumBuckets, datasetBuckets.size());
+
+            // generate collection of unique pv names for dataset from creation request params
+            // these are the columns expected in the export output file
+            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet.dataBlocks) {
+                expectedPvColumnNames.addAll(requestDataBlock.pvNames);
+            }
         }
+
+        // create list of expected calculations column names
+        List<String> expectedCalculationsColumnNames = new ArrayList<>();
+        if (calculationsSpec != null) {
+
+            // retrieve calculations for id
+            final CalculationsDocument calculationsDocument =
+                    mongoClient.findCalculations(calculationsSpec.getCalculationsId());
+            assertNotNull(calculationsDocument);
+
+            // add expected column names for calculations
+            if (calculationsSpec.getDataFrameColumnsMap().isEmpty()) {
+
+                // add all columns for calculations
+                for (Calculations.CalculationsDataFrame requestCalculationsFrame :
+                        calculationsRequestParams.getCalculationDataFramesList()) {
+                    final String requestCalculationsFrameName = requestCalculationsFrame.getName();
+                    for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                        expectedCalculationsColumnNames.add(requestCalculationsFrameColumn.getName());
+                    }
+                }
+
+            } else {
+
+                // add only columns from map in calculationsSpec
+                final Map<String, CalculationsSpec.ColumnNameList> frameColumnsMap =
+                        calculationsSpec.getDataFrameColumnsMap();
+                for (var frameColumnMapEntry : frameColumnsMap.entrySet()) {
+                    final String frameName = frameColumnMapEntry.getKey();
+                    final List<String> frameColumns = frameColumnMapEntry.getValue().getColumnNamesList();
+                    for (String frameColumnName : frameColumns) {
+                        expectedCalculationsColumnNames.add(frameColumnName);
+                    }
+                }
+            }
+        }
+
+        // create map of calculations column data values for use in verification
+        Map<String, TimestampMap<Double>> calculationsValidationMap = new HashMap<>();
+        if (calculationsRequestParams != null) {
+            for (Calculations.CalculationsDataFrame requestCalculationsFrame :
+                    calculationsRequestParams.getCalculationDataFramesList()) {
+                final DataTimestamps requestCalculationsFrameDataTimestamps =
+                        requestCalculationsFrame.getDataTimestamps();
+                for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                    final String requestCalculationsFrameColumnName = requestCalculationsFrameColumn.getName();
+                    if (expectedCalculationsColumnNames.contains(requestCalculationsFrameColumnName)) {
+                        calculationsValidationMap.put(
+                                requestCalculationsFrameColumnName,
+                                DataColumnUtility.toTimestampMapDouble(
+                                        requestCalculationsFrameColumn, requestCalculationsFrameDataTimestamps));
+                    }
+                }
+            }
+        }
+
 
         // verify file content for specified output format
         switch (outputFormat) {
 
             case EXPORT_FORMAT_HDF5 -> {
                 final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
+                AnnotationTestBase.verifyDatasetHdf5Content(reader, datasetDocument);
                 for (BucketDocument bucket : datasetBuckets) {
                     AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
                 }
@@ -2705,12 +2772,23 @@ public abstract class GrpcIntegrationTestBase {
 
             case EXPORT_FORMAT_CSV -> {
                 // verify file content against data map
-                verifyExportTabularCsv(exportResult, requestDatasetPvNames, validationMap, expectedNumRows);
+                verifyExportTabularCsv(
+                        exportResult,
+                        expectedPvColumnNames,
+                        pvValidationMap,
+                        expectedCalculationsColumnNames,
+                        calculationsValidationMap,
+                        expectedNumRows);
             }
 
             case EXPORT_FORMAT_XLSX -> {
                 // verify file content against data map
-                verifyExportTabularXlsx(exportResult, requestDatasetPvNames, validationMap, expectedNumRows);
+                verifyExportTabularXlsx(
+                        exportResult,
+                        expectedPvColumnNames,
+                        pvValidationMap,
+                        calculationsRequestParams,
+                        expectedNumRows);
             }
         }
 
@@ -2719,8 +2797,10 @@ public abstract class GrpcIntegrationTestBase {
 
     public static void verifyExportTabularCsv(
             ExportDataResponse.ExportDataResult exportResult,
-            Set<String> expectedColumnNames,
-            Map<String, IngestionStreamInfo> validationMap,
+            Set<String> expectedPvColumnNames,
+            Map<String, IngestionStreamInfo> pvValidationMap,
+            List<String> expectedCalculationsColumnNames,
+            Map<String, TimestampMap<Double>> calculationsValidationMap,
             int expectedNumRows
     ) {
         // open csv file and create reader
@@ -2734,7 +2814,7 @@ public abstract class GrpcIntegrationTestBase {
         assertNotNull(csvReader);
 
         final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
-        final int expectedNumColumns = 2 + expectedColumnNames.size();
+        final int expectedNumColumns = 2 + expectedPvColumnNames.size() + expectedCalculationsColumnNames.size();
 
         // verify header row
         List<String> csvColumnHeaders;
@@ -2745,9 +2825,15 @@ public abstract class GrpcIntegrationTestBase {
             // check number of csv header columns matches expected
             assertEquals(expectedNumColumns, csvRecord.getFieldCount());
 
-            // check that the csv file contains each of the expected columns
             csvColumnHeaders = csvRecord.getFields();
-            for (String columnName : expectedColumnNames) {
+
+            // check that the csv file contains each of the expected PV columns
+            for (String columnName : expectedPvColumnNames) {
+                assertTrue(csvColumnHeaders.contains(columnName));
+            }
+
+            // check that csv file contains each of the expected calculations columns
+            for (String columnName : expectedPvColumnNames) {
                 assertTrue(csvColumnHeaders.contains(columnName));
             }
         }
@@ -2770,16 +2856,33 @@ public abstract class GrpcIntegrationTestBase {
 
                 // compare data values from csv file with expected
                 for (int columnIndex = 2; columnIndex < csvRowValues.size(); columnIndex++) {
-                    final String csvDataValue = csvRowValues.get(columnIndex);
 
-                    // get expected data value for column
+                    // get csv file data value and column name for column index
+                    final String csvDataValue = csvRowValues.get(columnIndex);
                     final String csvColumnName = csvColumnHeaders.get(columnIndex);
-                    final TimestampMap<Double> columnValueMap = validationMap.get(csvColumnName).valueMap;
-                    final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
-                    if (expectedColumnDoubleValue != null) {
-                        assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
+
+                    if (expectedPvColumnNames.contains(csvColumnName)) {
+                        // check expected data value for PV column
+                        final TimestampMap<Double> columnValueMap = pvValidationMap.get(csvColumnName).valueMap;
+                        final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
+                        if (expectedColumnDoubleValue != null) {
+                            assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
+                        } else {
+                            assertEquals("", csvDataValue);
+                        }
+
+                    } else if (expectedCalculationsColumnNames.contains(csvColumnName)) {
+                        // check expected data value for calculations column
+                        final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(csvColumnName);
+                        final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
+                        if (expectedColumnDoubleValue != null) {
+                            assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
+                        } else {
+                            assertEquals("", csvDataValue);
+                        }
+
                     } else {
-                        assertEquals("0.0", csvDataValue);
+                        fail("unexpected export column (neither PV nor calculations): " + csvColumnName);
                     }
                 }
                 dataRowCount = dataRowCount + 1;
@@ -2792,7 +2895,7 @@ public abstract class GrpcIntegrationTestBase {
             ExportDataResponse.ExportDataResult exportResult,
             Set<String> expectedColumnNames,
             Map<String, IngestionStreamInfo> validationMap,
-            int expectedNumRows
+            Calculations calculationsRequestParams, int expectedNumRows
     ) {
         // open excel file
         OPCPackage filePackage = null;

@@ -227,7 +227,10 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
     }
 
-    protected static CreateAnnotationScenarioResult createAnnotationScenario(String firstHalfDataSetId, String secondHalfDataSetId) {
+    protected static CreateAnnotationScenarioResult createAnnotationScenario(
+            String firstHalfDataSetId,
+            String secondHalfDataSetId
+    ) {
 
         final List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
         final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();

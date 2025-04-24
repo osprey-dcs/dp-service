@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation;
 
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -861,11 +862,24 @@ public class AnnotationTestBase {
 
     public static ExportDataRequest buildExportDataRequest(
             String dataSetId,
+            CalculationsSpec calculationsSpec,
             ExportDataRequest.ExportOutputFormat outputFormat
     ) {
         ExportDataRequest.Builder requestBuilder = ExportDataRequest.newBuilder();
-        requestBuilder.setDataSetId(dataSetId);
+
+        // set datasetId if specified
+        if (dataSetId != null) {
+            requestBuilder.setDataSetId(dataSetId);
+        }
+
+        // create calculationsSpec if calculationsId is specified
+        if (calculationsSpec != null) {
+            requestBuilder.setCalculationsSpec(calculationsSpec);
+        }
+
+        // set output format
         requestBuilder.setOutputFormat(outputFormat);
+
         return requestBuilder.build();
     }
 
