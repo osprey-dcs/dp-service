@@ -545,21 +545,25 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
             final String name = "positive test: SamplingClock";
 
-            // create calculations for request, with 2 data frames, each with 2 columns
+            // Create calculations for request, with 6 data frames, each with 2 columns.
+            // Each data frame includes data values for one second of data.
             final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < 6; i++) {
 
                 // create sampling clock
+                // specifying 10 values per second (in the upper half second, every 20th of a second)
                 final DataTimestamps dataTimestamps =
                         DataTimestampsUtility.dataTimestampsWithSamplingClock(
-                                startSeconds + i, 500_000_000L, 250_000_000L, 2);
+                                startSeconds + i, 500_000_000L, 50_000_000L, 10);
 
-                // create data columns
+                // create data columns, each with 10 values
                 final List<DataColumn> dataColumns = new ArrayList<>();
                 for (int j = 0; j < 2; j++) {
                     final String columnName = "calc-" + i + "-" + j;
                     final DataColumn dataColumn =
-                            DataColumnUtility.dataColumnWithDoubleValues(columnName, List.of(0.0, 1.1));
+                            DataColumnUtility.dataColumnWithDoubleValues(
+                                    columnName,
+                                    List.of(.50, .55, .60, .65, .70, .75, .80, .85, .90, .95));
                     dataColumns.add(dataColumn);
                 }
 
@@ -615,7 +619,6 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .setCalculationsId(calculationsId)
                         .build();
 
-                // export to csv, positive test
                 ExportDataResponse.ExportDataResult exportResult =
                         sendAndVerifyExportData(
                                 createDataSetScenarioResult.secondHalfDataSetId,
@@ -624,8 +627,29 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                                 10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
-                                25, // 2.5 seconds of data with 10 values per second
+                                50, // 10 rows per second * 5 seconds (5 rows pv and calculations, 5 rows calculations)
                                 validationMap,
+                                false,
+                                "");
+            }
+
+            // positive test: export of only calculations (without dataset) to csv.
+            {
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .build();
+
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                null,
+                                null,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                                0,
+                                60, // 10 rows per second, 6 seconds
+                                null,
                                 false,
                                 "");
             }

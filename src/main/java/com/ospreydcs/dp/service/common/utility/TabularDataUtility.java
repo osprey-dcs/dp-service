@@ -12,8 +12,8 @@ import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import com.ospreydcs.dp.service.common.model.TimestampMap;
 
+import java.time.Instant;
 import java.util.*;
 
 public class TabularDataUtility {
@@ -126,6 +126,8 @@ public class TabularDataUtility {
     public static TimestampDataMapSizeStats addCalculationsToTable(
             TimestampDataMap tableValueMap,
             CalculationsDocument calculationsDocument,
+            Instant exportBeginInstant,
+            Instant exportEndInstant,
             int previousDataSize,
             Integer sizeLimit // if null, no limit is applied
     ) throws DpException {
@@ -134,19 +136,42 @@ public class TabularDataUtility {
 
         // add columns for each CalculationsDataFrame to table
         for (CalculationsDataFrameDocument frameDocument : calculationsDocument.getDataFrames()) {
+
+            // create a model for accessing frame's begin/end times
             final DataTimestamps frameDataTimestamps = frameDocument.getDataTimestamps().toDataTimestamps();
             final DataTimestampsUtility.DataTimestampsModel frameTimestampsModel =
                     new DataTimestampsUtility.DataTimestampsModel(frameDataTimestamps);
-            final long beginSeconds = frameTimestampsModel.getFirstTimestamp().getEpochSeconds();
-            final long beginNanos = frameTimestampsModel.getFirstTimestamp().getNanoseconds();
-            final long endSeconds = frameTimestampsModel.getLastTimestamp().getEpochSeconds();
-            final long endNanos = frameTimestampsModel.getLastTimestamp().getNanoseconds();
+
+            // Determine time range for truncating values.
+            // We include all values in the frame if exportBeginInstant and exportEndInstant are not specified,
+            // otherwise we truncate values outside that range (e.g., if we are exporting a dataset with calculations).
+            long beginSeconds;
+            long beginNanos;
+            long endSeconds;
+            long endNanos;
+            if (exportBeginInstant == null || exportEndInstant == null) {
+                beginSeconds = frameTimestampsModel.getFirstTimestamp().getEpochSeconds();
+                beginNanos = frameTimestampsModel.getFirstTimestamp().getNanoseconds();
+                endSeconds = frameTimestampsModel.getLastTimestamp().getEpochSeconds();
+                endNanos = frameTimestampsModel.getLastTimestamp().getNanoseconds() + 1; // we add one so last value is not truncated
+            } else {
+                beginSeconds = exportBeginInstant.getEpochSecond();
+                beginNanos = exportBeginInstant.getNano();
+                endSeconds = exportEndInstant.getEpochSecond();
+                endNanos = exportEndInstant.getNano();
+            }
+
+            // make list of columns for frame
             List<DataColumn> frameColumns = new ArrayList<>();
             for (DataColumnDocument frameColumnDocument : frameDocument.getDataColumns()) {
                 frameColumns.add(frameColumnDocument.toDataColumn());
             }
+
+            // add list of columns to tableValueMap
             int frameDataSize = addColumnsToTable(
                     frameDataTimestamps, frameColumns, tableValueMap, beginSeconds, beginNanos, endSeconds, endNanos);
+
+            // update and check export data size against limit
             currentDataSize = currentDataSize + frameDataSize;
             if (sizeLimit != null && currentDataSize > sizeLimit) {
                 return new TimestampDataMapSizeStats(currentDataSize, true);

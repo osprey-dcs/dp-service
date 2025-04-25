@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,6 +57,9 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
         int tableDataSize = 0;
 
         // add data for each data block in dataset to tabular data structure
+        Instant exportBeginInstant = null;
+        Instant exportEndInstant = null;
+        boolean first = true;
         if (dataset != null) {
             for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
 
@@ -73,10 +77,28 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                     return new ExportDataStatus(true, errorMsg);
                 }
 
+                // get time range for data block
                 final long beginSeconds = dataBlock.getBeginTime().getSeconds();
                 final long beginNanos = dataBlock.getBeginTime().getNanos();
+                final Instant beginInstant = Instant.ofEpochSecond(beginSeconds, beginNanos);
                 final long endSeconds = dataBlock.getEndTime().getSeconds();
                 final long endNanos = dataBlock.getEndTime().getNanos();
+                final Instant endInstant = Instant.ofEpochSecond(endSeconds, endNanos);
+
+                // update min/max time range for dataset
+                if (first) {
+                    exportBeginInstant = beginInstant;
+                    exportEndInstant = endInstant;
+                    first = false;
+                } else {
+                    if (beginInstant.isBefore(exportBeginInstant)) {
+                        exportBeginInstant = beginInstant;
+                    }
+                    if (endInstant.isAfter(exportEndInstant)) {
+                        exportEndInstant = endInstant;
+                    }
+                }
+
                 TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
                 try {
                     sizeStats = TabularDataUtility.addBucketsToTable(
@@ -115,6 +137,8 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                         TabularDataUtility.addCalculationsToTable(
                                 tableValueMap,
                                 calculationsDocument,
+                                exportBeginInstant,
+                                exportEndInstant,
                                 tableDataSize,
                                 ExportConfiguration.getExportFileSizeLimitBytes());
             } catch (DpException e) {
