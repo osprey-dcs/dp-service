@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
@@ -17,6 +18,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
 
@@ -42,6 +44,7 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
     protected ExportDataStatus exportData_(
             DataSetDocument dataset,
             CalculationsDocument calculationsDocument,
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap,
             String serverFilePath
     ) {
         // create file for export
@@ -137,6 +140,7 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                         TabularDataUtility.addCalculationsToTable(
                                 tableValueMap,
                                 calculationsDocument,
+                                frameColumnNamesMap,
                                 exportBeginInstant,
                                 exportEndInstant,
                                 tableDataSize,

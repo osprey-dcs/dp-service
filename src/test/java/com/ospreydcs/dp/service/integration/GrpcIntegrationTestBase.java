@@ -2757,7 +2757,6 @@ public abstract class GrpcIntegrationTestBase {
             }
         }
 
-
         // verify file content for specified output format
         switch (outputFormat) {
 

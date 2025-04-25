@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public abstract class ExportDataJobBase extends HandlerJob {
@@ -48,6 +49,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
     protected abstract ExportDataStatus exportData_(
             DataSetDocument datasetDocument,
             CalculationsDocument calculationsDocument,
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap,
             String serverFilePath);
 
     @Override
@@ -76,9 +78,12 @@ public abstract class ExportDataJobBase extends HandlerJob {
 
         // get calculations for id specified in request
         CalculationsDocument calculationsDocument = null;
+        Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap = null;
         if (this.handlerRequest.exportDataRequest.hasCalculationsSpec()) {
             final CalculationsSpec calculationsSpec = this.handlerRequest.exportDataRequest.getCalculationsSpec();
             final String calculationsId = calculationsSpec.getCalculationsId();
+            frameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap().isEmpty() ?
+                    null : calculationsSpec.getDataFrameColumnsMap();
             calculationsDocument = mongoAnnotationClient.findCalculations(calculationsId);
             if (calculationsDocument == null) {
                 final String errorMsg = "CalculationsDocument with id " + calculationsId + " not found";
@@ -133,7 +138,8 @@ public abstract class ExportDataJobBase extends HandlerJob {
         // export data to file
         final String serverFilePathString = serverDirectoryPathString + filename;
         final Path serverFilePath = Paths.get(serverFilePathString);
-        final ExportDataStatus status = exportData_(datasetDocument, calculationsDocument, serverFilePathString);
+        final ExportDataStatus status = exportData_(
+                datasetDocument, calculationsDocument, frameColumnNamesMap, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(status.errorMessage);

@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.BucketedDataExportFileInterface;
@@ -10,6 +11,8 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+
+import java.util.Map;
 
 public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
 
@@ -31,7 +34,7 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
     protected ExportDataStatus exportData_(
             DataSetDocument dataset,
             CalculationsDocument calculationsDocument,
-            String serverFilePath
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap, String serverFilePath
     ) {
         // create file for export
         try {

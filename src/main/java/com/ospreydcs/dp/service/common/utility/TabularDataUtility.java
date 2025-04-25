@@ -1,10 +1,7 @@
 package com.ospreydcs.dp.service.common.utility;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
@@ -126,6 +123,7 @@ public class TabularDataUtility {
     public static TimestampDataMapSizeStats addCalculationsToTable(
             TimestampDataMap tableValueMap,
             CalculationsDocument calculationsDocument,
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap,
             Instant exportBeginInstant,
             Instant exportEndInstant,
             int previousDataSize,
@@ -136,6 +134,8 @@ public class TabularDataUtility {
 
         // add columns for each CalculationsDataFrame to table
         for (CalculationsDataFrameDocument frameDocument : calculationsDocument.getDataFrames()) {
+
+            final String frameName = frameDocument.getName();
 
             // create a model for accessing frame's begin/end times
             final DataTimestamps frameDataTimestamps = frameDocument.getDataTimestamps().toDataTimestamps();
@@ -164,7 +164,17 @@ public class TabularDataUtility {
             // make list of columns for frame
             List<DataColumn> frameColumns = new ArrayList<>();
             for (DataColumnDocument frameColumnDocument : frameDocument.getDataColumns()) {
-                frameColumns.add(frameColumnDocument.toDataColumn());
+                final DataColumn frameColumn = frameColumnDocument.toDataColumn();
+                if (frameColumnNamesMap != null) {
+                    // only include columns specified in map if one is provided
+                    final CalculationsSpec.ColumnNameList frameColumnNamesList = frameColumnNamesMap.get(frameName);
+                    if (frameColumnNamesList != null &&
+                            frameColumnNamesList.getColumnNamesList().contains(frameColumn.getName())) {
+                        frameColumns.add(frameColumn);
+                    }
+                } else {
+                    frameColumns.add(frameColumn);
+                }
             }
 
             // add list of columns to tableValueMap
