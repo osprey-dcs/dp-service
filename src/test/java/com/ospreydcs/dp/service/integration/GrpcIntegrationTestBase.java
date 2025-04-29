@@ -2786,7 +2786,8 @@ public abstract class GrpcIntegrationTestBase {
                         exportResult,
                         expectedPvColumnNames,
                         pvValidationMap,
-                        calculationsRequestParams,
+                        expectedCalculationsColumnNames,
+                        calculationsValidationMap,
                         expectedNumRows);
             }
         }
@@ -2832,7 +2833,7 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             // check that csv file contains each of the expected calculations columns
-            for (String columnName : expectedPvColumnNames) {
+            for (String columnName : expectedCalculationsColumnNames) {
                 assertTrue(csvColumnHeaders.contains(columnName));
             }
         }
@@ -2892,9 +2893,11 @@ public abstract class GrpcIntegrationTestBase {
 
     public static void verifyExportTabularXlsx(
             ExportDataResponse.ExportDataResult exportResult,
-            Set<String> expectedColumnNames,
-            Map<String, IngestionStreamInfo> validationMap,
-            Calculations calculationsRequestParams, int expectedNumRows
+            Set<String> expectedPvColumnNames,
+            Map<String, IngestionStreamInfo> pvValidationMap,
+            List<String> expectedCalculationsColumnNames,
+            Map<String, TimestampMap<Double>> calculationsValidationMap,
+            int expectedNumRows
     ) {
         // open excel file
         OPCPackage filePackage = null;
@@ -2926,7 +2929,7 @@ public abstract class GrpcIntegrationTestBase {
         final Iterator<Row> fileRowIterator = fileSheet.rowIterator();
         assertTrue(fileRowIterator.hasNext());
 
-        final int expectedNumColumns = 2 + expectedColumnNames.size();
+        final int expectedNumColumns = 2 + expectedPvColumnNames.size();
 
         // verify header row from file
         List<String> fileColumnHeaders = new ArrayList<>();
@@ -2943,8 +2946,13 @@ public abstract class GrpcIntegrationTestBase {
                 fileColumnHeaders.add(fileHeaderValue);
             }
 
-            // check that list of actual headers contains each of the expected headers
-            for (String columnName : expectedColumnNames) {
+            // check that list of actual headers contains each of the expected PV column headers
+            for (String columnName : expectedPvColumnNames) {
+                assertTrue(fileColumnHeaders.contains(columnName));
+            }
+
+            // check list of actual headers contains each of the expected calculations column headers
+            for (String columnName : expectedCalculationsColumnNames) {
                 assertTrue(fileColumnHeaders.contains(columnName));
             }
         }
@@ -2967,15 +2975,31 @@ public abstract class GrpcIntegrationTestBase {
                 // verify data columns
                 for (int fileColumnIndex = 2; fileColumnIndex < fileDataRow.getLastCellNum(); fileColumnIndex++) {
 
-                    // get column data value from file
+                    // get column data value and corresponding column name from file
                     final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
-                    Double fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
-
-                    // get expected data value for column (we assume value is double)
+                    final Double fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
                     final String fileColumnName = fileColumnHeaders.get(fileColumnIndex);
-                    final TimestampMap<Double> columnValueMap = validationMap.get(fileColumnName).valueMap;
-                    final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
-                    assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+
+                    if (expectedPvColumnNames.contains(fileColumnName)) {
+                        // get expected data value for column (we assume value is double)
+                        final TimestampMap<Double> columnValueMap = pvValidationMap.get(fileColumnName).valueMap;
+                        final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
+                        assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+
+                    } else if (expectedCalculationsColumnNames.contains(fileColumnName)) {
+                        // check expected data value for calculations column
+                        final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(fileColumnName);
+                        final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
+                        if (expectedColumnDoubleValue != null) {
+                            assertEquals(expectedColumnDoubleValue.toString(), fileColumnDoubleValue);
+                        } else {
+                            assertEquals("", fileColumnDoubleValue);
+                        }
+
+                    } else {
+                        fail("unexpected export column (neither PV nor calculations): " + fileColumnName);
+                    }
+
 
 // Keeping this code around in case we want to handle expectedDataValue with other type than Double.
 //                    switch (expectedDataValue.getValueCase()) {
