@@ -196,6 +196,11 @@ public class AnnotationValidationUtility {
             for (var mapEntries : calculationsSpec.getDataFrameColumnsMap().entrySet()) {
                 final String frameName = mapEntries.getKey();
                 final CalculationsSpec.ColumnNameList frameColumnNameList = mapEntries.getValue();
+                if (frameColumnNameList.getColumnNamesList().isEmpty()) {
+                    final String errorMsg =
+                            "ExportDataRequest.calculationsSpec.dataFrameColumns list must not be empty";
+                    return new ValidationResult(true, errorMsg);
+                }
                 // list can be empty, but check contents if not
                 for (String frameColumnName : frameColumnNameList.getColumnNamesList()) {
                     if (frameColumnName.isBlank()) {

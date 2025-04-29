@@ -37,7 +37,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             "",
                             null,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
@@ -51,7 +53,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             "1234abcd1234abcd1234abcd",
                             null,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
@@ -65,7 +69,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             null,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0,
                             null,
@@ -79,7 +85,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             0, // expectedNumRows ignored for bucketed export
                             validationMap,
@@ -93,7 +101,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             25, // 2.5 seconds of data with 10 values per second
                             validationMap,
@@ -107,7 +117,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
                     sendAndVerifyExportData(
                             createDataSetScenarioResult.firstHalfDataSetId,
                             createDataSetScenarioResult.firstHalfDataSetParams,
-                            null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                            null,
+                            null,
+                            ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
                             25, // 2.5 seconds of data with 10 values per second
                             validationMap,

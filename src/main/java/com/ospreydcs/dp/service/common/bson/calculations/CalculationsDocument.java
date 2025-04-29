@@ -1,13 +1,12 @@
 package com.ospreydcs.dp.service.common.bson.calculations;
 
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.types.ObjectId;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class CalculationsDocument extends DpBsonDocumentBase {
 
@@ -72,5 +71,18 @@ public class CalculationsDocument extends DpBsonDocumentBase {
             }
         }
         return diffs;
+    }
+
+    public Map<String, List<String>> frameColumnNamesMap() {
+        final Map<String, List<String>> frameColumnNamesMap = new HashMap<>();
+        for (CalculationsDataFrameDocument dataFrameDocument : this.getDataFrames()) {
+            final String frameName = dataFrameDocument.getName();
+            final List<String> frameColumnNames = new ArrayList<>();
+            for (DataColumnDocument frameColumn : dataFrameDocument.getDataColumns()) {
+                frameColumnNames.add(frameColumn.getName());
+            }
+            frameColumnNamesMap.put(frameName, frameColumnNames);
+        }
+        return frameColumnNamesMap;
     }
 }

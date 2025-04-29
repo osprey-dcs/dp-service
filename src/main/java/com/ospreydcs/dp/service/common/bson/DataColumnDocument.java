@@ -13,9 +13,18 @@ public class DataColumnDocument {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
+    private String name;
     private int valueCase;
     private String valueType;
     private byte[] bytes = null;
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 
     public int getValueCase() {
         return valueCase;
@@ -47,6 +56,7 @@ public class DataColumnDocument {
 
     public static DataColumnDocument fromDataColumn(DataColumn requestDataColumn) {
         DataColumnDocument document = new DataColumnDocument();
+        document.setName(requestDataColumn.getName());
         document.writeBytes(requestDataColumn);
         if ( ! requestDataColumn.getDataValuesList().isEmpty()) {
             final DataValue.ValueCase dataValueCase = requestDataColumn.getDataValues(0).getValueCase();

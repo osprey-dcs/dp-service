@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataDispatcher;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
@@ -16,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -78,11 +80,11 @@ public abstract class ExportDataJobBase extends HandlerJob {
 
         // get calculations for id specified in request
         CalculationsDocument calculationsDocument = null;
-        Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap = null;
+        Map<String, CalculationsSpec.ColumnNameList> requestFrameColumnNamesMap = null;
         if (this.handlerRequest.exportDataRequest.hasCalculationsSpec()) {
             final CalculationsSpec calculationsSpec = this.handlerRequest.exportDataRequest.getCalculationsSpec();
             final String calculationsId = calculationsSpec.getCalculationsId();
-            frameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap().isEmpty() ?
+            requestFrameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap().isEmpty() ?
                     null : calculationsSpec.getDataFrameColumnsMap();
             calculationsDocument = mongoAnnotationClient.findCalculations(calculationsId);
             if (calculationsDocument == null) {
@@ -92,6 +94,41 @@ public abstract class ExportDataJobBase extends HandlerJob {
             }
             if (exportObjectId == null) {
                 exportObjectId = calculationsId;
+            }
+        }
+
+        // validate request frameColumnNamesMap: is each frame and column name valid for the specified calculations object?
+        if (requestFrameColumnNamesMap != null) {
+            final Map<String, List<String>> documentFrameColumnNamesMap =
+                    calculationsDocument.frameColumnNamesMap();
+            for (var requestMapEntry : requestFrameColumnNamesMap.entrySet()) {
+
+                final String requestFrameName = requestMapEntry.getKey();
+                final List<String> requestFrameColumnNames = requestMapEntry.getValue().getColumnNamesList();
+
+                // validate frame name
+                if ( ! documentFrameColumnNamesMap.containsKey(requestFrameName)) {
+                    final String errorMsg =
+                            "ExportDataRequest.CalculationsSpec.dataFrameColumns includes invalid frame name: "
+                                    + requestFrameName;
+                    this.dispatcher.handleError(errorMsg);
+                    return;
+                } else {
+
+                    // validate frame column names
+                    final List<String> documentFrameColumnNames = documentFrameColumnNamesMap.get(requestFrameName);
+                    for (String requestFrameColumnName : requestFrameColumnNames) {
+                        if ( ! documentFrameColumnNames.contains(requestFrameColumnName)) {
+                            final String errorMsg =
+                                    "ExportDataRequest.CalculationsSpec.dataFrameColumns includes invalid column name: "
+                                            + requestFrameColumnName
+                                            + " for frame: "
+                                            + requestFrameName;
+                            this.dispatcher.handleError(errorMsg);
+                            return;
+                        }
+                    }
+                }
             }
         }
 
@@ -139,7 +176,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
         final String serverFilePathString = serverDirectoryPathString + filename;
         final Path serverFilePath = Paths.get(serverFilePathString);
         final ExportDataStatus status = exportData_(
-                datasetDocument, calculationsDocument, frameColumnNamesMap, serverFilePathString);
+                datasetDocument, calculationsDocument, requestFrameColumnNamesMap, serverFilePathString);
         if (status.isError) {
             logger.error(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(status.errorMessage);

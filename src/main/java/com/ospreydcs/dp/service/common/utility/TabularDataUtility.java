@@ -164,16 +164,15 @@ public class TabularDataUtility {
             // make list of columns for frame
             List<DataColumn> frameColumns = new ArrayList<>();
             for (DataColumnDocument frameColumnDocument : frameDocument.getDataColumns()) {
-                final DataColumn frameColumn = frameColumnDocument.toDataColumn();
                 if (frameColumnNamesMap != null) {
                     // only include columns specified in map if one is provided
                     final CalculationsSpec.ColumnNameList frameColumnNamesList = frameColumnNamesMap.get(frameName);
                     if (frameColumnNamesList != null &&
-                            frameColumnNamesList.getColumnNamesList().contains(frameColumn.getName())) {
-                        frameColumns.add(frameColumn);
+                            frameColumnNamesList.getColumnNamesList().contains(frameColumnDocument.getName())) {
+                        frameColumns.add(frameColumnDocument.toDataColumn());
                     }
                 } else {
-                    frameColumns.add(frameColumn);
+                    frameColumns.add(frameColumnDocument.toDataColumn());
                 }
             }
 
