@@ -540,7 +540,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
-        // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock
+        // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock.
+        // Also provides positive and negative coverage for exporting calculations.
         {
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
@@ -655,7 +656,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 "");
             }
 
-            // positive export test: export filtering calculations columns using CalculationsSpec column map.
+            // positive export test: export to csv filtering calculations columns using CalculationsSpec column map.
             {
 
                 // create frame column map for filtering
@@ -686,6 +687,86 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
+                                0,
+                                20, // 10 rows per second, 2 seconds
+                                null,
+                                false,
+                                "");
+            }
+
+            // positive export test: export of dataset with calculations to xlsx.
+            {
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .build();
+
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId,
+                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                                10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
+                                50, // 10 rows per second * 5 seconds (5 rows pv and calculations, 5 rows calculations)
+                                validationMap,
+                                false,
+                                "");
+            }
+
+            // positive export test: export of only calculations (without dataset) to xlsx.
+            {
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .build();
+
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                null,
+                                null,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
+                                0,
+                                60, // 10 rows per second, 6 seconds
+                                null,
+                                false,
+                                "");
+            }
+
+            // positive export test: export to xlsx filtering calculations columns using CalculationsSpec column map.
+            {
+
+                // create frame column map for filtering
+                final Map<String, CalculationsSpec.ColumnNameList> dataFrameColumnsMap = new HashMap<>();
+                final String frame1Name = "frame-2";
+                final List<String> frame1Columns = List.of("calc-2-0", "calc-2-1");
+                final CalculationsSpec.ColumnNameList frame1ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
+                        .addAllColumnNames(frame1Columns)
+                        .build();
+                dataFrameColumnsMap.put(frame1Name, frame1ColumnNameList);
+                final String frame2Name = "frame-3";
+                final List<String> frame2Columns = List.of("calc-3-1");
+                final CalculationsSpec.ColumnNameList frame2ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
+                        .addAllColumnNames(frame2Columns)
+                        .build();
+                dataFrameColumnsMap.put(frame2Name, frame2ColumnNameList);
+
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .putAllDataFrameColumns(dataFrameColumnsMap)
+                        .build();
+
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                null,
+                                null,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                                 0,
                                 20, // 10 rows per second, 2 seconds
                                 null,
@@ -956,7 +1037,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                 calculationsId = queryResultAnnotations.get(0).getCalculations().getId();
             }
 
-            // positive export test: export of dataset with calculations to csv.
+            // Positive export test: export where time range of calculations doesn't overlap time range of dataset.
+            // Export output file contains data for the dataset with empty columns for the calculations.
             {
                 // create CalculationsSpec with calculations id from query result
                 CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()

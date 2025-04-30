@@ -50,6 +50,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -2861,25 +2862,16 @@ public abstract class GrpcIntegrationTestBase {
                     final String csvDataValue = csvRowValues.get(columnIndex);
                     final String csvColumnName = csvColumnHeaders.get(columnIndex);
 
+                    Double expectedColumnDoubleValue = null;
                     if (expectedPvColumnNames.contains(csvColumnName)) {
                         // check expected data value for PV column
                         final TimestampMap<Double> columnValueMap = pvValidationMap.get(csvColumnName).valueMap;
-                        final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
-                        if (expectedColumnDoubleValue != null) {
-                            assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
-                        } else {
-                            assertEquals("", csvDataValue);
-                        }
+                        expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
 
                     } else if (expectedCalculationsColumnNames.contains(csvColumnName)) {
                         // check expected data value for calculations column
                         final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(csvColumnName);
-                        final Double expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
-                        if (expectedColumnDoubleValue != null) {
-                            assertEquals(expectedColumnDoubleValue.toString(), csvDataValue);
-                        } else {
-                            assertEquals("", csvDataValue);
-                        }
+                        expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
 
                     } else {
                         fail("unexpected export column (neither PV nor calculations): " + csvColumnName);
@@ -2929,7 +2921,7 @@ public abstract class GrpcIntegrationTestBase {
         final Iterator<Row> fileRowIterator = fileSheet.rowIterator();
         assertTrue(fileRowIterator.hasNext());
 
-        final int expectedNumColumns = 2 + expectedPvColumnNames.size();
+        final int expectedNumColumns = 2 + expectedPvColumnNames.size() + expectedCalculationsColumnNames.size();
 
         // verify header row from file
         List<String> fileColumnHeaders = new ArrayList<>();
@@ -2976,30 +2968,33 @@ public abstract class GrpcIntegrationTestBase {
                 for (int fileColumnIndex = 2; fileColumnIndex < fileDataRow.getLastCellNum(); fileColumnIndex++) {
 
                     // get column data value and corresponding column name from file
-                    final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
-                    final Double fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
                     final String fileColumnName = fileColumnHeaders.get(fileColumnIndex);
+                    final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
+                    Double fileColumnDoubleValue = null;
+                    if ( ! fileCell.getCellType().equals(CellType.STRING) ) {
+                        fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
+                    }
 
+                    Double expectedColumnDoubleValue = null;
                     if (expectedPvColumnNames.contains(fileColumnName)) {
                         // get expected data value for column (we assume value is double)
                         final TimestampMap<Double> columnValueMap = pvValidationMap.get(fileColumnName).valueMap;
-                        final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
-                        assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+                        expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
 
                     } else if (expectedCalculationsColumnNames.contains(fileColumnName)) {
                         // check expected data value for calculations column
                         final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(fileColumnName);
-                        final Double expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
-                        if (expectedColumnDoubleValue != null) {
-                            assertEquals(expectedColumnDoubleValue.toString(), fileColumnDoubleValue);
-                        } else {
-                            assertEquals("", fileColumnDoubleValue);
-                        }
+                        expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
 
                     } else {
                         fail("unexpected export column (neither PV nor calculations): " + fileColumnName);
                     }
 
+                    if (expectedColumnDoubleValue != null) {
+                        assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+                    } else {
+                        assertEquals(null, fileColumnDoubleValue);
+                    }
 
 // Keeping this code around in case we want to handle expectedDataValue with other type than Double.
 //                    switch (expectedDataValue.getValueCase()) {
