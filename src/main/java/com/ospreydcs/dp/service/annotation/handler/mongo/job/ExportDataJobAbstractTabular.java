@@ -42,16 +42,17 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
 
     @Override
     protected ExportDataStatus exportData_(
-            DataSetDocument dataset,
+            DataSetDocument datasetDocument,
             CalculationsDocument calculationsDocument,
             Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap,
             String serverFilePath
     ) {
         // create file for export
         try {
-            exportFile = createExportFile_(dataset, serverFilePath);
+            exportFile = createExportFile_(datasetDocument, serverFilePath);
         } catch (DpException e) {
             final String errorMsg = "exception opening export file " + serverFilePath + ": " + e.getMessage();
+            logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
             return new ExportDataStatus(true, errorMsg);
         }
 
@@ -63,20 +64,21 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
         Instant exportBeginInstant = null;
         Instant exportEndInstant = null;
         boolean first = true;
-        if (dataset != null) {
-            for (DataBlockDocument dataBlock : dataset.getDataBlocks()) {
+        if (datasetDocument != null) {
+            for (DataBlockDocument dataBlock : datasetDocument.getDataBlocks()) {
 
                 final MongoCursor<BucketDocument> cursor =
                         this.mongoQueryClient.executeDataBlockQuery(dataBlock);
 
                 if (cursor == null) {
                     final String errorMsg = "unknown error executing data block query for export file: " + serverFilePath;
-                    logger.error(errorMsg);
+                    logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
                     return new ExportDataStatus(true, errorMsg);
                 }
 
                 if (!cursor.hasNext()) {
                     final String errorMsg = "data block query returned no data";
+                    logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
                     return new ExportDataStatus(true, errorMsg);
                 }
 
@@ -116,7 +118,7 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                     );
                 } catch (DpException e) {
                     final String errorMsg = "exception deserializing BucketDocument fields: " + e.getMessage();
-                    logger.error(errorMsg);
+                    logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
                     return new ExportDataStatus(true, errorMsg);
                 }
 
@@ -125,6 +127,7 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                     final String errorMsg = "export file size limit "
                             + ExportConfiguration.getExportFileSizeLimitBytes()
                             + " exceeded for: " + serverFilePath;
+                    logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
                     return new ExportDataStatus(true, errorMsg);
                 }
 
@@ -146,18 +149,21 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                                 tableDataSize,
                                 ExportConfiguration.getExportFileSizeLimitBytes());
             } catch (DpException e) {
-                throw new RuntimeException(e);
+                final String errorMsg = "Exception adding calculations to table for file: "
+                        + serverFilePath;
+                logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                return new ExportDataStatus(true, errorMsg);
             }
             if (sizeStats.sizeLimitExceeded()) {
                 final String errorMsg = "export file size limit "
                         + ExportConfiguration.getExportFileSizeLimitBytes()
                         + " exceeded for: " + serverFilePath;
+                logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
                 return new ExportDataStatus(true, errorMsg);
             }
         }
 
-        // write data to tabular formatted file...
-        // write column headers
+        // write column headers to output file
         final List<String> columnHeaders = new ArrayList<>();
         columnHeaders.add(COLUMN_HEADER_SECONDS);
         columnHeaders.add(COLUMN_HEADER_NANOS);
@@ -166,25 +172,25 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
             exportFile.writeHeaderRow(columnHeaders);
         } catch (DpException e) {
             final String errorMsg = "exception writing header to export file " + serverFilePath + ": " + e.getMessage();
-            logger.error(errorMsg);
+            logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
             return new ExportDataStatus(true, errorMsg);
         }
 
-        // write data
+        // write data to output file
         try {
             exportFile.writeData(tableValueMap);
         } catch (DpException e) {
             final String errorMsg = "exception writing data to export file " + serverFilePath + ": " + e.getMessage();
-            logger.error(errorMsg);
+            logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
             return new ExportDataStatus(true, errorMsg);
         }
 
-        // close file
+        // close output file
         try {
             exportFile.close();
         } catch (DpException e) {
             final String errorMsg = "exception closing export file " + serverFilePath + ": " + e.getMessage();
-            logger.error(errorMsg);
+            logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
             return new ExportDataStatus(true, errorMsg);
         }
 

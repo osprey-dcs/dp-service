@@ -29,7 +29,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
     protected static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final HandlerExportDataRequest handlerRequest;
+    protected final HandlerExportDataRequest handlerRequest;
     private final ExportDataDispatcher dispatcher;
     private final MongoAnnotationClientInterface mongoAnnotationClient;
     protected final MongoQueryClientInterface mongoQueryClient;

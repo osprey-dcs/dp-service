@@ -18,7 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File.*;
+import static com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportHdf5File.*;
 import static org.junit.Assert.*;
 
 public class AnnotationTestBase {
@@ -1002,11 +1002,11 @@ public class AnnotationTestBase {
                 reader.readLong(samplePeriodPath));
 
         // dataColumnBytes
-        final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
+        final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATA_COLUMN_BYTES;
         assertArrayEquals(bucketDocument.getDataColumn().getBytes(), reader.readAsByteArray(columnDataPath));
 
         // dataTimestampsBytes
-        final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
+        final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
         assertArrayEquals(
                 bucketDocument.getDataTimestamps().getBytes(),
                 reader.readAsByteArray(dataTimestampsPath));

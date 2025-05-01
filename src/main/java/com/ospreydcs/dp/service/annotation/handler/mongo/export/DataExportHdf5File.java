@@ -2,7 +2,10 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -30,12 +33,13 @@ import java.util.Objects;
  * by navigating the soft link.
  */
 
-public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
+public class DataExportHdf5File implements BucketedDataExportFileInterface {
 
     // constants
     public final static String GROUP_DATASET = "dataset";
     public final static String GROUP_PVS = "pvs";
     public final static String GROUP_TIMES = "times";
+    public final static String GROUP_CALCULATIONS = "calculations";
     public final static String GROUP_DATA_BLOCKS = "datablocks";
     public final static String DATASET_BLOCK_PV_NAME_LIST = "pvNameList";
     public final static String DATASET_BLOCK_BEGIN_SECONDS = "beginSeconds";
@@ -50,8 +54,8 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
     public final static String DATASET_LAST_TIME = "lastTime";
     public final static String DATASET_SAMPLE_COUNT = "sampleCount";
     public final static String DATASET_SAMPLE_PERIOD = "samplePeriod";
-    public final static String DATASET_DATA_COLUMN_BYTES = "dataColumnBytes";
-    public final static String DATASET_DATA_TIMESTAMPS_BYTES = "dataTimestampsBytes";
+    public final static String DATA_COLUMN_BYTES = "dataColumnBytes";
+    public final static String DATA_TIMESTAMPS_BYTES = "dataTimestampsBytes";
     public final static String DATASET_TAGS = "tags";
     public final static String DATASET_ATTRIBUTE_MAP_KEYS = "attributeMapKeys";
     public final static String DATASET_ATTRIBUTE_MAP_VALUES = "attributeMapValues";
@@ -61,12 +65,16 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
     public final static String DATASET_EVENT_METADATA_STOP_SECONDS = "eventMetadataStopSeconds";
     public final static String DATASET_EVENT_METADATA_STOP_NANOS = "eventMetadataStopNanos";
     public final static String DATASET_PROVIDER_ID = "providerId";
+    public final static String GROUP_FRAMES = "frames";
+    public final static String GROUP_NAME = "name";
+    public final static String GROUP_DATA_TIMESTAMPS = "dataTimestamps";
+    public final static String GROUP_COLUMNS = "columns";
     public final static String PATH_SEPARATOR = "/";
 
     // instance variables
     private final IHDF5Writer writer;
 
-    public DatasetExportHdf5File(DataSetDocument dataSet, String filePathString) throws DpException {
+    public DataExportHdf5File(DataSetDocument dataSet, String filePathString) throws DpException {
         // create hdf5 file with specified path
         File hdf5File = new File(filePathString);
 //        if (hdf5File.canWrite()) {
@@ -86,6 +94,7 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         writer.object().createGroup(GROUP_DATASET);
         writer.object().createGroup(GROUP_PVS);
         writer.object().createGroup(GROUP_TIMES);
+        writer.object().createGroup(GROUP_CALCULATIONS);
     }
 
     public void writeDataSetData(DataSetDocument dataSet) {
@@ -181,12 +190,12 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         Objects.requireNonNull(bucketDocument.getDataColumn());
         final byte[] dataColumnBytes = bucketDocument.getDataColumn().getBytes();
         Objects.requireNonNull(dataColumnBytes);
-        final String columnDataPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
+        final String columnDataPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATA_COLUMN_BYTES;
         writer.writeByteArray(columnDataPath, dataColumnBytes);
 
         // dataTimestampsBytes
         Objects.requireNonNull(bucketDocument.getDataTimestamps().getBytes());
-        final String dataTimestampsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
+        final String dataTimestampsPath = pvTimesSecondsNanosGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
         writer.writeByteArray(dataTimestampsPath, bucketDocument.getDataTimestamps().getBytes());
 
         // tags
@@ -261,6 +270,77 @@ public class DatasetExportHdf5File implements BucketedDataExportFileInterface {
         if (! writer.object().exists(timesSecondsNanosPvsPvPath)) {
             writer.object().createSoftLink(PATH_SEPARATOR + pvTimesSecondsNanosGroup, timesSecondsNanosPvsPvPath);
         }
+    }
+
+    @Override
+    public void writeCalculations(CalculationsDocument calculationsDocument) throws DpException {
+
+        // Create group for particular Calculations id.
+        // Currently we only support adding a single CalculationsDocument to the file, but using Calculations id
+        // sub-group allows us to write multiple CalculationsDocuments to the file if we decide to do so later.
+        final String calculationsIdGroup = GROUP_CALCULATIONS + PATH_SEPARATOR + calculationsDocument.getId().toString();
+        writer.object().createGroup(calculationsIdGroup);
+
+        // create frames group
+        final String calculationsIdFramesGroup = calculationsIdGroup + PATH_SEPARATOR + GROUP_FRAMES;
+        writer.object().createGroup(calculationsIdFramesGroup);
+
+        // write contents for each data frame in the Calculations object to the output file
+        int frameIndex = 0;
+        for (CalculationsDataFrameDocument calculationsDataFrameDocument : calculationsDocument.getDataFrames()) {
+
+            // create group for frame
+            final String calculationsIdFramesFrameGroup = calculationsIdFramesGroup
+                    + PATH_SEPARATOR
+                    + frameIndex;
+            writer.object().createGroup(calculationsIdFramesFrameGroup);
+
+            // write frame name
+            final String frameNamePath = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_NAME;
+            writer.writeString(frameNamePath, calculationsDataFrameDocument.getName());
+
+            // write dataTimestamps serialized bytes
+            Objects.requireNonNull(calculationsDataFrameDocument.getDataTimestamps().getBytes());
+            final String frameDataTimestampsBytesPath =
+                    calculationsIdFramesFrameGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
+            writer.writeByteArray(
+                    frameDataTimestampsBytesPath,
+                    calculationsDataFrameDocument.getDataTimestamps().getBytes());
+
+            // create columns group
+            final String calculationsIdFrameColumnsGroup = calculationsIdFramesGroup + PATH_SEPARATOR + GROUP_COLUMNS;
+            writer.object().createGroup(calculationsIdFrameColumnsGroup);
+
+            // create group for each of the frame's columns
+            int columnIndex = 0;
+            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+
+                Objects.requireNonNull(calculationsDataColumnDocument);
+
+                // create group for column
+                final String dataColumnGroup  = calculationsIdFrameColumnsGroup
+                        + PATH_SEPARATOR
+                        + columnIndex;
+                writer.object().createGroup(dataColumnGroup);
+
+                // write column name
+                final String columnNamePath = dataColumnGroup + PATH_SEPARATOR + GROUP_NAME;
+                writer.writeString(columnNamePath, calculationsDataColumnDocument.getName());
+
+                // write serialized dataColumnBytes
+                final byte[] dataColumnBytes = calculationsDataColumnDocument.getBytes();
+                Objects.requireNonNull(dataColumnBytes);
+                final String dataColumnBytesPath = dataColumnGroup
+                        + PATH_SEPARATOR
+                        + DATA_COLUMN_BYTES;
+                writer.writeByteArray(dataColumnBytesPath, dataColumnBytes);
+
+                columnIndex = columnIndex + 1;
+            }
+
+            frameIndex = frameIndex + 1;
+        }
+
     }
 
     public void close() {

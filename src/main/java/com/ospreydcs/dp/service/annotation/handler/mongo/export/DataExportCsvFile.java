@@ -14,7 +14,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DatasetExportCsvFile implements TabularDataExportFileInterface {
+public class DataExportCsvFile implements TabularDataExportFileInterface {
 
     // static variables
     protected static final Logger logger = LogManager.getLogger();
@@ -22,7 +22,7 @@ public class DatasetExportCsvFile implements TabularDataExportFileInterface {
     // instance variables
     private final CsvWriter csvWriter;
 
-    public DatasetExportCsvFile(DataSetDocument dataSet, String filePathString) throws DpException {
+    public DataExportCsvFile(DataSetDocument dataSet, String filePathString) throws DpException {
         Path filePath = Paths.get(filePathString);
         try {
             this.csvWriter = CsvWriter.builder().build(filePath);
