@@ -4,8 +4,11 @@ import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
@@ -23,42 +26,22 @@ import static org.junit.Assert.*;
 
 public class AnnotationTestBase {
 
-    public static class AnnotationDataBlock {
-        public final long beginSeconds;
-        public final long beginNanos;
-        public final long endSeconds;
-        public final long endNanos;
-        public final List<String> pvNames;
-        public AnnotationDataBlock(long beginSeconds, long beginNanos, long endSeconds, long endNanos, List<String> pvNames) {
-            this.beginSeconds = beginSeconds;
-            this.beginNanos = beginNanos;
-            this.endSeconds = endSeconds;
-            this.endNanos = endNanos;
-            this.pvNames = pvNames;
-        }
-
+    public record AnnotationDataBlock(
+            long beginSeconds,
+            long beginNanos,
+            long endSeconds,
+            long endNanos,
+            List<String> pvNames) {
     }
 
-    public static class AnnotationDataSet {
-        public final String name;
-        public final String ownerId;
-        public final String description;
-        public final List<AnnotationDataBlock> dataBlocks;
-        public AnnotationDataSet(
-                String name, String ownerId, String description, List<AnnotationDataBlock> dataBlocks
-        ) {
-            this.name = name;
-            this.ownerId = ownerId;
-            this.description = description;
-            this.dataBlocks = dataBlocks;
-        }
+    public record AnnotationDataSet(
+            String name,
+            String ownerId,
+            String description,
+            List<AnnotationDataBlock> dataBlocks) {
     }
 
-    public static class CreateDataSetParams {
-        public final AnnotationDataSet dataSet;
-        public CreateDataSetParams(AnnotationDataSet dataSet) {
-            this.dataSet = dataSet;
-        }
+    public record CreateDataSetParams(AnnotationDataSet dataSet) {
     }
 
     public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
@@ -1091,6 +1074,67 @@ public class AnnotationTestBase {
         final String providerIdPath = pvBucketPath + PATH_SEPARATOR + DATASET_PROVIDER_ID;
         assertEquals(bucketDocument.getProviderId(), reader.readString(providerIdPath));
 
+    }
+
+    public static void verifyCalculationsDocumentHdf5Content(
+            IHDF5Reader reader,
+            CalculationsDocument calculationsDocument,
+            List<String> expectedCalculationsColumnNames
+    ) {
+        // verify group for calculations id
+        final String calculationsIdGroup = GROUP_CALCULATIONS + PATH_SEPARATOR + calculationsDocument.getId().toString();
+        assertTrue(reader.object().isGroup(calculationsIdGroup));
+
+        // verify frame group
+        final String framesGroup = calculationsIdGroup + PATH_SEPARATOR + GROUP_FRAMES;
+        assertTrue(reader.object().isGroup(framesGroup));
+
+        // verify contents for each frame in CalculationsDocument
+        int frameIndex = 0;
+        for (CalculationsDataFrameDocument calculationsDataFrameDocument : calculationsDocument.getDataFrames()) {
+
+            // verify frame index group
+            final String frameIndexGroup = framesGroup + PATH_SEPARATOR + frameIndex;
+            assertTrue(reader.object().isGroup(frameIndexGroup));
+
+            // verify frame name
+            final String frameNamePath = frameIndexGroup + PATH_SEPARATOR + GROUP_NAME;
+            assertEquals(calculationsDataFrameDocument.getName(), reader.readString(frameNamePath));
+
+            // verify frame dataTimestampsBytes
+            final String frameDataTimestampsBytesPath = frameIndexGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
+            assertArrayEquals(
+                    calculationsDataFrameDocument.getDataTimestamps().getBytes(),
+                    reader.readAsByteArray(frameDataTimestampsBytesPath));
+
+            // verify columns group
+            final String columnsGroup = frameIndexGroup + PATH_SEPARATOR + GROUP_COLUMNS;
+            assertTrue(reader.object().isGroup(columnsGroup));
+
+            // verify contents for each frame column
+            int columnIndex = 0;
+            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+
+                // verify column index group
+                final String columnIndexGroup = columnsGroup + PATH_SEPARATOR + columnIndex;
+                assertTrue(reader.object().isGroup(columnIndexGroup));
+
+                // verify column name
+                final String columnNamePath = columnIndexGroup + PATH_SEPARATOR + GROUP_NAME;
+                assertEquals(calculationsDataColumnDocument.getName(), reader.readString(columnNamePath));
+
+                // verify dataColumnBytes
+                final String dataColumnBytesPath = columnIndexGroup + PATH_SEPARATOR + DATA_COLUMN_BYTES;
+                assertArrayEquals(
+                        calculationsDataColumnDocument.getBytes(),
+                        reader.readAsByteArray(dataColumnBytesPath));
+
+                columnIndex = columnIndex + 1;
+            }
+
+
+            frameIndex = frameIndex + 1;
+        }
     }
 
 }

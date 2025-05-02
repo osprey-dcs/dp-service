@@ -2250,7 +2250,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean found = false;
             DataSet foundDataSet = null;
             for (DataSet resultDataSet : resultDataSets) {
-                if (requestParams.dataSet.name.equals(resultDataSet.getName())) {
+                if (requestParams.dataSet().name().equals(resultDataSet.getName())) {
                     found = true;
                     foundDataSet = resultDataSet;
                     break;
@@ -2262,8 +2262,8 @@ public abstract class GrpcIntegrationTestBase {
 
             // check required dataset fields match
             assertTrue(expectedDataSetId.equals(foundDataSet.getId()));
-            assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
-            assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
+            assertTrue(requestParams.dataSet().description().equals(foundDataSet.getDescription()));
+            assertTrue(requestParams.dataSet().ownerId().equals(foundDataSet.getOwnerId()));
 
             // check that result corresponds to query criteria
             if (queryParams.idCriterion != null) {
@@ -2289,17 +2289,17 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             // compare data blocks from result with request
-            final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet;
-            assertEquals(requestDataSet.dataBlocks.size(), foundDataSet.getDataBlocksCount());
-            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
+            final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet();
+            assertEquals(requestDataSet.dataBlocks().size(), foundDataSet.getDataBlocksCount());
+            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks()) {
                 boolean responseBlockFound = false;
                 for (DataBlock responseBlock : foundDataSet.getDataBlocksList()) {
                     if (
-                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
+                            (Objects.equals(requestBlock.beginSeconds(), responseBlock.getBeginTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.beginNanos(), responseBlock.getBeginTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.endSeconds(), responseBlock.getEndTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.endNanos(), responseBlock.getEndTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.pvNames(), responseBlock.getPvNamesList()))
                     ) {
                         responseBlockFound = true;
                         break;
@@ -2698,18 +2698,18 @@ public abstract class GrpcIntegrationTestBase {
 
             // generate collection of unique pv names for dataset from creation request params
             // these are the columns expected in the export output file
-            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet.dataBlocks) {
-                expectedPvColumnNames.addAll(requestDataBlock.pvNames);
+            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet().dataBlocks()) {
+                expectedPvColumnNames.addAll(requestDataBlock.pvNames());
             }
         }
 
         // create list of expected calculations column names
+        CalculationsDocument calculationsDocument = null;
         List<String> expectedCalculationsColumnNames = new ArrayList<>();
         if (calculationsSpec != null) {
 
             // retrieve calculations for id
-            final CalculationsDocument calculationsDocument =
-                    mongoClient.findCalculations(calculationsSpec.getCalculationsId());
+            calculationsDocument = mongoClient.findCalculations(calculationsSpec.getCalculationsId());
             assertNotNull(calculationsDocument);
 
             // add expected column names for calculations
@@ -2762,11 +2762,24 @@ public abstract class GrpcIntegrationTestBase {
         switch (outputFormat) {
 
             case EXPORT_FORMAT_HDF5 -> {
+
                 final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-                AnnotationTestBase.verifyDatasetHdf5Content(reader, datasetDocument);
-                for (BucketDocument bucket : datasetBuckets) {
-                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+
+                if (datasetDocument != null) {
+                    AnnotationTestBase.verifyDatasetHdf5Content(reader, datasetDocument);
                 }
+
+                if (datasetBuckets != null) {
+                    for (BucketDocument bucket : datasetBuckets) {
+                        AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+                    }
+                }
+
+                if (calculationsDocument != null) {
+                    AnnotationTestBase.verifyCalculationsDocumentHdf5Content(
+                            reader, calculationsDocument, expectedCalculationsColumnNames);
+                }
+
                 reader.close();
             }
 

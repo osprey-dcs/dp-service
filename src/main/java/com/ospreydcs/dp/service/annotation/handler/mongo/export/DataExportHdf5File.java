@@ -308,7 +308,7 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
                     calculationsDataFrameDocument.getDataTimestamps().getBytes());
 
             // create columns group
-            final String calculationsIdFrameColumnsGroup = calculationsIdFramesGroup + PATH_SEPARATOR + GROUP_COLUMNS;
+            final String calculationsIdFrameColumnsGroup = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_COLUMNS;
             writer.object().createGroup(calculationsIdFrameColumnsGroup);
 
             // create group for each of the frame's columns
