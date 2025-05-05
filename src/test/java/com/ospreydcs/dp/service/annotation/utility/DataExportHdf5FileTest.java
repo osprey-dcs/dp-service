@@ -58,7 +58,7 @@ public class DataExportHdf5FileTest {
         final String exportFilePathString = "/tmp/testCreateExportFile.h5";
         DataExportHdf5File exportHdf5File = null;
         try {
-            exportHdf5File = new DataExportHdf5File(dataset, exportFilePathString);
+            exportHdf5File = new DataExportHdf5File(exportFilePathString);
         } catch (DpException e) {
             fail("exception creating " + exportFilePathString);
         }
@@ -84,6 +84,9 @@ public class DataExportHdf5FileTest {
 
         final String providerId = "S01 vacuum provider";
 
+        // write dataset
+        exportHdf5File.writeDataSet(dataset);
+
         // create first BucketDocument for S01-GCC01
         BucketDocument pv1BucketDocument = null;
         {
@@ -102,7 +105,7 @@ public class DataExportHdf5FileTest {
             pv1BucketDocument.setAttributes(attributeMap);
             pv1BucketDocument.setEvent(eventMetadata);
             pv1BucketDocument.setProviderId(providerId);
-            exportHdf5File.writeBucketData(pv1BucketDocument);
+            exportHdf5File.writeBucket(pv1BucketDocument);
         }
 
         // create second BucketDocument for S01-GCC02
@@ -123,7 +126,7 @@ public class DataExportHdf5FileTest {
             pv2BucketDocument.setAttributes(attributeMap);
             pv2BucketDocument.setEvent(eventMetadata);
             pv2BucketDocument.setProviderId(providerId);
-            exportHdf5File.writeBucketData(pv2BucketDocument);
+            exportHdf5File.writeBucket(pv2BucketDocument);
         }
 
         exportHdf5File.close();

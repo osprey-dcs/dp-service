@@ -1079,7 +1079,7 @@ public class AnnotationTestBase {
     public static void verifyCalculationsDocumentHdf5Content(
             IHDF5Reader reader,
             CalculationsDocument calculationsDocument,
-            List<String> expectedCalculationsColumnNames
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap
     ) {
         // verify group for calculations id
         final String calculationsIdGroup = GROUP_CALCULATIONS + PATH_SEPARATOR + calculationsDocument.getId().toString();
@@ -1093,13 +1093,20 @@ public class AnnotationTestBase {
         int frameIndex = 0;
         for (CalculationsDataFrameDocument calculationsDataFrameDocument : calculationsDocument.getDataFrames()) {
 
+            if ((frameColumnNamesMap != null)
+                    && ( ! frameColumnNamesMap.containsKey(calculationsDataFrameDocument.getName()))) {
+                // skip frame if not specified in map
+                continue;
+            }
+
             // verify frame index group
             final String frameIndexGroup = framesGroup + PATH_SEPARATOR + frameIndex;
             assertTrue(reader.object().isGroup(frameIndexGroup));
 
             // verify frame name
             final String frameNamePath = frameIndexGroup + PATH_SEPARATOR + GROUP_NAME;
-            assertEquals(calculationsDataFrameDocument.getName(), reader.readString(frameNamePath));
+            final String frameName = reader.readString(frameNamePath);
+            assertEquals(calculationsDataFrameDocument.getName(), frameName);
 
             // verify frame dataTimestampsBytes
             final String frameDataTimestampsBytesPath = frameIndexGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
@@ -1115,13 +1122,21 @@ public class AnnotationTestBase {
             int columnIndex = 0;
             for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
 
+                if ((frameColumnNamesMap != null)
+                        && ( ! frameColumnNamesMap.get(frameName).getColumnNamesList().contains(
+                                calculationsDataColumnDocument.getName()))) {
+                    // skip column if not specified in map for frame;
+                    continue;
+                }
+
                 // verify column index group
                 final String columnIndexGroup = columnsGroup + PATH_SEPARATOR + columnIndex;
                 assertTrue(reader.object().isGroup(columnIndexGroup));
 
                 // verify column name
                 final String columnNamePath = columnIndexGroup + PATH_SEPARATOR + GROUP_NAME;
-                assertEquals(calculationsDataColumnDocument.getName(), reader.readString(columnNamePath));
+                final String columnName = reader.readString(columnNamePath);
+                assertEquals(calculationsDataColumnDocument.getName(), columnName);
 
                 // verify dataColumnBytes
                 final String dataColumnBytesPath = columnIndexGroup + PATH_SEPARATOR + DATA_COLUMN_BYTES;
@@ -1132,8 +1147,16 @@ public class AnnotationTestBase {
                 columnIndex = columnIndex + 1;
             }
 
+            if (frameColumnNamesMap != null) {
+                assertEquals(columnIndex, frameColumnNamesMap.get(frameName).getColumnNamesList().size());
+            }
 
             frameIndex = frameIndex + 1;
+        }
+
+        // check number of frames matches map size, if map is provided
+        if (frameColumnNamesMap != null) {
+            assertEquals(frameIndex, frameColumnNamesMap.size());
         }
     }
 

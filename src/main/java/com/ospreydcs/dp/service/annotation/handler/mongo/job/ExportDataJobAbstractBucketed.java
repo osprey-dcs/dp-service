@@ -28,17 +28,18 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
     }
 
     protected abstract BucketedDataExportFileInterface createExportFile_(
-            DataSetDocument dataset, String serverFilePath) throws DpException;
+            String serverFilePath) throws DpException;
 
     @Override
     protected ExportDataStatus exportData_(
             DataSetDocument datasetDocument,
             CalculationsDocument calculationsDocument,
-            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap, String serverFilePath
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap,
+            String serverFilePath
     ) {
         // create file for export
         try {
-            exportFile = createExportFile_(datasetDocument, serverFilePath);
+            exportFile = createExportFile_(serverFilePath);
         } catch (DpException e) {
             final String errorMsg = "exception opening export file " + serverFilePath + ": " + e.getMessage();
             logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
@@ -47,6 +48,10 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
 
         // retrieve data blocks for dataset and write data to output hdf5 file
         if (datasetDocument != null) {
+
+            // write dataset to output file
+            exportFile.writeDataSet(datasetDocument);
+
             for (DataBlockDocument dataBlock : datasetDocument.getDataBlocks()) {
 
                 final MongoCursor<BucketDocument> cursor =
@@ -73,7 +78,7 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
                 while (cursor.hasNext()) {
                     final BucketDocument bucketDocument = cursor.next();
                     try {
-                        exportFile.writeBucketData(bucketDocument);
+                        exportFile.writeBucket(bucketDocument);
                     } catch (DpException e) {
                         final String errorMsg =
                                 "exception writing data bucket to export file " + serverFilePath + ": " + e.getMessage();
@@ -87,7 +92,7 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
         // write calculations to output file
         if (calculationsDocument != null) {
             try {
-                exportFile.writeCalculations(calculationsDocument);
+                exportFile.writeCalculations(calculationsDocument, frameColumnNamesMap);
             } catch (DpException e) {
                 final String errorMsg =
                         "exception writing calculations to export file " + serverFilePath + ": " + e.getMessage();

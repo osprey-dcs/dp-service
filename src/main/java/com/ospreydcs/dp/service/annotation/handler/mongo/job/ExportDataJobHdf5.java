@@ -4,7 +4,6 @@ import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportHdf5File;
-import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
@@ -22,10 +21,9 @@ public class ExportDataJobHdf5 extends ExportDataJobAbstractBucketed {
         return ExportConfiguration.FILE_EXTENSION_HDF5;
     }
 
-    protected DataExportHdf5File createExportFile_(
-            DataSetDocument dataset, String serverFilePath) throws DpException {
+    protected DataExportHdf5File createExportFile_(String serverFilePath) throws DpException {
 
-        return new DataExportHdf5File(dataset, serverFilePath);
+        return new DataExportHdf5File(serverFilePath);
     }
 
 }

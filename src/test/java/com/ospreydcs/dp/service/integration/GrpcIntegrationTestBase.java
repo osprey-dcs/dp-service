@@ -2706,6 +2706,7 @@ public abstract class GrpcIntegrationTestBase {
         // create list of expected calculations column names
         CalculationsDocument calculationsDocument = null;
         List<String> expectedCalculationsColumnNames = new ArrayList<>();
+        Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap = null;
         if (calculationsSpec != null) {
 
             // retrieve calculations for id
@@ -2727,9 +2728,8 @@ public abstract class GrpcIntegrationTestBase {
             } else {
 
                 // add only columns from map in calculationsSpec
-                final Map<String, CalculationsSpec.ColumnNameList> frameColumnsMap =
-                        calculationsSpec.getDataFrameColumnsMap();
-                for (var frameColumnMapEntry : frameColumnsMap.entrySet()) {
+                frameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap();
+                for (var frameColumnMapEntry : frameColumnNamesMap.entrySet()) {
                     final String frameName = frameColumnMapEntry.getKey();
                     final List<String> frameColumns = frameColumnMapEntry.getValue().getColumnNamesList();
                     for (String frameColumnName : frameColumns) {
@@ -2777,7 +2777,7 @@ public abstract class GrpcIntegrationTestBase {
 
                 if (calculationsDocument != null) {
                     AnnotationTestBase.verifyCalculationsDocumentHdf5Content(
-                            reader, calculationsDocument, expectedCalculationsColumnNames);
+                            reader, calculationsDocument, frameColumnNamesMap);
                 }
 
                 reader.close();

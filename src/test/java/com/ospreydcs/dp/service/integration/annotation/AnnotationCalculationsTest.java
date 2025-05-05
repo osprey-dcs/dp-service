@@ -789,13 +789,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
                                 10, // expect 10 buckets (2 pvs, 5 seconds, 1 bucket per second)
-                                50, // 10 rows per second * 5 seconds (5 rows pv and calculations, 5 rows calculations)
+                                0,
                                 validationMap,
                                 false,
                                 "");
             }
 
-            // positive export test: export of only calculations (without dataset) to xlsx.
+            // positive export test: export of only calculations (without dataset) to hdf5.
             {
                 // create CalculationsSpec with calculations id from query result
                 CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
@@ -808,51 +808,51 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 null,
                                 calculationsSpec,
                                 calculations,
-                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
-                                0,
-                                60, // 10 rows per second, 6 seconds
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                                10,
+                                0, // 10 rows per second, 6 seconds
                                 null,
                                 false,
                                 "");
             }
 
-//            // positive export test: export to xlsx filtering calculations columns using CalculationsSpec column map.
-//            {
-//
-//                // create frame column map for filtering
-//                final Map<String, CalculationsSpec.ColumnNameList> dataFrameColumnsMap = new HashMap<>();
-//                final String frame1Name = "frame-2";
-//                final List<String> frame1Columns = List.of("calc-2-0", "calc-2-1");
-//                final CalculationsSpec.ColumnNameList frame1ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
-//                        .addAllColumnNames(frame1Columns)
-//                        .build();
-//                dataFrameColumnsMap.put(frame1Name, frame1ColumnNameList);
-//                final String frame2Name = "frame-3";
-//                final List<String> frame2Columns = List.of("calc-3-1");
-//                final CalculationsSpec.ColumnNameList frame2ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
-//                        .addAllColumnNames(frame2Columns)
-//                        .build();
-//                dataFrameColumnsMap.put(frame2Name, frame2ColumnNameList);
-//
-//                // create CalculationsSpec with calculations id from query result
-//                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
-//                        .setCalculationsId(calculationsId)
-//                        .putAllDataFrameColumns(dataFrameColumnsMap)
-//                        .build();
-//
-//                ExportDataResponse.ExportDataResult exportResult =
-//                        sendAndVerifyExportData(
-//                                null,
-//                                null,
-//                                calculationsSpec,
-//                                calculations,
-//                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
-//                                0,
-//                                20, // 10 rows per second, 2 seconds
-//                                null,
-//                                false,
-//                                "");
-//            }
+            // positive export test: export to hdf5 filtering calculations columns using CalculationsSpec column map.
+            {
+
+                // create frame column map for filtering
+                final Map<String, CalculationsSpec.ColumnNameList> dataFrameColumnsMap = new HashMap<>();
+                final String frame1Name = "frame-2";
+                final List<String> frame1Columns = List.of("calc-2-0", "calc-2-1");
+                final CalculationsSpec.ColumnNameList frame1ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
+                        .addAllColumnNames(frame1Columns)
+                        .build();
+                dataFrameColumnsMap.put(frame1Name, frame1ColumnNameList);
+                final String frame2Name = "frame-3";
+                final List<String> frame2Columns = List.of("calc-3-1");
+                final CalculationsSpec.ColumnNameList frame2ColumnNameList = CalculationsSpec.ColumnNameList.newBuilder()
+                        .addAllColumnNames(frame2Columns)
+                        .build();
+                dataFrameColumnsMap.put(frame2Name, frame2ColumnNameList);
+
+                // create CalculationsSpec with calculations id from query result
+                CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                        .setCalculationsId(calculationsId)
+                        .putAllDataFrameColumns(dataFrameColumnsMap)
+                        .build();
+
+                ExportDataResponse.ExportDataResult exportResult =
+                        sendAndVerifyExportData(
+                                null,
+                                null,
+                                calculationsSpec,
+                                calculations,
+                                ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
+                                10,
+                                0,
+                                null,
+                                false,
+                                "");
+            }
 
             // negative export test: blank calculations id
             {

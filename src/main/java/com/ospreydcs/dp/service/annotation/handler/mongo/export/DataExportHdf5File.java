@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.export;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
@@ -12,6 +13,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 
 import java.io.File;
 import java.util.Date;
+import java.util.Map;
 import java.util.Objects;
 
 /*
@@ -74,19 +76,18 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
     // instance variables
     private final IHDF5Writer writer;
 
-    public DataExportHdf5File(DataSetDocument dataSet, String filePathString) throws DpException {
+    public DataExportHdf5File(String filePathString) throws DpException {
         // create hdf5 file with specified path
         File hdf5File = new File(filePathString);
 //        if (hdf5File.canWrite()) {
 //            throw new IOException("unable to write to hdf5 file: " + filePathString);
 //        }
         writer = HDF5Factory.configure(hdf5File).overwrite().writer();
-        this.initialize(dataSet);
+        this.initialize();
     }
 
-    private void initialize(DataSetDocument dataSet) {
+    private void initialize() {
         this.createGroups();
-        this.writeDataSetData(dataSet);
     }
 
     public void createGroups() {
@@ -97,7 +98,7 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
         writer.object().createGroup(GROUP_CALCULATIONS);
     }
 
-    public void writeDataSetData(DataSetDocument dataSet) {
+    public void writeDataSet(DataSetDocument dataSet) {
 
         // create dataset base paths
         final String dataBlocksGroup = PATH_SEPARATOR
@@ -127,7 +128,7 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
         }
     }
 
-    public void writeBucketData(BucketDocument bucketDocument) {
+    public void writeBucket(BucketDocument bucketDocument) {
 
         // create groups for indexing by pv and time
         Objects.requireNonNull(bucketDocument.getPvName());
@@ -273,7 +274,10 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
     }
 
     @Override
-    public void writeCalculations(CalculationsDocument calculationsDocument) throws DpException {
+    public void writeCalculations(
+            CalculationsDocument calculationsDocument,
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap
+    ) throws DpException {
 
         // Create group for particular Calculations id.
         // Currently we only support adding a single CalculationsDocument to the file, but using Calculations id
@@ -289,56 +293,69 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
         int frameIndex = 0;
         for (CalculationsDataFrameDocument calculationsDataFrameDocument : calculationsDocument.getDataFrames()) {
 
-            // create group for frame
-            final String calculationsIdFramesFrameGroup = calculationsIdFramesGroup
-                    + PATH_SEPARATOR
-                    + frameIndex;
-            writer.object().createGroup(calculationsIdFramesFrameGroup);
+            final String frameName = calculationsDataFrameDocument.getName();
 
-            // write frame name
-            final String frameNamePath = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_NAME;
-            writer.writeString(frameNamePath, calculationsDataFrameDocument.getName());
+            // only include frame if frameColumnNamesMap not provided, or it contains an entry for this frame
+            if ((frameColumnNamesMap == null) || (frameColumnNamesMap.get(frameName) != null)) {
 
-            // write dataTimestamps serialized bytes
-            Objects.requireNonNull(calculationsDataFrameDocument.getDataTimestamps().getBytes());
-            final String frameDataTimestampsBytesPath =
-                    calculationsIdFramesFrameGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
-            writer.writeByteArray(
-                    frameDataTimestampsBytesPath,
-                    calculationsDataFrameDocument.getDataTimestamps().getBytes());
-
-            // create columns group
-            final String calculationsIdFrameColumnsGroup = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_COLUMNS;
-            writer.object().createGroup(calculationsIdFrameColumnsGroup);
-
-            // create group for each of the frame's columns
-            int columnIndex = 0;
-            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
-
-                Objects.requireNonNull(calculationsDataColumnDocument);
-
-                // create group for column
-                final String dataColumnGroup  = calculationsIdFrameColumnsGroup
+                // create group for frame
+                final String calculationsIdFramesFrameGroup = calculationsIdFramesGroup
                         + PATH_SEPARATOR
-                        + columnIndex;
-                writer.object().createGroup(dataColumnGroup);
+                        + frameIndex;
+                writer.object().createGroup(calculationsIdFramesFrameGroup);
 
-                // write column name
-                final String columnNamePath = dataColumnGroup + PATH_SEPARATOR + GROUP_NAME;
-                writer.writeString(columnNamePath, calculationsDataColumnDocument.getName());
+                // write frame name
+                final String frameNamePath = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_NAME;
+                writer.writeString(frameNamePath, frameName);
 
-                // write serialized dataColumnBytes
-                final byte[] dataColumnBytes = calculationsDataColumnDocument.getBytes();
-                Objects.requireNonNull(dataColumnBytes);
-                final String dataColumnBytesPath = dataColumnGroup
-                        + PATH_SEPARATOR
-                        + DATA_COLUMN_BYTES;
-                writer.writeByteArray(dataColumnBytesPath, dataColumnBytes);
+                // write dataTimestamps serialized bytes
+                Objects.requireNonNull(calculationsDataFrameDocument.getDataTimestamps().getBytes());
+                final String frameDataTimestampsBytesPath =
+                        calculationsIdFramesFrameGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
+                writer.writeByteArray(
+                        frameDataTimestampsBytesPath,
+                        calculationsDataFrameDocument.getDataTimestamps().getBytes());
 
-                columnIndex = columnIndex + 1;
+                // create columns group
+                final String calculationsIdFrameColumnsGroup = calculationsIdFramesFrameGroup + PATH_SEPARATOR + GROUP_COLUMNS;
+                writer.object().createGroup(calculationsIdFrameColumnsGroup);
+
+                // create group for each of the frame's columns
+                int columnIndex = 0;
+                for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+
+                    Objects.requireNonNull(calculationsDataColumnDocument);
+                    final String columnName = calculationsDataColumnDocument.getName();
+
+                    // only include column if frameColumnNamesMap not provided,
+                    // or list of columns for frame includes this column
+                    if ((frameColumnNamesMap == null)
+                            || (frameColumnNamesMap.get(frameName).getColumnNamesList().contains(columnName))) {
+
+                        // create group for column
+                        final String dataColumnGroup = calculationsIdFrameColumnsGroup
+                                + PATH_SEPARATOR
+                                + columnIndex;
+                        writer.object().createGroup(dataColumnGroup);
+
+                        // write column name
+                        final String columnNamePath = dataColumnGroup + PATH_SEPARATOR + GROUP_NAME;
+                        writer.writeString(columnNamePath, columnName);
+
+                        // write serialized dataColumnBytes
+                        final byte[] dataColumnBytes = calculationsDataColumnDocument.getBytes();
+                        Objects.requireNonNull(dataColumnBytes);
+                        final String dataColumnBytesPath = dataColumnGroup
+                                + PATH_SEPARATOR
+                                + DATA_COLUMN_BYTES;
+                        writer.writeByteArray(dataColumnBytesPath, dataColumnBytes);
+
+                        columnIndex = columnIndex + 1;
+                    }
+                }
+
+                frameIndex = frameIndex + 1;
             }
-
-            frameIndex = frameIndex + 1;
         }
 
     }
