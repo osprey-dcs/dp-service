@@ -79,8 +79,16 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     }
 
     public static IngestDataResponse ingestionResponseAck(IngestDataRequest request) {
+
         final int numRows = getNumRequestRows(request);
-        final int numColumns = request.getIngestionDataFrame().getDataColumnsCount();
+
+        int numColumns = 0;
+        if (request.getIngestionDataFrame().hasDataColumnList()) {
+            numColumns = request.getIngestionDataFrame().getDataColumnList().getDataColumnsCount();
+        } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
+            numColumns = request.getIngestionDataFrame().getSerializedDataColumnList().getSerializedColumnsCount();
+        }
+
         final IngestDataResponse.AckResult ackResult = IngestDataResponse.AckResult.newBuilder()
                 .setNumRows(numRows)
                 .setNumColumns(numColumns)

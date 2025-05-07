@@ -94,19 +94,25 @@ public class DataSubscriptionManager {
             // use try...finally to make sure we unlock
 
             final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
-            // iterate request columns and send response to column PV subscribers
-            for (DataColumn requestDataColumn : request.getIngestionDataFrame().getDataColumnsList()) {
 
-                final String pvName = requestDataColumn.getName();
-                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
-                if (sourceMonitors != null) {
-                    // publish data via monitors
-                    final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
-                    for (SourceMonitor monitor : sourceMonitors) {
-                        // publish data to subscriber if response stream is active
-                        monitor.publishData(pvName, requestDataTimestamps, responseDataColumns);
+            // iterate request columns and send response to column PV subscribers
+            if (request.getIngestionDataFrame().hasDataColumnList()) {
+                for (DataColumn requestDataColumn
+                        : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+
+                    final String pvName = requestDataColumn.getName();
+                    final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                    if (sourceMonitors != null) {
+                        // publish data via monitors
+                        final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
+                        for (SourceMonitor monitor : sourceMonitors) {
+                            // publish data to subscriber if response stream is active
+                            monitor.publishData(pvName, requestDataTimestamps, responseDataColumns);
+                        }
                     }
                 }
+            } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
+                // TODO: need to modify subscription to handle serialized data columns too
             }
 
         } finally {

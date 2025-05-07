@@ -77,6 +77,73 @@ public class BucketDocument extends DpBsonDocumentBase {
         this.clientRequestId = clientRequestId;
     }
 
+    private static BucketDocument columnBucketDocument(
+            String pvName,
+            IngestDataRequest request,
+            DataColumnDocument dataColumnDocument
+    ) {
+        final BucketDocument bucket = new BucketDocument();
+
+        // create DataTimestampsDocument for the request
+        final DataTimestampsDocument requestDataTimestampsDocument =
+                DataTimestampsDocument.fromDataTimestamps(request.getIngestionDataFrame().getDataTimestamps());
+
+        // get PV name and generate id for BucketDocument
+        final String documentId = pvName + "-"
+                + requestDataTimestampsDocument.getFirstTime().getSeconds() + "-"
+                + requestDataTimestampsDocument.getFirstTime().getNanos();
+        bucket.setId(documentId);
+        bucket.setPvName(pvName);
+        bucket.setProviderId(request.getProviderId());
+        bucket.setClientRequestId(request.getClientRequestId());
+
+        bucket.setDataColumn(dataColumnDocument);
+
+        // embed requestDataTimesetampsDocument within each BucketDocument
+        bucket.setDataTimestamps(requestDataTimestampsDocument);
+
+        // add tags
+        if ( ! request.getTagsList().isEmpty()) {
+            bucket.setTags(request.getTagsList());
+        }
+
+        // add attributes
+        if ( ! request.getAttributesList().isEmpty()) {
+            final Map<String, String> attributeMap =
+                    AttributesUtility.attributeMapFromList(request.getAttributesList());
+            bucket.setAttributes(attributeMap);
+        }
+
+        // create EventMetadataDocument for request EventMetadata
+        if (request.hasEventMetadata()) {
+            EventMetadataDocument eventMetadataDocument =
+                    EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
+            bucket.setEvent(eventMetadataDocument);
+        }
+
+        return bucket;
+    }
+
+    private static BucketDocument dataColumnBucketDocument(
+            IngestDataRequest request,
+            DataColumn column
+    ) {
+        // create DataColumnDocument for request DataColumn
+        DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(column);
+        final String pvName = column.getName();
+        return columnBucketDocument(pvName, request, dataColumnDocument);
+    }
+
+    private static BucketDocument serializedDataColumnBucketDocument(
+            IngestDataRequest request,
+            IngestDataRequest.IngestionDataFrame.SerializedDataColumn column
+    ) {
+        // create DataColumnDocument for request DataColumn
+        DataColumnDocument dataColumnDocument = DataColumnDocument.fromSerializedDataColumn(column);
+        final String pvName = column.getName();
+        return columnBucketDocument(pvName, request, dataColumnDocument);
+    }
+
     /**
      * Generates a list of POJO objects, which are written as a batch to mongodb by customizing the codec registry.
      *
@@ -91,53 +158,16 @@ public class BucketDocument extends DpBsonDocumentBase {
 
         final List<BucketDocument> bucketList = new ArrayList<>();
 
-        // create DataTimestampsDocument for the request
-        final DataTimestampsDocument requestDataTimestampsDocument =
-                DataTimestampsDocument.fromDataTimestamps(request.getIngestionDataFrame().getDataTimestamps());
-
         // create BucketDocument for each column
-        final List<DataColumn> columns = request.getIngestionDataFrame().getDataColumnsList();
-        for (DataColumn column : columns) {
-
-            final BucketDocument bucket = new BucketDocument();
-
-            // get PV name and generate id for BucketDocument
-            final String pvName = column.getName();
-            final String documentId = pvName + "-"
-                    + requestDataTimestampsDocument.getFirstTime().getSeconds() + "-"
-                    + requestDataTimestampsDocument.getFirstTime().getNanos();
-            bucket.setId(documentId);
-            bucket.setPvName(pvName);
-            bucket.setProviderId(request.getProviderId());
-            bucket.setClientRequestId(request.getClientRequestId());
-
-            // create DataColumnDocument for request DataColumn
-            DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(column);
-            bucket.setDataColumn(dataColumnDocument);
-
-            // embed requestDataTimesetampsDocument within each BucketDocument
-            bucket.setDataTimestamps(requestDataTimestampsDocument);
-
-            // add tags
-            if ( ! request.getTagsList().isEmpty()) {
-                bucket.setTags(request.getTagsList());
+        if (request.getIngestionDataFrame().hasDataColumnList()) {
+            for (DataColumn column : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+                bucketList.add(dataColumnBucketDocument(request, column));
             }
-
-            // add attributes
-            if ( ! request.getAttributesList().isEmpty()) {
-                final Map<String, String> attributeMap =
-                        AttributesUtility.attributeMapFromList(request.getAttributesList());
-                bucket.setAttributes(attributeMap);
+        } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
+            for (IngestDataRequest.IngestionDataFrame.SerializedDataColumn column :
+                    request.getIngestionDataFrame().getSerializedDataColumnList().getSerializedColumnsList()) {
+                bucketList.add(serializedDataColumnBucketDocument(request, column));
             }
-
-            // create EventMetadataDocument for request EventMetadata
-            if (request.hasEventMetadata()) {
-                EventMetadataDocument eventMetadataDocument =
-                        EventMetadataDocument.fromEventMetadata(request.getEventMetadata());
-                bucket.setEvent(eventMetadataDocument);
-            }
-
-            bucketList.add(bucket);
         }
 
         return bucketList;

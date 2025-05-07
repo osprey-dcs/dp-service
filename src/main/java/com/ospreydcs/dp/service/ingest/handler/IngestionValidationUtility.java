@@ -14,7 +14,14 @@ public class IngestionValidationUtility {
 
         String providerId = request.getProviderId();
         String requestId = request.getClientRequestId();
-        int numRequestColumns = request.getIngestionDataFrame().getDataColumnsList().size();
+
+        int numRequestColumns = 0;
+        if (request.getIngestionDataFrame().hasDataColumnList()) {
+            numRequestColumns = request.getIngestionDataFrame().getDataColumnList().getDataColumnsCount();
+        } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
+            numRequestColumns = request.getIngestionDataFrame().getSerializedDataColumnList().getSerializedColumnsCount();
+        }
+
         int numRequestRows = IngestionServiceImpl.getNumRequestRows(request);
 
         // validate request
@@ -40,18 +47,20 @@ public class IngestionValidationUtility {
             statusMsg = "columns list cannot be empty";
 
         } else {
-            for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
-                if (column.getDataValuesList().size() != numRequestRows) {
-                    // validate column sizes
-                    isError = true;
-                    statusMsg = "column: " + column.getName() + " size: " + column.getDataValuesList().size()
-                            + " mismatch numValues: " + numRequestRows;
-                } else if (column.getName() == null || column.getName().isEmpty()) {
-                    // check that column name is provided
-                    isError = true;
-                    statusMsg = "name must be specified for all data columns";
+            if (request.getIngestionDataFrame().hasDataColumnList()) {
+                for (DataColumn column : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+                    if (column.getDataValuesList().size() != numRequestRows) {
+                        // validate column sizes
+                        isError = true;
+                        statusMsg = "column: " + column.getName() + " size: " + column.getDataValuesList().size()
+                                + " mismatch numValues: " + numRequestRows;
+                    } else if (column.getName() == null || column.getName().isEmpty()) {
+                        // check that column name is provided
+                        isError = true;
+                        statusMsg = "name must be specified for all data columns";
+                    }
+                    break;
                 }
-                break;
             }
         }
 

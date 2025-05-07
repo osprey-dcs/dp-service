@@ -137,7 +137,7 @@ public class BenchmarkUniStreamingIngestion extends IngestionBenchmarkBase {
 
     public static void main(final String[] args) {
         BenchmarkUniStreamingIngestion benchmark = new BenchmarkUniStreamingIngestion();
-        runBenchmark(benchmark);
+        runBenchmark(benchmark, false);
     }
 
 }

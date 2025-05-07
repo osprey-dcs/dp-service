@@ -45,7 +45,7 @@ public class TestDataGenerator extends BenchmarkBidiStreamingIngestion {
                 numRows,
                 numColumns,
                 numSeconds,
-                generateTimestampListRequests);
+                generateTimestampListRequests, false);
 
         try {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);

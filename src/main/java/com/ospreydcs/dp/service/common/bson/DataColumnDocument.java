@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.common.bson;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -63,6 +64,15 @@ public class DataColumnDocument {
             document.setValueCase(dataValueCase.getNumber());
             document.setValueType(dataValueCase.name());
         }
+        return document;
+    }
+
+    public static DataColumnDocument fromSerializedDataColumn(
+            IngestDataRequest.IngestionDataFrame.SerializedDataColumn column
+    ) {
+        DataColumnDocument document = new DataColumnDocument();
+        document.setName(column.getName());
+        document.setBytes(column.getDataColumnBytes().toByteArray());
         return document;
     }
 

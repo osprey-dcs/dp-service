@@ -170,7 +170,7 @@ public class BenchmarkBidiStreamingIngestion extends IngestionBenchmarkBase {
 
     public static void main(final String[] args) {
         BenchmarkBidiStreamingIngestion benchmark = new BenchmarkBidiStreamingIngestion();
-        runBenchmark(benchmark);
+        runBenchmark(benchmark, false);
     }
 
 }

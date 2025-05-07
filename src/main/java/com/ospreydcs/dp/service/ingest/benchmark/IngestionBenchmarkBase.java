@@ -46,6 +46,7 @@ public abstract class IngestionBenchmarkBase {
         final public int lastColumnIndex;
         final public String providerId;
         final public boolean useTimestampList;
+        final public boolean useSerializedDataColumns;
 
         public IngestionTaskParams(
                 long startSeconds,
@@ -56,7 +57,8 @@ public abstract class IngestionBenchmarkBase {
                 int firstColumnIndex,
                 int lastColumnIndex,
                 String providerId,
-                boolean useTimestampList
+                boolean useTimestampList,
+                boolean useSerializedDataColumns
         ) {
             this.startSeconds = startSeconds;
             this.streamNumber = streamNumber;
@@ -67,6 +69,7 @@ public abstract class IngestionBenchmarkBase {
             this.lastColumnIndex = lastColumnIndex;
             this.providerId = providerId;
             this.useTimestampList = useTimestampList;
+            this.useSerializedDataColumns = useSerializedDataColumns;
         }
     }
 
@@ -169,6 +172,8 @@ public abstract class IngestionBenchmarkBase {
                 IngestDataRequest.IngestionDataFrame.newBuilder();
 
         // build list of Data objects (columns), each a list of Datum objects (cell values)
+        final List<DataColumn> dataColumnList = new ArrayList<>();
+        final List<IngestDataRequest.IngestionDataFrame.SerializedDataColumn> serializedDataColumnList = new ArrayList<>();
         for (int colIndex = params.firstColumnIndex; colIndex <= params.lastColumnIndex ; colIndex++) {
             DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
             dataColumnBuilder.setName(NAME_COLUMN_BASE + colIndex);
@@ -180,8 +185,29 @@ public abstract class IngestionBenchmarkBase {
 //                int datumSize = rowDatum.getSerializedSize();
 //                LOGGER.info("serialized double size: {}", datumSize);
             }
-            dataColumnBuilder.build();
-            dataTableBuilder.addDataColumns(dataColumnBuilder);
+            DataColumn dataColumn = dataColumnBuilder.build();
+            if (params.useSerializedDataColumns) {
+                final IngestDataRequest.IngestionDataFrame.SerializedDataColumn serializedDataColumn =
+                        IngestDataRequest.IngestionDataFrame.SerializedDataColumn.newBuilder()
+                                .setName(dataColumn.getName())
+                                .setDataColumnBytes(dataColumn.toByteString())
+                                .build();
+                serializedDataColumnList.add(serializedDataColumn);
+            } else {
+                dataColumnList.add(dataColumn);
+            }
+        }
+
+        if (params.useSerializedDataColumns) {
+            dataTableBuilder.setSerializedDataColumnList(
+                    IngestDataRequest.IngestionDataFrame.SerializedDataColumnList.newBuilder()
+                            .addAllSerializedColumns(serializedDataColumnList)
+                            .build());
+        } else {
+            dataTableBuilder.setDataColumnList(
+                    IngestDataRequest.IngestionDataFrame.DataColumnList.newBuilder().
+                            addAllDataColumns(dataColumnList)
+                            .build());
         }
 
         return dataTableBuilder;
@@ -463,7 +489,8 @@ public abstract class IngestionBenchmarkBase {
             int numRows,
             int numColumns,
             int numSeconds,
-            boolean generateTimestampListRequests
+            boolean generateTimestampListRequests,
+            boolean useSerializedDataColumns
     ) {
         boolean success = true;
         long dataValuesSubmitted = 0;
@@ -511,7 +538,8 @@ public abstract class IngestionBenchmarkBase {
                     firstColumnIndex,
                     lastColumnIndex,
                     providerId,
-                    useTimestampList);
+                    useTimestampList,
+                    useSerializedDataColumns);
             IngestDataRequest.IngestionDataFrame.Builder templateDataTable = buildDataTableTemplate(params);
             IngestionTask task = newIngestionTask(params, templateDataTable, channel);
             taskList.add(task);
@@ -585,7 +613,7 @@ public abstract class IngestionBenchmarkBase {
         }
     }
 
-    protected void ingestionExperiment(Channel channel) {
+    protected void ingestionExperiment(Channel channel, boolean useSerializedDataColumns) {
 
         // number of PVS, sampling rate, length of run time
         // one minute of data at 4000 PVs x 1000 samples per second for 60 seconds
@@ -614,7 +642,15 @@ public abstract class IngestionBenchmarkBase {
                 BenchmarkMongoClient.prepareBenchmarkDatabase();
 
                 BenchmarkScenarioResult scenarioResult =
-                        ingestionScenario(channel, numThreads, numStreams, numRows, numColumns, numSeconds, false);
+                        ingestionScenario(
+                                channel,
+                                numThreads,
+                                numStreams,
+                                numRows,
+                                numColumns,
+                                numSeconds,
+                                false,
+                                useSerializedDataColumns);
                 if (scenarioResult.success) {
                     writeRateMap.put(mapKey, scenarioResult.valuesPerSecond);
                 } else {
@@ -647,14 +683,14 @@ public abstract class IngestionBenchmarkBase {
         System.out.println("min write rate: " + minRate);
     }
 
-    public static void runBenchmark(IngestionBenchmarkBase benchmark) {
+    public static void runBenchmark(IngestionBenchmarkBase benchmark, boolean useSerializedDataColumns) {
 
         final String connectString = BENCHMARK_GRPC_CONNECT_STRING;
         logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        benchmark.ingestionExperiment(channel);
+        benchmark.ingestionExperiment(channel, useSerializedDataColumns);
 
         try {
             boolean awaitSuccess = channel.shutdownNow().awaitTermination(TERMINATION_TIMEOUT_MINUTES, TimeUnit.SECONDS);
