@@ -715,7 +715,7 @@ public abstract class GrpcIntegrationTestBase {
                     bucketDocument.getDataTimestamps().getLastTime().getDateTime());
 
             // compare data value vectors
-            final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
+            final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumns().getDataColumnsList();
             final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
             // this compares each DataValue including ValueStatus, confirmed in debugger
             assertEquals(requestDataColumn, bucketDataColumn);

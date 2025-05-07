@@ -136,7 +136,7 @@ public class BucketDocument extends DpBsonDocumentBase {
 
     private static BucketDocument serializedDataColumnBucketDocument(
             IngestDataRequest request,
-            IngestDataRequest.IngestionDataFrame.SerializedDataColumn column
+            SerializedDataColumn column
     ) {
         // create DataColumnDocument for request DataColumn
         DataColumnDocument dataColumnDocument = DataColumnDocument.fromSerializedDataColumn(column);
@@ -159,13 +159,12 @@ public class BucketDocument extends DpBsonDocumentBase {
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         // create BucketDocument for each column
-        if (request.getIngestionDataFrame().hasDataColumnList()) {
-            for (DataColumn column : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+        if (request.getIngestionDataFrame().hasDataColumns()) {
+            for (DataColumn column : request.getIngestionDataFrame().getDataColumns().getDataColumnsList()) {
                 bucketList.add(dataColumnBucketDocument(request, column));
             }
-        } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
-            for (IngestDataRequest.IngestionDataFrame.SerializedDataColumn column :
-                    request.getIngestionDataFrame().getSerializedDataColumnList().getSerializedColumnsList()) {
+        } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
+            for (SerializedDataColumn column : request.getIngestionDataFrame().getSerializedDataColumns().getSerializedDataColumnsList()) {
                 bucketList.add(serializedDataColumnBucketDocument(request, column));
             }
         }

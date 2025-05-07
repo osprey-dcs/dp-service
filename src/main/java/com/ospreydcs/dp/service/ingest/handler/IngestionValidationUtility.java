@@ -16,10 +16,11 @@ public class IngestionValidationUtility {
         String requestId = request.getClientRequestId();
 
         int numRequestColumns = 0;
-        if (request.getIngestionDataFrame().hasDataColumnList()) {
-            numRequestColumns = request.getIngestionDataFrame().getDataColumnList().getDataColumnsCount();
-        } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
-            numRequestColumns = request.getIngestionDataFrame().getSerializedDataColumnList().getSerializedColumnsCount();
+        if (request.getIngestionDataFrame().hasDataColumns()) {
+            numRequestColumns = request.getIngestionDataFrame().getDataColumns().getDataColumnsCount();
+        } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
+            numRequestColumns =
+                    request.getIngestionDataFrame().getSerializedDataColumns().getSerializedDataColumnsCount();
         }
 
         int numRequestRows = IngestionServiceImpl.getNumRequestRows(request);
@@ -47,8 +48,8 @@ public class IngestionValidationUtility {
             statusMsg = "columns list cannot be empty";
 
         } else {
-            if (request.getIngestionDataFrame().hasDataColumnList()) {
-                for (DataColumn column : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+            if (request.getIngestionDataFrame().hasDataColumns()) {
+                for (DataColumn column : request.getIngestionDataFrame().getDataColumns().getDataColumnsList()) {
                     if (column.getDataValuesList().size() != numRequestRows) {
                         // validate column sizes
                         isError = true;

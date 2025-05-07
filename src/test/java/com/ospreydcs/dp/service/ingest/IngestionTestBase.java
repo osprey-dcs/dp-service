@@ -203,11 +203,12 @@ public class IngestionTestBase {
             dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
         }
 
-        // create list of columns if specified
+        // create list of columns
+        final DataColumnList.Builder dataColumnListBuilder = DataColumnList.newBuilder();
         if (dataColumnList != null) {
             // caller can override building data columns by providing dataColumnList
             for (DataColumn column : dataColumnList) {
-                dataFrameBuilder.addDataColumns(column);
+                dataColumnListBuilder.addDataColumns(column);
             }
 
         } else if (params.columnNames != null) {
@@ -275,10 +276,10 @@ public class IngestionTestBase {
                     valueIndex++;
                 }
 
-                dataColumnBuilder.build();
-                dataFrameBuilder.addDataColumns(dataColumnBuilder);
+                dataColumnListBuilder.addDataColumns(dataColumnBuilder.build());
             }
         }
+        dataFrameBuilder.setDataColumns(dataColumnListBuilder.build());
 
         // add tags if specified
         if (params.tags != null) {

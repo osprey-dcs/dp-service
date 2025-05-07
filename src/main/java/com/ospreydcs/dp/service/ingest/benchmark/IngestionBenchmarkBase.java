@@ -173,7 +173,7 @@ public abstract class IngestionBenchmarkBase {
 
         // build list of Data objects (columns), each a list of Datum objects (cell values)
         final List<DataColumn> dataColumnList = new ArrayList<>();
-        final List<IngestDataRequest.IngestionDataFrame.SerializedDataColumn> serializedDataColumnList = new ArrayList<>();
+        final List<SerializedDataColumn> serializedDataColumnList = new ArrayList<>();
         for (int colIndex = params.firstColumnIndex; colIndex <= params.lastColumnIndex ; colIndex++) {
             DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
             dataColumnBuilder.setName(NAME_COLUMN_BASE + colIndex);
@@ -187,8 +187,8 @@ public abstract class IngestionBenchmarkBase {
             }
             DataColumn dataColumn = dataColumnBuilder.build();
             if (params.useSerializedDataColumns) {
-                final IngestDataRequest.IngestionDataFrame.SerializedDataColumn serializedDataColumn =
-                        IngestDataRequest.IngestionDataFrame.SerializedDataColumn.newBuilder()
+                final SerializedDataColumn serializedDataColumn =
+                        SerializedDataColumn.newBuilder()
                                 .setName(dataColumn.getName())
                                 .setDataColumnBytes(dataColumn.toByteString())
                                 .build();
@@ -199,13 +199,13 @@ public abstract class IngestionBenchmarkBase {
         }
 
         if (params.useSerializedDataColumns) {
-            dataTableBuilder.setSerializedDataColumnList(
-                    IngestDataRequest.IngestionDataFrame.SerializedDataColumnList.newBuilder()
-                            .addAllSerializedColumns(serializedDataColumnList)
+            dataTableBuilder.setSerializedDataColumns(
+                    SerializedDataColumnList.newBuilder()
+                            .addAllSerializedDataColumns(serializedDataColumnList)
                             .build());
         } else {
-            dataTableBuilder.setDataColumnList(
-                    IngestDataRequest.IngestionDataFrame.DataColumnList.newBuilder().
+            dataTableBuilder.setDataColumns(
+                    DataColumnList.newBuilder().
                             addAllDataColumns(dataColumnList)
                             .build());
         }

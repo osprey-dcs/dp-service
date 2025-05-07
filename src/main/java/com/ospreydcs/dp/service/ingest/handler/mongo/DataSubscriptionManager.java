@@ -96,9 +96,9 @@ public class DataSubscriptionManager {
             final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
 
             // iterate request columns and send response to column PV subscribers
-            if (request.getIngestionDataFrame().hasDataColumnList()) {
+            if (request.getIngestionDataFrame().hasDataColumns()) {
                 for (DataColumn requestDataColumn
-                        : request.getIngestionDataFrame().getDataColumnList().getDataColumnsList()) {
+                        : request.getIngestionDataFrame().getDataColumns().getDataColumnsList()) {
 
                     final String pvName = requestDataColumn.getName();
                     final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
@@ -111,7 +111,7 @@ public class DataSubscriptionManager {
                         }
                     }
                 }
-            } else if (request.getIngestionDataFrame().hasSerializedDataColumnList()) {
+            } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
                 // TODO: need to modify subscription to handle serialized data columns too
             }
 
