@@ -69,7 +69,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
                 Channel channel,
                 QueryDataRequestTaskParams params
         ) {
-            final int streamNumber = params.streamNumber;
+            final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             boolean success = true;
@@ -173,7 +173,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
         final int[] numThreadsArray = {7};
 
         BenchmarkQueryDataBidiStream benchmark = new BenchmarkQueryDataBidiStream();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, false);
     }
 
 }

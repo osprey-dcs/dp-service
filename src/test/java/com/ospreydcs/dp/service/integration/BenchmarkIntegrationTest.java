@@ -373,7 +373,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     assertTrue(samplingClock.getPeriodNanos() > 0);
                     assertEquals(INGESTION_NUM_ROWS, samplingClock.getCount());
                     final long bucketSeconds = samplingClock.getStartTime().getEpochSeconds();
-                    final int bucketIndex = (int) (bucketSeconds - params.startSeconds);
+                    final int bucketIndex = (int) (bucketSeconds - params.startSeconds());
                     final boolean[] columnBucketArray = columnBucketMap.get(columnName);
                     assertNotNull(columnBucketArray);
 
@@ -409,7 +409,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             }
 
             logger.debug("stream: {} validation helper verified {} QueryResponse messages",
-                    params.streamNumber, responseCount.get());
+                    params.streamNumber(), responseCount.get());
         }
 
     }
@@ -555,7 +555,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     QUERY_NUM_PVS_PER_REQUEST,
                     QUERY_NUM_THREADS,
                     startSeconds,
-                    NUM_SCENARIO_SECONDS);
+                    NUM_SCENARIO_SECONDS, false);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseCursor scenario completed ==========");
@@ -582,7 +582,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     QUERY_NUM_PVS_PER_REQUEST,
                     QUERY_NUM_THREADS,
                     startSeconds,
-                    NUM_SCENARIO_SECONDS);
+                    NUM_SCENARIO_SECONDS, false);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseStream scenario completed ==========");
@@ -609,7 +609,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                     QUERY_SINGLE_NUM_PVS_PER_REQUEST,
                     QUERY_NUM_THREADS,
                     startSeconds,
-                    NUM_SCENARIO_SECONDS);
+                    NUM_SCENARIO_SECONDS, false);
             assertTrue(scenarioResult.success);
 
             System.out.println("========== queryResponseSingle scenario completed ==========");

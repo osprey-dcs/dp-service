@@ -77,7 +77,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryDataStream(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver);
+        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver, querySpec);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug(
@@ -97,7 +97,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
 
-        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver);
+        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver, querySpec);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
@@ -119,7 +119,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryData(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final QueryDataDispatcher dispatcher = new QueryDataDispatcher(responseObserver);
+        final QueryDataDispatcher dispatcher = new QueryDataDispatcher(responseObserver, querySpec);
         final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
 
         logger.debug(

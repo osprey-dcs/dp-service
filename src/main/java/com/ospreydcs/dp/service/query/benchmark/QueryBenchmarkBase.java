@@ -176,40 +176,21 @@ public abstract class QueryBenchmarkBase {
         logger.info("loading time: {} seconds", dtSecondsString);
     }
 
-    public static class QueryDataRequestTaskParams {
-        final public int streamNumber;
-        final public List<String> columnNames;
-        final public long startSeconds;
-        final public int numSeconds;
-
-        public QueryDataRequestTaskParams(
-                int streamNumber,
-                List<String> columnNames,
-                long startSeconds,
-                int numSeconds) {
-            this.streamNumber = streamNumber;
-            this.columnNames = columnNames;
-            this.startSeconds = startSeconds;
-            this.numSeconds = numSeconds;
-        }
+    public record QueryDataRequestTaskParams(
+            int streamNumber,
+            List<String> columnNames,
+            long startSeconds,
+            int numSeconds,
+            boolean useSerializedDataColumns
+    ) {
     }
 
-    protected static class QueryTaskResult {
-        final public boolean status;
-        final public long dataValuesReceived;
-        final public long dataBytesReceived;
-        final public long grpcBytesReceived;
-        public QueryTaskResult(
-                boolean status,
-                long dataValuesReceived,
-                long dataBytesReceived,
-                long grpcBytesReceived
-        ) {
-            this.status = status;
-            this.dataValuesReceived = dataValuesReceived;
-            this.dataBytesReceived = dataBytesReceived;
-            this.grpcBytesReceived = grpcBytesReceived;
-        }
+    protected record QueryTaskResult(
+            boolean status,
+            long dataValuesReceived,
+            long dataBytesReceived,
+            long grpcBytesReceived
+    ) {
     }
 
     /**
@@ -286,6 +267,11 @@ public abstract class QueryBenchmarkBase {
         querySpecBuilder.setBeginTime(beginTimeBuilder);
         querySpecBuilder.setEndTime(endTimeBuilder);
         querySpecBuilder.addAllPvNames(params.columnNames);
+        if (params.useSerializedDataColumns) {
+            querySpecBuilder.setUseSerializedDataColumns(true);
+        } else {
+            querySpecBuilder.setUseSerializedDataColumns(false);
+        }
         querySpecBuilder.build();
         requestBuilder.setQuerySpec(querySpecBuilder);
 
@@ -310,7 +296,8 @@ public abstract class QueryBenchmarkBase {
             int pvsPerRequest,
             int numThreads,
             long startSeconds,
-            int numSeconds
+            int numSeconds,
+            boolean useSerializedDataColumns
     ) {
         boolean success = true;
         long dataValuesReceived = 0;
@@ -335,7 +322,8 @@ public abstract class QueryBenchmarkBase {
                                 currentBatchIndex,
                                 currentBatchColumns,
                                 startSeconds,
-                                numSeconds);
+                                numSeconds,
+                                useSerializedDataColumns);
                 final QueryDataRequestTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
@@ -350,7 +338,7 @@ public abstract class QueryBenchmarkBase {
                             currentBatchIndex,
                             currentBatchColumns,
                             startSeconds,
-                            numSeconds);
+                            numSeconds, false);
             final QueryDataRequestTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
@@ -430,7 +418,8 @@ public abstract class QueryBenchmarkBase {
             int[] totalNumPvsArray,
             int[] numPvsPerRequestArray,
             int[] numThreadsArray,
-            long startSeconds
+            long startSeconds,
+            boolean useSerializedDataColumns
     ) {
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
@@ -445,7 +434,14 @@ public abstract class QueryBenchmarkBase {
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
                     BenchmarkScenarioResult scenarioResult =
-                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds, NUM_SCENARIO_SECONDS);
+                            queryScenario(
+                                    channel,
+                                    numPvs,
+                                    pvsPerRequest,
+                                    numThreads,
+                                    startSeconds,
+                                    NUM_SCENARIO_SECONDS,
+                                    useSerializedDataColumns);
                     double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
@@ -479,7 +475,8 @@ public abstract class QueryBenchmarkBase {
             QueryBenchmarkBase benchmark,
             int[] totalNumPvsArray,
             int[] numPvsPerRequestArray,
-            int[] numThreadsArray
+            int[] numThreadsArray,
+            boolean useSerializedDataColumns
     ) {
         long startSeconds = Instant.now().getEpochSecond();
 
@@ -498,7 +495,13 @@ public abstract class QueryBenchmarkBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
+        benchmark.queryExperiment(
+                channel,
+                totalNumPvsArray,
+                numPvsPerRequestArray,
+                numThreadsArray,
+                startSeconds,
+                useSerializedDataColumns);
 
         // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
         // resources the channel should be shut down when it will no longer be used. If it may be used

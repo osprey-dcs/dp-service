@@ -29,7 +29,7 @@ public class BenchmarkQueryDataStream extends QueryBenchmarkBase {
                 Channel channel,
                 QueryDataRequestTaskParams params) {
 
-            final int streamNumber = params.streamNumber;
+            final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             boolean success = true;
@@ -113,7 +113,7 @@ public class BenchmarkQueryDataStream extends QueryBenchmarkBase {
         final int[] numThreadsArray = {5};
 
         BenchmarkQueryDataStream benchmark = new BenchmarkQueryDataStream();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, false);
     }
 
 }

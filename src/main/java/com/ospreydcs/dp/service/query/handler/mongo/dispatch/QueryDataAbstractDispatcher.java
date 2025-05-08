@@ -1,19 +1,14 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.List;
-import java.util.Objects;
 
 public abstract class QueryDataAbstractDispatcher extends Dispatcher {
 
@@ -21,19 +16,25 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private StreamObserver<QueryDataResponse> responseObserver;
+    protected final StreamObserver<QueryDataResponse> responseObserver;
+    protected final QueryDataRequest.QuerySpec querySpec;
 
-    public QueryDataAbstractDispatcher() {
-    }
-
-    public QueryDataAbstractDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
+    public QueryDataAbstractDispatcher(
+            StreamObserver<QueryDataResponse> responseObserver,
+            QueryDataRequest.QuerySpec querySpec
+    ) {
         this.responseObserver = responseObserver;
+        this.querySpec = querySpec;
     }
 
     protected abstract void handleResult_(MongoCursor<BucketDocument> cursor);
 
-    public StreamObserver<QueryDataResponse> getResponseObserver() {
+    protected StreamObserver<QueryDataResponse> getResponseObserver() {
         return this.responseObserver;
+    }
+
+    protected QueryDataRequest.QuerySpec getQuerySpec() {
+        return this.querySpec;
     }
 
     public void handleResult(MongoCursor<BucketDocument> cursor) {

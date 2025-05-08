@@ -29,7 +29,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
                 Channel channel,
                 QueryDataRequestTaskParams params) {
 
-            final int streamNumber = params.streamNumber;
+            final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             QueryDataRequest request = buildQueryDataRequest(params);
@@ -99,7 +99,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
         final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
 
         BenchmarkQueryDataUnary benchmark = new BenchmarkQueryDataUnary();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, false);
     }
 
 }

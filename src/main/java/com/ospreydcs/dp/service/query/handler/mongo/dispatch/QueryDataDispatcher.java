@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -17,8 +18,11 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    public QueryDataDispatcher(StreamObserver<QueryDataResponse> responseObserver) {
-        super(responseObserver);
+    public QueryDataDispatcher(
+            StreamObserver<QueryDataResponse> responseObserver,
+            QueryDataRequest.QuerySpec querySpec
+    ) {
+        super(responseObserver, querySpec);
     }
 
     @Override
@@ -36,7 +40,7 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
             final BucketDocument document = cursor.next();
             QueryDataResponse.QueryData.DataBucket bucket = null;
             try {
-                bucket = BucketDocument.dataBucketFromDocument(document);
+                bucket = BucketDocument.dataBucketFromDocument(document, querySpec);
             } catch (DpException e) {
                 // exception deserializing BucketDocument contents, so send error response
                 isError = true;

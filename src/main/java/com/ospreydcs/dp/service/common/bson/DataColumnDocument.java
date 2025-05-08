@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
@@ -93,5 +94,14 @@ public class DataColumnDocument {
         }
 
         return dataColumnBuilder.build();
+    }
+
+    public SerializedDataColumn toSerializedDataColumn() throws DpException {
+        final SerializedDataColumn.Builder serializedDataColumnBuilder = SerializedDataColumn.newBuilder();
+        if (this.bytes != null) {
+            serializedDataColumnBuilder.setDataColumnBytes(ByteString.copyFrom(this.getBytes()));
+        }
+        serializedDataColumnBuilder.setName(this.getName());
+        return serializedDataColumnBuilder.build();
     }
 }

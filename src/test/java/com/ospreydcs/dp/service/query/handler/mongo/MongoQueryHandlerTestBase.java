@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
@@ -104,7 +103,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
-        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver);
+        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver, null);
         final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
@@ -162,7 +161,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
-        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver);
+        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver, null);
         responseObserver.setDispatcher(dispatcher);
         final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();

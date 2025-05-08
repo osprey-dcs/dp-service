@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.bson.bucket;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
@@ -173,7 +174,8 @@ public class BucketDocument extends DpBsonDocumentBase {
     }
 
     public static QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
-            BucketDocument document
+            BucketDocument document,
+            QueryDataRequest.QuerySpec querySpec
     ) throws DpException {
 
         final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
@@ -184,8 +186,13 @@ public class BucketDocument extends DpBsonDocumentBase {
         bucketBuilder.setDataTimestamps(dataTimestamps);
 
         // add data values
-        DataColumn dataColumn = document.getDataColumn().toDataColumn();
-        bucketBuilder.setDataColumn(dataColumn);
+        if (querySpec.getUseSerializedDataColumns()) {
+            SerializedDataColumn serializedDataColumn = document.getDataColumn().toSerializedDataColumn();
+            bucketBuilder.setSerializedDataColumn(serializedDataColumn);
+        } else {
+            DataColumn dataColumn = document.getDataColumn().toDataColumn();
+            bucketBuilder.setDataColumn(dataColumn);
+        }
 
         // add tags
         if (document.getTags() != null) {
