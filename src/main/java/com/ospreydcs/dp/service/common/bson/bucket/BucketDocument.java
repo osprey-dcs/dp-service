@@ -158,15 +158,15 @@ public class BucketDocument extends DpBsonDocumentBase {
 
         final List<BucketDocument> bucketList = new ArrayList<>();
 
-        // create BucketDocument for each column
-        if (request.getIngestionDataFrame().hasDataColumns()) {
-            for (DataColumn column : request.getIngestionDataFrame().getDataColumns().getDataColumnsList()) {
-                bucketList.add(dataColumnBucketDocument(request, column));
-            }
-        } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
-            for (SerializedDataColumn column : request.getIngestionDataFrame().getSerializedDataColumns().getSerializedDataColumnsList()) {
-                bucketList.add(serializedDataColumnBucketDocument(request, column));
-            }
+        // create BucketDocument for each DataColumn
+        for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
+            bucketList.add(dataColumnBucketDocument(request, column));
+        }
+
+        // create BucketDocument for each SerializedDataColumn
+        for (SerializedDataColumn column :
+                request.getIngestionDataFrame().getSerializedDataColumnsList()) {
+            bucketList.add(serializedDataColumnBucketDocument(request, column));
         }
 
         return bucketList;

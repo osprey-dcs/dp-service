@@ -168,7 +168,7 @@ public abstract class IngestionBenchmarkBase {
      */
     private static IngestDataRequest.IngestionDataFrame.Builder buildDataTableTemplate(IngestionTaskParams params) {
 
-        IngestDataRequest.IngestionDataFrame.Builder dataTableBuilder =
+        IngestDataRequest.IngestionDataFrame.Builder ingestionDataFrameBuilder =
                 IngestDataRequest.IngestionDataFrame.newBuilder();
 
         // build list of Data objects (columns), each a list of Datum objects (cell values)
@@ -199,18 +199,12 @@ public abstract class IngestionBenchmarkBase {
         }
 
         if (params.useSerializedDataColumns) {
-            dataTableBuilder.setSerializedDataColumns(
-                    SerializedDataColumnList.newBuilder()
-                            .addAllSerializedDataColumns(serializedDataColumnList)
-                            .build());
+            ingestionDataFrameBuilder.addAllSerializedDataColumns(serializedDataColumnList);
         } else {
-            dataTableBuilder.setDataColumns(
-                    DataColumnList.newBuilder().
-                            addAllDataColumns(dataColumnList)
-                            .build());
+            ingestionDataFrameBuilder.addAllDataColumns(dataColumnList);
         }
 
-        return dataTableBuilder;
+        return ingestionDataFrameBuilder;
     }
 
     protected static IngestDataRequest prepareIngestionRequest(

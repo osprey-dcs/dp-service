@@ -106,14 +106,8 @@ public class IngestDataJob extends HandlerJob {
                         } else {
 
                             long recordsInsertedCount = insertManyResult.getInsertedIds().size();
-
-                            long recordsExpected = 0;
-                            if (request.getIngestionDataFrame().hasDataColumns()) {
-                                recordsExpected = request.getIngestionDataFrame().getDataColumns().getDataColumnsCount();
-                            } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
-                                recordsExpected =
-                                        request.getIngestionDataFrame().getSerializedDataColumns().getSerializedDataColumnsCount();
-                            }
+                            long recordsExpected = request.getIngestionDataFrame().getDataColumnsCount()
+                                    + request.getIngestionDataFrame().getSerializedDataColumnsCount();
 
                             if (recordsInsertedCount != recordsExpected) {
                                 // check records inserted matches expected

@@ -15,14 +15,8 @@ public class IngestionValidationUtility {
         String providerId = request.getProviderId();
         String requestId = request.getClientRequestId();
 
-        int numRequestColumns = 0;
-        if (request.getIngestionDataFrame().hasDataColumns()) {
-            numRequestColumns = request.getIngestionDataFrame().getDataColumns().getDataColumnsCount();
-        } else if (request.getIngestionDataFrame().hasSerializedDataColumns()) {
-            numRequestColumns =
-                    request.getIngestionDataFrame().getSerializedDataColumns().getSerializedDataColumnsCount();
-        }
-
+        int numRequestColumns = request.getIngestionDataFrame().getDataColumnsCount()
+                + request.getIngestionDataFrame().getSerializedDataColumnsCount();
         int numRequestRows = IngestionServiceImpl.getNumRequestRows(request);
 
         // validate request
@@ -48,19 +42,27 @@ public class IngestionValidationUtility {
             statusMsg = "columns list cannot be empty";
 
         } else {
-            if (request.getIngestionDataFrame().hasDataColumns()) {
-                for (DataColumn column : request.getIngestionDataFrame().getDataColumns().getDataColumnsList()) {
-                    if (column.getDataValuesList().size() != numRequestRows) {
-                        // validate column sizes
-                        isError = true;
-                        statusMsg = "column: " + column.getName() + " size: " + column.getDataValuesList().size()
-                                + " mismatch numValues: " + numRequestRows;
-                    } else if (column.getName() == null || column.getName().isEmpty()) {
-                        // check that column name is provided
-                        isError = true;
-                        statusMsg = "name must be specified for all data columns";
-                    }
-                    break;
+
+            // validate DataColumns
+            for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
+                if (column.getDataValuesList().size() != numRequestRows) {
+                    // validate column sizes
+                    isError = true;
+                    statusMsg = "column: " + column.getName() + " size: " + column.getDataValuesList().size()
+                            + " mismatch numValues: " + numRequestRows;
+                } else if (column.getName() == null || column.getName().isEmpty()) {
+                    // check that column name is provided
+                    isError = true;
+                    statusMsg = "name must be specified for all DataColumns";
+                }
+            }
+
+            // validate SerializedDatacolumns
+            for (SerializedDataColumn serializedDataColumn : request.getIngestionDataFrame().getSerializedDataColumnsList()) {
+                if (serializedDataColumn.getName() == null || serializedDataColumn.getName().isEmpty()) {
+                    // check that column name is provided
+                    isError = true;
+                    statusMsg = "name must be specified for all SerializedDataColumns";
                 }
             }
         }

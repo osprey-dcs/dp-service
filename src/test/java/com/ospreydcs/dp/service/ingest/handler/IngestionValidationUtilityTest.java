@@ -187,7 +187,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
-        assertTrue(result.msg.equals("name must be specified for all data columns"));
+        assertTrue(result.msg.equals("name must be specified for all DataColumns"));
     }
 
 }

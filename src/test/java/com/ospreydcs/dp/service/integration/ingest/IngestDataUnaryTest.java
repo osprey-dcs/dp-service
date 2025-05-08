@@ -73,7 +73,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
                     ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                     response.getExceptionalResult().getExceptionalResultStatus());
             assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-            assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all data columns"));
+            assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all DataColumns"));
         }
 
         {
