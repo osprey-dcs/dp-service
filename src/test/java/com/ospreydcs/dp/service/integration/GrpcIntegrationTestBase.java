@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
@@ -715,8 +716,25 @@ public abstract class GrpcIntegrationTestBase {
                     bucketDocument.getDataTimestamps().getLastTime().getDateTime());
 
             // compare data value vectors
-            final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
-            final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
+            DataColumn requestDataColumn = null;
+
+            if (params.useSerializedDataColumns) {
+                // request contains SerializedDataColumns
+                final List<SerializedDataColumn> serializedDataColumnList =
+                        request.getIngestionDataFrame().getSerializedDataColumnsList();
+                final SerializedDataColumn serializedDataColumn = serializedDataColumnList.get(pvIndex);
+                // deserialize column for comparison
+                try {
+                    requestDataColumn = DataColumn.parseFrom(serializedDataColumn.getDataColumnBytes());
+                } catch (InvalidProtocolBufferException e) {
+                    fail("exception deserializing DataColumn: " + e.getMessage());
+                }
+
+            } else {
+                // request contains regular DataColumns
+                final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
+                requestDataColumn = dataColumnList.get(pvIndex);
+            }
             // this compares each DataValue including ValueStatus, confirmed in debugger
             assertEquals(requestDataColumn, bucketDataColumn);
 
@@ -860,7 +878,7 @@ public abstract class GrpcIntegrationTestBase {
                             columnInfo.eventStartSeconds,
                             columnInfo.eventStartNanos,
                             columnInfo.eventStopSeconds,
-                            columnInfo.eventStopNanos);
+                            columnInfo.eventStopNanos, false);
             paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);

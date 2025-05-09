@@ -290,7 +290,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         null,
-                        null);
+                        null, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -341,7 +341,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         null,
-                        null);
+                        null, false);
 
         // override the column data with both string and float data, to trigger mismatch exception
         List<DataColumn> dataColumnList = new ArrayList<>();
@@ -404,7 +404,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         firstSeconds + 1,
-                        firstNanos + 999_000_000L);
+                        firstNanos + 999_000_000L, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -463,7 +463,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         firstSeconds + 1,
-                        firstNanos + 999_000_000L);
+                        firstNanos + 999_000_000L, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -511,7 +511,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         firstSeconds + 1,
-                        firstNanos + 999_000_000L);
+                        firstNanos + 999_000_000L, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -559,7 +559,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         firstSeconds + 1,
-                        firstNanos + 999_000_000L);
+                        firstNanos + 999_000_000L, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses
@@ -611,7 +611,7 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
                         firstSeconds,
                         firstNanos,
                         firstSeconds + 1,
-                        firstNanos + 999_000_000L);
+                        firstNanos + 999_000_000L, false);
         IngestDataRequest request = buildIngestionRequest(params);
 
         // send request and examine responses

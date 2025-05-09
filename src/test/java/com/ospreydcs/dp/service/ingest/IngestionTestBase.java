@@ -54,6 +54,7 @@ public class IngestionTestBase {
         public Long eventStartNanos = null;
         public Long eventStopSeconds = null;
         public Long eventStopNanos = null;
+        public final boolean useSerializedDataColumns;
 
         public IngestionRequestParams(
                 String providerId,
@@ -69,7 +70,8 @@ public class IngestionTestBase {
                 List<String> columnNames,
                 IngestionDataType dataType,
                 List<List<Object>> values,
-                List<List<DataValue.ValueStatus>> valuesStatus
+                List<List<DataValue.ValueStatus>> valuesStatus,
+                boolean useSerializedDataColumns
         ) {
             this.providerId = providerId;
             this.requestId = requestId;
@@ -85,6 +87,7 @@ public class IngestionTestBase {
             this.dataType = dataType;
             this.values = values;
             this.valuesStatus = valuesStatus;
+            this.useSerializedDataColumns = useSerializedDataColumns;
         }
 
         public IngestionRequestParams(
@@ -107,7 +110,9 @@ public class IngestionTestBase {
                 Long eventStartSeconds,
                 Long eventStartNanos,
                 Long eventStopSeconds,
-                Long eventStopNanos) {
+                Long eventStopNanos,
+                boolean useSerializedDataColumns
+        ) {
 
             this(
                     providerId,
@@ -123,7 +128,8 @@ public class IngestionTestBase {
                     columnNames,
                     dataType,
                     values,
-                    null);
+                    null,
+                    useSerializedDataColumns);
 
             this.tags = tags;
             this.attributes = attributes;
@@ -204,12 +210,15 @@ public class IngestionTestBase {
         }
 
         // create list of columns
+        final List<DataColumn> frameColumns = new ArrayList<>();
+
         if (dataColumnList != null) {
-            for (DataColumn column : dataColumnList) {
-                dataFrameBuilder.addDataColumns(column);
-            }
+            // use list of columns if provided by caller
+            frameColumns.addAll(dataColumnList);
 
         } else if (params.columnNames != null) {
+            // otherwise create columns from params
+
             assertTrue(params.values != null);
             assertEquals(params.columnNames.size(), params.values.size());
             if (params.valuesStatus != null) {
@@ -274,8 +283,25 @@ public class IngestionTestBase {
                     valueIndex++;
                 }
 
-                dataFrameBuilder.addDataColumns(dataColumnBuilder.build());
+                frameColumns.add(dataColumnBuilder.build());
             }
+        }
+
+        // add DataColumns or SerializedDataColumns
+        if (params.useSerializedDataColumns) {
+            // add SerializedDataColumns as specified in params
+            for (DataColumn dataColumn : frameColumns) {
+                final SerializedDataColumn serializedDataColumn =
+                        SerializedDataColumn.newBuilder()
+                                .setName(dataColumn.getName())
+                                .setDataColumnBytes(dataColumn.toByteString())
+                                .build();
+                dataFrameBuilder.addSerializedDataColumns(serializedDataColumn);
+            }
+
+        } else {
+            // add regular DataColumns
+            dataFrameBuilder.addAllDataColumns(frameColumns);
         }
 
         // add tags if specified

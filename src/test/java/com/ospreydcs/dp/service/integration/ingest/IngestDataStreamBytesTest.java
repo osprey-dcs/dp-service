@@ -8,9 +8,12 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
-public class IngestDataStreamTest extends GrpcIntegrationTestBase {
+public class IngestDataStreamBytesTest extends GrpcIntegrationTestBase {
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -23,7 +26,7 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void unidirectionalStreamTest() {
+    public void testIngestDataStreamBytes() {
 
         // register provider
         String providerId = null;
@@ -61,7 +64,7 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
                                 IngestionTestBase.IngestionDataType.DOUBLE,
                                 values,
                                 null,
-                                false);
+                                true);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);
@@ -89,7 +92,7 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
                                 IngestionTestBase.IngestionDataType.DOUBLE,
                                 values,
                                 null,
-                                false);
+                                true);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);
@@ -99,68 +102,6 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
             sendAndVerifyIngestDataStream(paramsList, requestList, false, "");
         }
 
-        // negative test case, rejection
-        {
-            // create containers
-            final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
-            final List<IngestDataRequest> requestList = new ArrayList<>();
-
-            // create valid request
-            {
-                final String requestId = "request-3";
-                final List<String> columnNames = Arrays.asList("PV_03"); // use different pv name than above or will get failures due to duplicate database id
-                final List<List<Object>> values = Arrays.asList(Arrays.asList(3.03));
-                final Instant instantNow = Instant.now();
-                final IngestionTestBase.IngestionRequestParams params =
-                        new IngestionTestBase.IngestionRequestParams(
-                                providerId,
-                                requestId,
-                                null,
-                                null,
-                                null,
-                                null,
-                                instantNow.getEpochSecond(),
-                                0L,
-                                1_000_000L,
-                                1,
-                                columnNames,
-                                IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null, false);
-                final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                paramsList.add(params);
-                requestList.add(request);
-            }
-
-            // create invalid request, rejected due to invalid pv name
-            {
-                final String requestId = "request-4";
-                final List<String> columnNames = Arrays.asList(""); // should be rejected for empty pv name
-                final List<List<Object>> values = Arrays.asList(Arrays.asList(4.04));
-                final Instant instantNow = Instant.now();
-                final IngestionTestBase.IngestionRequestParams params =
-                        new IngestionTestBase.IngestionRequestParams(
-                                providerId,
-                                requestId,
-                                null,
-                                null,
-                                null,
-                                null,
-                                instantNow.getEpochSecond(),
-                                0L,
-                                1_000_000L,
-                                1,
-                                columnNames,
-                                IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null, false);
-                final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                paramsList.add(params);
-                requestList.add(request);
-            }
-
-            // send request and examine response
-            sendAndVerifyIngestDataStream(
-                    paramsList, requestList, true, "one or more requests were rejected");
-        }
     }
 
 }

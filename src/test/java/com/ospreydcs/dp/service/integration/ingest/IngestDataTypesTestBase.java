@@ -104,7 +104,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples, // each DataColumn must contain 5 DataValues
                             pvNames,
                             null,
-                            null, null);
+                            null, null, false);
 
             // build list of DataColumns
             arrayDataColumnList = new ArrayList<>(pvNames.size());
@@ -244,7 +244,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples, // each DataColumn must contain 5 DataValues
                             pvNames,
                             null,
-                            null, null);
+                            null, null, false);
 
             // build list of DataColumns
             final List<DataColumn> dataColumnList = new ArrayList<>();
@@ -363,7 +363,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             numSamples,
                             pvNames,
                             null,
-                            null, null);
+                            null, null, false);
 
             // build list of DataColumns
             final List<DataColumn> dataColumnList = new ArrayList<>();
