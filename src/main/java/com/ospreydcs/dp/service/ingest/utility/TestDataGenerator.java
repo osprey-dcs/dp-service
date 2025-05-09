@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.ingest.utility;
 
-import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkBidiStreamingIngestion;
+import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkIngestDataBidiStream;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -9,7 +9,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.TimeUnit;
 
-public class TestDataGenerator extends BenchmarkBidiStreamingIngestion {
+public class TestDataGenerator extends BenchmarkIngestDataBidiStream {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();

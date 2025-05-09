@@ -16,7 +16,7 @@ import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
-import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkBidiStreamingIngestion;
+import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkIngestDataBidiStream;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import com.ospreydcs.dp.service.query.benchmark.*;
 import io.grpc.Channel;
@@ -60,7 +60,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static final int QUERY_SINGLE_NUM_PVS_PER_REQUEST = 1;
 
 
-    private static class IntegrationTestStreamingIngestionApp extends BenchmarkBidiStreamingIngestion {
+    private static class IntegrationTestStreamingIngestionApp extends BenchmarkIngestDataBidiStream {
 
         private static class IntegrationTestIngestionRequestInfo {
             public final String providerId;

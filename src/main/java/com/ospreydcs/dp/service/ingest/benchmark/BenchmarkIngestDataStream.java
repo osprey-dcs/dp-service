@@ -3,7 +3,7 @@ package com.ospreydcs.dp.service.ingest.benchmark;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataStreamResponse;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -11,74 +11,54 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.CountDownLatch;
 
-public class BenchmarkBidiStreamingIngestion extends IngestionBenchmarkBase {
+public class BenchmarkIngestDataStream extends IngestionBenchmarkBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    /**
-     * Implements Callable interface for an executor service task that submits a stream
-     * of ingestion requests of specified dimensions,
-     * with one request per second for specified number of seconds.
-     */
-    protected static class BidiStreamingIngestionTask extends IngestionTask {
+    protected static class UniStreamingIngestionTask extends IngestionTask {
 
-        public BidiStreamingIngestionTask(
+        public UniStreamingIngestionTask(
                 IngestionTaskParams params,
                 IngestDataRequest.IngestionDataFrame.Builder templateDataFrameBuilder,
-                Channel channel) {
-
+                Channel channel
+        ) {
             super(params, templateDataFrameBuilder, channel);
         }
 
         public IngestionTaskResult call() {
-            IngestionTaskResult result = sendBidiStreamingIngestionRequest(
+            IngestionTaskResult result = sendUniStreamingIngestionRequest(
                     this.params, this.templdateDataFrameBuilder, this.channel);
             return result;
         }
 
-        protected void onResponse(IngestDataResponse response) {
+        protected void onResponse(IngestDataStreamResponse response) {
             // hook for subclasses to add validation, default is to do nothing so we don't slow down the benchmark
         }
 
-        /**
-         * Invokes streamingIngestion gRPC API with request dimensions and properties
-         * as specified in the params.
-         * @param params
-         * @return
-         */
-        private IngestionTaskResult sendBidiStreamingIngestionRequest(
+        private IngestionTaskResult sendUniStreamingIngestionRequest(
                 IngestionTaskParams params,
                 IngestDataRequest.IngestionDataFrame.Builder templateDataTable,
                 Channel channel
         ) {
             final int streamNumber = params.streamNumber;
-            final int numSeconds = params.numSeconds;
-            final int numRows = params.numRows;
-            final int numColumns = params.numColumns;
+            final int numRequests = params.numSeconds;
 
             final CountDownLatch finishLatch = new CountDownLatch(1);
-            final CountDownLatch responseLatch = new CountDownLatch(numSeconds);
+            final CountDownLatch responseLatch = new CountDownLatch(1);
             final boolean[] responseError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
             final boolean[] runtimeError = {false}; // must be final for access by inner class, but we need to modify the value, so final array
 
-            /**
-             * Implements StreamObserver interface for API response stream.
-             */
-            StreamObserver<IngestDataResponse> responseObserver = new StreamObserver<IngestDataResponse>() {
+            StreamObserver<IngestDataStreamResponse> responseObserver = new StreamObserver<>() {
 
-                /**
-                 * Handles an IngestionResponse object in the API response stream.  Checks properties
-                 * of response are as expected.
-                 * @param response
-                 */
                 @Override
-                public void onNext(IngestDataResponse response) {
-
+                public void onNext(
+                        IngestDataStreamResponse response
+                ) {
                     responseLatch.countDown();
 
-                    if (!response.hasAckResult()) {
-                        // unexpected response
+                    if (response.hasExceptionalResult()) {
+
                         if (response.getExceptionalResult().getExceptionalResultStatus()
                                 == ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT) {
                             logger.error("received reject with msg: "
@@ -87,36 +67,28 @@ public class BenchmarkBidiStreamingIngestion extends IngestionBenchmarkBase {
                             logger.error("unexpected responseType: "
                                     + response.getExceptionalResult().getExceptionalResultStatus().getDescriptorForType());
                         }
+
                         responseError[0] = true;
                         finishLatch.countDown();
-                        return;
 
-                    } else {
+                    } else if (response.hasIngestDataStreamResult()) {
+                        IngestDataStreamResponse.IngestDataStreamResult result = response.getIngestDataStreamResult();
 
-                        int rowCount = response.getAckResult().getNumRows();
-                        int colCount = response.getAckResult().getNumColumns();
-                        String requestId = response.getClientRequestId();
-                        logger.trace("stream: {} received response for requestId: {}", streamNumber, requestId);
+                        logger.trace(
+                                "stream: {} received response for {} requests",
+                                streamNumber,
+                                result.getNumRequests());
 
-                        if (rowCount != numRows) {
-                            logger.error(
-                                    "stream: {} response rowCount: {} doesn't match expected rowCount: {}",
-                                    streamNumber, rowCount, numRows);
-                            responseError[0] = true;
-                            finishLatch.countDown();
-                            return;
-
-                        }
-                        if (colCount != numColumns) {
-                            logger.error(
-                                    "stream: {} response colCount: {} doesn't match expected colCount: {}",
-                                    streamNumber, colCount, numColumns);
+                        if (result.getNumRequests() != numRequests) {
+                            logger.error("stream: {} numRequests: {} mismatch expected: {}",
+                                    streamNumber,
+                                    result.getNumRequests(),
+                                    numRequests);
                             responseError[0] = true;
                             finishLatch.countDown();
                             return;
                         }
 
-                        // call hook for subclasses to add validation
                         try {
                             onResponse(response);
                         } catch (AssertionError assertionError) {
@@ -128,48 +100,43 @@ public class BenchmarkBidiStreamingIngestion extends IngestionBenchmarkBase {
                             responseError[0] = true;
                             return;
                         }
-
                     }
                 }
 
-                /**
-                 * Handles error in API response stream.  Logs error message and terminates stream.
-                 * @param t
-                 */
                 @Override
-                public void onError(Throwable t) {
+                public void onError(
+                        Throwable t
+                ) {
                     Status status = Status.fromThrowable(t);
-                    logger.error("stream: {} ingestDataBidiStream() Failed status: {} message: {}",
+                    logger.error("stream: {} ingestDataUniStream() Failed status: {} message: {}",
                             streamNumber, status, t.getMessage());
                     runtimeError[0] = true;
                     finishLatch.countDown();
                 }
 
-                /**
-                 * Handles completion of API response stream.  Logs message and terminates stream.
-                 */
                 @Override
-                public void onCompleted() {
-                    logger.trace("stream: {} Finished ingestDataBidiStream()", streamNumber);
+                public void onCompleted(
+                ) {
+                    logger.trace("stream: {} Finished ingestDataUniStream()", streamNumber);
                     finishLatch.countDown();
                 }
             };
 
             final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub = DpIngestionServiceGrpc.newStub(channel);
-            final StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataBidiStream(responseObserver);
+            StreamObserver<IngestDataRequest> requestObserver = asyncStub.ingestDataStream(responseObserver);
             return sendRequestStream(
                     this, requestObserver, finishLatch, responseLatch, responseError, runtimeError);
         }
     }
 
-    protected BidiStreamingIngestionTask newIngestionTask(
+    protected UniStreamingIngestionTask newIngestionTask(
             IngestionTaskParams params, IngestDataRequest.IngestionDataFrame.Builder templateDataTable, Channel channel
     ) {
-        return new BidiStreamingIngestionTask(params, templateDataTable, channel);
+        return new UniStreamingIngestionTask(params, templateDataTable, channel);
     }
 
     public static void main(final String[] args) {
-        BenchmarkBidiStreamingIngestion benchmark = new BenchmarkBidiStreamingIngestion();
+        BenchmarkIngestDataStream benchmark = new BenchmarkIngestDataStream();
         runBenchmark(benchmark, false);
     }
 
