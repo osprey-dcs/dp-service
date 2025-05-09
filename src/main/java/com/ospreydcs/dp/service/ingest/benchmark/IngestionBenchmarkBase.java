@@ -617,8 +617,10 @@ public abstract class IngestionBenchmarkBase {
 
 
         // set up arrays of parameters to sweep
-        final int[] numThreadsArray = {1, 3, 5, 7};
-        final int[] numStreamsArray = {20, 50, 75, 100};
+//        final int[] numThreadsArray = {1, 3, 5, 7};
+//        final int[] numStreamsArray = {20, 50, 75, 100};
+        final int[] numThreadsArray = {5};
+        final int[] numStreamsArray = {50};
         Map<String, Double> writeRateMap = new TreeMap<>();
         for (int numThreads : numThreadsArray) {
             for (int numStreams : numStreamsArray) {
