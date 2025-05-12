@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
@@ -167,14 +168,17 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             // 2 buckets for quarters (5 secs/bucket)
             final int numBucketsExpected = 12;
 
-            sendAndVerifyQueryDataStream(
-                    numBucketsExpected,
+            final QueryTestBase.QueryDataRequestParams params = new QueryTestBase.QueryDataRequestParams(
                     queryColumnNamesBucket,
                     queryStartSecondsBucket,
                     queryStartNanosBucket,
                     queryEndSecondsBucket,
                     queryEndNanosBucket,
-                    validationMap, false, "");
+                    false
+            );
+
+            sendAndVerifyQueryDataStream(
+                    numBucketsExpected, params, validationMap, false, "");
         }
     }
 

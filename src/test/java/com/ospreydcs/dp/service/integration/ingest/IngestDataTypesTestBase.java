@@ -202,8 +202,18 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             // perform query for single pv and verify results
             final List<String> queryPvNames = Arrays.asList("array_pv_01");
             final DataColumn requestColumn = arrayDataColumnList.get(0);
+
+            final QueryTestBase.QueryDataRequestParams queryDataRequestParams =
+                    new QueryTestBase.QueryDataRequestParams(
+                            queryPvNames,
+                            startSeconds,
+                            startNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
+                    queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
@@ -306,8 +316,19 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             // perform query for single pv and verify results
             final List<String> queryPvNames = Arrays.asList("image_pv_01");
             final DataColumn requestColumn = dataColumnList.get(0);
+
+            final QueryTestBase.QueryDataRequestParams queryDataRequestParams =
+                    new QueryTestBase.QueryDataRequestParams(
+                            queryPvNames,
+                            startSeconds,
+                            startNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
+
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
+                    queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
@@ -590,8 +611,19 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
             // perform query for single pv and verify results
             final List<String> queryPvNames = Arrays.asList("structure_pv_01");
             final DataColumn requestColumn = dataColumnList.get(0);
+
+            final QueryTestBase.QueryDataRequestParams queryDataRequestParams =
+                    new QueryTestBase.QueryDataRequestParams(
+                            queryPvNames,
+                            startSeconds,
+                            startNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
+
             final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, startNanos, endSeconds, endNanos, false, "");
+                    queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);

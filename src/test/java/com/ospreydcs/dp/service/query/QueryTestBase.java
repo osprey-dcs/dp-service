@@ -24,56 +24,25 @@ public class QueryTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    public static class QueryDataRequestParams {
-
-        public List<String> columnNames = null;
-        public Long startTimeSeconds = null;
-        public Long startTimeNanos = null;
-        public Long endTimeSeconds = null;
-        public Long endTimeNanos = null;
-
-        public QueryDataRequestParams(
-                List<String> columnNames,
-                Long startTimeSeconds,
-                Long startTimeNanos,
-                Long endTimeSeconds,
-                Long endTimeNanos) {
-
-            this.columnNames = columnNames;
-            this.startTimeSeconds = startTimeSeconds;
-            this.startTimeNanos = startTimeNanos;
-            this.endTimeSeconds = endTimeSeconds;
-            this.endTimeNanos = endTimeNanos;
-        }
+    public record QueryDataRequestParams(
+            List<String> columnNames,
+            Long beginTimeSeconds,
+            Long beginTimeNanos,
+            Long endTimeSeconds,
+            Long endTimeNanos,
+            boolean useSerializedDataColumns
+    ) {
     }
 
-    public static class QueryTableRequestParams {
-
-        QueryTableRequest.TableResultFormat tableResultFormat = null;
-        public List<String> pvNameList = null;
-        public String pvNamePattern = null;
-        public Long beginTimeSeconds = null;
-        public Long beginTimeNanos = null;
-        public Long endTimeSeconds = null;
-        public Long endTimeNanos = null;
-
-        public QueryTableRequestParams(
-                QueryTableRequest.TableResultFormat tableResultFormat,
-                List<String> pvNameList,
-                String pvNamePattern,
-                Long beginTimeSeconds,
-                Long beginTimeNanos,
-                Long endTimeSeconds,
-                Long endTimeNanos) {
-
-            this.tableResultFormat = tableResultFormat;
-            this.pvNameList = pvNameList;
-            this.pvNamePattern = pvNamePattern;
-            this.beginTimeSeconds = beginTimeSeconds;
-            this.beginTimeNanos = beginTimeNanos;
-            this.endTimeSeconds = endTimeSeconds;
-            this.endTimeNanos = endTimeNanos;
-        }
+    public record QueryTableRequestParams(
+            QueryTableRequest.TableResultFormat tableResultFormat,
+            List<String> pvNameList,
+            String pvNamePattern,
+            Long beginTimeSeconds,
+            Long beginTimeNanos,
+            Long endTimeSeconds,
+            Long endTimeNanos
+    ) {
     }
 
     public static class QueryProvidersRequestParams {
@@ -113,10 +82,10 @@ public class QueryTestBase {
             querySpecBuilder.addAllPvNames(params.columnNames);
         }
         
-        if (params.startTimeSeconds != null) {
+        if (params.beginTimeSeconds != null) {
             final Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-            beginTimeBuilder.setEpochSeconds(params.startTimeSeconds);
-            if (params.startTimeNanos != null) beginTimeBuilder.setNanoseconds(params.startTimeNanos);
+            beginTimeBuilder.setEpochSeconds(params.beginTimeSeconds);
+            if (params.beginTimeNanos != null) beginTimeBuilder.setNanoseconds(params.beginTimeNanos);
             beginTimeBuilder.build();
             querySpecBuilder.setBeginTime(beginTimeBuilder);
         }
@@ -128,6 +97,9 @@ public class QueryTestBase {
             endTimeBuilder.build();
             querySpecBuilder.setEndTime(endTimeBuilder);
         }
+
+        // specify whether to use SerializedDataColumns or regular DataColumns
+        querySpecBuilder.setUseSerializedDataColumns(params.useSerializedDataColumns);
 
         querySpecBuilder.build();
         requestBuilder.setQuerySpec(querySpecBuilder);

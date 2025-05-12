@@ -7,13 +7,10 @@ import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 
 import java.util.List;
 
-@RunWith(JUnit4.class)
-public class QueryDataTest extends GrpcIntegrationTestBase {
+public class QueryDataStreamBytesTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -29,7 +26,7 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testQueryData() {
+    public void testQueryDataStream() {
 
         // use request data contained by validationMap to verify query results
         IngestionScenarioResult ingestionScenarioResult;
@@ -41,7 +38,7 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             ingestionScenarioResult = simpleIngestionScenario();
         }
 
-        // positive queryData() test case, empty query result
+        // positive queryDataStream() test case, empty query result
         {
             final List<String> pvNames = List.of("junk", "stuff"); // bogus PV names
 
@@ -51,21 +48,23 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             final long beginNanos = 0L;
             final long endSeconds = startSeconds + 6;
             final long endNanos = 0L;
+            final boolean useSerializedDataColumns = true;
+
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(
+                            pvNames,
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos,
+                            useSerializedDataColumns
+                    );
 
             final int numBucketsExpected = 0; // we expect an empty response
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
 
-            final QueryTestBase.QueryDataRequestParams params =
-                    new QueryTestBase.QueryDataRequestParams(pvNames,
-                            beginSeconds,
-                            beginNanos,
-                            endSeconds,
-                            endNanos,
-                            false
-                    );
-
-            sendAndVerifyQueryData(
+            sendAndVerifyQueryDataStream(
                     numBucketsExpected,
                     params,
                     ingestionScenarioResult.validationMap,
@@ -74,7 +73,7 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             );
         }
 
-        // positive queryData() test case
+        // positive queryDataStream() test case
         {
             final List<String> pvNames = List.of("S01-GCC01", "S01-BPM01");
 
@@ -84,11 +83,10 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             final long beginNanos = 0L;
             final long endSeconds = startSeconds + 6;
             final long endNanos = 0L;
+            final boolean useSerializedDataColumns = true;
 
             // 2 pvs, 5 seconds, 1 bucket per second per pv
             final int numBucketsExpected = 10;
-            final boolean expectReject = false;
-            final String expectedRejectMessage = "";
 
             final QueryTestBase.QueryDataRequestParams params =
                     new QueryTestBase.QueryDataRequestParams(pvNames,
@@ -96,15 +94,15 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
                             beginNanos,
                             endSeconds,
                             endNanos,
-                            false
+                            useSerializedDataColumns
                     );
 
-            sendAndVerifyQueryData(
+            sendAndVerifyQueryDataStream(
                     numBucketsExpected,
                     params,
                     ingestionScenarioResult.validationMap,
-                    expectReject,
-                    expectedRejectMessage
+                    false,
+                    ""
             );
         }
     }

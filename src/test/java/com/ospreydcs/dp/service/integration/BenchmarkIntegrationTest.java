@@ -18,6 +18,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkIngestDataBidiStream;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.benchmark.*;
 import io.grpc.Channel;
 import org.apache.logging.log4j.LogManager;
@@ -754,13 +755,19 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             final String expectedRejectMessage =
                     "query returned more data than will fit in single QueryResponse message";
 
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(
+                            pvNames,
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
+
             sendAndVerifyQueryData(
                     numBucketsExpected,
-                    pvNames,
-                    beginSeconds,
-                    beginNanos,
-                    endSeconds,
-                    endNanos,
+                    params,
                     null,
                     expectReject,
                     expectedRejectMessage

@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -199,8 +200,18 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
 
                             final int numBucketsExpected = 2;
 
+                            final QueryTestBase.QueryDataRequestParams params =
+                                    new QueryTestBase.QueryDataRequestParams(
+                                            queryPvNames,
+                                            queryBeginSeconds,
+                                            queryBeginNanos,
+                                            queryEndSeconds,
+                                            queryEndNanos,
+                                            false
+                                    );
+
                             final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
-                                    queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos, false, "");
+                                    queryDataStream(params, false, "");
                             assertEquals(numBucketsExpected, queryResultBuckets.size());
                             for (String pvName : queryPvNames) {
                                 boolean foundPvBucket = false;

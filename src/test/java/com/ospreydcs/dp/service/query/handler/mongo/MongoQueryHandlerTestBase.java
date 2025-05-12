@@ -103,8 +103,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
-        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver, null);
-        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataStreamDispatcher dispatcher =
+                new QueryDataStreamDispatcher(responseObserver, request.getQuerySpec());
+        final QueryDataJob job =
+                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         return responseList;
@@ -161,9 +163,11 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
-        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver, null);
+        final QueryDataBidiStreamDispatcher dispatcher =
+                new QueryDataBidiStreamDispatcher(responseObserver, request.getQuerySpec());
         responseObserver.setDispatcher(dispatcher);
-        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataJob job =
+                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         // check if RPC already completed
@@ -256,7 +260,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
                 startSeconds,
                 0L,
                 startSeconds + 5,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch result using ResponseStreamDispatcher
@@ -275,7 +279,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
                 startSeconds,
                 0L,
                 startSeconds + 5,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch using ResponseCursorDispatcher

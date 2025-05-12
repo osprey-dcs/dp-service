@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
@@ -55,16 +56,22 @@ public class QueryDataStreamTest extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
 
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(pvNames,
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
+
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
-                    pvNames,
-                    beginSeconds,
-                    beginNanos,
-                    endSeconds,
-                    endNanos,
+                    params,
                     ingestionScenarioResult.validationMap,
                     expectReject,
-                    expectedRejectMessage);
+                    expectedRejectMessage
+            );
         }
 
         // positive queryDataStream() test case
@@ -81,14 +88,22 @@ public class QueryDataStreamTest extends GrpcIntegrationTestBase {
             // 2 pvs, 5 seconds, 1 bucket per second per pv
             final int numBucketsExpected = 10;
 
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(pvNames,
+                            beginSeconds,
+                            beginNanos,
+                            endSeconds,
+                            endNanos,
+                            false
+                    );
+
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
-                    pvNames,
-                    beginSeconds,
-                    beginNanos,
-                    endSeconds,
-                    endNanos,
-                    ingestionScenarioResult.validationMap, false, "");
+                    params,
+                    ingestionScenarioResult.validationMap,
+                    false,
+                    ""
+            );
         }
     }
 

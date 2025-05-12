@@ -215,7 +215,7 @@ public class QueryGrpcTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request
@@ -247,7 +247,7 @@ public class QueryGrpcTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request

@@ -1316,11 +1316,11 @@ public abstract class GrpcIntegrationTestBase {
 
             // check that timestamp is in query time range
             assertTrue(
-                    (timestampSeconds > params.beginTimeSeconds)
-                            || (timestampSeconds == params.beginTimeSeconds && timestampNanos >= params.beginTimeNanos));
+                    (timestampSeconds > params.beginTimeSeconds())
+                            || (timestampSeconds == params.beginTimeSeconds() && timestampNanos >= params.beginTimeNanos()));
             assertTrue(
-                    (timestampSeconds < params.endTimeSeconds)
-                            || (timestampSeconds == params.endTimeSeconds && timestampNanos <= params.endTimeNanos));
+                    (timestampSeconds < params.endTimeSeconds())
+                            || (timestampSeconds == params.endTimeSeconds() && timestampNanos <= params.endTimeNanos()));
 
             for (DataColumn dataColumn : resultColumnTable.getDataColumnsList()) {
                 // get column name and value from query result
@@ -1444,11 +1444,11 @@ public abstract class GrpcIntegrationTestBase {
             final long resultRowSeconds = resultRowTimestamp.getEpochSeconds();
             final long resultRowNanos = resultRowTimestamp.getNanoseconds();
             assertTrue(
-                    (resultRowSeconds > params.beginTimeSeconds)
-                            || (resultRowSeconds == params.beginTimeSeconds && resultRowNanos >= params.beginTimeNanos));
+                    (resultRowSeconds > params.beginTimeSeconds())
+                            || (resultRowSeconds == params.beginTimeSeconds() && resultRowNanos >= params.beginTimeNanos()));
             assertTrue(
-                    (resultRowSeconds < params.endTimeSeconds)
-                            || (resultRowSeconds == params.endTimeSeconds && resultRowNanos <= params.endTimeNanos));
+                    (resultRowSeconds < params.endTimeSeconds())
+                            || (resultRowSeconds == params.endTimeSeconds() && resultRowNanos <= params.endTimeNanos()));
 
             // verify value for each column in row
             for (String columnName : pvNameList) {
@@ -1521,20 +1521,30 @@ public abstract class GrpcIntegrationTestBase {
 
     private void verifyQueryDataResult(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             List<QueryDataResponse.QueryData.DataBucket> dataBucketList
     ) {
+        final List<String> pvNames = params.columnNames();
+        final long beginSeconds = params.beginTimeSeconds();
+        final long beginNanos = params.beginTimeNanos();
+        final long endSeconds = params.endTimeSeconds();
+        final long endNanos = params.endTimeNanos();
+        final boolean useSerializedDataColumns = params.useSerializedDataColumns();
 
         // build map of buckets in query response for vallidation
-        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap =
-                new TreeMap<>();
+        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap = new TreeMap<>();
         for (QueryDataResponse.QueryData.DataBucket dataBucket : dataBucketList) {
-            final String bucketColumnName = dataBucket.getDataColumn().getName();
+
+            // get column name from either regular DataColumn or SerializedDataColumn
+            String bucketColumnName = "";
+            if (dataBucket.hasDataColumn()) {
+                bucketColumnName = dataBucket.getDataColumn().getName();
+            } else if (dataBucket.hasSerializedDataColumn()) {
+                bucketColumnName = dataBucket.getSerializedDataColumn().getName();
+            }
+            assertFalse(bucketColumnName.isBlank());
+
             final DataTimestampsUtility.DataTimestampsModel bucketDataTimestampsModel
                     = new DataTimestampsUtility.DataTimestampsModel(dataBucket.getDataTimestamps());
             final Timestamp bucketStartTimestamp = bucketDataTimestampsModel.getFirstTimestamp();
@@ -1570,15 +1580,15 @@ public abstract class GrpcIntegrationTestBase {
                         // bucket starts after query end time
                         continue;
                     }
-                    if ((columnBucketInfo.endSeconds < startSeconds)
-                            || ((columnBucketInfo.endSeconds == startSeconds) && (columnBucketInfo.endNanos < startNanos))) {
+                    if ((columnBucketInfo.endSeconds < beginSeconds)
+                            || ((columnBucketInfo.endSeconds == beginSeconds) && (columnBucketInfo.endNanos < beginNanos))) {
                         // bucket ends before query start time
                         continue;
                     }
 
                     // find the response bucket corresponding to the expected bucket
                     final QueryDataResponse.QueryData.DataBucket responseBucket =
-                            responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
+                            responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, beginNanos);
                     final DataTimestampsUtility.DataTimestampsModel responseBucketDataTimestampsModel =
                             new DataTimestampsUtility.DataTimestampsModel(responseBucket.getDataTimestamps());
 
@@ -1591,7 +1601,24 @@ public abstract class GrpcIntegrationTestBase {
 
                     // validate bucket data values
                     int valueIndex = 0;
-                    for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
+
+                    // get DataColumn from bucket, or parse from bucket's SerializedDataColumn
+                    DataColumn responseDataColumn = null;
+                    if (responseBucket.hasDataColumn()) {
+                        responseDataColumn = responseBucket.getDataColumn();
+                    } else if (responseBucket.hasSerializedDataColumn()) {
+                        try {
+                            responseDataColumn = DataColumn.parseFrom(responseBucket.getSerializedDataColumn().getDataColumnBytes());
+                        } catch (InvalidProtocolBufferException e) {
+                            fail("exception parsing DataColumn from SerializedDataColumn: " + e.getMessage());
+                        }
+                    } else {
+                        fail("responseBucket doesn't contain either DataColumn or SerializedDataColumn");
+                    }
+                    assertNotNull(responseDataColumn);
+
+                    // compare expected and actual data values
+                    for (DataValue responseDataValue : responseDataColumn.getDataValuesList()) {
 
                         final double actualDataValue = responseDataValue.getDoubleValue();
 
@@ -1686,48 +1713,30 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> queryData(
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
         final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
         return sendQueryData(request, expectReject, expectedRejectMessage);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryData(pvNames, startSeconds, startNanos, endSeconds, endNanos, expectReject, expectedRejectMessage);
+                queryData(params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertTrue(dataBucketList.isEmpty());
             return dataBucketList;
         }
 
-        verifyQueryDataResult(
-                numBucketsExpected,
-                pvNames,
-                startSeconds,
-                startNanos,
-                endSeconds,
-                endNanos,
-                validationMap,
-                dataBucketList);
+        verifyQueryDataResult(numBucketsExpected, params, validationMap, dataBucketList);
 
         return dataBucketList;
     }
@@ -1761,49 +1770,30 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
         final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
         return sendQueryDataStream(request, expectReject, expectedRejectMessage);
     }
 
     protected void sendAndVerifyQueryDataStream(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryDataStream(
-                        pvNames, startSeconds, startNanos, endSeconds, endNanos, expectReject, expectedRejectMessage);
+                queryDataStream(params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertEquals(null, dataBucketList);
             return;
         }
 
-        verifyQueryDataResult(
-                numBucketsExpected,
-                pvNames,
-                startSeconds,
-                startNanos,
-                endSeconds,
-                endNanos,
-                validationMap,
-                dataBucketList);
+        verifyQueryDataResult(numBucketsExpected, params, validationMap, dataBucketList);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataBidiStream(
@@ -1839,41 +1829,23 @@ public abstract class GrpcIntegrationTestBase {
 
     protected List<QueryDataResponse.QueryData.DataBucket> queryDataBidiStream(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
         final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
         return sendQueryDataBidiStream(request, numBucketsExpected, expectReject, expectedRejectMessage);
     }
 
     protected void sendAndVerifyQueryDataBidiStream(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
+            QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryDataBidiStream(
-                        numBucketsExpected,
-                        pvNames,
-                        startSeconds,
-                        startNanos,
-                        endSeconds,
-                        endNanos,
-                        expectReject,
-                        expectedRejectMessage);
+                queryDataBidiStream(numBucketsExpected, params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertEquals(null, dataBucketList);
@@ -1882,11 +1854,7 @@ public abstract class GrpcIntegrationTestBase {
 
         verifyQueryDataResult(
                 numBucketsExpected,
-                pvNames,
-                startSeconds,
-                startNanos,
-                endSeconds,
-                endNanos,
+                params,
                 validationMap,
                 dataBucketList);
     }
