@@ -47,7 +47,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             final List<String> expectedColumnNameMatches = new ArrayList<>();
             sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
                     true,
                     "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty",
@@ -62,7 +62,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             final boolean expectEmpty = true;
             sendAndVerifyQueryPvMetadata(
                     pvNames,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectReject,
                     expectedRejectMessage,
                     expectEmpty);
@@ -73,7 +73,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
             sendAndVerifyQueryPvMetadata(
                     queryColumnNames,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     false,
                     null,
                     false);
@@ -87,7 +87,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             final boolean expectEmpty = true;
             sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
                     false,
                     null,
@@ -101,7 +101,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
                     List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
             sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
                     false,
                     null,
@@ -118,7 +118,7 @@ public class QueryPvMetadataTest extends GrpcIntegrationTestBase {
             }
             sendAndVerifyQueryPvMetadata(
                     columnNamePattern,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
                     false,
                     null,

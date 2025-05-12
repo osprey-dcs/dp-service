@@ -65,7 +65,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoTenths);
         }
 
@@ -83,7 +83,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalFifths,
                             numBucketsFifths,
                             numSecondsPerBucketFifths, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoFifths);
         }
 
@@ -101,7 +101,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoQuarters);
         }
 
@@ -119,7 +119,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalEighths,
                             numBucketsEighths,
                             numSecondsPerBucketEighths,
-                            true, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
+                            true, false, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
             columnInfoList.add(columnInfoEighths);
         }
 

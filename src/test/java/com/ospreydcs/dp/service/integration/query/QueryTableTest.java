@@ -59,7 +59,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectReject,
                     expectedRejectMessage);
         }
@@ -84,7 +84,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectReject,
                     expectedRejectMessage);
         }
@@ -111,7 +111,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     false,
                     "");
         }
@@ -141,7 +141,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap());
         }
 
         {
@@ -166,7 +166,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     false,
                     "");
         }
@@ -191,7 +191,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     false,
                     "");
         }
@@ -218,7 +218,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap, false, "");
+                    ingestionScenarioResult.validationMap(), false, "");
         }
 
         {
@@ -246,7 +246,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap());
         }
 
         {
@@ -271,7 +271,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap, false, "");
+                    ingestionScenarioResult.validationMap(), false, "");
         }
     }
 

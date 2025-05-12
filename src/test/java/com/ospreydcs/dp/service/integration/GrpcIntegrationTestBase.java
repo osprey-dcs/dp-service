@@ -114,132 +114,62 @@ public abstract class GrpcIntegrationTestBase {
         return ConfigurationManager.getInstance();
     }
 
-    protected static class IngestionProviderInfo {
-
-        public final String providerId;
-        public final Set<String> pvNameSet;
-        public final long firstTimeSeconds;
-        public final long firstTimeNanos;
-        public final long lastTimeSeconds;
-        public final long lastTimeNanos;
-        public final int numBuckets;
-
-        public IngestionProviderInfo(
-                String providerId,
-                Set<String> pvNameSet,
-                long firstTimeSeconds,
-                long firstTimeNanos,
-                long lastTimeSeconds,
-                long lastTimeNanos,
-                int numBuckets
-        ) {
-            this.providerId = providerId;
-            this.pvNameSet = pvNameSet;
-            this.firstTimeSeconds = firstTimeSeconds;
-            this.firstTimeNanos = firstTimeNanos;
-            this.lastTimeSeconds = lastTimeSeconds;
-            this.lastTimeNanos = lastTimeNanos;
-            this.numBuckets = numBuckets;
-        }
+    protected record IngestionProviderInfo(
+            String providerId,
+            Set<String> pvNameSet,
+            long firstTimeSeconds,
+            long firstTimeNanos,
+            long lastTimeSeconds,
+            long lastTimeNanos,
+            int numBuckets
+    ) {
     }
 
-    protected static class IngestionColumnInfo {
-
-        // instance variables
-        public final String columnName;
-        public final String requestIdBase;
-        public final String providerId;
-        public final long measurementInterval;
-        public final int numBuckets;
-        public final int numSecondsPerBucket;
-        public final boolean useExplicitTimestampList;
-        public final List<String> tags;
-        public final Map<String, String> attributes;
-        public final String eventDescription;
-        public final Long eventStartSeconds;
-        public final Long eventStartNanos;
-        public final Long eventStopSeconds;
-        public final Long eventStopNanos;
-
-        public IngestionColumnInfo(
-                String columnName,
-                String requestIdBase,
-                String providerId, long measurementInterval,
-                int numBuckets,
-                int numSecondsPerBucket,
-                boolean useExplicitTimestampList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
-        ) {
-            this.columnName = columnName;
-            this.requestIdBase = requestIdBase;
-            this.providerId = providerId;
-            this.measurementInterval = measurementInterval;
-            this.numBuckets = numBuckets;
-            this.numSecondsPerBucket = numSecondsPerBucket;
-            this.useExplicitTimestampList = useExplicitTimestampList;
-            this.tags = tags;
-            this.attributes = attributes;
-            this.eventDescription = eventDescription;
-            this.eventStartSeconds = eventStartSeconds;
-            this.eventStartNanos = eventStartNanos;
-            this.eventStopSeconds = eventStopSeconds;
-            this.eventStopNanos = eventStopNanos;
-        }
+    /**
+     * @param columnName               instance variables
+     * @param useSerializedDataColumns
+     */
+    public record IngestionColumnInfo(
+            String columnName,
+            String requestIdBase,
+            String providerId,
+            long measurementInterval,
+            int numBuckets,
+            int numSecondsPerBucket,
+            boolean useExplicitTimestampList,
+            boolean useSerializedDataColumns, List<String> tags,
+            Map<String, String> attributes,
+            String eventDescription,
+            Long eventStartSeconds,
+            Long eventStartNanos,
+            Long eventStopSeconds,
+            Long eventStopNanos
+    ) {
     }
 
-    protected static class IngestionBucketInfo {
-
-        // instance variables
-        public final String providerId;
-        public final String requestId;
-        public final long startSeconds;
-        public final long startNanos;
-        public final long endSeconds;
-        public final long endNanos;
-        public final int numValues;
-        public final long intervalNanos;
-        public final List<Object> dataValues;
-        public final List<Long> timestampSecondsList;
-        public final List<Long> timestampNanosList;
-        public final List<String> tags;
-        public final Map<String, String> attributes;
-        public final String eventDescription;
-        public final Long eventStartSeconds;
-        public final Long eventStartNanos;
-        public final Long eventStopSeconds;
-        public final Long eventStopNanos;
-
-        public IngestionBucketInfo(
-                String providerId,
-                String requestId,
-                long startSeconds,
-                long startNanos,
-                long endSeconds,
-                long endNanos,
-                int numValues,
-                long intervalNanos,
-                List<Object> dataValues,
-                List<Long> timestampSecondsList,
-                List<Long> timestampNanosList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
-        ) {
-            this.providerId = providerId;
-            this.requestId = requestId;
-            this.startSeconds = startSeconds;
-            this.startNanos = startNanos;
-            this.endSeconds = endSeconds;
-            this.endNanos = endNanos;
-            this.numValues = numValues;
-            this.intervalNanos = intervalNanos;
-            this.dataValues = dataValues;
-            this.timestampSecondsList = timestampSecondsList;
-            this.timestampNanosList = timestampNanosList;
-            this.tags = tags;
-            this.attributes = attributes;
-            this.eventDescription = eventDescription;
-            this.eventStartSeconds = eventStartSeconds;
-            this.eventStartNanos = eventStartNanos;
-            this.eventStopSeconds = eventStopSeconds;
-            this.eventStopNanos = eventStopNanos;
-        }
+    /**
+     * @param providerId instance variables
+     */
+    protected record IngestionBucketInfo(
+            String providerId,
+            String requestId,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            int numValues,
+            long intervalNanos,
+            List<Object> dataValues,
+            List<Long> timestampSecondsList,
+            List<Long> timestampNanosList,
+            List<String> tags,
+            Map<String, String> attributes,
+            String eventDescription,
+            Long eventStartSeconds,
+            Long eventStartNanos,
+            Long eventStopSeconds,
+            Long eventStopNanos
+    ) {
     }
 
     protected static class IngestionStreamInfo {
@@ -266,16 +196,10 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected static class IngestionScenarioResult {
-        public final Map<String, IngestionProviderInfo> providerInfoMap;
-        public final Map<String, IngestionStreamInfo> validationMap;
-        public IngestionScenarioResult(
-                Map<String, IngestionProviderInfo> providerInfoMap,
-                Map<String, IngestionStreamInfo> validationMap
-        ) {
-            this.providerInfoMap = providerInfoMap;
-            this.validationMap = validationMap;
-        }
+    protected record IngestionScenarioResult(
+            Map<String, IngestionProviderInfo> providerInfoMap,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
     }
 
     public static void setUp() throws Exception {
@@ -878,7 +802,9 @@ public abstract class GrpcIntegrationTestBase {
                             columnInfo.eventStartSeconds,
                             columnInfo.eventStartNanos,
                             columnInfo.eventStopSeconds,
-                            columnInfo.eventStopNanos, false);
+                            columnInfo.eventStopNanos,
+                            columnInfo.useSerializedDataColumns
+                    );
             paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
@@ -906,7 +832,8 @@ public abstract class GrpcIntegrationTestBase {
                             columnInfo.eventStartSeconds,
                             columnInfo.eventStartNanos,
                             columnInfo.eventStopSeconds,
-                            columnInfo.eventStopNanos);
+                            columnInfo.eventStopNanos
+                    );
             bucketInfoMap.put(currentSeconds, startNanos, bucketInfo);
 
             // build request
@@ -994,7 +921,7 @@ public abstract class GrpcIntegrationTestBase {
                                 numBuckets,
                                 numSecondsPerBucket,
                                 false,
-                                tags,
+                                false, tags,
                                 attributes,
                                 eventDescription,
                                 eventStartSeconds,
@@ -1020,7 +947,7 @@ public abstract class GrpcIntegrationTestBase {
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
-                                false, null, null, null, null, null, null, null);
+                                false, false, null, null, null, null, null, null, null);
                 bpmPvNames.add(bpmName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }

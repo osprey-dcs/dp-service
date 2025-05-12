@@ -11,7 +11,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
 
@@ -154,15 +153,15 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
                     subscriptionPvNames1,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap());
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
                     subscriptionPvNames2,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap());
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
                     subscriptionPvNames3,
-                    ingestionScenarioResult.validationMap);
+                    ingestionScenarioResult.validationMap());
 
             // 2) cancel subscription with explicit cancel message
             cancelSubscribeDataCall(subscribeDataCall2);

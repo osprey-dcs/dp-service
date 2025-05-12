@@ -45,9 +45,9 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
         // queryProviderMetadata() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
         {
             final IngestionProviderInfo gccProviderInfo =
-                    ingestionScenarioResult.providerInfoMap.get(GCC_INGESTION_PROVIDER);
+                    ingestionScenarioResult.providerInfoMap().get(GCC_INGESTION_PROVIDER);
             sendAndVerifyQueryProviderMetadata(
-                    gccProviderInfo.providerId,
+                    gccProviderInfo.providerId(),
                     gccProviderInfo,
                     false,
                     null,

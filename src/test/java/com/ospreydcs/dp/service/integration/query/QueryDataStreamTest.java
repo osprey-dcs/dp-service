@@ -68,7 +68,7 @@ public class QueryDataStreamTest extends GrpcIntegrationTestBase {
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
                     params,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     expectReject,
                     expectedRejectMessage
             );
@@ -100,7 +100,7 @@ public class QueryDataStreamTest extends GrpcIntegrationTestBase {
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
                     params,
-                    ingestionScenarioResult.validationMap,
+                    ingestionScenarioResult.validationMap(),
                     false,
                     ""
             );
