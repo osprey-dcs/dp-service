@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.ingest.service;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
@@ -465,6 +466,16 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         return response;
     }
 
+    private static SubscribeDataResponse subscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
+
+        final SubscribeDataResponse response = SubscribeDataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setSubscribeDataResult(result)
+                .build();
+
+        return response;
+    }
+
     private static SubscribeDataResponse subscribeDataResponse(
             DataTimestamps dataTimestamps,
             List<DataColumn> dataColumns
@@ -474,13 +485,19 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                         .setDataTimestamps(dataTimestamps)
                         .addAllDataColumns(dataColumns)
                         .build();
+        return subscribeDataResponse(result);
+    }
 
-        final SubscribeDataResponse response = SubscribeDataResponse.newBuilder()
-                .setResponseTime(TimestampUtility.getTimestampNow())
-                .setSubscribeDataResult(result)
-                .build();
-
-        return response;
+    private static SubscribeDataResponse subscribeDataResponseSerializedColumns(
+            DataTimestamps dataTimestamps,
+            List<SerializedDataColumn> serializedDataColumns
+    ) {
+        final SubscribeDataResponse.SubscribeDataResult result =
+                SubscribeDataResponse.SubscribeDataResult.newBuilder()
+                        .setDataTimestamps(dataTimestamps)
+                        .addAllSerializedDataColumns(serializedDataColumns)
+                        .build();
+        return subscribeDataResponse(result);
     }
 
     public static void sendSubscribeDataResponseReject(
@@ -513,6 +530,16 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     ) {
         final SubscribeDataResponse response
                 = subscribeDataResponse(dataTimestamps, dataColumns);
+        responseObserver.onNext(response);
+    }
+
+    public static void sendSubscribeDataResponseSerializedColumns(
+            DataTimestamps dataTimestamps,
+            List<SerializedDataColumn> serializedDataColumns,
+            StreamObserver<SubscribeDataResponse> responseObserver
+    ) {
+        final SubscribeDataResponse response
+                = subscribeDataResponseSerializedColumns(dataTimestamps, serializedDataColumns);
         responseObserver.onNext(response);
     }
 
