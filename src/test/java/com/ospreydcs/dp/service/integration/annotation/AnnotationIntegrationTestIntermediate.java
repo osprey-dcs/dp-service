@@ -35,7 +35,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         GrpcIntegrationTestBase.tearDown();
     }
 
-    protected static Map<String, IngestionStreamInfo> annotationIngestionScenario() {
+    public static Map<String, IngestionStreamInfo> annotationIngestionScenario() {
 
         // register ingestion provider
         final String providerName = String.valueOf(INGESTION_PROVIDER_ID);

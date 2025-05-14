@@ -1103,49 +1103,129 @@ public abstract class GrpcIntegrationTestBase {
         return subscribeDataCall;
     }
 
+    record SubscriptionResponseColumn(
+            DataColumn dataColumn,
+            boolean isSerialized
+    ) {
+    }
+
+    private void addPvTimestampColumnMapEntry(
+            Map<String, TimestampMap<SubscriptionResponseColumn>> pvTimestampColumnMap,
+            long responseSeconds,
+            long responseNanos,
+            DataColumn dataColumn,
+            boolean isSerialized
+    ) {
+        final String pvName = dataColumn.getName();
+        TimestampMap<SubscriptionResponseColumn> pvTimestampMap = pvTimestampColumnMap.get(pvName);
+        if (pvTimestampMap == null) {
+            pvTimestampMap = new TimestampMap<>();
+            pvTimestampColumnMap.put(pvName, pvTimestampMap);
+        }
+        pvTimestampMap.put(responseSeconds, responseNanos, new SubscriptionResponseColumn(dataColumn, isSerialized));
+    }
+
     protected void verifySubscribeDataResponse(
             IngestionTestBase.SubscribeDataResponseObserver responseObserver,
             List<String> pvNameList,
-            Map<String, IngestionStreamInfo> ingestionValidationMap
+            Map<String, IngestionStreamInfo> ingestionValidationMap,
+            int numExpectedSerializedColumns
     ) {
+        // wait for completion of API method response stream and confirm not in error state
         responseObserver.awaitResponseLatch();
-
         assertFalse(responseObserver.isError());
 
-        // verify responses against ingestion request params
-
+        // get subscription responses for verification of expected contents
         final List<SubscribeDataResponse> responseList = responseObserver.getResponseList();
 
-        // create map of response dataTimestamps values by pvName
-        Map<String, List<DataTimestamps>> responsePvTimestampsMap = new HashMap<>();
+        // create map of response DataColumns organized by PV name and timestamp
+        Map<String, TimestampMap<SubscriptionResponseColumn>> pvTimestampColumnMap = new HashMap<>();
+        int responseColumnCount = 0;
         for (SubscribeDataResponse response : responseList) {
-            final String responsePvName = response.getSubscribeDataResult().getDataColumnsList().get(0).getName();
-            final DataTimestamps responseDataTimestamps = response.getSubscribeDataResult().getDataTimestamps();
-            List<DataTimestamps> pvTimestampsList = responsePvTimestampsMap.get(responsePvName);
-            if (pvTimestampsList == null) {
-                pvTimestampsList = new ArrayList<>();
-                responsePvTimestampsMap.put(responsePvName, pvTimestampsList);
+
+            assertTrue(response.hasSubscribeDataResult());
+            final SubscribeDataResponse.SubscribeDataResult responseResult = response.getSubscribeDataResult();
+            final DataTimestamps responseDataTimestamps = responseResult.getDataTimestamps();
+            final DataTimestampsUtility.DataTimestampsModel responseTimestampsModel = 
+                    new DataTimestampsUtility.DataTimestampsModel(responseDataTimestamps);
+            final long responseSeconds = responseTimestampsModel.getFirstTimestamp().getEpochSeconds();
+            final long responseNanos = responseTimestampsModel.getFirstTimestamp().getNanoseconds();
+
+            // add entries to pvTimestampColumnMap for regular DataColumns in response
+            for (DataColumn dataColumn : responseResult.getDataColumnsList()) {
+                addPvTimestampColumnMapEntry(
+                        pvTimestampColumnMap, responseSeconds, responseNanos, dataColumn, false);
+                responseColumnCount = responseColumnCount + 1;
             }
-            pvTimestampsList.add(responseDataTimestamps);
+
+            // add entries to pvTimestampColumnMap for SerializedDataColumns in response
+            for (SerializedDataColumn serializedDataColumn : responseResult.getSerializedDataColumnsList()) {
+                DataColumn deserializedDataColumn = null;
+                try {
+                    deserializedDataColumn = DataColumn.parseFrom(serializedDataColumn.getDataColumnBytes());
+                } catch (InvalidProtocolBufferException e) {
+                    fail("exception deserializing response SerializedDataColumn: " + e.getMessage());
+                }
+                assertNotNull(deserializedDataColumn);
+                addPvTimestampColumnMapEntry(
+                        pvTimestampColumnMap, responseSeconds, responseNanos, deserializedDataColumn, true);
+                responseColumnCount = responseColumnCount + 1;
+            }
+
         }
 
-        // iterate through request params for specified pvs
+        // confirm that we received the expected DataColumns in subscription responses
+        // by comparing to ingestion requests for subscribed PVs
+        int requestColumnCount = 0;
+        int serializedColumnCount = 0;
         for (String pvName : pvNameList) {
-            for (IngestionTestBase.IngestionRequestParams requestParams : ingestionValidationMap.get(pvName).paramsList) {
-                // check that a response was received that matches this PV name and the request dataTimestamps
-                List<DataTimestamps> responsePvTimestampsList = responsePvTimestampsMap.get(pvName);
-                assertNotNull(responsePvTimestampsList);
-                boolean found = false;
-                for (DataTimestamps responsePvTimestamps : responsePvTimestampsList) {
-                    if ((responsePvTimestamps.getSamplingClock().getStartTime().getEpochSeconds()  == requestParams.samplingClockStartSeconds)
-                            && (responsePvTimestamps.getSamplingClock().getStartTime().getNanoseconds() == requestParams.samplingClockStartNanos)) {
-                        found = true;
-                        break;
+            for (IngestDataRequest pvIngestionRequest : ingestionValidationMap.get(pvName).requestList) {
+
+                // check that pvTimestampColumnMap contains an entry for each PV column in request's data frame
+                final IngestDataRequest.IngestionDataFrame requestFrame = pvIngestionRequest.getIngestionDataFrame();
+                final DataTimestamps requestDataTimestamps = requestFrame.getDataTimestamps();
+                final DataTimestampsUtility.DataTimestampsModel requestTimestampsModel = 
+                        new DataTimestampsUtility.DataTimestampsModel(requestDataTimestamps);
+                final long requestSeconds = requestTimestampsModel.getFirstTimestamp().getEpochSeconds();
+                final long requestNanos = requestTimestampsModel.getFirstTimestamp().getNanoseconds();
+                final TimestampMap<SubscriptionResponseColumn> responsePvTimestampMap = pvTimestampColumnMap.get(pvName);
+                assertNotNull(responsePvTimestampMap);
+                final SubscriptionResponseColumn responsePvTimestampColumn =
+                        responsePvTimestampMap.get(requestSeconds, requestNanos);
+                assertNotNull(responsePvTimestampColumn);
+                final DataColumn responseDataColumn = responsePvTimestampColumn.dataColumn;
+                final boolean responseColumnIsSerialized = responsePvTimestampColumn.isSerialized();
+
+                // check response received for each regular DataColumns for subscribed PV in request
+                for (DataColumn requestDataColumn : requestFrame.getDataColumnsList()) {
+                    // ignore ingestion request columns not for this PV, which shouldn't be the case, but...
+                    if ( ! requestDataColumn.getName().equals(pvName)) {
+                        continue;
                     }
+                    assertEquals(requestDataColumn, responseDataColumn);
+                    assertFalse(responseColumnIsSerialized);
+                    requestColumnCount = requestColumnCount + 1;
                 }
-                assertTrue(found);
+
+                for (SerializedDataColumn requestSerializedColumn : requestFrame.getSerializedDataColumnsList()) {
+                    // ignore ingestion request columns not for this PV, which shouldn't be the case, but...
+                    if ( ! requestSerializedColumn.getName().equals(pvName)) {
+                        continue;
+                    }
+                    try {
+                        assertEquals(DataColumn.parseFrom(requestSerializedColumn.getDataColumnBytes()), responseDataColumn);
+                    } catch (InvalidProtocolBufferException e) {
+                        fail("exception deserializing request SerializedDatacolumn: " + e.getMessage());
+                    }
+                    assertTrue(responseColumnIsSerialized);
+                    requestColumnCount = requestColumnCount + 1;
+                    serializedColumnCount = serializedColumnCount + 1;
+                }
+
             }
         }
+        assertEquals(requestColumnCount, responseColumnCount);
+        assertEquals(numExpectedSerializedColumns, serializedColumnCount);
     }
 
     protected void cancelSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
@@ -1167,9 +1247,7 @@ public abstract class GrpcIntegrationTestBase {
     protected void closeSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
 
         // close the request stream
-        new Thread(() -> {
-            subscribeDataCall.requestObserver.onCompleted();
-        }).start();
+        new Thread(subscribeDataCall.requestObserver::onCompleted).start();
 
         // wait for ack response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =

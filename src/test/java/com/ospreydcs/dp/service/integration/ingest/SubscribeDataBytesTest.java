@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.integration.annotation.AnnotationIntegrationTestIntermediate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
@@ -11,10 +12,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Map;
 
-import static org.junit.Assert.assertTrue;
-
-public class SubscribeDataTest extends GrpcIntegrationTestBase {
+public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -30,69 +30,12 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testRejectEmptyPvNamesList() {
-        {
-            // negative test case for subscribeData() with empty list of PV names
+    public void testSubscribeDataBytes() {
 
-            final List<String> subscriptionPvNames = List.of();
-            final int expectedResponseCount = 30;
-            final boolean expectReject = true;
-            final String expectedRejectMessage = "SubscribeDataRequest.NewSubscription.pvNames list must not be empty";
-            final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                    initiateSubscribeDataRequest(
-                            subscriptionPvNames, expectedResponseCount, expectReject, expectedRejectMessage);
-        }
-    }
-
-    @Test
-    public void testRejectNoRequestPayload() {
-        {
-            // negative test case for subscribeData() with no request payload (NewSubscription or CancelSubscription)
-
-            final List<String> subscriptionPvNames = List.of("S01-GCC01", "S02-GCC01", "S03-BPM01");
-            final int expectedResponseCount = 30;
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "received unknown request, expected NewSubscription or CancelSubscription";
-            final SubscribeDataRequest request = buildSubscribeDataRequestNoPayload();
-            final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                    initiateSubscribeDataRequest(
-                            request, expectedResponseCount, expectReject, expectedRejectMessage);
-        }
-    }
-
-    @Test
-    public void testRejectMultipleNewSubscriptionMessages() {
-
-        // negative test case for subscribeData(), sending multiple NewSubscription messages causes reject
-
-        final List<String> subscriptionPvNames = List.of("S09-GCC01", "S09-GCC01", "S09-BPM01");
-        final int expectedResponseCount = 30;
-        final boolean expectReject = false;
-        final String expectedRejectMessage = "";
-        final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                initiateSubscribeDataRequest(
-                        subscriptionPvNames, expectedResponseCount, expectReject, expectedRejectMessage);
-        final SubscribeDataRequest duplicateRequest =
-                SubscribeDataUtility.buildSubscribeDataRequest(subscriptionPvNames);
-
-        // send duplicate NewSubscription message in request stream
-        new Thread(() -> {
-            subscribeDataCall.requestObserver.onNext(duplicateRequest);
-        }).start();
-
-        final String expectedDuplicateRejectMessage =
-                "multiple NewSubscription messages not supported in request stream";
-        final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
-                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
-        responseObserver.awaitCloseLatch();
-        assertTrue(responseObserver.isError());
-        assertTrue(responseObserver.getErrorMessage().contains(expectedDuplicateRejectMessage));
-    }
-
-    @Test
-    public void testSubscribeDataPositive() {
-
+        // Provides coverage for subscribeData() where the ingestion requests use SerializedDataColumns,
+        // so that the SubscribeDataResponse messages also contain byte data.  The scenario uses
+        // annotationIngestionScenario() to send such ingestion requests instead of simpleIngestionScenario().
+        // That's the difference between this test class and SubscribeDataTest.
         {
             // positive test cases for subscribeData() with 3 different alternatives for canceling subscription:
             // 1) implicit close on ingestion server shutdown
@@ -140,31 +83,31 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
             }
 
             // run a simple ingestion scenario that will publish to all 3 subscriptions
-            IngestionScenarioResult ingestionScenarioResult;
+            Map<String, IngestionStreamInfo> ingestionValidationMap;
             {
                 // create some data for testing query APIs
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                ingestionScenarioResult = simpleIngestionScenario();
+                ingestionValidationMap = AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
             }
 
             // verify all 3 subscriptions received expected messages
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
                     subscriptionPvNames1,
-                    ingestionScenarioResult.validationMap(),
-                    0);
+                    ingestionValidationMap,
+                    30);
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
                     subscriptionPvNames2,
-                    ingestionScenarioResult.validationMap(),
-                    0);
+                    ingestionValidationMap,
+                    30);
             verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
                     subscriptionPvNames3,
-                    ingestionScenarioResult.validationMap(),
-                    0);
+                    ingestionValidationMap,
+                    30);
 
             // 2) cancel subscription with explicit cancel message
             cancelSubscribeDataCall(subscribeDataCall2);
