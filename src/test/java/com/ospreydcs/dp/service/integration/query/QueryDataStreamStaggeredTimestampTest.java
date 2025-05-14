@@ -178,7 +178,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             );
 
             sendAndVerifyQueryDataStream(
-                    numBucketsExpected, params, validationMap, false, "");
+                    numBucketsExpected, 0, params, validationMap, false, "");
         }
     }
 

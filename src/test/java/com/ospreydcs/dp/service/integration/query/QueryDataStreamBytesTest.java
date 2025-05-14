@@ -26,7 +26,7 @@ public class QueryDataStreamBytesTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testQueryDataStream() {
+    public void testQueryDataStreamBytes() {
 
         // use request data contained by validationMap to verify query results
         IngestionScenarioResult ingestionScenarioResult;
@@ -66,6 +66,7 @@ public class QueryDataStreamBytesTest extends GrpcIntegrationTestBase {
 
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
+                    numBucketsExpected,
                     params,
                     ingestionScenarioResult.validationMap(),
                     expectReject,
@@ -87,6 +88,7 @@ public class QueryDataStreamBytesTest extends GrpcIntegrationTestBase {
 
             // 2 pvs, 5 seconds, 1 bucket per second per pv
             final int numBucketsExpected = 10;
+            final int numSerializedDataColumnsExpected = numBucketsExpected;
 
             final QueryTestBase.QueryDataRequestParams params =
                     new QueryTestBase.QueryDataRequestParams(pvNames,
@@ -99,6 +101,7 @@ public class QueryDataStreamBytesTest extends GrpcIntegrationTestBase {
 
             sendAndVerifyQueryDataStream(
                     numBucketsExpected,
+                    numSerializedDataColumnsExpected,
                     params,
                     ingestionScenarioResult.validationMap(),
                     false,

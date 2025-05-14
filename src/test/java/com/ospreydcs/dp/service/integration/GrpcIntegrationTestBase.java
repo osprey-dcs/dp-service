@@ -1526,6 +1526,7 @@ public abstract class GrpcIntegrationTestBase {
 
     private void verifyQueryDataResult(
             int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             List<QueryDataResponse.QueryData.DataBucket> dataBucketList
@@ -1535,7 +1536,6 @@ public abstract class GrpcIntegrationTestBase {
         final long beginNanos = params.beginTimeNanos();
         final long endSeconds = params.endTimeSeconds();
         final long endNanos = params.endTimeNanos();
-        final boolean useSerializedDataColumns = params.useSerializedDataColumns();
 
         // build map of buckets in query response for vallidation
         Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap = new TreeMap<>();
@@ -1567,6 +1567,7 @@ public abstract class GrpcIntegrationTestBase {
         // iterate through the expected buckets for each column,
         // and validate them against the corresponding response bucket
         int validatedBuckets = 0;
+        int serializedDataColumnCount = 0;
         for (var validationMapEntry : validationMap.entrySet()) {
             final String columnName = validationMapEntry.getKey();
             if ( ! pvNames.contains(columnName)) {
@@ -1611,12 +1612,15 @@ public abstract class GrpcIntegrationTestBase {
                     DataColumn responseDataColumn = null;
                     if (responseBucket.hasDataColumn()) {
                         responseDataColumn = responseBucket.getDataColumn();
+
                     } else if (responseBucket.hasSerializedDataColumn()) {
                         try {
                             responseDataColumn = DataColumn.parseFrom(responseBucket.getSerializedDataColumn().getDataColumnBytes());
                         } catch (InvalidProtocolBufferException e) {
                             fail("exception parsing DataColumn from SerializedDataColumn: " + e.getMessage());
                         }
+                        serializedDataColumnCount = serializedDataColumnCount + 1;
+
                     } else {
                         fail("responseBucket doesn't contain either DataColumn or SerializedDataColumn");
                     }
@@ -1686,7 +1690,7 @@ public abstract class GrpcIntegrationTestBase {
         // check that we validated all buckets returned by the query, and that query returned expected number of buckets
         assertEquals(dataBucketList.size(), validatedBuckets);
         assertEquals(numBucketsExpected, dataBucketList.size());
-
+        assertEquals(numSerializedDataColumnsExpected, serializedDataColumnCount);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryData(
@@ -1728,6 +1732,7 @@ public abstract class GrpcIntegrationTestBase {
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
             int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
@@ -1741,7 +1746,8 @@ public abstract class GrpcIntegrationTestBase {
             return dataBucketList;
         }
 
-        verifyQueryDataResult(numBucketsExpected, params, validationMap, dataBucketList);
+        verifyQueryDataResult(
+                numBucketsExpected, numSerializedDataColumnsExpected, params, validationMap, dataBucketList);
 
         return dataBucketList;
     }
@@ -1785,6 +1791,7 @@ public abstract class GrpcIntegrationTestBase {
 
     protected void sendAndVerifyQueryDataStream(
             int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
@@ -1794,11 +1801,12 @@ public abstract class GrpcIntegrationTestBase {
                 queryDataStream(params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
-            assertEquals(null, dataBucketList);
+            assertNull(dataBucketList);
             return;
         }
 
-        verifyQueryDataResult(numBucketsExpected, params, validationMap, dataBucketList);
+        verifyQueryDataResult(
+                numBucketsExpected, numSerializedDataColumnsExpected, params, validationMap, dataBucketList);
     }
 
     protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataBidiStream(
@@ -1844,6 +1852,7 @@ public abstract class GrpcIntegrationTestBase {
 
     protected void sendAndVerifyQueryDataBidiStream(
             int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
@@ -1859,6 +1868,7 @@ public abstract class GrpcIntegrationTestBase {
 
         verifyQueryDataResult(
                 numBucketsExpected,
+                numSerializedDataColumnsExpected,
                 params,
                 validationMap,
                 dataBucketList);

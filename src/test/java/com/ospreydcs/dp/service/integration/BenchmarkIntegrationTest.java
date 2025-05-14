@@ -767,7 +767,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
             sendAndVerifyQueryData(
                     numBucketsExpected,
-                    params,
+                    0, params,
                     null,
                     expectReject,
                     expectedRejectMessage
