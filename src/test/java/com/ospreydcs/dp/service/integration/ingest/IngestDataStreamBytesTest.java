@@ -99,7 +99,13 @@ public class IngestDataStreamBytesTest extends GrpcIntegrationTestBase {
             }
 
             // send request and examine response
-            sendAndVerifyIngestDataStream(paramsList, requestList, false, "");
+            final int numSerializedDataColumnsExpected = 1;
+            sendAndVerifyIngestDataStream(
+                    paramsList,
+                    requestList,
+                    numSerializedDataColumnsExpected,
+                    false,
+                    "");
         }
 
     }

@@ -134,7 +134,7 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
 
         // send request and examine response
         // this compares request and bucket DataColumns including DataValues and ValueStatus
-        sendAndVerifyIngestDataStream(paramsList, requestList, false, "");
+        sendAndVerifyIngestDataStream(paramsList, requestList, 0, false, "");
 
         // perform query for PV_01 and verify results
         {

@@ -20,7 +20,7 @@ public class IngestDataUnaryTypesTest extends IngestDataTypesTestBase {
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest
     ) {
-        return sendAndVerifyIngestData(params, ingestionRequest);
+        return sendAndVerifyIngestData(params, ingestionRequest, 0);
     }
 
     @BeforeClass

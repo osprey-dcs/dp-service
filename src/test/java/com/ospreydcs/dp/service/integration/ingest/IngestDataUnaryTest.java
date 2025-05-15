@@ -103,7 +103,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
             // send request and examine response
-            sendAndVerifyIngestData(params, request);
+            sendAndVerifyIngestData(params, request, 0);
         }
     }
 

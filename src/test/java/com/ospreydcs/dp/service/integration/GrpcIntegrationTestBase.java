@@ -449,6 +449,7 @@ public abstract class GrpcIntegrationTestBase {
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
             IngestDataStreamResponse response,
+            int numSerializedDataColumnsExpected,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -474,7 +475,7 @@ public abstract class GrpcIntegrationTestBase {
                 final IngestDataRequest request = requestList.get(listIndex);
 
                 // verify database contents (request status and corresponding bucket documents)
-                bucketDocumentList.addAll(verifyIngestionHandling(params, request));
+                bucketDocumentList.addAll(verifyIngestionHandling(params, request, numSerializedDataColumnsExpected));
             }
         }
 
@@ -484,7 +485,8 @@ public abstract class GrpcIntegrationTestBase {
     protected static List<BucketDocument> verifyIngestionHandling(
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
-            List<IngestDataResponse> responseList
+            List<IngestDataResponse> responseList,
+            int numSerializedDataColumnsExpected
     ) {
         // check that parameter list sizes match
         assertEquals(paramsList.size(), requestList.size());
@@ -508,7 +510,7 @@ public abstract class GrpcIntegrationTestBase {
             assertEquals((int) params.samplingClockCount, ackResult.getNumRows());
 
             // verify database contents (request status and corresponding bucket documents)
-            bucketDocumentList.addAll(verifyIngestionHandling(params, request));
+            bucketDocumentList.addAll(verifyIngestionHandling(params, request, numSerializedDataColumnsExpected));
         }
 
         return bucketDocumentList;
@@ -516,7 +518,8 @@ public abstract class GrpcIntegrationTestBase {
 
     protected static List<BucketDocument> verifyIngestionHandling(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest request
+            IngestDataRequest request,
+            int numSerializedDataColumnsExpected
     ) {
         // create container to hold method result
         final List<BucketDocument> bucketDocumentList = new ArrayList<>();
@@ -541,6 +544,7 @@ public abstract class GrpcIntegrationTestBase {
 
         // validate database BucketDocument for each column
         int pvIndex = 0;
+        int serializedDataColumnCount = 0;
         for (String expectedBucketId : expectedBucketIds) {
 
             final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
@@ -598,7 +602,7 @@ public abstract class GrpcIntegrationTestBase {
                     requestDataTimestampsModel.getSamplePeriodNanos(),
                     bucketDocument.getDataTimestamps().getSamplePeriod());
 
-            if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
+            if (params.timestampsSecondsList != null && !params.timestampsSecondsList.isEmpty()) {
                 // check explicit TimestampsList
                 assertEquals(
                         DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
@@ -653,6 +657,7 @@ public abstract class GrpcIntegrationTestBase {
                 } catch (InvalidProtocolBufferException e) {
                     fail("exception deserializing DataColumn: " + e.getMessage());
                 }
+                serializedDataColumnCount = serializedDataColumnCount + 1;
 
             } else {
                 // request contains regular DataColumns
@@ -678,51 +683,61 @@ public abstract class GrpcIntegrationTestBase {
 
             // check event metadata
             if (params.eventDescription != null) {
-                assertTrue(bucketDocument.getEvent() != null);
+                assertNotNull(bucketDocument.getEvent());
                 assertEquals(request.getEventMetadata(), bucketDocument.getEvent().toEventMetadata());
             } else {
-                assertTrue(bucketDocument.getEvent() == null);
+                assertNull(bucketDocument.getEvent());
             }
 
             pvIndex = pvIndex + 1;
         }
+        assertEquals(numSerializedDataColumnsExpected, serializedDataColumnCount);
 
         return bucketDocumentList;
     }
 
     protected List<BucketDocument> sendAndVerifyIngestData(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest
+            IngestDataRequest ingestionRequest,
+            int numSerializedDataColumnsExpected
     ) {
         final IngestDataResponse response = sendIngestData(ingestionRequest);
         final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = Arrays.asList(response);
-        return verifyIngestionHandling(paramsList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList, numSerializedDataColumnsExpected);
     }
 
     protected List<BucketDocument> sendAndVerifyIngestDataStream(
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
+            int numSerializedDataColumnsExpected,
             boolean expectReject,
             String expectedRejectMessage
     ) {
 
         // send request
         final IngestDataStreamResponse response = sendIngestDataStream(requestList);
-        return verifyIngestionHandling(paramsList, requestList, response, expectReject, expectedRejectMessage);
+        return verifyIngestionHandling(
+                paramsList,
+                requestList,
+                response,
+                numSerializedDataColumnsExpected,
+                expectReject,
+                expectedRejectMessage);
     }
 
     protected List<BucketDocument> sendAndVerifyIngestDataBidiStream(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest
+            IngestDataRequest ingestionRequest,
+            int numSerializedDataColumnsExpected
     ) {
 
         // send request
         final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
-        return verifyIngestionHandling(paramsList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList, numSerializedDataColumnsExpected);
     }
 
     protected static IngestionStreamInfo ingestDataBidiStream(
@@ -859,7 +874,8 @@ public abstract class GrpcIntegrationTestBase {
     protected static Map<String, IngestionStreamInfo> ingestDataBidiStreamFromColumn(
             List<IngestionColumnInfo> columnInfoList,
             long startSeconds,
-            long startNanos
+            long startNanos,
+            int numSerializedDataColumnsExpected
     ) {
         // create data structure for validating query result
         Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
@@ -870,7 +886,11 @@ public abstract class GrpcIntegrationTestBase {
                             startSeconds,
                             startNanos,
                             columnInfo);
-            verifyIngestionHandling(streamInfo.paramsList, streamInfo.requestList, streamInfo.responseList);
+            verifyIngestionHandling(
+                    streamInfo.paramsList,
+                    streamInfo.requestList,
+                    streamInfo.responseList,
+                    numSerializedDataColumnsExpected);
             validationMap.put(columnInfo.columnName, streamInfo);
         }
 
@@ -977,7 +997,7 @@ public abstract class GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
+            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, 0);
         }
 
         return new IngestionScenarioResult(providerInfoMap, validationMap);

@@ -96,7 +96,7 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
             }
 
             // send request and examine response
-            sendAndVerifyIngestDataStream(paramsList, requestList, false, "");
+            sendAndVerifyIngestDataStream(paramsList, requestList, 0, false, "");
         }
 
         // negative test case, rejection
@@ -159,7 +159,7 @@ public class IngestDataStreamTest extends GrpcIntegrationTestBase {
 
             // send request and examine response
             sendAndVerifyIngestDataStream(
-                    paramsList, requestList, true, "one or more requests were rejected");
+                    paramsList, requestList, 0, true, "one or more requests were rejected");
         }
     }
 

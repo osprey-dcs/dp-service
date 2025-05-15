@@ -126,7 +126,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos);
+            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos, 0);
         }
 
         {

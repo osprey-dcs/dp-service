@@ -107,7 +107,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
             {
                 // perform ingestion for specified list of columns
-                return ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
+                return ingestDataBidiStreamFromColumn(
+                        ingestionColumnInfoList,
+                        startSeconds,
+                        startNanos,
+                        1);
             }
         }
     }

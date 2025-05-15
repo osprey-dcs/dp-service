@@ -83,7 +83,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                                     values,
                                     null, false);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                    sendAndVerifyIngestData(params, request);
+                    sendAndVerifyIngestData(params, request, 0);
                 }
 
                 // send request that will be rejected because of empty string in columnNames list

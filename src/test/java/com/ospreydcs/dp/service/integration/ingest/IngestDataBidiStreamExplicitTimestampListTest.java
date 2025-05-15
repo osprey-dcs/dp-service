@@ -100,7 +100,7 @@ public class IngestDataBidiStreamExplicitTimestampListTest extends GrpcIntegrati
 
                 // verify ingestion
                 final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
-                verifyIngestionHandling(paramsList, requestList, responseList);
+                verifyIngestionHandling(paramsList, requestList, responseList, 0);
             }
         }
     }
