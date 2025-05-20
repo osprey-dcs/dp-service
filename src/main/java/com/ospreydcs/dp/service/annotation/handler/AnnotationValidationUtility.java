@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler;
 
 import com.ospreydcs.dp.grpc.v1.annotation.*;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -95,6 +96,13 @@ public class AnnotationValidationUtility {
             // validate each frame
             for (Calculations.CalculationsDataFrame frame : request.getCalculations().getCalculationDataFramesList()) {
 
+                // name field is required
+                if (frame.getName().isBlank()) {
+                    final String errorMsg =
+                            "CalculationDataFrame.name must be specified";
+                    return new ValidationResult(true, errorMsg);
+                }
+
                 // check that request includes DataTimestamps
                 if (! frame.hasDataTimestamps()) {
                     final String errorMsg =
@@ -167,18 +175,47 @@ public class AnnotationValidationUtility {
         return new ValidationResult(false, "");
     }
 
-    public static ValidationResult validateExportDataSetRequest(ExportDataSetRequest request) {
+    public static ValidationResult validateExportDataRequest(ExportDataRequest request) {
 
+        // either dataSetId or calculationsSpec is required
         final String dataSetId = request.getDataSetId();
-        if (dataSetId == null || dataSetId.isBlank()) {
-            final String errorMsg = "ExportDataSetRequest.dataSetId must be specified";
+        if ((dataSetId == null || dataSetId.isBlank()) && ( ! request.hasCalculationsSpec())) {
+            final String errorMsg = "ExportDataRequest either dataSetId or calculationsSpec must be specified";
             return new ValidationResult(true, errorMsg);
         }
 
-        final ExportDataSetRequest.ExportOutputFormat outputFormat = request.getOutputFormat();
-        if (outputFormat == ExportDataSetRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED ||
-                outputFormat == ExportDataSetRequest.ExportOutputFormat.UNRECOGNIZED) {
-            final String errorMsg = "valid ExportDataSetRequest.outputFormat must be specified";
+        // calculationsSpec is optional, but validate content if specified
+        if (request.hasCalculationsSpec()) {
+
+            final CalculationsSpec calculationsSpec = request.getCalculationsSpec();
+            if (calculationsSpec.getCalculationsId().isBlank()) {
+                final String errorMsg = "ExportDataRequest.calculationsSpec.calculationsId must be specified";
+                return new ValidationResult(true, errorMsg);
+            }
+
+            for (var mapEntries : calculationsSpec.getDataFrameColumnsMap().entrySet()) {
+                final String frameName = mapEntries.getKey();
+                final CalculationsSpec.ColumnNameList frameColumnNameList = mapEntries.getValue();
+                if (frameColumnNameList.getColumnNamesList().isEmpty()) {
+                    final String errorMsg =
+                            "ExportDataRequest.calculationsSpec.dataFrameColumns list must not be empty";
+                    return new ValidationResult(true, errorMsg);
+                }
+                // list can be empty, but check contents if not
+                for (String frameColumnName : frameColumnNameList.getColumnNamesList()) {
+                    if (frameColumnName.isBlank()) {
+                        final String errorMsg =
+                                "ExportDataRequest.calculationsSpec.dataFrameColumns includes blank column name";
+                        return new ValidationResult(true, errorMsg);
+                    }
+                }
+            }
+        }
+
+        final ExportDataRequest.ExportOutputFormat outputFormat = request.getOutputFormat();
+        if (outputFormat == ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_UNSPECIFIED ||
+                outputFormat == ExportDataRequest.ExportOutputFormat.UNRECOGNIZED) {
+            final String errorMsg = "valid ExportDataRequest.outputFormat must be specified";
             return new ValidationResult(true, errorMsg);
         }
 

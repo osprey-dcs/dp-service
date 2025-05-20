@@ -81,9 +81,9 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
                                     values,
-                                    null);
+                                    null, false);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                    sendAndVerifyIngestData(params, request);
+                    sendAndVerifyIngestData(params, request, 0);
                 }
 
                 // send request that will be rejected because of empty string in columnNames list
@@ -107,7 +107,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
                                     values,
-                                    null);
+                                    null, false);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion, manually inspect reject response
@@ -120,7 +120,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                             ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                             exceptionalResult.getExceptionalResultStatus());
                     assertEquals(
-                            "name must be specified for all data columns",
+                            "name must be specified for all DataColumns",
                             exceptionalResult.getMessage());
                 }
 
@@ -146,7 +146,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
                                     values,
-                                    null);
+                                    null, false);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion since it will fail, manually inspect ack response
@@ -165,6 +165,36 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                 }
 
             }
+        }
+
+        // send request status query with empty query result
+        {
+            final String providerId = "uknown providerId";
+            final String providerName = null;
+            final String requestId = "unknown requestId";
+            final List<IngestionRequestStatus> status = null;
+            final Long beginSeconds = null;
+            final Long beginNanos = null;
+            final Long endSeconds = null;
+            final Long endNanos = null;
+
+            final IngestionTestBase.QueryRequestStatusParams params = new IngestionTestBase.QueryRequestStatusParams(
+                    providerId,
+                    providerName,
+                    requestId,
+                    status,
+                    beginSeconds,
+                    beginNanos,
+                    endSeconds,
+                    endNanos
+            );
+
+            final IngestionTestBase.QueryRequestStatusExpectedResponseMap expectedResponseMap =
+                    new IngestionTestBase.QueryRequestStatusExpectedResponseMap();
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            sendAndVerifyQueryRequestStatus(params, expectedResponseMap, expectReject, expectedRejectMessage);
         }
 
         {

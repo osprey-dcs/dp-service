@@ -3,14 +3,10 @@ package com.ospreydcs.dp.service.query.benchmark;
 import com.ospreydcs.dp.grpc.v1.query.DpQueryServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import io.grpc.Channel;
-import io.grpc.Grpc;
-import io.grpc.InsecureChannelCredentials;
-import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -73,7 +69,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
                 Channel channel,
                 QueryDataRequestTaskParams params
         ) {
-            final int streamNumber = params.streamNumber;
+            final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
 
             boolean success = true;
@@ -177,7 +173,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
         final int[] numThreadsArray = {7};
 
         BenchmarkQueryDataBidiStream benchmark = new BenchmarkQueryDataBidiStream();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, false);
     }
 
 }

@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.CountDownLatch;
 
-public class BenchmarkUniStreamingIngestion extends IngestionBenchmarkBase {
+public class BenchmarkIngestDataStream extends IngestionBenchmarkBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -136,8 +136,8 @@ public class BenchmarkUniStreamingIngestion extends IngestionBenchmarkBase {
     }
 
     public static void main(final String[] args) {
-        BenchmarkUniStreamingIngestion benchmark = new BenchmarkUniStreamingIngestion();
-        runBenchmark(benchmark);
+        BenchmarkIngestDataStream benchmark = new BenchmarkIngestDataStream();
+        runBenchmark(benchmark, false);
     }
 
 }

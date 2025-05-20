@@ -2,12 +2,9 @@ package com.ospreydcs.dp.service.ingest.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
-import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
-import io.grpc.stub.ServerCallStreamObserver;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -94,7 +91,8 @@ public class DataSubscriptionManager {
             // use try...finally to make sure we unlock
 
             final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
-            // iterate request columns and send response to column PV subscribers
+
+            // publish regular DataColumns in request that have subscribers
             for (DataColumn requestDataColumn : request.getIngestionDataFrame().getDataColumnsList()) {
 
                 final String pvName = requestDataColumn.getName();
@@ -104,7 +102,22 @@ public class DataSubscriptionManager {
                     final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
                     for (SourceMonitor monitor : sourceMonitors) {
                         // publish data to subscriber if response stream is active
-                        monitor.publishData(pvName, requestDataTimestamps, responseDataColumns);
+                        monitor.publishDataColumns(pvName, requestDataTimestamps, responseDataColumns);
+                    }
+                }
+            }
+
+            // publish SerializedDataColumns in request that have subscribers
+            for (SerializedDataColumn requestSerializedColumn : request.getIngestionDataFrame().getSerializedDataColumnsList()) {
+
+                final String pvName = requestSerializedColumn.getName();
+                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                if (sourceMonitors != null) {
+                    // publish data via monitors
+                    final List<SerializedDataColumn> responseSerializedColumns = List.of(requestSerializedColumn);
+                    for (SourceMonitor monitor : sourceMonitors) {
+                        // publish data to subscriber if response stream is active
+                        monitor.publishSerializedDataColumns(pvName, requestDataTimestamps, responseSerializedColumns);
                     }
                 }
             }

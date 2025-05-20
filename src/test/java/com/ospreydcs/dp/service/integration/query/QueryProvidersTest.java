@@ -93,6 +93,22 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
                     expectedProviderId);
         }
 
+        // queryProviders() positive test: empty query result
+        {
+            final String textCriterion = "garbage";
+            final QueryTestBase.QueryProvidersRequestParams requestParams = new QueryTestBase.QueryProvidersRequestParams();
+            requestParams.setTextCriterion(textCriterion);
+
+            final int numMatchesExpected = 0;
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            sendAndVerifyQueryProviders(
+                    requestParams,
+                    numMatchesExpected,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
         // queryProviders() positive test: query by IdCriterion
         {
             final String idCriterion = gccProviderId;

@@ -38,12 +38,8 @@ public class QueryRequestStatusDispatcher extends Dispatcher {
         if (cursor == null) {
             // send error response and close response stream if cursor is null
             final String msg = "query returned null cursor";
-            logger.debug(msg);
+            logger.debug("query returned null cursor id: " + responseObserver.hashCode());
             IngestionServiceImpl.sendQueryRequestStatusResponseError(msg, this.responseObserver);
-            return;
-        } else if (!cursor.hasNext()) {
-            logger.trace("query matched no data, cursor is empty");
-            IngestionServiceImpl.sendQueryRequestStatusResponseEmpty(this.responseObserver);
             return;
         }
 

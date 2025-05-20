@@ -4,7 +4,7 @@ import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
+import com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportHdf5File;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.TimestampDocument;
@@ -21,7 +21,7 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
-public class DatasetExportHdf5FileTest {
+public class DataExportHdf5FileTest {
 
     @Test
     public void testCreateExportFile() {
@@ -56,9 +56,9 @@ public class DatasetExportHdf5FileTest {
 
         // create export file and top-level group index structure
         final String exportFilePathString = "/tmp/testCreateExportFile.h5";
-        DatasetExportHdf5File exportHdf5File = null;
+        DataExportHdf5File exportHdf5File = null;
         try {
-            exportHdf5File = new DatasetExportHdf5File(dataset, exportFilePathString);
+            exportHdf5File = new DataExportHdf5File(exportFilePathString);
         } catch (DpException e) {
             fail("exception creating " + exportFilePathString);
         }
@@ -84,6 +84,9 @@ public class DatasetExportHdf5FileTest {
 
         final String providerId = "S01 vacuum provider";
 
+        // write dataset
+        exportHdf5File.writeDataSet(dataset);
+
         // create first BucketDocument for S01-GCC01
         BucketDocument pv1BucketDocument = null;
         {
@@ -102,7 +105,7 @@ public class DatasetExportHdf5FileTest {
             pv1BucketDocument.setAttributes(attributeMap);
             pv1BucketDocument.setEvent(eventMetadata);
             pv1BucketDocument.setProviderId(providerId);
-            exportHdf5File.writeBucketData(pv1BucketDocument);
+            exportHdf5File.writeBucket(pv1BucketDocument);
         }
 
         // create second BucketDocument for S01-GCC02
@@ -123,7 +126,7 @@ public class DatasetExportHdf5FileTest {
             pv2BucketDocument.setAttributes(attributeMap);
             pv2BucketDocument.setEvent(eventMetadata);
             pv2BucketDocument.setProviderId(providerId);
-            exportHdf5File.writeBucketData(pv2BucketDocument);
+            exportHdf5File.writeBucket(pv2BucketDocument);
         }
 
         exportHdf5File.close();

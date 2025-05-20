@@ -38,11 +38,6 @@ public class QueryProviderMetadataDispatcher extends Dispatcher {
             logger.error(msg);
             QueryServiceImpl.sendQueryProviderMetadataResponseError(msg, this.responseObserver);
             return;
-        } else if (!cursor.hasNext()) {
-            // send empty QueryStatus and close response stream if query matched no data
-            logger.trace("providerMetadata query matched no data, cursor is empty");
-            QueryServiceImpl.sendQueryProviderMetadataResponseEmpty(this.responseObserver);
-            return;
         }
 
         QueryProviderMetadataResponse.MetadataResult.Builder providerMetadataResultBuilder =

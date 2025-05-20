@@ -1,18 +1,18 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 
-public class ExportDataSetDispatcher extends Dispatcher {
+public class ExportDataDispatcher extends Dispatcher {
 
-    private final HandlerExportDataSetRequest handlerRequest;
+    private final HandlerExportDataRequest handlerRequest;
     private final MongoAnnotationClientInterface mongoClient;
 
-    public ExportDataSetDispatcher(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataDispatcher(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoClient
     ) {
         super();
@@ -21,11 +21,11 @@ public class ExportDataSetDispatcher extends Dispatcher {
     }
 
     public void handleError(String errorMsg) {
-        AnnotationServiceImpl.sendExportDataSetResponseError(errorMsg, handlerRequest.responseObserver);
+        AnnotationServiceImpl.sendExportDataResponseError(errorMsg, handlerRequest.responseObserver);
     }
 
     public void handleResult(ExportConfiguration.ExportFilePaths exportFilePaths) {
-        AnnotationServiceImpl.sendExportDataSetResponseSuccess(
+        AnnotationServiceImpl.sendExportDataResponseSuccess(
                 exportFilePaths.shareFilePath,
                 exportFilePaths.fileUrl,
                 handlerRequest.responseObserver);

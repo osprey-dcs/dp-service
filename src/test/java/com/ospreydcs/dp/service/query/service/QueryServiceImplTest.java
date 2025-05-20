@@ -66,19 +66,7 @@ public class QueryServiceImplTest extends QueryTestBase {
         assertTrue(response.getExceptionalResult().getMessage().equals(msg));
     }
 
-    @Test
-    public void testQueryResponseEmpty() {
-
-        QueryDataResponse response = serviceImpl.queryDataResponseEmpty();
-
-        assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-        assertTrue(response.hasExceptionalResult());
-        assertEquals(
-                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY,
-                response.getExceptionalResult().getExceptionalResultStatus());
-    }
-
-    @Test
+   @Test
     public void testQueryResponseNotReady() {
 
         QueryDataResponse response = serviceImpl.queryDataResponseNotReady();

@@ -88,7 +88,7 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             values,
-                            valuesStatus);
+                            valuesStatus, false);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);
@@ -126,7 +126,7 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             values,
-                            valuesStatus);
+                            valuesStatus, false);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
             paramsList.add(params);
             requestList.add(request);
@@ -134,14 +134,22 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
 
         // send request and examine response
         // this compares request and bucket DataColumns including DataValues and ValueStatus
-        sendAndVerifyIngestDataStream(paramsList, requestList, false, "");
+        sendAndVerifyIngestDataStream(paramsList, requestList, 0, false, "");
 
         // perform query for PV_01 and verify results
         {
             final List<String> queryPvNames = Arrays.asList("PV_01");
             final DataColumn requestColumn = requestList.get(0).getIngestionDataFrame().getDataColumns(0);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, 0, startSeconds + 1, 0);
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(
+                            queryPvNames,
+                            startSeconds,
+                            0L,
+                            startSeconds + 1,
+                            0L,
+                            false);
+            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
+                    queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
 
@@ -154,8 +162,16 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
         {
             final List<String> queryPvNames = Arrays.asList("PV_02");
             final DataColumn requestColumn = requestList.get(1).getIngestionDataFrame().getDataColumns(0);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
-                    queryPvNames, startSeconds, 0, startSeconds + 1, 0);
+            final QueryTestBase.QueryDataRequestParams params =
+                    new QueryTestBase.QueryDataRequestParams(
+                            queryPvNames,
+                            startSeconds,
+                            0L,
+                            startSeconds + 1,
+                            0L,
+                            false);
+            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
+                    queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
             final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
 

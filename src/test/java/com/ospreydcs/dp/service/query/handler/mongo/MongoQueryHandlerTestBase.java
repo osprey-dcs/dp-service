@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
@@ -104,8 +103,10 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
-        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver);
-        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataStreamDispatcher dispatcher =
+                new QueryDataStreamDispatcher(responseObserver, request.getQuerySpec());
+        final QueryDataJob job =
+                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         return responseList;
@@ -162,9 +163,11 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
-        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver);
+        final QueryDataBidiStreamDispatcher dispatcher =
+                new QueryDataBidiStreamDispatcher(responseObserver, request.getQuerySpec());
         responseObserver.setDispatcher(dispatcher);
-        final QueryDataJob job = new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataJob job =
+                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
         job.execute();
 
         // check if RPC already completed
@@ -186,33 +189,6 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         }
 
         return responseObserver.responseList;
-    }
-
-    public void testResponseStreamDispatcherNoData() {
-
-        // assemble query request
-        // create request with unspecified column name
-        List<String> columnNames = List.of("pv_1", "pv_2");
-        Long nowSeconds = Instant.now().getEpochSecond();
-        QueryDataRequestParams params = new QueryDataRequestParams(
-                columnNames,
-                nowSeconds,
-                0L,
-                nowSeconds + 1,
-                0L);
-        QueryDataRequest request = buildQueryDataRequest(params);
-
-        // send request
-        final int numResponesesExpected = 1;
-        List<QueryDataResponse> responseList = executeAndDispatchResponseStream(request);
-
-        // examine response
-        assertTrue(responseList.size() == numResponesesExpected);
-        QueryDataResponse response = responseList.get(0);
-        assertTrue(response.hasExceptionalResult());
-        assertEquals(
-                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY,
-                response.getExceptionalResult().getExceptionalResultStatus());
     }
 
     private static void verifyDataBucket(
@@ -284,7 +260,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
                 startSeconds,
                 0L,
                 startSeconds + 5,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch result using ResponseStreamDispatcher
@@ -303,7 +279,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
                 startSeconds,
                 0L,
                 startSeconds + 5,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // execute query and dispatch using ResponseCursorDispatcher

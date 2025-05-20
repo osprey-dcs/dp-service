@@ -8,7 +8,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class QueryResponseBidiStreamRequestStreamObserver implements StreamObserver<QueryDataRequest> {
+public class QueryDataBidiStreamRequestObserver implements StreamObserver<QueryDataRequest> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -19,7 +19,7 @@ public class QueryResponseBidiStreamRequestStreamObserver implements StreamObser
     private final QueryHandlerInterface handler;
     private ResultCursorInterface cursor = null;
 
-    public QueryResponseBidiStreamRequestStreamObserver(
+    public QueryDataBidiStreamRequestObserver(
             StreamObserver<QueryDataResponse> responseObserver,
             QueryHandlerInterface handler,
             QueryServiceImpl serviceImpl
@@ -46,7 +46,8 @@ public class QueryResponseBidiStreamRequestStreamObserver implements StreamObser
 
                 // log and validate request
                 QueryDataRequest.QuerySpec querySpec =
-                        serviceImpl.validateQueryDataRequest(QueryServiceImpl.REQUEST_CURSOR, request, responseObserver);
+                        serviceImpl.validateQueryDataRequest(
+                                QueryServiceImpl.REQUEST_BIDI_STREAM, request, responseObserver);
 
                 // handle new query request
                 if (querySpec != null) {

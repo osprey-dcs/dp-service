@@ -20,9 +20,9 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     private QueryHandlerInterface handler;
 
     // constants
-    protected static final String REQUEST_STREAM = "queryResponseStream";
-    protected static final String REQUEST_CURSOR = "queryResponseCursor";
-    protected static final String REQUEST_SINGLE = "queryResponseSingle";
+    protected static final String REQUEST_STREAM = "queryDataStream";
+    protected static final String REQUEST_BIDI_STREAM = "queryDataBidiStream";
+    protected static final String REQUEST_UNARY = "queryData";
 
     public boolean init(QueryHandlerInterface handler) {
         this.handler = handler;
@@ -68,11 +68,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return queryDataResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryDataResponse queryDataResponseEmpty() {
-        return queryDataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryDataResponse queryDataResponseNotReady() {
         return queryDataResponseExceptionalResult(
                 "cursor not ready for operation", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_NOT_READY);
@@ -100,10 +95,12 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryDataResponseEmpty(StreamObserver<QueryDataResponse> responseObserver) {
-        final QueryDataResponse summaryResponse = queryDataResponseEmpty();
-        responseObserver.onNext(summaryResponse);
-        responseObserver.onCompleted();
+    public static void sendQueryDataResponse(
+            QueryDataResponse.QueryData.Builder queryDataBuilder,
+            StreamObserver<QueryDataResponse> responseObserver
+    ) {
+        final QueryDataResponse response = queryDataResponse(queryDataBuilder);
+        responseObserver.onNext(response);
     }
 
     private static QueryTableResponse queryTableResponseExceptionalResult(
@@ -130,9 +127,24 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return queryTableResponseExceptionalResult(msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryTableResponse queryTableResponseEmpty() {
-        return queryTableResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
+    public static QueryTableResponse queryTableResponseEmpty(QueryTableRequest.TableResultFormat format) {
+
+        QueryTableResponse.TableResult.Builder tableResultBuilder = QueryTableResponse.TableResult.newBuilder();
+
+        switch (format) {
+            case TABLE_FORMAT_ROW_MAP -> {
+                QueryTableResponse.RowMapTable rowMapTable = QueryTableResponse.RowMapTable.newBuilder().build();
+                tableResultBuilder.setRowMapTable(rowMapTable);
+            }
+            case TABLE_FORMAT_COLUMN -> {
+                QueryTableResponse.ColumnTable columnTable = QueryTableResponse.ColumnTable.newBuilder().build();
+                tableResultBuilder.setColumnTable(columnTable);
+            }
+            case UNRECOGNIZED -> {
+            }
+        }
+
+        return queryTableResponse(tableResultBuilder.build());
     }
 
     public static QueryTableResponse queryTableResponse(QueryTableResponse.TableResult tableResult) {
@@ -156,9 +168,12 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryTableResponseEmpty(StreamObserver<QueryTableResponse> responseObserver) {
-        final QueryTableResponse summaryResponse = queryTableResponseEmpty();
-        responseObserver.onNext(summaryResponse);
+    public static void sendQueryTableResponseEmpty(
+            QueryTableRequest.TableResultFormat format,
+            StreamObserver<QueryTableResponse> responseObserver
+    ) {
+        final QueryTableResponse emptyResponse = queryTableResponseEmpty(format);
+        responseObserver.onNext(emptyResponse);
         responseObserver.onCompleted();
     }
 
@@ -189,11 +204,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryPvMetadataResponse QueryPvMetadataResponseEmpty() {
-        return QueryPvMetadataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryPvMetadataResponse QueryPvMetadataResponse(
             QueryPvMetadataResponse.MetadataResult metadataResult
     ) {
@@ -215,12 +225,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryPvMetadataResponse> responseObserver
     ) {
         final QueryPvMetadataResponse response = QueryPvMetadataResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryPvMetadataResponseEmpty(StreamObserver<QueryPvMetadataResponse> responseObserver) {
-        final QueryPvMetadataResponse response = QueryPvMetadataResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -292,14 +296,14 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     @Override
     public StreamObserver<QueryDataRequest> queryDataBidiStream(StreamObserver<QueryDataResponse> responseObserver) {
         logger.trace("queryDataBidiStream");
-        return new QueryResponseBidiStreamRequestStreamObserver(responseObserver, handler, this);
+        return new QueryDataBidiStreamRequestObserver(responseObserver, handler, this);
     }
 
     @Override
     public void queryData(QueryDataRequest request, StreamObserver<QueryDataResponse> responseObserver) {
 
         // log and validate request
-        QueryDataRequest.QuerySpec querySpec = validateQueryDataRequest(REQUEST_SINGLE, request, responseObserver);
+        QueryDataRequest.QuerySpec querySpec = validateQueryDataRequest(REQUEST_UNARY, request, responseObserver);
 
         // handle request
         if (querySpec != null) {
@@ -320,6 +324,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         if (validationResult.isError) {
             String validationMsg = validationResult.msg;
             sendQueryTableResponseReject(validationMsg, responseObserver);
+            return;
         }
 
         handler.handleQueryTable(request, responseObserver);
@@ -382,11 +387,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryProvidersResponse queryProvidersResponseEmpty() {
-        return queryProvidersResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryProvidersResponse queryProvidersResponse(
             QueryProvidersResponse.ProvidersResult providersResult
     ) {
@@ -408,12 +408,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryProvidersResponse> responseObserver
     ) {
         final QueryProvidersResponse response = queryProvidersResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryProvidersResponseEmpty(StreamObserver<QueryProvidersResponse> responseObserver) {
-        final QueryProvidersResponse response = queryProvidersResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -532,11 +526,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryProviderMetadataResponse queryProviderMetadataResponseEmpty() {
-        return queryProviderMetadataResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryProviderMetadataResponse queryProviderMetadataResponse(
             QueryProviderMetadataResponse.MetadataResult metadataResult
     ) {
@@ -558,12 +547,6 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
             String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver
     ) {
         final QueryProviderMetadataResponse response = queryProviderMetadataResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryProviderMetadataResponseEmpty(StreamObserver<QueryProviderMetadataResponse> responseObserver) {
-        final QueryProviderMetadataResponse response = queryProviderMetadataResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }

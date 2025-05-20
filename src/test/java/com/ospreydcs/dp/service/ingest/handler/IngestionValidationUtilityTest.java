@@ -34,7 +34,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         1,
                         columnNames,
                         IngestionDataType.DOUBLE,
-                        values, null);
+                        values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
@@ -61,7 +61,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         1,
                         columnNames,
                         IngestionDataType.DOUBLE,
-                        values, null);
+                        values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
@@ -89,7 +89,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         0,
                         columnNames,
                         IngestionDataType.DOUBLE,
-                        values, null);
+                        values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
@@ -120,7 +120,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         2,
                         null,
                         IngestionDataType.DOUBLE,
-                        null, null);
+                        null, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
@@ -152,7 +152,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         2,
                         columnNames,
                         IngestionDataType.DOUBLE,
-                        values, null);
+                        values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
@@ -183,11 +183,11 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         2,
                         columnNames,
                         IngestionDataType.DOUBLE,
-                        values, null);
+                        values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
         ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
-        assertTrue(result.msg.equals("name must be specified for all data columns"));
+        assertTrue(result.msg.equals("name must be specified for all DataColumns"));
     }
 
 }

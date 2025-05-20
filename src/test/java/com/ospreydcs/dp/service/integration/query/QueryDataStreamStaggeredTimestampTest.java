@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
@@ -64,7 +65,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoTenths);
         }
 
@@ -82,7 +83,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalFifths,
                             numBucketsFifths,
                             numSecondsPerBucketFifths, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoFifths);
         }
 
@@ -100,7 +101,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters, 
-                            false, null, null, null, null, null, null, null);
+                            false, false, null, null, null, null, null, null, null);
             columnInfoList.add(columnInfoQuarters);
         }
 
@@ -118,14 +119,14 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                             intervalEighths,
                             numBucketsEighths,
                             numSecondsPerBucketEighths,
-                            true, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
+                            true, false, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
             columnInfoList.add(columnInfoEighths);
         }
 
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos);
+            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos, 0);
         }
 
         {
@@ -147,7 +148,7 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    validationMap);
+                    validationMap, false, "");
         }
 
         {
@@ -167,14 +168,17 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             // 2 buckets for quarters (5 secs/bucket)
             final int numBucketsExpected = 12;
 
-            sendAndVerifyQueryDataStream(
-                    numBucketsExpected,
+            final QueryTestBase.QueryDataRequestParams params = new QueryTestBase.QueryDataRequestParams(
                     queryColumnNamesBucket,
                     queryStartSecondsBucket,
                     queryStartNanosBucket,
                     queryEndSecondsBucket,
                     queryEndNanosBucket,
-                    validationMap);
+                    false
+            );
+
+            sendAndVerifyQueryDataStream(
+                    numBucketsExpected, 0, params, validationMap, false, "");
         }
     }
 

@@ -3,8 +3,11 @@ package com.ospreydcs.dp.service.query;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,61 +15,34 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 
 public class QueryTestBase {
 
-    public static class QueryDataRequestParams {
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
 
-        public List<String> columnNames = null;
-        public Long startTimeSeconds = null;
-        public Long startTimeNanos = null;
-        public Long endTimeSeconds = null;
-        public Long endTimeNanos = null;
-
-        public QueryDataRequestParams(
-                List<String> columnNames,
-                Long startTimeSeconds,
-                Long startTimeNanos,
-                Long endTimeSeconds,
-                Long endTimeNanos) {
-
-            this.columnNames = columnNames;
-            this.startTimeSeconds = startTimeSeconds;
-            this.startTimeNanos = startTimeNanos;
-            this.endTimeSeconds = endTimeSeconds;
-            this.endTimeNanos = endTimeNanos;
-        }
+    public record QueryDataRequestParams(
+            List<String> columnNames,
+            Long beginTimeSeconds,
+            Long beginTimeNanos,
+            Long endTimeSeconds,
+            Long endTimeNanos,
+            boolean useSerializedDataColumns
+    ) {
     }
 
-    public static class QueryTableRequestParams {
-
-        QueryTableRequest.TableResultFormat tableResultFormat = null;
-        public List<String> pvNameList = null;
-        public String pvNamePattern = null;
-        public Long beginTimeSeconds = null;
-        public Long beginTimeNanos = null;
-        public Long endTimeSeconds = null;
-        public Long endTimeNanos = null;
-
-        public QueryTableRequestParams(
-                QueryTableRequest.TableResultFormat tableResultFormat,
-                List<String> pvNameList,
-                String pvNamePattern,
-                Long beginTimeSeconds,
-                Long beginTimeNanos,
-                Long endTimeSeconds,
-                Long endTimeNanos) {
-
-            this.tableResultFormat = tableResultFormat;
-            this.pvNameList = pvNameList;
-            this.pvNamePattern = pvNamePattern;
-            this.beginTimeSeconds = beginTimeSeconds;
-            this.beginTimeNanos = beginTimeNanos;
-            this.endTimeSeconds = endTimeSeconds;
-            this.endTimeNanos = endTimeNanos;
-        }
+    public record QueryTableRequestParams(
+            QueryTableRequest.TableResultFormat tableResultFormat,
+            List<String> pvNameList,
+            String pvNamePattern,
+            Long beginTimeSeconds,
+            Long beginTimeNanos,
+            Long endTimeSeconds,
+            Long endTimeNanos
+    ) {
     }
 
     public static class QueryProvidersRequestParams {
@@ -106,10 +82,10 @@ public class QueryTestBase {
             querySpecBuilder.addAllPvNames(params.columnNames);
         }
         
-        if (params.startTimeSeconds != null) {
+        if (params.beginTimeSeconds != null) {
             final Timestamp.Builder beginTimeBuilder = Timestamp.newBuilder();
-            beginTimeBuilder.setEpochSeconds(params.startTimeSeconds);
-            if (params.startTimeNanos != null) beginTimeBuilder.setNanoseconds(params.startTimeNanos);
+            beginTimeBuilder.setEpochSeconds(params.beginTimeSeconds);
+            if (params.beginTimeNanos != null) beginTimeBuilder.setNanoseconds(params.beginTimeNanos);
             beginTimeBuilder.build();
             querySpecBuilder.setBeginTime(beginTimeBuilder);
         }
@@ -121,6 +97,9 @@ public class QueryTestBase {
             endTimeBuilder.build();
             querySpecBuilder.setEndTime(endTimeBuilder);
         }
+
+        // specify whether to use SerializedDataColumns or regular DataColumns
+        querySpecBuilder.setUseSerializedDataColumns(params.useSerializedDataColumns);
 
         querySpecBuilder.build();
         requestBuilder.setQuerySpec(querySpecBuilder);
@@ -148,8 +127,6 @@ public class QueryTestBase {
                     .setPattern(params.pvNamePattern)
                     .build();
             requestBuilder.setPvNamePattern(pvNamePattern);
-        } else {
-            fail("no pvName params specified (list of pattern)");
         }
 
         // set begin time
@@ -205,10 +182,11 @@ public class QueryTestBase {
     }
 
 
-    public static class QueryResponseTableObserver implements StreamObserver<QueryTableResponse> {
+    public static class QueryTableResponseObserver implements StreamObserver<QueryTableResponse> {
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<QueryTableResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -222,6 +200,14 @@ public class QueryTestBase {
 
         public boolean isError() { return isError.get(); }
 
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
         public QueryTableResponse getQueryResponse() {
             return responseList.get(0);
         }
@@ -231,12 +217,22 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
+
                 responseList.add(response);
                 finishLatch.countDown();
                 if (responseList.size() > 1) {
-                    System.err.println("QueryResponseTableObserver onNext received more than one response");
+                    System.err.println("QueryTableResponseObserver onNext received more than one response");
                     isError.set(true);
                 }
+
             }).start();
 
         }
@@ -247,7 +243,7 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
                 Status status = Status.fromThrowable(t);
-                System.err.println("QueryResponseTableObserver error: " + status);
+                System.err.println("QueryTableResponseObserver error: " + status);
                 isError.set(true);
             }).start();
         }
@@ -257,27 +253,70 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryResponseStreamObserver implements StreamObserver<QueryDataResponse> {
+    public static class QueryDataResponseStreamObserver implements StreamObserver<QueryDataResponse> {
+
+        private static enum ObserverType {
+            UNARY,
+            STREAM,
+            BIDI_STREAM
+        }
 
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
                 Collections.synchronizedList(new ArrayList<>());
+        private StreamObserver<QueryDataRequest> requestObserver = null;
+        private final ObserverType observerType;
+        private final int numBucketsExpected;
+        private final AtomicInteger numBucketsReceived = new AtomicInteger(0);
 
-//        public QueryResponseStreamObserver(int numBucketsExpected) {
-//            this.finishLatch = new CountDownLatch(numBucketsExpected);
-//        }
+        public QueryDataResponseStreamObserver(ObserverType observerType) {
+            this.observerType = observerType;
+            this.numBucketsExpected = 0;
+        }
+
+        public QueryDataResponseStreamObserver(ObserverType observerType, int numBucketsExpected) {
+            this.observerType = observerType;
+            this.numBucketsExpected = numBucketsExpected;
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataStreamObserver() {
+            return new QueryDataResponseStreamObserver(ObserverType.STREAM);
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataUnaryObserver() {
+            return new QueryDataResponseStreamObserver(ObserverType.UNARY);
+        }
+
+        public static QueryDataResponseStreamObserver newQueryDataBidiStreamObserver(int numBucketsExpected) {
+            return new QueryDataResponseStreamObserver(ObserverType.BIDI_STREAM, numBucketsExpected);
+        }
+
+        public void setRequestObserver(StreamObserver<QueryDataRequest> requestObserver) {
+            this.requestObserver = requestObserver;
+        }
 
         public void await() {
             try {
                 finishLatch.await(1, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
-                System.err.println("InterruptedException waiting for finishLatch");
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
             }
         }
 
         public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
 
         public List<QueryDataResponse.QueryData.DataBucket> getDataBucketList() {
             return dataBucketList;
@@ -289,11 +328,44 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                assertTrue(response.hasQueryData());
+                final List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
                         response.getQueryData().getDataBucketsList();
+                final int bucketsReceived = numBucketsReceived.addAndGet(responseBucketList.size());
                 for (QueryDataResponse.QueryData.DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
                 }
+
+                if (observerType == ObserverType.UNARY) {
+                    // we only expect a single response if unary
+                    finishLatch.countDown();
+                    return;
+                }
+
+                if (observerType == ObserverType.BIDI_STREAM) {
+
+                    if (bucketsReceived >= numBucketsExpected) {
+                        // bidi stream received expected number of result buckets
+                        finishLatch.countDown();
+                        return;
+                    } else {
+                        logger.trace("requesting next query result response");
+                        QueryDataRequest nextRequest = QueryBenchmarkBase.buildNextQueryDataRequest();
+                        requestObserver.onNext(nextRequest);
+                    }
+                }
+
             }).start();
         }
 
@@ -303,8 +375,10 @@ public class QueryTestBase {
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
                 Status status = Status.fromThrowable(t);
-                System.err.println("QueryResponseTableObserver error: " + status);
+                final String errorMsg = "onError: " + status;
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
                 finishLatch.countDown();
             }).start();
         }
@@ -314,7 +388,9 @@ public class QueryTestBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                finishLatch.countDown();
+                if (observerType == ObserverType.STREAM) {
+                    finishLatch.countDown();
+                }
             }).start();
         }
     }

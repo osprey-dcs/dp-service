@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
@@ -21,6 +22,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
@@ -37,6 +39,8 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import de.siegmar.fastcsv.reader.CsvReader;
+import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -44,11 +48,19 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.ClassRule;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -102,132 +114,62 @@ public abstract class GrpcIntegrationTestBase {
         return ConfigurationManager.getInstance();
     }
 
-    protected static class IngestionProviderInfo {
-
-        public final String providerId;
-        public final Set<String> pvNameSet;
-        public final long firstTimeSeconds;
-        public final long firstTimeNanos;
-        public final long lastTimeSeconds;
-        public final long lastTimeNanos;
-        public final int numBuckets;
-
-        public IngestionProviderInfo(
-                String providerId,
-                Set<String> pvNameSet,
-                long firstTimeSeconds,
-                long firstTimeNanos,
-                long lastTimeSeconds,
-                long lastTimeNanos,
-                int numBuckets
-        ) {
-            this.providerId = providerId;
-            this.pvNameSet = pvNameSet;
-            this.firstTimeSeconds = firstTimeSeconds;
-            this.firstTimeNanos = firstTimeNanos;
-            this.lastTimeSeconds = lastTimeSeconds;
-            this.lastTimeNanos = lastTimeNanos;
-            this.numBuckets = numBuckets;
-        }
+    protected record IngestionProviderInfo(
+            String providerId,
+            Set<String> pvNameSet,
+            long firstTimeSeconds,
+            long firstTimeNanos,
+            long lastTimeSeconds,
+            long lastTimeNanos,
+            int numBuckets
+    ) {
     }
 
-    protected static class IngestionColumnInfo {
-
-        // instance variables
-        public final String columnName;
-        public final String requestIdBase;
-        public final String providerId;
-        public final long measurementInterval;
-        public final int numBuckets;
-        public final int numSecondsPerBucket;
-        public final boolean useExplicitTimestampList;
-        public final List<String> tags;
-        public final Map<String, String> attributes;
-        public final String eventDescription;
-        public final Long eventStartSeconds;
-        public final Long eventStartNanos;
-        public final Long eventStopSeconds;
-        public final Long eventStopNanos;
-
-        public IngestionColumnInfo(
-                String columnName,
-                String requestIdBase,
-                String providerId, long measurementInterval,
-                int numBuckets,
-                int numSecondsPerBucket,
-                boolean useExplicitTimestampList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
-        ) {
-            this.columnName = columnName;
-            this.requestIdBase = requestIdBase;
-            this.providerId = providerId;
-            this.measurementInterval = measurementInterval;
-            this.numBuckets = numBuckets;
-            this.numSecondsPerBucket = numSecondsPerBucket;
-            this.useExplicitTimestampList = useExplicitTimestampList;
-            this.tags = tags;
-            this.attributes = attributes;
-            this.eventDescription = eventDescription;
-            this.eventStartSeconds = eventStartSeconds;
-            this.eventStartNanos = eventStartNanos;
-            this.eventStopSeconds = eventStopSeconds;
-            this.eventStopNanos = eventStopNanos;
-        }
+    /**
+     * @param columnName               instance variables
+     * @param useSerializedDataColumns
+     */
+    public record IngestionColumnInfo(
+            String columnName,
+            String requestIdBase,
+            String providerId,
+            long measurementInterval,
+            int numBuckets,
+            int numSecondsPerBucket,
+            boolean useExplicitTimestampList,
+            boolean useSerializedDataColumns, List<String> tags,
+            Map<String, String> attributes,
+            String eventDescription,
+            Long eventStartSeconds,
+            Long eventStartNanos,
+            Long eventStopSeconds,
+            Long eventStopNanos
+    ) {
     }
 
-    protected static class IngestionBucketInfo {
-
-        // instance variables
-        public final String providerId;
-        public final String requestId;
-        public final long startSeconds;
-        public final long startNanos;
-        public final long endSeconds;
-        public final long endNanos;
-        public final int numValues;
-        public final long intervalNanos;
-        public final List<Object> dataValues;
-        public final List<Long> timestampSecondsList;
-        public final List<Long> timestampNanosList;
-        public final List<String> tags;
-        public final Map<String, String> attributes;
-        public final String eventDescription;
-        public final Long eventStartSeconds;
-        public final Long eventStartNanos;
-        public final Long eventStopSeconds;
-        public final Long eventStopNanos;
-
-        public IngestionBucketInfo(
-                String providerId,
-                String requestId,
-                long startSeconds,
-                long startNanos,
-                long endSeconds,
-                long endNanos,
-                int numValues,
-                long intervalNanos,
-                List<Object> dataValues,
-                List<Long> timestampSecondsList,
-                List<Long> timestampNanosList, List<String> tags, Map<String, String> attributes, String eventDescription, Long eventStartSeconds, Long eventStartNanos, Long eventStopSeconds, Long eventStopNanos
-        ) {
-            this.providerId = providerId;
-            this.requestId = requestId;
-            this.startSeconds = startSeconds;
-            this.startNanos = startNanos;
-            this.endSeconds = endSeconds;
-            this.endNanos = endNanos;
-            this.numValues = numValues;
-            this.intervalNanos = intervalNanos;
-            this.dataValues = dataValues;
-            this.timestampSecondsList = timestampSecondsList;
-            this.timestampNanosList = timestampNanosList;
-            this.tags = tags;
-            this.attributes = attributes;
-            this.eventDescription = eventDescription;
-            this.eventStartSeconds = eventStartSeconds;
-            this.eventStartNanos = eventStartNanos;
-            this.eventStopSeconds = eventStopSeconds;
-            this.eventStopNanos = eventStopNanos;
-        }
+    /**
+     * @param providerId instance variables
+     */
+    protected record IngestionBucketInfo(
+            String providerId,
+            String requestId,
+            long startSeconds,
+            long startNanos,
+            long endSeconds,
+            long endNanos,
+            int numValues,
+            long intervalNanos,
+            List<Object> dataValues,
+            List<Long> timestampSecondsList,
+            List<Long> timestampNanosList,
+            List<String> tags,
+            Map<String, String> attributes,
+            String eventDescription,
+            Long eventStartSeconds,
+            Long eventStartNanos,
+            Long eventStopSeconds,
+            Long eventStopNanos
+    ) {
     }
 
     protected static class IngestionStreamInfo {
@@ -254,16 +196,10 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected static class IngestionScenarioResult {
-        public final Map<String, IngestionProviderInfo> providerInfoMap;
-        public final Map<String, IngestionStreamInfo> validationMap;
-        public IngestionScenarioResult(
-                Map<String, IngestionProviderInfo> providerInfoMap,
-                Map<String, IngestionStreamInfo> validationMap
-        ) {
-            this.providerInfoMap = providerInfoMap;
-            this.validationMap = validationMap;
-        }
+    protected record IngestionScenarioResult(
+            Map<String, IngestionProviderInfo> providerInfoMap,
+            Map<String, IngestionStreamInfo> validationMap
+    ) {
     }
 
     public static void setUp() throws Exception {
@@ -513,6 +449,7 @@ public abstract class GrpcIntegrationTestBase {
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
             IngestDataStreamResponse response,
+            int numSerializedDataColumnsExpected,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -538,7 +475,7 @@ public abstract class GrpcIntegrationTestBase {
                 final IngestDataRequest request = requestList.get(listIndex);
 
                 // verify database contents (request status and corresponding bucket documents)
-                bucketDocumentList.addAll(verifyIngestionHandling(params, request));
+                bucketDocumentList.addAll(verifyIngestionHandling(params, request, numSerializedDataColumnsExpected));
             }
         }
 
@@ -548,7 +485,8 @@ public abstract class GrpcIntegrationTestBase {
     protected static List<BucketDocument> verifyIngestionHandling(
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
-            List<IngestDataResponse> responseList
+            List<IngestDataResponse> responseList,
+            int numSerializedDataColumnsExpected
     ) {
         // check that parameter list sizes match
         assertEquals(paramsList.size(), requestList.size());
@@ -572,7 +510,7 @@ public abstract class GrpcIntegrationTestBase {
             assertEquals((int) params.samplingClockCount, ackResult.getNumRows());
 
             // verify database contents (request status and corresponding bucket documents)
-            bucketDocumentList.addAll(verifyIngestionHandling(params, request));
+            bucketDocumentList.addAll(verifyIngestionHandling(params, request, numSerializedDataColumnsExpected));
         }
 
         return bucketDocumentList;
@@ -580,7 +518,8 @@ public abstract class GrpcIntegrationTestBase {
 
     protected static List<BucketDocument> verifyIngestionHandling(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest request
+            IngestDataRequest request,
+            int numSerializedDataColumnsExpected
     ) {
         // create container to hold method result
         final List<BucketDocument> bucketDocumentList = new ArrayList<>();
@@ -605,6 +544,7 @@ public abstract class GrpcIntegrationTestBase {
 
         // validate database BucketDocument for each column
         int pvIndex = 0;
+        int serializedDataColumnCount = 0;
         for (String expectedBucketId : expectedBucketIds) {
 
             final BucketDocument bucketDocument = mongoClient.findBucket(expectedBucketId);
@@ -662,7 +602,7 @@ public abstract class GrpcIntegrationTestBase {
                     requestDataTimestampsModel.getSamplePeriodNanos(),
                     bucketDocument.getDataTimestamps().getSamplePeriod());
 
-            if (params.timestampsSecondsList != null && params.timestampsSecondsList.size() > 0) {
+            if (params.timestampsSecondsList != null && !params.timestampsSecondsList.isEmpty()) {
                 // check explicit TimestampsList
                 assertEquals(
                         DataTimestamps.ValueCase.TIMESTAMPLIST.getNumber(),
@@ -704,8 +644,26 @@ public abstract class GrpcIntegrationTestBase {
                     bucketDocument.getDataTimestamps().getLastTime().getDateTime());
 
             // compare data value vectors
-            final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
-            final DataColumn requestDataColumn = dataColumnList.get(pvIndex);
+            DataColumn requestDataColumn = null;
+
+            if (params.useSerializedDataColumns) {
+                // request contains SerializedDataColumns
+                final List<SerializedDataColumn> serializedDataColumnList =
+                        request.getIngestionDataFrame().getSerializedDataColumnsList();
+                final SerializedDataColumn serializedDataColumn = serializedDataColumnList.get(pvIndex);
+                // deserialize column for comparison
+                try {
+                    requestDataColumn = DataColumn.parseFrom(serializedDataColumn.getDataColumnBytes());
+                } catch (InvalidProtocolBufferException e) {
+                    fail("exception deserializing DataColumn: " + e.getMessage());
+                }
+                serializedDataColumnCount = serializedDataColumnCount + 1;
+
+            } else {
+                // request contains regular DataColumns
+                final List<DataColumn> dataColumnList = request.getIngestionDataFrame().getDataColumnsList();
+                requestDataColumn = dataColumnList.get(pvIndex);
+            }
             // this compares each DataValue including ValueStatus, confirmed in debugger
             assertEquals(requestDataColumn, bucketDataColumn);
 
@@ -725,51 +683,61 @@ public abstract class GrpcIntegrationTestBase {
 
             // check event metadata
             if (params.eventDescription != null) {
-                assertTrue(bucketDocument.getEvent() != null);
+                assertNotNull(bucketDocument.getEvent());
                 assertEquals(request.getEventMetadata(), bucketDocument.getEvent().toEventMetadata());
             } else {
-                assertTrue(bucketDocument.getEvent() == null);
+                assertNull(bucketDocument.getEvent());
             }
 
             pvIndex = pvIndex + 1;
         }
+        assertEquals(numSerializedDataColumnsExpected, serializedDataColumnCount);
 
         return bucketDocumentList;
     }
 
     protected List<BucketDocument> sendAndVerifyIngestData(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest
+            IngestDataRequest ingestionRequest,
+            int numSerializedDataColumnsExpected
     ) {
         final IngestDataResponse response = sendIngestData(ingestionRequest);
         final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = Arrays.asList(response);
-        return verifyIngestionHandling(paramsList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList, numSerializedDataColumnsExpected);
     }
 
     protected List<BucketDocument> sendAndVerifyIngestDataStream(
             List<IngestionTestBase.IngestionRequestParams> paramsList,
             List<IngestDataRequest> requestList,
+            int numSerializedDataColumnsExpected,
             boolean expectReject,
             String expectedRejectMessage
     ) {
 
         // send request
         final IngestDataStreamResponse response = sendIngestDataStream(requestList);
-        return verifyIngestionHandling(paramsList, requestList, response, expectReject, expectedRejectMessage);
+        return verifyIngestionHandling(
+                paramsList,
+                requestList,
+                response,
+                numSerializedDataColumnsExpected,
+                expectReject,
+                expectedRejectMessage);
     }
 
     protected List<BucketDocument> sendAndVerifyIngestDataBidiStream(
             IngestionTestBase.IngestionRequestParams params,
-            IngestDataRequest ingestionRequest
+            IngestDataRequest ingestionRequest,
+            int numSerializedDataColumnsExpected
     ) {
 
         // send request
         final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
         final List<IngestDataRequest> requestList = Arrays.asList(ingestionRequest);
         final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
-        return verifyIngestionHandling(paramsList, requestList, responseList);
+        return verifyIngestionHandling(paramsList, requestList, responseList, numSerializedDataColumnsExpected);
     }
 
     protected static IngestionStreamInfo ingestDataBidiStream(
@@ -849,7 +817,9 @@ public abstract class GrpcIntegrationTestBase {
                             columnInfo.eventStartSeconds,
                             columnInfo.eventStartNanos,
                             columnInfo.eventStopSeconds,
-                            columnInfo.eventStopNanos);
+                            columnInfo.eventStopNanos,
+                            columnInfo.useSerializedDataColumns
+                    );
             paramsList.add(params);
 
             final Instant startTimeInstant = Instant.ofEpochSecond(currentSeconds, startNanos);
@@ -877,7 +847,8 @@ public abstract class GrpcIntegrationTestBase {
                             columnInfo.eventStartSeconds,
                             columnInfo.eventStartNanos,
                             columnInfo.eventStopSeconds,
-                            columnInfo.eventStopNanos);
+                            columnInfo.eventStopNanos
+                    );
             bucketInfoMap.put(currentSeconds, startNanos, bucketInfo);
 
             // build request
@@ -903,7 +874,8 @@ public abstract class GrpcIntegrationTestBase {
     protected static Map<String, IngestionStreamInfo> ingestDataBidiStreamFromColumn(
             List<IngestionColumnInfo> columnInfoList,
             long startSeconds,
-            long startNanos
+            long startNanos,
+            int numSerializedDataColumnsExpected
     ) {
         // create data structure for validating query result
         Map<String, IngestionStreamInfo> validationMap = new TreeMap<>();
@@ -914,7 +886,11 @@ public abstract class GrpcIntegrationTestBase {
                             startSeconds,
                             startNanos,
                             columnInfo);
-            verifyIngestionHandling(streamInfo.paramsList, streamInfo.requestList, streamInfo.responseList);
+            verifyIngestionHandling(
+                    streamInfo.paramsList,
+                    streamInfo.requestList,
+                    streamInfo.responseList,
+                    numSerializedDataColumnsExpected);
             validationMap.put(columnInfo.columnName, streamInfo);
         }
 
@@ -965,7 +941,7 @@ public abstract class GrpcIntegrationTestBase {
                                 numBuckets,
                                 numSecondsPerBucket,
                                 false,
-                                tags,
+                                false, tags,
                                 attributes,
                                 eventDescription,
                                 eventStartSeconds,
@@ -991,7 +967,7 @@ public abstract class GrpcIntegrationTestBase {
                                 interval,
                                 numBuckets,
                                 numSecondsPerBucket,
-                                false, null, null, null, null, null, null, null);
+                                false, false, null, null, null, null, null, null, null);
                 bpmPvNames.add(bpmName);
                 ingestionColumnInfoList.add(columnInfoTenths);
             }
@@ -1021,7 +997,7 @@ public abstract class GrpcIntegrationTestBase {
         Map<String, IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos);
+            validationMap = ingestDataBidiStreamFromColumn(ingestionColumnInfoList, startSeconds, startNanos, 0);
         }
 
         return new IngestionScenarioResult(providerInfoMap, validationMap);
@@ -1062,14 +1038,7 @@ public abstract class GrpcIntegrationTestBase {
             assertTrue(responseObserver.isError());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
-            if (responseObserver.isError()
-                    && responseObserver.getErrorMessage().equals(
-                            "onNext received exception response: query returned no data")
-            ) {
-                return new QueryRequestStatusResult(responseObserver.getRequestStatusList(), true);
-            } else {
-                assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
-            }
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
         return new QueryRequestStatusResult(responseObserver.getRequestStatusList(), false);
@@ -1081,28 +1050,9 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        // NOTE
-        //
-        // This method includes retry logic for a strange behavior that I encountered, but determined that retry didn't
-        // solve (e.g., the start times for ingestion and query were not correct).  I left the retry logic here because
-        // we might decide we need it at some point.
-
         final QueryRequestStatusRequest request = IngestionTestBase.buildQueryRequestStatusRequest(params);
-        List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList = new ArrayList<>();
-        for (int retryCount = 0 ; retryCount < MongoTestClient.MONGO_FIND_RETRY_COUNT ; ++retryCount) {
-            QueryRequestStatusResult result = sendQueryRequestStatus(request, expectReject, expectedRejectMessage);
-            if (result.noData && expectedResponseMap.size() > 0) {
-                logger.info("sendAndVerifyQueryRequestStatus no data found, retrying");
-                try {
-                    Thread.sleep(MongoTestClient.MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                } catch (InterruptedException ex) {
-                    // ignore and retry
-                }
-            } else {
-                requestStatusList = result.statusList;
-                break;
-            }
-        }
+        QueryRequestStatusResult result = sendQueryRequestStatus(request, expectReject, expectedRejectMessage);
+        final List<QueryRequestStatusResponse.RequestStatusResult.RequestStatus> requestStatusList = result.statusList;
 
         // verify API response against expectedResponseMap
         assertEquals(expectedResponseMap.size(), requestStatusList.size());
@@ -1173,49 +1123,129 @@ public abstract class GrpcIntegrationTestBase {
         return subscribeDataCall;
     }
 
+    record SubscriptionResponseColumn(
+            DataColumn dataColumn,
+            boolean isSerialized
+    ) {
+    }
+
+    private void addPvTimestampColumnMapEntry(
+            Map<String, TimestampMap<SubscriptionResponseColumn>> pvTimestampColumnMap,
+            long responseSeconds,
+            long responseNanos,
+            DataColumn dataColumn,
+            boolean isSerialized
+    ) {
+        final String pvName = dataColumn.getName();
+        TimestampMap<SubscriptionResponseColumn> pvTimestampMap = pvTimestampColumnMap.get(pvName);
+        if (pvTimestampMap == null) {
+            pvTimestampMap = new TimestampMap<>();
+            pvTimestampColumnMap.put(pvName, pvTimestampMap);
+        }
+        pvTimestampMap.put(responseSeconds, responseNanos, new SubscriptionResponseColumn(dataColumn, isSerialized));
+    }
+
     protected void verifySubscribeDataResponse(
             IngestionTestBase.SubscribeDataResponseObserver responseObserver,
             List<String> pvNameList,
-            Map<String, IngestionStreamInfo> ingestionValidationMap
+            Map<String, IngestionStreamInfo> ingestionValidationMap,
+            int numExpectedSerializedColumns
     ) {
+        // wait for completion of API method response stream and confirm not in error state
         responseObserver.awaitResponseLatch();
-
         assertFalse(responseObserver.isError());
 
-        // verify responses against ingestion request params
-
+        // get subscription responses for verification of expected contents
         final List<SubscribeDataResponse> responseList = responseObserver.getResponseList();
 
-        // create map of response dataTimestamps values by pvName
-        Map<String, List<DataTimestamps>> responsePvTimestampsMap = new HashMap<>();
+        // create map of response DataColumns organized by PV name and timestamp
+        Map<String, TimestampMap<SubscriptionResponseColumn>> pvTimestampColumnMap = new HashMap<>();
+        int responseColumnCount = 0;
         for (SubscribeDataResponse response : responseList) {
-            final String responsePvName = response.getSubscribeDataResult().getDataColumnsList().get(0).getName();
-            final DataTimestamps responseDataTimestamps = response.getSubscribeDataResult().getDataTimestamps();
-            List<DataTimestamps> pvTimestampsList = responsePvTimestampsMap.get(responsePvName);
-            if (pvTimestampsList == null) {
-                pvTimestampsList = new ArrayList<>();
-                responsePvTimestampsMap.put(responsePvName, pvTimestampsList);
+
+            assertTrue(response.hasSubscribeDataResult());
+            final SubscribeDataResponse.SubscribeDataResult responseResult = response.getSubscribeDataResult();
+            final DataTimestamps responseDataTimestamps = responseResult.getDataTimestamps();
+            final DataTimestampsUtility.DataTimestampsModel responseTimestampsModel = 
+                    new DataTimestampsUtility.DataTimestampsModel(responseDataTimestamps);
+            final long responseSeconds = responseTimestampsModel.getFirstTimestamp().getEpochSeconds();
+            final long responseNanos = responseTimestampsModel.getFirstTimestamp().getNanoseconds();
+
+            // add entries to pvTimestampColumnMap for regular DataColumns in response
+            for (DataColumn dataColumn : responseResult.getDataColumnsList()) {
+                addPvTimestampColumnMapEntry(
+                        pvTimestampColumnMap, responseSeconds, responseNanos, dataColumn, false);
+                responseColumnCount = responseColumnCount + 1;
             }
-            pvTimestampsList.add(responseDataTimestamps);
+
+            // add entries to pvTimestampColumnMap for SerializedDataColumns in response
+            for (SerializedDataColumn serializedDataColumn : responseResult.getSerializedDataColumnsList()) {
+                DataColumn deserializedDataColumn = null;
+                try {
+                    deserializedDataColumn = DataColumn.parseFrom(serializedDataColumn.getDataColumnBytes());
+                } catch (InvalidProtocolBufferException e) {
+                    fail("exception deserializing response SerializedDataColumn: " + e.getMessage());
+                }
+                assertNotNull(deserializedDataColumn);
+                addPvTimestampColumnMapEntry(
+                        pvTimestampColumnMap, responseSeconds, responseNanos, deserializedDataColumn, true);
+                responseColumnCount = responseColumnCount + 1;
+            }
+
         }
 
-        // iterate through request params for specified pvs
+        // confirm that we received the expected DataColumns in subscription responses
+        // by comparing to ingestion requests for subscribed PVs
+        int requestColumnCount = 0;
+        int serializedColumnCount = 0;
         for (String pvName : pvNameList) {
-            for (IngestionTestBase.IngestionRequestParams requestParams : ingestionValidationMap.get(pvName).paramsList) {
-                // check that a response was received that matches this PV name and the request dataTimestamps
-                List<DataTimestamps> responsePvTimestampsList = responsePvTimestampsMap.get(pvName);
-                assertNotNull(responsePvTimestampsList);
-                boolean found = false;
-                for (DataTimestamps responsePvTimestamps : responsePvTimestampsList) {
-                    if ((responsePvTimestamps.getSamplingClock().getStartTime().getEpochSeconds()  == requestParams.samplingClockStartSeconds)
-                            && (responsePvTimestamps.getSamplingClock().getStartTime().getNanoseconds() == requestParams.samplingClockStartNanos)) {
-                        found = true;
-                        break;
+            for (IngestDataRequest pvIngestionRequest : ingestionValidationMap.get(pvName).requestList) {
+
+                // check that pvTimestampColumnMap contains an entry for each PV column in request's data frame
+                final IngestDataRequest.IngestionDataFrame requestFrame = pvIngestionRequest.getIngestionDataFrame();
+                final DataTimestamps requestDataTimestamps = requestFrame.getDataTimestamps();
+                final DataTimestampsUtility.DataTimestampsModel requestTimestampsModel = 
+                        new DataTimestampsUtility.DataTimestampsModel(requestDataTimestamps);
+                final long requestSeconds = requestTimestampsModel.getFirstTimestamp().getEpochSeconds();
+                final long requestNanos = requestTimestampsModel.getFirstTimestamp().getNanoseconds();
+                final TimestampMap<SubscriptionResponseColumn> responsePvTimestampMap = pvTimestampColumnMap.get(pvName);
+                assertNotNull(responsePvTimestampMap);
+                final SubscriptionResponseColumn responsePvTimestampColumn =
+                        responsePvTimestampMap.get(requestSeconds, requestNanos);
+                assertNotNull(responsePvTimestampColumn);
+                final DataColumn responseDataColumn = responsePvTimestampColumn.dataColumn;
+                final boolean responseColumnIsSerialized = responsePvTimestampColumn.isSerialized();
+
+                // check response received for each regular DataColumns for subscribed PV in request
+                for (DataColumn requestDataColumn : requestFrame.getDataColumnsList()) {
+                    // ignore ingestion request columns not for this PV, which shouldn't be the case, but...
+                    if ( ! requestDataColumn.getName().equals(pvName)) {
+                        continue;
                     }
+                    assertEquals(requestDataColumn, responseDataColumn);
+                    assertFalse(responseColumnIsSerialized);
+                    requestColumnCount = requestColumnCount + 1;
                 }
-                assertTrue(found);
+
+                for (SerializedDataColumn requestSerializedColumn : requestFrame.getSerializedDataColumnsList()) {
+                    // ignore ingestion request columns not for this PV, which shouldn't be the case, but...
+                    if ( ! requestSerializedColumn.getName().equals(pvName)) {
+                        continue;
+                    }
+                    try {
+                        assertEquals(DataColumn.parseFrom(requestSerializedColumn.getDataColumnBytes()), responseDataColumn);
+                    } catch (InvalidProtocolBufferException e) {
+                        fail("exception deserializing request SerializedDatacolumn: " + e.getMessage());
+                    }
+                    assertTrue(responseColumnIsSerialized);
+                    requestColumnCount = requestColumnCount + 1;
+                    serializedColumnCount = serializedColumnCount + 1;
+                }
+
             }
         }
+        assertEquals(requestColumnCount, responseColumnCount);
+        assertEquals(numExpectedSerializedColumns, serializedColumnCount);
     }
 
     protected void cancelSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
@@ -1237,9 +1267,7 @@ public abstract class GrpcIntegrationTestBase {
     protected void closeSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
 
         // close the request stream
-        new Thread(() -> {
-            subscribeDataCall.requestObserver.onCompleted();
-        }).start();
+        new Thread(subscribeDataCall.requestObserver::onCompleted).start();
 
         // wait for ack response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
@@ -1247,12 +1275,15 @@ public abstract class GrpcIntegrationTestBase {
         responseObserver.awaitCloseLatch();
     }
 
-    protected QueryTableResponse.TableResult sendQueryTable(QueryTableRequest request) {
-
+    protected QueryTableResponse.TableResult sendQueryTable(
+            QueryTableRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
 
-        final QueryTestBase.QueryResponseTableObserver responseObserver =
-                new QueryTestBase.QueryResponseTableObserver();
+        final QueryTestBase.QueryTableResponseObserver responseObserver =
+                new QueryTestBase.QueryTableResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
@@ -1262,16 +1293,24 @@ public abstract class GrpcIntegrationTestBase {
 
         responseObserver.await();
 
-        if (responseObserver.isError()) {
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             return null;
         } else {
             final QueryTableResponse response = responseObserver.getQueryResponse();
+            assertTrue(response.hasTableResult());
             return response.getTableResult();
         }
     }
-    protected QueryTableResponse.TableResult queryTable(QueryTestBase.QueryTableRequestParams params) {
+
+    protected QueryTableResponse.TableResult queryTable(
+            QueryTestBase.QueryTableRequestParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
         final QueryTableRequest request = QueryTestBase.buildQueryTableRequest(params);
-        return sendQueryTable(request);
+        return sendQueryTable(request, expectReject, expectedRejectMessage);
     }
 
     private void verifyQueryTableColumnResult(
@@ -1283,11 +1322,18 @@ public abstract class GrpcIntegrationTestBase {
     ) {
         // check table is correct format
         assertTrue(tableResult.hasColumnTable());
+        final QueryTableResponse.ColumnTable resultColumnTable = tableResult.getColumnTable();
+        
+        if (numRowsExpected == 0) {
+            assertEquals(0, resultColumnTable.getDataColumnsCount());
+            assertFalse(resultColumnTable.hasDataTimestamps());
+            return;
+        }
 
         final List<Timestamp> timestampList =
-                tableResult.getColumnTable().getDataTimestamps().getTimestampList().getTimestampsList();
+                resultColumnTable.getDataTimestamps().getTimestampList().getTimestampsList();
         assertEquals(numRowsExpected, timestampList.size());
-        assertEquals(pvNameList.size(), tableResult.getColumnTable().getDataColumnsCount());
+        assertEquals(pvNameList.size(), resultColumnTable.getDataColumnsCount());
         int rowIndex = 0;
         for (Timestamp timestamp : timestampList) {
             final long timestampSeconds = timestamp.getEpochSeconds();
@@ -1295,13 +1341,13 @@ public abstract class GrpcIntegrationTestBase {
 
             // check that timestamp is in query time range
             assertTrue(
-                    (timestampSeconds > params.beginTimeSeconds)
-                            || (timestampSeconds == params.beginTimeSeconds && timestampNanos >= params.beginTimeNanos));
+                    (timestampSeconds > params.beginTimeSeconds())
+                            || (timestampSeconds == params.beginTimeSeconds() && timestampNanos >= params.beginTimeNanos()));
             assertTrue(
-                    (timestampSeconds < params.endTimeSeconds)
-                            || (timestampSeconds == params.endTimeSeconds && timestampNanos <= params.endTimeNanos));
+                    (timestampSeconds < params.endTimeSeconds())
+                            || (timestampSeconds == params.endTimeSeconds() && timestampNanos <= params.endTimeNanos()));
 
-            for (DataColumn dataColumn : tableResult.getColumnTable().getDataColumnsList()) {
+            for (DataColumn dataColumn : resultColumnTable.getDataColumnsList()) {
                 // get column name and value from query result
                 String columnName = dataColumn.getName();
                 Double columnDataValue = dataColumn.getDataValues(rowIndex).getDoubleValue();
@@ -1326,7 +1372,9 @@ public abstract class GrpcIntegrationTestBase {
             long startNanos,
             long endSeconds,
             long endNanos,
-            Map<String, IngestionStreamInfo> validationMap
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
     ) {
         final QueryTestBase.QueryTableRequestParams params =
                 new QueryTestBase.QueryTableRequestParams(
@@ -1337,7 +1385,12 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
-        final QueryTableResponse.TableResult tableResult = queryTable(params);
+        final QueryTableResponse.TableResult tableResult = queryTable(params, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertNull(tableResult);
+            return;
+        }
 
         // validate query result contents in tableResult
         verifyQueryTableColumnResult(params, tableResult, numRowsExpected, pvNameList, validationMap);
@@ -1362,7 +1415,7 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
-        final QueryTableResponse.TableResult tableResult = queryTable(params);
+        final QueryTableResponse.TableResult tableResult = queryTable(params, false, "");
 
         // validate query result contents in tableResult
         verifyQueryTableColumnResult(params, tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
@@ -1378,6 +1431,12 @@ public abstract class GrpcIntegrationTestBase {
         // check table is correct format
         assertTrue(tableResult.hasRowMapTable());
         final QueryTableResponse.RowMapTable resultRowMapTable = tableResult.getRowMapTable();
+
+        if (numRowsExpected == 0) {
+            assertEquals(0, resultRowMapTable.getColumnNamesCount());
+            assertEquals(0, resultRowMapTable.getRowsCount());
+            return;
+        }
 
         // verify result column names matches list of pv names plus timestamp column
         final List<String> resultColumnNamesList = resultRowMapTable.getColumnNamesList();
@@ -1410,11 +1469,11 @@ public abstract class GrpcIntegrationTestBase {
             final long resultRowSeconds = resultRowTimestamp.getEpochSeconds();
             final long resultRowNanos = resultRowTimestamp.getNanoseconds();
             assertTrue(
-                    (resultRowSeconds > params.beginTimeSeconds)
-                            || (resultRowSeconds == params.beginTimeSeconds && resultRowNanos >= params.beginTimeNanos));
+                    (resultRowSeconds > params.beginTimeSeconds())
+                            || (resultRowSeconds == params.beginTimeSeconds() && resultRowNanos >= params.beginTimeNanos()));
             assertTrue(
-                    (resultRowSeconds < params.endTimeSeconds)
-                            || (resultRowSeconds == params.endTimeSeconds && resultRowNanos <= params.endTimeNanos));
+                    (resultRowSeconds < params.endTimeSeconds())
+                            || (resultRowSeconds == params.endTimeSeconds() && resultRowNanos <= params.endTimeNanos()));
 
             // verify value for each column in row
             for (String columnName : pvNameList) {
@@ -1440,7 +1499,9 @@ public abstract class GrpcIntegrationTestBase {
             long startNanos,
             long endSeconds,
             long endNanos,
-            Map<String, IngestionStreamInfo> validationMap
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
     ) {
         final QueryTestBase.QueryTableRequestParams params =
                 new QueryTestBase.QueryTableRequestParams(
@@ -1451,7 +1512,8 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
-        final QueryTableResponse.TableResult tableResult = queryTable(params);
+        final QueryTableResponse.TableResult tableResult =
+                queryTable(params, expectReject, expectedRejectMessage);
 
         // validate query result contents in tableResult
         verifyQueryTableRowResult(params, tableResult, numRowsExpected, pvNameList, validationMap);
@@ -1476,64 +1538,38 @@ public abstract class GrpcIntegrationTestBase {
                         startNanos,
                         endSeconds,
                         endNanos);
-        final QueryTableResponse.TableResult tableResult = queryTable(params);
+        final QueryTableResponse.TableResult tableResult = queryTable(params, false, "");
 
         // validate query result contents in tableResult
         verifyQueryTableRowResult(params, tableResult, numRowsExpected, expectedPvNameMatches, validationMap);
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(QueryDataRequest request) {
-
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
-
-        final QueryTestBase.QueryResponseStreamObserver responseObserver =
-                new QueryTestBase.QueryResponseStreamObserver();
-
-        // send request in separate thread to better simulate out of process grpc,
-        // otherwise service handles request in this thread
-        new Thread(() -> {
-            asyncStub.queryDataStream(request, responseObserver);
-        }).start();
-
-        responseObserver.await();
-
-        if (responseObserver.isError()) {
-            return null;
-        } else {
-            return responseObserver.getDataBucketList();
-        }
-    }
-
-    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos
-    ) {
-        final QueryTestBase.QueryDataRequestParams params =
-                new QueryTestBase.QueryDataRequestParams(pvNames, startSeconds, startNanos, endSeconds, endNanos);
-        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
-        return sendQueryDataStream(request);
-    }
-
-    protected void sendAndVerifyQueryDataStream(
+    private void verifyQueryDataResult(
             int numBucketsExpected,
-            List<String> pvNames,
-            long startSeconds,
-            long startNanos,
-            long endSeconds,
-            long endNanos,
-            Map<String, IngestionStreamInfo> validationMap
+            int numSerializedDataColumnsExpected,
+            QueryTestBase.QueryDataRequestParams params,
+            Map<String, IngestionStreamInfo> validationMap,
+            List<QueryDataResponse.QueryData.DataBucket> dataBucketList
     ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                queryDataStream(pvNames, startSeconds, startNanos, endSeconds, endNanos);
+        final List<String> pvNames = params.columnNames();
+        final long beginSeconds = params.beginTimeSeconds();
+        final long beginNanos = params.beginTimeNanos();
+        final long endSeconds = params.endTimeSeconds();
+        final long endNanos = params.endTimeNanos();
 
         // build map of buckets in query response for vallidation
-        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap =
-                new TreeMap<>();
+        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap = new TreeMap<>();
         for (QueryDataResponse.QueryData.DataBucket dataBucket : dataBucketList) {
-            final String bucketColumnName = dataBucket.getDataColumn().getName();
+
+            // get column name from either regular DataColumn or SerializedDataColumn
+            String bucketColumnName = "";
+            if (dataBucket.hasDataColumn()) {
+                bucketColumnName = dataBucket.getDataColumn().getName();
+            } else if (dataBucket.hasSerializedDataColumn()) {
+                bucketColumnName = dataBucket.getSerializedDataColumn().getName();
+            }
+            assertFalse(bucketColumnName.isBlank());
+
             final DataTimestampsUtility.DataTimestampsModel bucketDataTimestampsModel
                     = new DataTimestampsUtility.DataTimestampsModel(dataBucket.getDataTimestamps());
             final Timestamp bucketStartTimestamp = bucketDataTimestampsModel.getFirstTimestamp();
@@ -1551,6 +1587,7 @@ public abstract class GrpcIntegrationTestBase {
         // iterate through the expected buckets for each column,
         // and validate them against the corresponding response bucket
         int validatedBuckets = 0;
+        int serializedDataColumnCount = 0;
         for (var validationMapEntry : validationMap.entrySet()) {
             final String columnName = validationMapEntry.getKey();
             if ( ! pvNames.contains(columnName)) {
@@ -1569,15 +1606,15 @@ public abstract class GrpcIntegrationTestBase {
                         // bucket starts after query end time
                         continue;
                     }
-                    if ((columnBucketInfo.endSeconds < startSeconds)
-                            || ((columnBucketInfo.endSeconds == startSeconds) && (columnBucketInfo.endNanos < startNanos))) {
+                    if ((columnBucketInfo.endSeconds < beginSeconds)
+                            || ((columnBucketInfo.endSeconds == beginSeconds) && (columnBucketInfo.endNanos < beginNanos))) {
                         // bucket ends before query start time
                         continue;
                     }
 
                     // find the response bucket corresponding to the expected bucket
                     final QueryDataResponse.QueryData.DataBucket responseBucket =
-                            responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, startNanos);
+                            responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, beginNanos);
                     final DataTimestampsUtility.DataTimestampsModel responseBucketDataTimestampsModel =
                             new DataTimestampsUtility.DataTimestampsModel(responseBucket.getDataTimestamps());
 
@@ -1590,7 +1627,27 @@ public abstract class GrpcIntegrationTestBase {
 
                     // validate bucket data values
                     int valueIndex = 0;
-                    for (DataValue responseDataValue : responseBucket.getDataColumn().getDataValuesList()) {
+
+                    // get DataColumn from bucket, or parse from bucket's SerializedDataColumn
+                    DataColumn responseDataColumn = null;
+                    if (responseBucket.hasDataColumn()) {
+                        responseDataColumn = responseBucket.getDataColumn();
+
+                    } else if (responseBucket.hasSerializedDataColumn()) {
+                        try {
+                            responseDataColumn = DataColumn.parseFrom(responseBucket.getSerializedDataColumn().getDataColumnBytes());
+                        } catch (InvalidProtocolBufferException e) {
+                            fail("exception parsing DataColumn from SerializedDataColumn: " + e.getMessage());
+                        }
+                        serializedDataColumnCount = serializedDataColumnCount + 1;
+
+                    } else {
+                        fail("responseBucket doesn't contain either DataColumn or SerializedDataColumn");
+                    }
+                    assertNotNull(responseDataColumn);
+
+                    // compare expected and actual data values
+                    for (DataValue responseDataValue : responseDataColumn.getDataValuesList()) {
 
                         final double actualDataValue = responseDataValue.getDoubleValue();
 
@@ -1653,6 +1710,188 @@ public abstract class GrpcIntegrationTestBase {
         // check that we validated all buckets returned by the query, and that query returned expected number of buckets
         assertEquals(dataBucketList.size(), validatedBuckets);
         assertEquals(numBucketsExpected, dataBucketList.size());
+        assertEquals(numSerializedDataColumnsExpected, serializedDataColumnCount);
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryData(
+            QueryDataRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataUnaryObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryData(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return responseObserver.getDataBucketList();
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryData(
+            QueryTestBase.QueryDataRequestParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryData(request, expectReject, expectedRejectMessage);
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
+            int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
+            QueryTestBase.QueryDataRequestParams params,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryData(params, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertTrue(dataBucketList.isEmpty());
+            return dataBucketList;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected, numSerializedDataColumnsExpected, params, validationMap, dataBucketList);
+
+        return dataBucketList;
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(
+            QueryDataRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataStreamObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryDataStream(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+            return responseObserver.getDataBucketList();
+        }
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
+            QueryTestBase.QueryDataRequestParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryDataStream(request, expectReject, expectedRejectMessage);
+    }
+
+    protected void sendAndVerifyQueryDataStream(
+            int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
+            QueryTestBase.QueryDataRequestParams params,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryDataStream(params, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertNull(dataBucketList);
+            return;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected, numSerializedDataColumnsExpected, params, validationMap, dataBucketList);
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataBidiStream(
+            QueryDataRequest request,
+            int numBucketsExpected,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+
+        final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
+                QueryTestBase.QueryDataResponseStreamObserver.newQueryDataBidiStreamObserver(numBucketsExpected);
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            StreamObserver<QueryDataRequest> requestObserver = asyncStub.queryDataBidiStream(responseObserver);
+            responseObserver.setRequestObserver(requestObserver);
+            requestObserver.onNext(request);
+        }).start();
+
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+            return responseObserver.getDataBucketList();
+        }
+    }
+
+    protected List<QueryDataResponse.QueryData.DataBucket> queryDataBidiStream(
+            int numBucketsExpected,
+            QueryTestBase.QueryDataRequestParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final QueryDataRequest request = QueryTestBase.buildQueryDataRequest(params);
+        return sendQueryDataBidiStream(request, numBucketsExpected, expectReject, expectedRejectMessage);
+    }
+
+    protected void sendAndVerifyQueryDataBidiStream(
+            int numBucketsExpected,
+            int numSerializedDataColumnsExpected,
+            QueryTestBase.QueryDataRequestParams params,
+            Map<String, IngestionStreamInfo> validationMap,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+                queryDataBidiStream(numBucketsExpected, params, expectReject, expectedRejectMessage);
+
+        if (expectReject) {
+            assertEquals(null, dataBucketList);
+            return;
+        }
+
+        verifyQueryDataResult(
+                numBucketsExpected,
+                numSerializedDataColumnsExpected,
+                params,
+                validationMap,
+                dataBucketList);
     }
 
     protected List<QueryPvMetadataResponse.MetadataResult.PvInfo> sendQueryPvMetadata(
@@ -1686,12 +1925,12 @@ public abstract class GrpcIntegrationTestBase {
             List<String> pvNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
-            String expectedRejectMessage
-    ) {
+            String expectedRejectMessage,
+            boolean expectEmpty) {
         final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
                 sendQueryPvMetadata(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectEmpty) {
             assertEquals(0, pvInfoList.size());
             return;
         }
@@ -1765,10 +2004,12 @@ public abstract class GrpcIntegrationTestBase {
             List<String> columnNames,
             Map<String, IngestionStreamInfo> validationMap,
             boolean expectReject,
-            String expectedRejectMessage
+            String expectedRejectMessage,
+            boolean expectEmpty
     ) {
         final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNames);
-        sendAndVerifyQueryPvMetadata(request, columnNames, validationMap, expectReject, expectedRejectMessage);
+        sendAndVerifyQueryPvMetadata(
+                request, columnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
     protected void sendAndVerifyQueryPvMetadata(
@@ -1776,10 +2017,12 @@ public abstract class GrpcIntegrationTestBase {
             Map<String, IngestionStreamInfo> validationMap,
             List<String> expectedColumnNames,
             boolean expectReject,
-            String expectedRejectMessage
+            String expectedRejectMessage,
+            boolean expectEmpty
     ) {
         final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNamePattern);
-        sendAndVerifyQueryPvMetadata(request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage);
+        sendAndVerifyQueryPvMetadata(
+                request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
     private static List<QueryProvidersResponse.ProvidersResult.ProviderInfo> sendQueryProviders(
@@ -1888,20 +2131,22 @@ public abstract class GrpcIntegrationTestBase {
             String providerId,
             IngestionProviderInfo providerInfo,
             boolean expectReject,
-            String expectedRejectMessage) {
+            String expectedRejectMessage,
+            int numMatchesExpected
+    ) {
 
         final QueryProviderMetadataRequest request = QueryTestBase.buildQueryProviderMetadataRequest(providerId);
 
         final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
                 sendQueryProviderMetadata(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || numMatchesExpected == 0) {
             assertEquals(0, providerMetadataList.size());
             return;
         }
 
         // verify results, check that there is a ColumnInfo for each column in the query
-        assertEquals(1, providerMetadataList.size());
+        assertEquals(numMatchesExpected, providerMetadataList.size());
         final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata responseProviderMetadata =
                 providerMetadataList.get(0);
         assertEquals(providerId, responseProviderMetadata.getId());
@@ -2012,7 +2257,7 @@ public abstract class GrpcIntegrationTestBase {
 
         final List<DataSet> resultDataSets = sendQueryDataSets(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectedQueryResult.isEmpty()) {
             assertTrue(resultDataSets.isEmpty());
             return new ArrayList<>();
         }
@@ -2026,7 +2271,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean found = false;
             DataSet foundDataSet = null;
             for (DataSet resultDataSet : resultDataSets) {
-                if (requestParams.dataSet.name.equals(resultDataSet.getName())) {
+                if (requestParams.dataSet().name().equals(resultDataSet.getName())) {
                     found = true;
                     foundDataSet = resultDataSet;
                     break;
@@ -2038,8 +2283,8 @@ public abstract class GrpcIntegrationTestBase {
 
             // check required dataset fields match
             assertTrue(expectedDataSetId.equals(foundDataSet.getId()));
-            assertTrue(requestParams.dataSet.description.equals(foundDataSet.getDescription()));
-            assertTrue(requestParams.dataSet.ownerId.equals(foundDataSet.getOwnerId()));
+            assertTrue(requestParams.dataSet().description().equals(foundDataSet.getDescription()));
+            assertTrue(requestParams.dataSet().ownerId().equals(foundDataSet.getOwnerId()));
 
             // check that result corresponds to query criteria
             if (queryParams.idCriterion != null) {
@@ -2065,17 +2310,17 @@ public abstract class GrpcIntegrationTestBase {
             }
 
             // compare data blocks from result with request
-            final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet;
-            assertEquals(requestDataSet.dataBlocks.size(), foundDataSet.getDataBlocksCount());
-            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks) {
+            final AnnotationTestBase.AnnotationDataSet requestDataSet = requestParams.dataSet();
+            assertEquals(requestDataSet.dataBlocks().size(), foundDataSet.getDataBlocksCount());
+            for (AnnotationTestBase.AnnotationDataBlock requestBlock : requestDataSet.dataBlocks()) {
                 boolean responseBlockFound = false;
                 for (DataBlock responseBlock : foundDataSet.getDataBlocksList()) {
                     if (
-                            (Objects.equals(requestBlock.beginSeconds, responseBlock.getBeginTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.beginNanos, responseBlock.getBeginTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.endSeconds, responseBlock.getEndTime().getEpochSeconds()))
-                                    && (Objects.equals(requestBlock.endNanos, responseBlock.getEndTime().getNanoseconds()))
-                                    && (Objects.equals(requestBlock.pvNames, responseBlock.getPvNamesList()))
+                            (Objects.equals(requestBlock.beginSeconds(), responseBlock.getBeginTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.beginNanos(), responseBlock.getBeginTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.endSeconds(), responseBlock.getEndTime().getEpochSeconds()))
+                                    && (Objects.equals(requestBlock.endNanos(), responseBlock.getEndTime().getNanoseconds()))
+                                    && (Objects.equals(requestBlock.pvNames(), responseBlock.getPvNamesList()))
                     ) {
                         responseBlockFound = true;
                         break;
@@ -2203,7 +2448,7 @@ public abstract class GrpcIntegrationTestBase {
         final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
 
-        if (expectReject) {
+        if (expectReject || expectedQueryResult.isEmpty()) {
             assertTrue(resultAnnotations.isEmpty());
             return new ArrayList<>();
         }
@@ -2329,16 +2574,16 @@ public abstract class GrpcIntegrationTestBase {
         return resultAnnotations;
     }
 
-    protected ExportDataSetResponse.ExportDataSetResult sendExportDataSet(
-            ExportDataSetRequest request,
+    protected ExportDataResponse.ExportDataResult sendExportData(
+            ExportDataRequest request,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(annotationChannel);
 
-        final AnnotationTestBase.ExportDataSetResponseObserver responseObserver =
-                new AnnotationTestBase.ExportDataSetResponseObserver();
+        final AnnotationTestBase.ExportDataResponseObserver responseObserver =
+                new AnnotationTestBase.ExportDataResponseObserver();
 
         // start performance measurment timer
         final Instant t0 = Instant.now();
@@ -2346,7 +2591,7 @@ public abstract class GrpcIntegrationTestBase {
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.exportDataSet(request, responseObserver);
+            asyncStub.exportData(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -2378,7 +2623,7 @@ public abstract class GrpcIntegrationTestBase {
             final long endSeconds = dataBlock.getEndTime().getSeconds();
             final long endNanos = dataBlock.getEndTime().getNanos();
             final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
-                    TabularDataUtility.updateTimestampMapFromBucketCursor(
+                    TabularDataUtility.addBucketsToTable(
                             expectedDataMap,
                             cursor,
                             0,
@@ -2393,20 +2638,26 @@ public abstract class GrpcIntegrationTestBase {
         return expectedDataMap;
     }
 
-    protected ExportDataSetResponse.ExportDataSetResult sendAndVerifyExportDataSet(
+    protected ExportDataResponse.ExportDataResult sendAndVerifyExportData(
             String dataSetId,
-            ExportDataSetRequest.ExportOutputFormat outputFormat,
+            AnnotationTestBase.CreateDataSetParams createDataSetParams,
+            CalculationsSpec calculationsSpec,
+            Calculations calculationsRequestParams,
+            ExportDataRequest.ExportOutputFormat outputFormat,
             int expectedNumBuckets,
+            int expectedNumRows,
+            Map<String, IngestionStreamInfo> pvValidationMap,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final ExportDataSetRequest request =
-                AnnotationTestBase.buildExportDataSetRequest(
+        final ExportDataRequest request =
+                AnnotationTestBase.buildExportDataRequest(
                         dataSetId,
+                        calculationsSpec,
                         outputFormat);
 
-        final ExportDataSetResponse.ExportDataSetResult exportResult =
-                sendExportDataSet(request, expectReject, expectedRejectMessage);
+        final ExportDataResponse.ExportDataResult exportResult =
+                sendExportData(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertTrue(exportResult == null);
@@ -2434,9 +2685,9 @@ public abstract class GrpcIntegrationTestBase {
 
         // check that file is available (this is the same as the check done by WatchService (e.g., WatchService
         // won't solve our problem with corrupt excel file if this test succeeds)
-        Path target = Path.of(exportResult.getFilePath());
+        final Path target = Path.of(exportResult.getFilePath());
         try {
-            BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
+            final BasicFileAttributes attributes = Files.readAttributes(target, BasicFileAttributes.class);
             System.out.println("got file attributes for: " + target);
         } catch (IOException ex) {
             fail("IOException getting file attributes for: " + target);
@@ -2451,58 +2702,407 @@ public abstract class GrpcIntegrationTestBase {
 //            fail("IOException copying file from url " + exportResult.getFileUrl() + ": " + e.getMessage());
 //        }
 //
-        // retrieve dataset for id
-        DataSetDocument dataset = mongoClient.findDataSet(dataSetId);
-        assertNotNull(dataset);
 
-        // retrieve BucketDocuments for specified dataset
-        final List<BucketDocument> datasetBuckets = mongoClient.findDataSetBuckets(dataset);
-        assertEquals(expectedNumBuckets, datasetBuckets.size());
+        // create list of expected PV column names
+        Set<String> expectedPvColumnNames = new HashSet<>();
+        DataSetDocument datasetDocument = null;
+        List<BucketDocument> datasetBuckets = null;
+        if (dataSetId != null) {
+
+            // retrieve dataset for id
+            datasetDocument = mongoClient.findDataSet(dataSetId);
+            assertNotNull(datasetDocument);
+
+            // retrieve BucketDocuments for specified dataset
+            datasetBuckets = mongoClient.findDataSetBuckets(datasetDocument);
+            assertEquals(expectedNumBuckets, datasetBuckets.size());
+
+            // generate collection of unique pv names for dataset from creation request params
+            // these are the columns expected in the export output file
+            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet().dataBlocks()) {
+                expectedPvColumnNames.addAll(requestDataBlock.pvNames());
+            }
+        }
+
+        // create list of expected calculations column names
+        CalculationsDocument calculationsDocument = null;
+        List<String> expectedCalculationsColumnNames = new ArrayList<>();
+        Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap = null;
+        if (calculationsSpec != null) {
+
+            // retrieve calculations for id
+            calculationsDocument = mongoClient.findCalculations(calculationsSpec.getCalculationsId());
+            assertNotNull(calculationsDocument);
+
+            // add expected column names for calculations
+            if (calculationsSpec.getDataFrameColumnsMap().isEmpty()) {
+
+                // add all columns for calculations
+                for (Calculations.CalculationsDataFrame requestCalculationsFrame :
+                        calculationsRequestParams.getCalculationDataFramesList()) {
+                    final String requestCalculationsFrameName = requestCalculationsFrame.getName();
+                    for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                        expectedCalculationsColumnNames.add(requestCalculationsFrameColumn.getName());
+                    }
+                }
+
+            } else {
+
+                // add only columns from map in calculationsSpec
+                frameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap();
+                for (var frameColumnMapEntry : frameColumnNamesMap.entrySet()) {
+                    final String frameName = frameColumnMapEntry.getKey();
+                    final List<String> frameColumns = frameColumnMapEntry.getValue().getColumnNamesList();
+                    for (String frameColumnName : frameColumns) {
+                        expectedCalculationsColumnNames.add(frameColumnName);
+                    }
+                }
+            }
+        }
+
+        // create map of calculations column data values for use in verification
+        Map<String, TimestampMap<Double>> calculationsValidationMap = new HashMap<>();
+        if (calculationsRequestParams != null) {
+            for (Calculations.CalculationsDataFrame requestCalculationsFrame :
+                    calculationsRequestParams.getCalculationDataFramesList()) {
+                final DataTimestamps requestCalculationsFrameDataTimestamps =
+                        requestCalculationsFrame.getDataTimestamps();
+                for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                    final String requestCalculationsFrameColumnName = requestCalculationsFrameColumn.getName();
+                    if (expectedCalculationsColumnNames.contains(requestCalculationsFrameColumnName)) {
+                        calculationsValidationMap.put(
+                                requestCalculationsFrameColumnName,
+                                DataColumnUtility.toTimestampMapDouble(
+                                        requestCalculationsFrameColumn, requestCalculationsFrameDataTimestamps));
+                    }
+                }
+            }
+        }
 
         // verify file content for specified output format
         switch (outputFormat) {
 
             case EXPORT_FORMAT_HDF5 -> {
+
                 final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
-                AnnotationTestBase.verifyDatasetHdf5Content(reader, dataset);
-                for (BucketDocument bucket : datasetBuckets) {
-                    AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+
+                if (datasetDocument != null) {
+                    AnnotationTestBase.verifyDatasetHdf5Content(reader, datasetDocument);
                 }
+
+                if (datasetBuckets != null) {
+                    for (BucketDocument bucket : datasetBuckets) {
+                        AnnotationTestBase.verifyBucketDocumentHdf5Content(reader, bucket);
+                    }
+                }
+
+                if (calculationsDocument != null) {
+                    AnnotationTestBase.verifyCalculationsDocumentHdf5Content(
+                            reader, calculationsDocument, frameColumnNamesMap);
+                }
+
                 reader.close();
             }
 
             case EXPORT_FORMAT_CSV -> {
-
-                // build temporary tabular data structure from cursor
-                TimestampDataMap expectedDataMap = null;
-                try {
-                    expectedDataMap = getTimestampDataMapForDataset(dataset);
-                } catch (DpException e) {
-                    fail("exception deserializing BucketDocument: " + e.getMessage());
-                }
-                Objects.requireNonNull(expectedDataMap);
-
                 // verify file content against data map
-                AnnotationTestBase.verifyCsvContentFromTimestampDataMap(exportResult, expectedDataMap);
+                verifyExportTabularCsv(
+                        exportResult,
+                        expectedPvColumnNames,
+                        pvValidationMap,
+                        expectedCalculationsColumnNames,
+                        calculationsValidationMap,
+                        expectedNumRows);
             }
 
             case EXPORT_FORMAT_XLSX -> {
-
-                // build temporary tabular data structure from cursor
-                TimestampDataMap expectedDataMap = null;
-                try {
-                    expectedDataMap = getTimestampDataMapForDataset(dataset);
-                } catch (DpException e) {
-                    fail("exception deserializing BucketDocument: " + e.getMessage());
-                }
-                Objects.requireNonNull(expectedDataMap);
-
                 // verify file content against data map
-                AnnotationTestBase.verifyXlsxContentFromTimestampDataMap(exportResult, expectedDataMap);
+                verifyExportTabularXlsx(
+                        exportResult,
+                        expectedPvColumnNames,
+                        pvValidationMap,
+                        expectedCalculationsColumnNames,
+                        calculationsValidationMap,
+                        expectedNumRows);
             }
         }
 
         return exportResult;
+    }
+
+    public static void verifyExportTabularCsv(
+            ExportDataResponse.ExportDataResult exportResult,
+            Set<String> expectedPvColumnNames,
+            Map<String, IngestionStreamInfo> pvValidationMap,
+            List<String> expectedCalculationsColumnNames,
+            Map<String, TimestampMap<Double>> calculationsValidationMap,
+            int expectedNumRows
+    ) {
+        // open csv file and create reader
+        final Path exportFilePath = Paths.get(exportResult.getFilePath());
+        CsvReader<CsvRecord> csvReader = null;
+        try {
+            csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
+        } catch (IOException e) {
+            fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
+        }
+        assertNotNull(csvReader);
+
+        final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
+        final int expectedNumColumns = 2 + expectedPvColumnNames.size() + expectedCalculationsColumnNames.size();
+
+        // verify header row
+        List<String> csvColumnHeaders;
+        {
+            assertTrue(csvRecordIterator.hasNext());
+            final CsvRecord csvRecord = csvRecordIterator.next();
+
+            // check number of csv header columns matches expected
+            assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+
+            csvColumnHeaders = csvRecord.getFields();
+
+            // check that the csv file contains each of the expected PV columns
+            for (String columnName : expectedPvColumnNames) {
+                assertTrue(csvColumnHeaders.contains(columnName));
+            }
+
+            // check that csv file contains each of the expected calculations columns
+            for (String columnName : expectedCalculationsColumnNames) {
+                assertTrue(csvColumnHeaders.contains(columnName));
+            }
+        }
+
+        // verify data rows
+        {
+            int dataRowCount = 0;
+            while (csvRecordIterator.hasNext()) {
+
+                // read row from csv file
+                final CsvRecord csvRecord = csvRecordIterator.next();
+                assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+                final List<String> csvRowValues = csvRecord.getFields();
+
+                // get timestamp column values
+                // we don't validate them directly, but by 1) checking the number of expected rows matches and
+                // 2) accessing data from validationMap via seconds/nanos
+                final long csvSeconds = Long.valueOf(csvRowValues.get(0));
+                final long csvNanos = Long.valueOf(csvRowValues.get(1));
+
+                // compare data values from csv file with expected
+                for (int columnIndex = 2; columnIndex < csvRowValues.size(); columnIndex++) {
+
+                    // get csv file data value and column name for column index
+                    final String csvDataValue = csvRowValues.get(columnIndex);
+                    final String csvColumnName = csvColumnHeaders.get(columnIndex);
+
+                    Double expectedColumnDoubleValue = null;
+                    if (expectedPvColumnNames.contains(csvColumnName)) {
+                        // check expected data value for PV column
+                        final TimestampMap<Double> columnValueMap = pvValidationMap.get(csvColumnName).valueMap;
+                        expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
+
+                    } else if (expectedCalculationsColumnNames.contains(csvColumnName)) {
+                        // check expected data value for calculations column
+                        final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(csvColumnName);
+                        expectedColumnDoubleValue = columnValueMap.get(csvSeconds, csvNanos);
+
+                    } else {
+                        fail("unexpected export column (neither PV nor calculations): " + csvColumnName);
+                    }
+                }
+                dataRowCount = dataRowCount + 1;
+            }
+            assertEquals(expectedNumRows, dataRowCount);
+        }
+    }
+
+    public static void verifyExportTabularXlsx(
+            ExportDataResponse.ExportDataResult exportResult,
+            Set<String> expectedPvColumnNames,
+            Map<String, IngestionStreamInfo> pvValidationMap,
+            List<String> expectedCalculationsColumnNames,
+            Map<String, TimestampMap<Double>> calculationsValidationMap,
+            int expectedNumRows
+    ) {
+        // open excel file
+        OPCPackage filePackage = null;
+        try {
+            filePackage = OPCPackage.open(new File(exportResult.getFilePath()));
+        } catch (InvalidFormatException e) {
+            fail(
+                    "InvalidFormatException opening package for excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());
+        }
+        assertNotNull(filePackage);
+
+        // open excel workbook
+        XSSFWorkbook fileWorkbook = null;
+        try {
+            fileWorkbook = new XSSFWorkbook(filePackage);
+        } catch (IOException e) {
+            fail(
+                    "IOException creating workbook from excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());;
+        }
+        assertNotNull(fileWorkbook);
+
+        // open worksheet and create iterator
+        Sheet fileSheet = fileWorkbook.getSheetAt(0);
+        assertNotNull(fileSheet);
+        final Iterator<Row> fileRowIterator = fileSheet.rowIterator();
+        assertTrue(fileRowIterator.hasNext());
+
+        final int expectedNumColumns = 2 + expectedPvColumnNames.size() + expectedCalculationsColumnNames.size();
+
+        // verify header row from file
+        List<String> fileColumnHeaders = new ArrayList<>();
+        {
+            final Row fileHeaderRow = fileRowIterator.next();
+            assertNotNull(fileHeaderRow);
+
+            // check number of header columns matches expected
+            assertEquals(expectedNumColumns, fileHeaderRow.getLastCellNum());
+
+            // build list of actual column headers
+            for (int columnIndex = 0; columnIndex < fileHeaderRow.getLastCellNum(); columnIndex++) {
+                final String fileHeaderValue = fileHeaderRow.getCell(columnIndex).getStringCellValue();
+                fileColumnHeaders.add(fileHeaderValue);
+            }
+
+            // check that list of actual headers contains each of the expected PV column headers
+            for (String columnName : expectedPvColumnNames) {
+                assertTrue(fileColumnHeaders.contains(columnName));
+            }
+
+            // check list of actual headers contains each of the expected calculations column headers
+            for (String columnName : expectedCalculationsColumnNames) {
+                assertTrue(fileColumnHeaders.contains(columnName));
+            }
+        }
+
+        // verify data rows from file
+        {
+            int dataRowCount = 0;
+            while (fileRowIterator.hasNext()) {
+
+                // read row from excel file
+                final Row fileDataRow = fileRowIterator.next();
+                assertEquals(expectedNumColumns, fileDataRow.getLastCellNum());
+
+                // get timestamp column values
+                // we don't validate them directly, but by 1) checking the number of expected rows matches and
+                // 2) accessing data from validationMap via seconds/nanos
+                final long fileSeconds = Double.valueOf(fileDataRow.getCell(0).getNumericCellValue()).longValue();
+                final long fileNanos = Double.valueOf(fileDataRow.getCell(1).getNumericCellValue()).longValue();
+
+                // verify data columns
+                for (int fileColumnIndex = 2; fileColumnIndex < fileDataRow.getLastCellNum(); fileColumnIndex++) {
+
+                    // get column data value and corresponding column name from file
+                    final String fileColumnName = fileColumnHeaders.get(fileColumnIndex);
+                    final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
+                    Double fileColumnDoubleValue = null;
+                    if ( ! fileCell.getCellType().equals(CellType.STRING) ) {
+                        fileColumnDoubleValue = Double.valueOf(fileCell.getNumericCellValue()).doubleValue();
+                    }
+
+                    Double expectedColumnDoubleValue = null;
+                    if (expectedPvColumnNames.contains(fileColumnName)) {
+                        // get expected data value for column (we assume value is double)
+                        final TimestampMap<Double> columnValueMap = pvValidationMap.get(fileColumnName).valueMap;
+                        expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
+
+                    } else if (expectedCalculationsColumnNames.contains(fileColumnName)) {
+                        // check expected data value for calculations column
+                        final TimestampMap<Double> columnValueMap = calculationsValidationMap.get(fileColumnName);
+                        expectedColumnDoubleValue = columnValueMap.get(fileSeconds, fileNanos);
+
+                    } else {
+                        fail("unexpected export column (neither PV nor calculations): " + fileColumnName);
+                    }
+
+                    if (expectedColumnDoubleValue != null) {
+                        assertEquals(expectedColumnDoubleValue, fileColumnDoubleValue, 0);
+                    } else {
+                        assertEquals(null, fileColumnDoubleValue);
+                    }
+
+// Keeping this code around in case we want to handle expectedDataValue with other type than Double.
+//                    switch (expectedDataValue.getValueCase()) {
+//                        case STRINGVALUE -> {
+//                            assertEquals(expectedDataValue.getStringValue(), fileCell.getStringCellValue());
+//                        }
+//                        case BOOLEANVALUE -> {
+//                            assertEquals(expectedDataValue.getBooleanValue(), fileCell.getBooleanCellValue());
+//                        }
+//                        case UINTVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getUintValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
+//                        }
+//                        case ULONGVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getUlongValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
+//                        }
+//                        case INTVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getIntValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
+//                        }
+//                        case LONGVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getLongValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
+//                        }
+//                        case FLOATVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getFloatValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).floatValue(),
+//                                    0.0);
+//                        }
+//                        case DOUBLEVALUE -> {
+//                            assertEquals(
+//                                    expectedDataValue.getDoubleValue(),
+//                                    Double.valueOf(fileCell.getNumericCellValue()).doubleValue(),
+//                                    0);
+//                        }
+//                        case BYTEARRAYVALUE -> {
+//                        }
+//                        case ARRAYVALUE -> {
+//                        }
+//                        case STRUCTUREVALUE -> {
+//                        }
+//                        case IMAGEVALUE -> {
+//                        }
+//                        case TIMESTAMPVALUE -> {
+//                        }
+//                        case VALUE_NOT_SET -> {
+//                        }
+//                        default -> {
+//                            assertEquals(expectedDataValue.toString(), fileCell.getStringCellValue());
+//                        }
+//                    }
+                }
+
+                dataRowCount = dataRowCount + 1;
+            }
+
+            assertEquals(expectedNumRows, dataRowCount);
+        }
+
+        // close excel file
+        try {
+            filePackage.close();
+        } catch (IOException e) {
+            fail(
+                    "IOException closing package for excel file "
+                            + exportResult.getFilePath() + ": "
+                            + e.getMessage());;
+        }
     }
 
 }

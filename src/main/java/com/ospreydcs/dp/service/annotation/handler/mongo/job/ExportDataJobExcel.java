@@ -1,17 +1,17 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File;
+import com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportXlsxFile;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-public class ExportDataSetJobHdf5 extends ExportDataSetJobAbstractBucketed {
+public class ExportDataJobExcel extends ExportDataJobAbstractTabular {
 
-    public ExportDataSetJobHdf5(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobExcel(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
@@ -19,13 +19,14 @@ public class ExportDataSetJobHdf5 extends ExportDataSetJobAbstractBucketed {
     }
 
     protected String getFileExtension_() {
-        return ExportConfiguration.FILE_EXTENSION_HDF5;
+        return ExportConfiguration.FILE_EXTENSION_XLSX;
     }
 
-    protected DatasetExportHdf5File createExportFile_(
-            DataSetDocument dataset, String serverFilePath) throws DpException {
-
-        return new DatasetExportHdf5File(dataset, serverFilePath);
+    protected DataExportXlsxFile createExportFile_(
+            DataSetDocument dataset,
+            String serverFilePath
+    ) throws DpException {
+        return new DataExportXlsxFile(dataset, serverFilePath);
     }
 
 }

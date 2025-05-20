@@ -66,19 +66,6 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
-        // queryDataSets() negative test - empty query result
-        {
-            final String unknownPvName = "JUNK";
-            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
-            queryParams.setPvNameCriterion(unknownPvName);
-
-            final boolean expectReject = true;
-            final String expectedRejectMessage ="query returned no data";
-
-            sendAndVerifyQueryDataSets(
-                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
-        }
-
     }
 
     @Test
@@ -115,6 +102,19 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
                     List.of(createDataSetScenarioResult.firstHalfDataSetParams);
             sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
+        }
+
+        // queryDataSets() positive test - empty query result
+        {
+            final String unknownPvName = "JUNK";
+            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+            queryParams.setPvNameCriterion(unknownPvName);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryDataSets(
+                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
         // queryDataSets() positive test - query by IdCriterion

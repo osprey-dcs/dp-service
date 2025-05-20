@@ -71,7 +71,7 @@ public class MongoQueryHandlerErrorTest extends MongoQueryHandlerTestBase {
                 startSeconds,
                 0L,
                 startSeconds + 5,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
 
         // send request

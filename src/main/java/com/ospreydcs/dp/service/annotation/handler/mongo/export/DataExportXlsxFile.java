@@ -12,7 +12,7 @@ import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import java.io.*;
 import java.util.List;
 
-public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
+public class DataExportXlsxFile implements TabularDataExportFileInterface {
 
     // constants
     private final String SHEET_NAME_DATA = "data";
@@ -27,7 +27,7 @@ public class DatasetExportXlsxFile implements TabularDataExportFileInterface {
     private final CreationHelper creationHelper;
     private int currentDataRowIndex = 1;
 
-    public DatasetExportXlsxFile (DataSetDocument dataSet, String filePathString) throws DpException {
+    public DataExportXlsxFile(DataSetDocument dataSet, String filePathString) throws DpException {
         this.filePathString = filePathString;
         this.workbook = new SXSSFWorkbook(1);
         this.dataSheet = workbook.createSheet(SHEET_NAME_DATA);

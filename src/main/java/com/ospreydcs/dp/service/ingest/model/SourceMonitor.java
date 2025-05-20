@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.model;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
@@ -54,17 +55,17 @@ public class SourceMonitor {
         }
     }
 
-    public void publishData(
+    public void publishDataColumns(
             final String pvName,
             final DataTimestamps requestDataTimestamps,
-            final List<DataColumn> responseDataColumns) {
-
+            final List<DataColumn> responseDataColumns
+    ) {
         final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
                 (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
 
         if (!serverCallStreamObserver.isCancelled()) {
             logger.debug(
-                    "publishDataSubscriptions publishing data for id: {} pv: {}",
+                    "publishing DataColumns for id: {} pv: {}",
                     responseObserver.hashCode(),
                     pvName);
             IngestionServiceImpl.sendSubscribeDataResponse(
@@ -72,7 +73,32 @@ public class SourceMonitor {
 
         } else {
             logger.trace(
-                    "publishDataSubscriptions skipping closed responseObserver id: {} pv: {}",
+                    "not publishing DataColumns, subscription already closed for id: {} pv: {}",
+                    responseObserver.hashCode(),
+                    pvName);
+        }
+
+    }
+
+    public void publishSerializedDataColumns(
+            final String pvName,
+            final DataTimestamps requestDataTimestamps,
+            final List<SerializedDataColumn> responseSerializedColumns
+    ) {
+        final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+
+        if (!serverCallStreamObserver.isCancelled()) {
+            logger.debug(
+                    "publishing SerializedDataColumns for id: {} pv: {}",
+                    responseObserver.hashCode(),
+                    pvName);
+            IngestionServiceImpl.sendSubscribeDataResponseSerializedColumns(
+                    requestDataTimestamps, responseSerializedColumns, responseObserver);
+
+        } else {
+            logger.trace(
+                    "not publishing SerializedDataColumns, subscription already closed for id: {} pv: {}",
                     responseObserver.hashCode(),
                     pvName);
         }

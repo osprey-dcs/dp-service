@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -90,23 +91,6 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     new ArrayList<>());
         }
 
-        // queryAnnotations() negative test: empty query result.
-        {
-            final String unknownText = "JUNK";
-            final AnnotationTestBase.QueryAnnotationsParams queryParams =
-                    new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setTextCriterion(unknownText);
-
-            final boolean expectReject = true;
-            final String expectedRejectMessage ="query returned no dat";
-
-            sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    new ArrayList<>());
-        }
-
     }
 
     @Test
@@ -120,10 +104,26 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                 AnnotationIntegrationTestIntermediate.createAnnotationScenario(
                         createDataSetScenarioResult.firstHalfDataSetId, createDataSetScenarioResult.secondHalfDataSetId);
 
+        // queryAnnotations() negative test: empty query result.
+        {
+            final String unknownText = "JUNK";
+            final AnnotationTestBase.QueryAnnotationsParams queryParams =
+                    new AnnotationTestBase.QueryAnnotationsParams();
+            queryParams.setTextCriterion(unknownText);
+
+            final boolean expectReject = false;
+            final String expectedRejectMessage ="";
+
+            sendAndVerifyQueryAnnotations(
+                    queryParams,
+                    expectReject,
+                    expectedRejectMessage,
+                    new ArrayList<>());
+        }
+
+        // queryAnnotations() positive test for query by OwnerCriterion and DataSetCriterion.
         {
             /*
-             * queryAnnotations() positive test for query by OwnerCriterion and DataSetCriterion.
-             *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
              * interval, and 5 annotations for the second half second of that interval.
@@ -149,11 +149,10 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc);
         }
 
+        // queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
         List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
         {
             /*
-             * queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
-             *
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
              * different owners, with 5 annotations for a dataset with blocks for the first half second of a 5 second
              * interval, and 5 annotations for the second half second of that interval.
@@ -178,10 +177,9 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     expectedRejectMessage,
                     createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc);
 
+            // query data test using result of queryAnnotations()
             {
                 /*
-                 * query data test using result of queryAnnotations()
-                 *
                  * This test scenario uses the result from queryAnnotations to send a data query for one of the datasets.
                  * We iterate through each annoation from the query result, and send a queryDataStream() data query for each
                  * data block in the annotation's dataset, verifying that we receive the buckets expected for the specified
@@ -202,8 +200,18 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
 
                             final int numBucketsExpected = 2;
 
+                            final QueryTestBase.QueryDataRequestParams params =
+                                    new QueryTestBase.QueryDataRequestParams(
+                                            queryPvNames,
+                                            queryBeginSeconds,
+                                            queryBeginNanos,
+                                            queryEndSeconds,
+                                            queryEndNanos,
+                                            false
+                                    );
+
                             final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
-                                    queryDataStream(queryPvNames, queryBeginSeconds, queryBeginNanos, queryEndSeconds, queryEndNanos);
+                                    queryDataStream(params, false, "");
                             assertEquals(numBucketsExpected, queryResultBuckets.size());
                             for (String pvName : queryPvNames) {
                                 boolean foundPvBucket = false;
@@ -227,11 +235,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             }
         }
 
+        // queryAnnotations() positive test for query by IdCriterion.
         {
-            /*
-             * queryAnnotations() positive test for query by IdCriterion.
-             */
-
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setIdCriterion(createAnnotationScenarioResult.annotationIdOwnerCraigmccComment1);
@@ -246,11 +251,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     createAnnotationScenarioResult.expectedQueryByIdResultAnnotations);
         }
 
+        // queryAnnotations() positive test for query by TextCriterion (over name field).
         {
-            /*
-             * queryAnnotations() positive test for query by TextCriterion (over name field).
-             */
-
             final String nameText = "first";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
@@ -266,11 +268,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     createAnnotationScenarioResult.expectedQueryByNameAnnotations);
         }
 
+        // queryAnnotations() positive test for query by TextCriterion (over eventMetadata.description field).
         {
-            /*
-             * queryAnnotations() positive test for query by TextCriterion (over eventMetadata.description field).
-             */
-
             final String eventDescriptionText = "1234";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
@@ -286,11 +285,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
         }
 
+        // queryAnnotations() positive test for query by AnnotationCriterion (by id of related annotation).
         {
-            /*
-             * queryAnnotations() positive test for query by AnnotationCriterion (by id of related annotation).
-             */
-
             final String relatedAnnotationId = createAnnotationScenarioResult.secondHalfAnnotationIds.get(0);
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
@@ -306,11 +302,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
         }
 
+        // queryAnnotations() positive test for query by Tags (tag value).
         {
-            /*
-             * queryAnnotations() positive test for query by Tags (tag value).
-             */
-
             final String tagValue = "beam loss";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
@@ -326,11 +319,8 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
         }
 
+        // queryAnnotations() positive test for query by Attributes (attribute key and value).
         {
-            /*
-             * queryAnnotations() positive test for query by Attributes (attribute key and value).
-             */
-
             final String attributeKey = "sector";
             final String attributeValue = "01";
             final AnnotationTestBase.QueryAnnotationsParams queryParams =

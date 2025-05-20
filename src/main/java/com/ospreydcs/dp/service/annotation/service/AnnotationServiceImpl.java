@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
@@ -170,11 +170,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryDataSetsResponse queryDataSetsResponseEmpty() {
-        return queryDataSetsResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryDataSetsResponse queryDataSetsResponse(
             QueryDataSetsResponse.DataSetsResult dataSetsResult
     ) {
@@ -196,12 +191,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             String msg, StreamObserver<QueryDataSetsResponse> responseObserver
     ) {
         final QueryDataSetsResponse response = queryDataSetsResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryDataSetsResponseEmpty(StreamObserver<QueryDataSetsResponse> responseObserver) {
-        final QueryDataSetsResponse response = queryDataSetsResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -417,11 +406,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryAnnotationsResponse queryAnnotationsResponseEmpty() {
-        return queryAnnotationsResponseExceptionalResult(
-                "query returned no data", ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_EMPTY);
-    }
-
     public static QueryAnnotationsResponse queryAnnotationsResponse(
             QueryAnnotationsResponse.AnnotationsResult annotationsResult
     ) {
@@ -443,12 +427,6 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             String msg, StreamObserver<QueryAnnotationsResponse> responseObserver
     ) {
         final QueryAnnotationsResponse response = queryAnnotationsResponseError(msg);
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-    public static void sendQueryAnnotationsResponseEmpty(StreamObserver<QueryAnnotationsResponse> responseObserver) {
-        final QueryAnnotationsResponse response = queryAnnotationsResponseEmpty();
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -576,7 +554,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         handler.handleQueryAnnotations(request, responseObserver);
     }
 
-    private static ExportDataSetResponse exportDataSetResponseReject(String msg) {
+    private static ExportDataResponse exportDataResponseReject(String msg) {
 
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -585,7 +563,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+        final ExportDataResponse response = ExportDataResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -593,16 +571,16 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendExportDataSetResponseReject(
+    public static void sendExportDataResponseReject(
             String errorMsg,
-            StreamObserver<ExportDataSetResponse> responseObserver
+            StreamObserver<ExportDataResponse> responseObserver
     ) {
-        final ExportDataSetResponse response = exportDataSetResponseReject(errorMsg);
+        final ExportDataResponse response = exportDataResponseReject(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static ExportDataSetResponse exportDataSetResponseError(String msg) {
+    private static ExportDataResponse exportDataResponseError(String msg) {
 
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -610,7 +588,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+        final ExportDataResponse response = ExportDataResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -618,60 +596,60 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendExportDataSetResponseError(
-            String errorMsg, StreamObserver<ExportDataSetResponse> responseObserver
+    public static void sendExportDataResponseError(
+            String errorMsg, StreamObserver<ExportDataResponse> responseObserver
     ) {
-        final ExportDataSetResponse response = exportDataSetResponseError(errorMsg);
+        final ExportDataResponse response = exportDataResponseError(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static ExportDataSetResponse exportDataSetResponseSuccess(String filePath, String fileUrl) {
+    private static ExportDataResponse exportDataResponseSuccess(String filePath, String fileUrl) {
 
-        final ExportDataSetResponse.ExportDataSetResult result =
-                ExportDataSetResponse.ExportDataSetResult.newBuilder()
+        final ExportDataResponse.ExportDataResult result =
+                ExportDataResponse.ExportDataResult.newBuilder()
                         .setFilePath(filePath)
                         .setFileUrl(fileUrl == null ? "" : fileUrl)
                         .build();
 
-        final ExportDataSetResponse response = ExportDataSetResponse.newBuilder()
+        final ExportDataResponse response = ExportDataResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setExportDataSetResult(result)
+                .setExportDataResult(result)
                 .build();
 
         return response;
     }
 
-    public static void sendExportDataSetResponseSuccess(
-            String filePath, String fileUrl, StreamObserver<ExportDataSetResponse> responseObserver
+    public static void sendExportDataResponseSuccess(
+            String filePath, String fileUrl, StreamObserver<ExportDataResponse> responseObserver
     ) {
-        final ExportDataSetResponse response = exportDataSetResponseSuccess(filePath, fileUrl);
+        final ExportDataResponse response = exportDataResponseSuccess(filePath, fileUrl);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
     
     @Override
-    public void exportDataSet(
-            ExportDataSetRequest request,
-            StreamObserver<ExportDataSetResponse> responseObserver
+    public void exportData(
+            ExportDataRequest request,
+            StreamObserver<ExportDataResponse> responseObserver
     ) {
-        logger.info("id: {} exportDataSet request received", responseObserver.hashCode());
+        logger.info("id: {} exportData request received", responseObserver.hashCode());
 
         // validate request
-        ValidationResult validationResult = AnnotationValidationUtility.validateExportDataSetRequest(request);
+        ValidationResult validationResult = AnnotationValidationUtility.validateExportDataRequest(request);
         if (validationResult.isError) {
-            logger.debug("id: {} ExportDataSetRequest validation failed: {}",
+            logger.debug("id: {} ExportDataRequest validation failed: {}",
                     responseObserver.hashCode(),
                     validationResult.msg);
-            sendExportDataSetResponseReject(
+            sendExportDataResponseReject(
                     validationResult.msg,
                     responseObserver);
             return;
         }
 
         // handle request
-        HandlerExportDataSetRequest handlerRequest = new HandlerExportDataSetRequest(request, responseObserver);
-        handler.handleExportDataSet(handlerRequest);
+        HandlerExportDataRequest handlerRequest = new HandlerExportDataRequest(request, responseObserver);
+        handler.handleExportData(handlerRequest);
 
     }
 }

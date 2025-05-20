@@ -22,7 +22,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
@@ -38,7 +38,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 nowSeconds + 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
@@ -54,7 +54,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 null,
                 0L,
                 nowSeconds + 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
@@ -70,7 +70,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 null,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
@@ -86,7 +86,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 nowSeconds,
                 0L,
                 nowSeconds - 1,
-                0L);
+                0L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);
@@ -102,7 +102,7 @@ public class QueryHandlerUtilityTest extends QueryTestBase {
                 nowSeconds,
                 200L,
                 nowSeconds,
-                100L);
+                100L, false);
         QueryDataRequest request = buildQueryDataRequest(params);
         ValidationResult result = QueryHandlerUtility.validateQuerySpecData(request.getQuerySpec());
         assertTrue(result.isError);

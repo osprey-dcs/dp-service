@@ -2,78 +2,46 @@ package com.ospreydcs.dp.service.annotation;
 
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
+import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportCsvFile;
-import com.ospreydcs.dp.service.annotation.handler.mongo.job.ExportDataSetJobAbstractTabular;
+import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.EventMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
-import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import de.siegmar.fastcsv.reader.CsvReader;
-import de.siegmar.fastcsv.reader.CsvRecord;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
-import org.apache.poi.openxml4j.opc.OPCPackage;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportHdf5File.*;
+import static com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportHdf5File.*;
 import static org.junit.Assert.*;
 
 public class AnnotationTestBase {
 
-    public static class AnnotationDataBlock {
-        public final long beginSeconds;
-        public final long beginNanos;
-        public final long endSeconds;
-        public final long endNanos;
-        public final List<String> pvNames;
-        public AnnotationDataBlock(long beginSeconds, long beginNanos, long endSeconds, long endNanos, List<String> pvNames) {
-            this.beginSeconds = beginSeconds;
-            this.beginNanos = beginNanos;
-            this.endSeconds = endSeconds;
-            this.endNanos = endNanos;
-            this.pvNames = pvNames;
-        }
-
+    public record AnnotationDataBlock(
+            long beginSeconds,
+            long beginNanos,
+            long endSeconds,
+            long endNanos,
+            List<String> pvNames) {
     }
 
-    public static class AnnotationDataSet {
-        public final String name;
-        public final String ownerId;
-        public final String description;
-        public final List<AnnotationDataBlock> dataBlocks;
-        public AnnotationDataSet(
-                String name, String ownerId, String description, List<AnnotationDataBlock> dataBlocks
-        ) {
-            this.name = name;
-            this.ownerId = ownerId;
-            this.description = description;
-            this.dataBlocks = dataBlocks;
-        }
+    public record AnnotationDataSet(
+            String name,
+            String ownerId,
+            String description,
+            List<AnnotationDataBlock> dataBlocks) {
     }
 
-    public static class CreateDataSetParams {
-        public final AnnotationDataSet dataSet;
-        public CreateDataSetParams(AnnotationDataSet dataSet) {
-            this.dataSet = dataSet;
-        }
+    public record CreateDataSetParams(AnnotationDataSet dataSet) {
     }
 
     public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
@@ -552,13 +520,13 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class ExportDataSetResponseObserver implements StreamObserver<ExportDataSetResponse> {
+    public static class ExportDataResponseObserver implements StreamObserver<ExportDataResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<ExportDataSetResponse.ExportDataSetResult> resultList =
+        private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -582,7 +550,7 @@ public class AnnotationTestBase {
             }
         }
 
-        public ExportDataSetResponse.ExportDataSetResult getResult() {
+        public ExportDataResponse.ExportDataResult getResult() {
             if (!resultList.isEmpty()) {
                 return resultList.get(0);
             } else {
@@ -591,7 +559,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(ExportDataSetResponse response) {
+        public void onNext(ExportDataResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -607,8 +575,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasExportDataSetResult());
-                final ExportDataSetResponse.ExportDataSetResult result = response.getExportDataSetResult();
+                assertTrue(response.hasExportDataResult());
+                final ExportDataResponse.ExportDataResult result = response.getExportDataResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -875,13 +843,26 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    public static ExportDataSetRequest buildExportDataSetRequest(
+    public static ExportDataRequest buildExportDataRequest(
             String dataSetId,
-            ExportDataSetRequest.ExportOutputFormat outputFormat
+            CalculationsSpec calculationsSpec,
+            ExportDataRequest.ExportOutputFormat outputFormat
     ) {
-        ExportDataSetRequest.Builder requestBuilder = ExportDataSetRequest.newBuilder();
-        requestBuilder.setDataSetId(dataSetId);
+        ExportDataRequest.Builder requestBuilder = ExportDataRequest.newBuilder();
+
+        // set datasetId if specified
+        if (dataSetId != null) {
+            requestBuilder.setDataSetId(dataSetId);
+        }
+
+        // create calculationsSpec if calculationsId is specified
+        if (calculationsSpec != null) {
+            requestBuilder.setCalculationsSpec(calculationsSpec);
+        }
+
+        // set output format
         requestBuilder.setOutputFormat(outputFormat);
+
         return requestBuilder.build();
     }
 
@@ -1004,11 +985,11 @@ public class AnnotationTestBase {
                 reader.readLong(samplePeriodPath));
 
         // dataColumnBytes
-        final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_COLUMN_BYTES;
+        final String columnDataPath = pvBucketPath + PATH_SEPARATOR + DATA_COLUMN_BYTES;
         assertArrayEquals(bucketDocument.getDataColumn().getBytes(), reader.readAsByteArray(columnDataPath));
 
         // dataTimestampsBytes
-        final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATASET_DATA_TIMESTAMPS_BYTES;
+        final String dataTimestampsPath = pvBucketPath + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
         assertArrayEquals(
                 bucketDocument.getDataTimestamps().getBytes(),
                 reader.readAsByteArray(dataTimestampsPath));
@@ -1095,231 +1076,87 @@ public class AnnotationTestBase {
 
     }
 
-    public static void verifyCsvContentFromTimestampDataMap(
-            ExportDataSetResponse.ExportDataSetResult exportResult,
-            TimestampDataMap expectedDataMap
+    public static void verifyCalculationsDocumentHdf5Content(
+            IHDF5Reader reader,
+            CalculationsDocument calculationsDocument,
+            Map<String, CalculationsSpec.ColumnNameList> frameColumnNamesMap
     ) {
-        // open csv file and create reader
-        final Path exportFilePath = Paths.get(exportResult.getFilePath());
-        CsvReader<CsvRecord> csvReader = null;
-        try {
-            csvReader = CsvReader.builder().ofCsvRecord(exportFilePath);
-        } catch (IOException e) {
-            fail("IOException reading csv file " + exportResult.getFilePath() + ": " + e.getMessage());
-        }
-        assertNotNull(csvReader);
+        // verify group for calculations id
+        final String calculationsIdGroup = GROUP_CALCULATIONS + PATH_SEPARATOR + calculationsDocument.getId().toString();
+        assertTrue(reader.object().isGroup(calculationsIdGroup));
 
-        final Iterator<CsvRecord> csvRecordIterator = csvReader.iterator();
-        final List<String> expectedColumnNameList = expectedDataMap.getColumnNameList();
-        final int expectedNumColumns = 2 + expectedColumnNameList.size();
+        // verify frame group
+        final String framesGroup = calculationsIdGroup + PATH_SEPARATOR + GROUP_FRAMES;
+        assertTrue(reader.object().isGroup(framesGroup));
 
-        // verify header row
-        {
-            assertTrue(csvRecordIterator.hasNext());
-            final CsvRecord csvRecord = csvRecordIterator.next();
+        // verify contents for each frame in CalculationsDocument
+        int frameIndex = 0;
+        for (CalculationsDataFrameDocument calculationsDataFrameDocument : calculationsDocument.getDataFrames()) {
 
-            // check number of csv header columns matches expected
-            assertEquals(expectedNumColumns, csvRecord.getFieldCount());
+            if ((frameColumnNamesMap != null)
+                    && ( ! frameColumnNamesMap.containsKey(calculationsDataFrameDocument.getName()))) {
+                // skip frame if not specified in map
+                continue;
+            }
 
-            // build list of expected column headers
-            final List<String> expectedHeaderValues = new ArrayList<>();
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_SECONDS);
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_NANOS);
-            expectedHeaderValues.addAll(expectedColumnNameList);
+            // verify frame index group
+            final String frameIndexGroup = framesGroup + PATH_SEPARATOR + frameIndex;
+            assertTrue(reader.object().isGroup(frameIndexGroup));
 
-            // check content of csv header row matches expected
-            final List<String> csvRowValues = csvRecord.getFields();
-            assertEquals(expectedHeaderValues, csvRowValues);
-        }
+            // verify frame name
+            final String frameNamePath = frameIndexGroup + PATH_SEPARATOR + GROUP_NAME;
+            final String frameName = reader.readString(frameNamePath);
+            assertEquals(calculationsDataFrameDocument.getName(), frameName);
 
-        // verify data rows
-        {
-            final TimestampDataMap.DataRowIterator expectedDataRowIterator = expectedDataMap.dataRowIterator();
-            int dataRowCount = 0;
-            while (csvRecordIterator.hasNext() && expectedDataRowIterator.hasNext()) {
+            // verify frame dataTimestampsBytes
+            final String frameDataTimestampsBytesPath = frameIndexGroup + PATH_SEPARATOR + DATA_TIMESTAMPS_BYTES;
+            assertArrayEquals(
+                    calculationsDataFrameDocument.getDataTimestamps().getBytes(),
+                    reader.readAsByteArray(frameDataTimestampsBytesPath));
 
-                // read row from csv file
-                final CsvRecord csvRecord = csvRecordIterator.next();
-                assertEquals(expectedNumColumns, csvRecord.getFieldCount());
-                final List<String> csvRowValues = csvRecord.getFields();
+            // verify columns group
+            final String columnsGroup = frameIndexGroup + PATH_SEPARATOR + GROUP_COLUMNS;
+            assertTrue(reader.object().isGroup(columnsGroup));
 
-                // read expected row from map structure
-                final TimestampDataMap.DataRow expectedDataRow = expectedDataRowIterator.next();
+            // verify contents for each frame column
+            int columnIndex = 0;
+            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
 
-                // verify seconds/nanos match between file and expected
-                final long csvSeconds = Long.valueOf(csvRowValues.get(0));
-                final long csvNanos = Long.valueOf(csvRowValues.get(1));
-                assertEquals(expectedDataRow.seconds(), csvSeconds);
-                assertEquals(expectedDataRow.nanos(), csvNanos);
-
-                // compare data values from csv file with expected
-                final List<String> csvDataValues = csvRowValues.subList(2, csvRowValues.size());
-                for (int columnIndex = 0; columnIndex < csvDataValues.size(); columnIndex++) {
-                    final String csvDataValue = csvDataValues.get(columnIndex);
-                    final DataValue expectedDataValue = expectedDataRow.dataValues().get(columnIndex);
-                    assertEquals(DatasetExportCsvFile.dataValueToString(expectedDataValue), csvDataValue);
+                if ((frameColumnNamesMap != null)
+                        && ( ! frameColumnNamesMap.get(frameName).getColumnNamesList().contains(
+                                calculationsDataColumnDocument.getName()))) {
+                    // skip column if not specified in map for frame;
+                    continue;
                 }
-                dataRowCount = dataRowCount + 1;
-            }
-            assertFalse(csvRecordIterator.hasNext());
-            assertFalse(expectedDataRowIterator.hasNext());
-            assertEquals(expectedDataMap.size(), dataRowCount);
-        }
-    }
 
-    public static void verifyXlsxContentFromTimestampDataMap(
-            ExportDataSetResponse.ExportDataSetResult exportResult,
-            TimestampDataMap expectedDataMap
-    ) {
-        final List<String> expectedColumnNameList = expectedDataMap.getColumnNameList();
-        final int expectedNumColumns = 2 + expectedColumnNameList.size();
+                // verify column index group
+                final String columnIndexGroup = columnsGroup + PATH_SEPARATOR + columnIndex;
+                assertTrue(reader.object().isGroup(columnIndexGroup));
 
-        // open excel file
-        OPCPackage filePackage = null;
-        try {
-            filePackage = OPCPackage.open(new File(exportResult.getFilePath()));
-        } catch (InvalidFormatException e) {
-            fail(
-                    "InvalidFormatException opening package for excel file "
-                            + exportResult.getFilePath() + ": "
-                            + e.getMessage());
-        }
-        assertNotNull(filePackage);
+                // verify column name
+                final String columnNamePath = columnIndexGroup + PATH_SEPARATOR + GROUP_NAME;
+                final String columnName = reader.readString(columnNamePath);
+                assertEquals(calculationsDataColumnDocument.getName(), columnName);
 
-        // open excel workbook
-        XSSFWorkbook fileWorkbook = null;
-        try {
-            fileWorkbook = new XSSFWorkbook(filePackage);
-        } catch (IOException e) {
-            fail(
-                    "IOException creating workbook from excel file "
-                            + exportResult.getFilePath() + ": "
-                            + e.getMessage());;
-        }
-        assertNotNull(fileWorkbook);
+                // verify dataColumnBytes
+                final String dataColumnBytesPath = columnIndexGroup + PATH_SEPARATOR + DATA_COLUMN_BYTES;
+                assertArrayEquals(
+                        calculationsDataColumnDocument.getBytes(),
+                        reader.readAsByteArray(dataColumnBytesPath));
 
-        // get worksheet
-        Sheet fileSheet = fileWorkbook.getSheetAt(0);
-        assertNotNull(fileSheet);
-
-        final Iterator<Row> fileRowIterator = fileSheet.rowIterator();
-        assertTrue(fileRowIterator.hasNext());
-
-        // verify header row from file
-        {
-            final Row fileHeaderRow = fileRowIterator.next();
-            assertNotNull(fileHeaderRow);
-            assertEquals(expectedNumColumns, fileHeaderRow.getLastCellNum());
-
-            // build list of expected column headers
-            final List<String> expectedHeaderValues = new ArrayList<>();
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_SECONDS);
-            expectedHeaderValues.add(ExportDataSetJobAbstractTabular.COLUMN_HEADER_NANOS);
-            expectedHeaderValues.addAll(expectedColumnNameList);
-
-            for (int columnIndex = 0; columnIndex < fileHeaderRow.getLastCellNum(); columnIndex++) {
-                final String expectedHeaderValue = expectedHeaderValues.get(columnIndex);
-                final String fileHeaderValue = fileHeaderRow.getCell(columnIndex).getStringCellValue();
-                assertEquals(expectedHeaderValue, fileHeaderValue);
-            }
-        }
-
-        // verify data rows from file
-        {
-            final TimestampDataMap.DataRowIterator expectedDataRowIterator = expectedDataMap.dataRowIterator();
-            int dataRowCount = 0;
-            while (fileRowIterator.hasNext() && expectedDataRowIterator.hasNext()) {
-
-                // read row from excel file
-                final Row fileDataRow = fileRowIterator.next();
-                assertEquals(expectedNumColumns, fileDataRow.getLastCellNum());
-
-                // read expected row from map structure
-                final TimestampDataMap.DataRow expectedDataRow = expectedDataRowIterator.next();
-
-                // verify timestamp columns
-                final long fileSeconds = Double.valueOf(fileDataRow.getCell(0).getNumericCellValue()).longValue();
-                final long fileNanos = Double.valueOf(fileDataRow.getCell(1).getNumericCellValue()).longValue();
-                assertEquals(expectedDataRow.seconds(), fileSeconds);
-                assertEquals(expectedDataRow.nanos(), fileNanos);
-
-                // verify data columns
-                for (int fileColumnIndex = 2; fileColumnIndex < fileDataRow.getLastCellNum(); fileColumnIndex++) {
-                    final int expectedColumnIndex = fileColumnIndex - 2; // adjust for seconds/nanos columns in file
-                    final Cell fileCell = fileDataRow.getCell(fileColumnIndex);
-                    final DataValue expectedDataValue = expectedDataRow.dataValues().get(expectedColumnIndex);
-                    switch (expectedDataValue.getValueCase()) {
-                        case STRINGVALUE -> {
-                            assertEquals(expectedDataValue.getStringValue(), fileCell.getStringCellValue());
-                        }
-                        case BOOLEANVALUE -> {
-                            assertEquals(expectedDataValue.getBooleanValue(), fileCell.getBooleanCellValue());
-                        }
-                        case UINTVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getUintValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
-                        }
-                        case ULONGVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getUlongValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
-                        }
-                        case INTVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getIntValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).intValue());
-                        }
-                        case LONGVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getLongValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).longValue());
-                        }
-                        case FLOATVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getFloatValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).floatValue(),
-                                    0.0);
-                        }
-                        case DOUBLEVALUE -> {
-                            assertEquals(
-                                    expectedDataValue.getDoubleValue(),
-                                    Double.valueOf(fileCell.getNumericCellValue()).doubleValue(),
-                                    0);
-                        }
-//            case BYTEARRAYVALUE -> {
-//            }
-//            case ARRAYVALUE -> {
-//            }
-//            case STRUCTUREVALUE -> {
-//            }
-//            case IMAGEVALUE -> {
-//            }
-//            case TIMESTAMPVALUE -> {
-//            }
-//            case VALUE_NOT_SET -> {
-//            }
-                        default -> {
-                            assertEquals(expectedDataValue.toString(), fileCell.getStringCellValue());
-                        }
-                    }
-                }
-                dataRowCount = dataRowCount + 1;
+                columnIndex = columnIndex + 1;
             }
 
-            assertFalse(fileRowIterator.hasNext());
-            assertFalse(expectedDataRowIterator.hasNext());
-            assertEquals(expectedDataMap.size(), dataRowCount);
+            if (frameColumnNamesMap != null) {
+                assertEquals(columnIndex, frameColumnNamesMap.get(frameName).getColumnNamesList().size());
+            }
+
+            frameIndex = frameIndex + 1;
         }
 
-        // close excel file
-        try {
-            filePackage.close();
-        } catch (IOException e) {
-            fail(
-                    "IOException closing package for excel file "
-                            + exportResult.getFilePath() + ": "
-                            + e.getMessage());;
+        // check number of frames matches map size, if map is provided
+        if (frameColumnNamesMap != null) {
+            assertEquals(frameIndex, frameColumnNamesMap.size());
         }
     }
 

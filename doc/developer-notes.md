@@ -287,6 +287,68 @@ In Data Platform version 1.4, the polymorphic "BucketDocument" hierarchy shown a
 
 ![bucket document standalone](images/uml-dp-bucket-document-standalone.png "bucket document standalone")
 
+### using SerializedDataColumns for improved API performance
+
+As of version 1.9, a mechanism is added for using "SerializedDataColumns" in the API methods for data ingestion, query, and subscription for improved performance.
+
+This is made possible by the change to storing the byte data representation of its DataColumn in MongoDB BucketDocuments, as we no longer need access to the individual DataValues in a protobuf DataColumn during ingestion.
+
+The APIs for data ingestion, query, and subscription now include an option for sending SerializedDataColumns instead of regular DataColumns.  Using this mechanism improves performance significantly by avoiding redundant serialization and deserialization operations performed by the gRPC communication framework.  
+
+Sending regular DataColumns in ingestion requests requires 3 serialization operations.  The client performs serialization when sending the request; the server performs deserialization when receiving the request, and then the data are re-serialized for compact storage in MongoDB.  Sending SerializedDataColumns in ingestion requests requires a single serialization operation in the client with no deserialization or re-serialization required in the server before storage in MongoDB.  This results in ingestion performance improvements of 2-3x.  Similar improvements are made in the query and subscription APIs.
+
+The ingestion API method variants ingestData(), ingestDataStream(), and ingestDataBidiStream() are modified to include a new optional list of SerializedDataColumns in the request's IngestionDataFrame object.  The API client can send either a list of regular DataColumns, SerializedDataColumns, or both.  Clients seeking maximum performance should send SerializedDataColumns, by manually serializing each DataColumn to its ByteString representation for use in the API request.
+
+The query API method variants queryData(), queryDataStream(), and queryDataBidiStream() are modified in a similar fashion.  The request's QuerySpec now includes a flag "useSerializedDataColumns" that is set to indicate that the client wishes to receive SerializedDataColumns in the query result instead of regular ones.  When the flag is set, the response's DataBuckets contain a SerializedDataColumn instead of a regular one.  Clients seeking maximum performance should set the flag in the query request, and must manually deserialize each DataBucket's serializedDataColumn by parsing a DataColumn from the SerializedDataColumn's "dataColumnBytes" byte representation of the column.
+
+When ingestion requests utilize SerializedDataColumns for improved performance, corresponding notifications sent by the subscribeData() API for subscribed PVs will automatically use SerializedDataColumns for maximum performance in subscription communication.
+
+These changes are all made to be backward compatible, so that existing API clients continue to work without modification.
+
+New ingestion and query performance benchmark applications are added including BenchmarkIngestDataStreamBytes and BenchmarkQueryDataStreamBytes, respectively.
+
+Below is a Java code snippet showing how to convert a list of regular DataColumns to a list of SerializedDataColumns for use in an IngestDataRequest's IngestionDataFrame.
+```
+// build a list of DataColumns
+final List<DataColumn> frameColumns = new ArrayList<>();
+
+// create a DataColumn object
+DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+dataColumnBuilder.setName("S01-GCC01");
+
+// add a DataValue to the column
+DataValue.Builder dataValueBuilder = DataValue.newBuilder().setDoubleValue(12.34);
+dataColumnBuilder.addDataValues(dataValueBuilder.build());
+
+// add DataColumn to list
+frameColumns.add(dataColumnBuilder.build());
+
+// generate a list of SerializedDataColumn objects from list of DataColumn objects, and add them to IngesitonDataFrame
+IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
+        = IngestDataRequest.IngestionDataFrame.newBuilder();
+for (DataColumn dataColumn : frameColumns) {
+    final SerializedDataColumn serializedDataColumn =
+            SerializedDataColumn.newBuilder()
+                    .setName(dataColumn.getName())
+                    .setDataColumnBytes(dataColumn.toByteString())
+                    .build();
+    dataFrameBuilder.addSerializedDataColumns(serializedDataColumn);
+```
+
+
+Below is a Java code snippet showing how to convert a SerializedDataColumn in the query result DataBucket to a regular DataColumn for accessing its name and data values.
+```
+if (responseBucket.hasSerializedDataColumn()) {
+    DataColumn responseDataColumn = null;
+    try {
+        responseDataColumn = DataColumn.parseFrom(responseBucket.getSerializedDataColumn().getDataColumnBytes());
+    } catch (InvalidProtocolBufferException e) {
+        fail("exception parsing DataColumn from SerializedDataColumn: " + e.getMessage());
+    }
+}
+```
+
+
 ### data subscription framework
 
 As of v1.7, the Ingestion Service provides a mechanism for subscribing to new data received in the ingestion stream, via the subscribeData() API method.  Key components involved in the data subscription handling framework are described in more detail below.
@@ -318,6 +380,31 @@ In v1.7, A new Ingestion Stream Service is added to the dp-service repo implemen
 - EventMonitor: Base class for different types of data event monitors, corresponding to the different data event definition types supported in the SubscribeDataEventRequest. Defines abstract method for handling new data from the subscribeData() API method's response stream.
 - ConditionMonitor: Concrete data event monitor implementation corresponding to the ConditionEventDef message payload in SubscribeDataEventRequest.  Implements the abstract method for handling data from the subscribeData() API method by checking to see if data values satisfy the condition for the monitor by comparing the data value and operand using specified operator.
 - DataEventSubscriptionManager: Manages data event subscriptions and uses the Ingestion Service's subscribeData() API method to receive data from the ingestion stream for PVs used by EventMonitors.  Provides methods for adding and removing EventMonitors, and dispatching incoming data from the subscribeData() API method response stream to the appropriate EventMonitor(s) for handling.
+
+### exporting data
+
+Export API requests are handled in the same fashion as all other API requests to the Data Platform Services.  A job is created for handling the request and added to the handler's task queue.  When the job is executed, it 1) retrieves the associated dataset from the database, 2) generates output file paths and URLs, 3) creates the directories in the file path as neeeded, and 4) exports the data for the dataset to file.
+
+The diagram below shows the classes involved in the export handling framework.
+
+![exporting data](images/uml-dp-export.png "export framework")
+
+There is a single base class for all export jobs, ExportDataSetJob that controls the execution.  It defines abstract methods that are overridden by derived classes to handle writing data to the particular file format.  It uses the MongoAnnotationClientInterface to find the specified dataset.  It uses ExportDataSetDispatcher to send a response in the API method's response stream.
+
+The new class ExportConfiguration is responsible for reading the export-related config resources and generating file paths and URLs based on that configuration, and is used by the job to generate paths for the export file.
+
+There are two intermediate classes, BucketedDataExportJob and TabularDataExportJob, that provide common logic for writing time-series data organized in "buckets" and writing tabular file formats, respectively.
+
+There is a single concrete class for writing bucketed data, Hdf5ExportJob, that handles writing bucketed data to HDF5 format.
+
+TabularDataExportJob uses utility methods in TabularDataUtility to build a data structure for iterating and accessing data in a tabular fashion.  This functionality is contained in a standalone class so that it can be shared with other code working with tabular data (such as building the result for a tabular data query).
+
+There are two concrete classes for writing tabular data, CsvExportJob and ExcelExportJob, that handle writing tabular data to CSV and XLSX formats, respectively.
+
+The details of writing to specific file formats from the bucketed and tabular data export job classes are defined by two interfaces, BucketedDataExportFileInterface and TabularDataExportFileInterface, respectively.  Hdf5ExportJob uses the concrete interface implementation, DatasetExportHdf5File to write data to HDF5 format.  CsvExportJob uses DatasetExportCsvFile to write to CSV files.  ExcelExportJob uses DatasetExportXlsxFile to write to XLSX files.
+
+The file interface implementation classes use new third party library dependencies (defined in "pom.xml" for lower-level file access APIs.  The libraries "sis-base" and "sis-jhdf5" from "cisd" are used by DatasetExportHdf5File for writing HDF5 files.  The library "fastcsv" from "de.siegmar" is used by DatasetExportCsvFile for writing CSV files.  The library "poi-ooxml" from "org.apache.poi" is used by DatasetExportXlsxFile for writing XLSX files.
+
 
 ### configuration
 
@@ -352,31 +439,6 @@ The "ConfigurationManager" is a "singleton" pattern implementation, so the first
 _configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS)_
 
 where "configMgr()" is a convenience method for accessing the singleton "ConfigurationManager" instance.
-
-### exporting data
-
-Export API requests are handled in the same fashion as all other API requests to the Data Platform Services.  A job is created for handling the request and added to the handler's task queue.  When the job is executed, it 1) retrieves the associated dataset from the database, 2) generates output file paths and URLs, 3) creates the directories in the file path as neeeded, and 4) exports the data for the dataset to file.
-
-The diagram below shows the classes involved in the export handling framework.
-
-![exporting data](images/uml-dp-export.png "export framework")
-
-There is a single base class for all export jobs, ExportDataSetJob that controls the execution.  It defines abstract methods that are overridden by derived classes to handle writing data to the particular file format.  It uses the MongoAnnotationClientInterface to find the specified dataset.  It uses ExportDataSetDispatcher to send a response in the API method's response stream.
-
-The new class ExportConfiguration is responsible for reading the export-related config resources and generating file paths and URLs based on that configuration, and is used by the job to generate paths for the export file.
-
-There are two intermediate classes, BucketedDataExportJob and TabularDataExportJob, that provide common logic for writing time-series data organized in "buckets" and writing tabular file formats, respectively.
-
-There is a single concrete class for writing bucketed data, Hdf5ExportJob, that handles writing bucketed data to HDF5 format.
-
-TabularDataExportJob uses utility methods in TabularDataUtility to build a data structure for iterating and accessing data in a tabular fashion.  This functionality is contained in a standalone class so that it can be shared with other code working with tabular data (such as building the result for a tabular data query).
-
-There are two concrete classes for writing tabular data, CsvExportJob and ExcelExportJob, that handle writing tabular data to CSV and XLSX formats, respectively.
-
-The details of writing to specific file formats from the bucketed and tabular data export job classes are defined by two interfaces, BucketedDataExportFileInterface and TabularDataExportFileInterface, respectively.  Hdf5ExportJob uses the concrete interface implementation, DatasetExportHdf5File to write data to HDF5 format.  CsvExportJob uses DatasetExportCsvFile to write to CSV files.  ExcelExportJob uses DatasetExportXlsxFile to write to XLSX files.
-
-The file interface implementation classes use new third party library dependencies (defined in "pom.xml" for lower-level file access APIs.  The libraries "sis-base" and "sis-jhdf5" from "cisd" are used by DatasetExportHdf5File for writing HDF5 files.  The library "fastcsv" from "de.siegmar" is used by DatasetExportCsvFile for writing CSV files.  The library "poi-ooxml" from "org.apache.poi" is used by DatasetExportXlsxFile for writing XLSX files.
-
 
 ### performance benchmarking
 

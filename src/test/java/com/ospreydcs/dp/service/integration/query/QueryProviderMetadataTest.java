@@ -29,15 +29,29 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
             ingestionScenarioResult = simpleIngestionScenario();
         }
 
+        // queryProviderMetadata() positive test for empty query result.
+        {
+            final String undefinedProviderId = "undefined-provider-id";
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            sendAndVerifyQueryProviderMetadata(
+                    undefinedProviderId,
+                    null,
+                    expectReject,
+                    expectedRejectMessage,
+                    0);
+        }
+
         // queryProviderMetadata() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
         {
             final IngestionProviderInfo gccProviderInfo =
-                    ingestionScenarioResult.providerInfoMap.get(GCC_INGESTION_PROVIDER);
+                    ingestionScenarioResult.providerInfoMap().get(GCC_INGESTION_PROVIDER);
             sendAndVerifyQueryProviderMetadata(
-                    gccProviderInfo.providerId,
+                    gccProviderInfo.providerId(),
                     gccProviderInfo,
                     false,
-                    null);
+                    null,
+                    1);
         }
     }
 
@@ -52,22 +66,8 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
                     blankProviderId,
                     null,
                     expectReject,
-                    expectedRejectMessage);
-        }
-    }
-
-    @Test
-    public void testQueryProviderMetadataNoData() {
-        // queryProviderMetadata() negative test, ExceptionalResult because query returns no data
-        {
-            final String undefinedProviderId = "undefined-provider-id";
-            final boolean expectReject = true;
-            final String expectedRejectMessage = "query returned no data";
-            sendAndVerifyQueryProviderMetadata(
-                    undefinedProviderId,
-                    null,
-                    expectReject,
-                    expectedRejectMessage);
+                    expectedRejectMessage,
+                    1);
         }
     }
 

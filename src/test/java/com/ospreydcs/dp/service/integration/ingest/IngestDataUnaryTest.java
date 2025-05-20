@@ -61,7 +61,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             values,
-                            null);
+                            null, false);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
             // send request and examine response
@@ -73,7 +73,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
                     ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                     response.getExceptionalResult().getExceptionalResultStatus());
             assertTrue(response.getResponseTime().getEpochSeconds() > 0);
-            assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all data columns"));
+            assertTrue(response.getExceptionalResult().getMessage().equals("name must be specified for all DataColumns"));
         }
 
         {
@@ -99,11 +99,11 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
                             columnNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             values,
-                            null);
+                            null, false);
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
             // send request and examine response
-            sendAndVerifyIngestData(params, request);
+            sendAndVerifyIngestData(params, request, 0);
         }
     }
 

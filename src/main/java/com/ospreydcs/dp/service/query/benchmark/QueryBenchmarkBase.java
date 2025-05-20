@@ -35,6 +35,7 @@ public abstract class QueryBenchmarkBase {
     // constants
     protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
+    private static final int NUM_SCENARIO_SECONDS = 60;
 
     // configuration
     public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60052";
@@ -175,38 +176,21 @@ public abstract class QueryBenchmarkBase {
         logger.info("loading time: {} seconds", dtSecondsString);
     }
 
-    public static class QueryDataRequestTaskParams {
-        final public int streamNumber;
-        final public List<String> columnNames;
-        final public long startSeconds;
-
-        public QueryDataRequestTaskParams(
-                int streamNumber,
-                List<String> columnNames,
-                long startSeconds
-        ) {
-            this.streamNumber = streamNumber;
-            this.columnNames = columnNames;
-            this.startSeconds = startSeconds;
-        }
+    public record QueryDataRequestTaskParams(
+            int streamNumber,
+            List<String> columnNames,
+            long startSeconds,
+            int numSeconds,
+            boolean useSerializedDataColumns
+    ) {
     }
 
-    protected static class QueryTaskResult {
-        final public boolean status;
-        final public long dataValuesReceived;
-        final public long dataBytesReceived;
-        final public long grpcBytesReceived;
-        public QueryTaskResult(
-                boolean status,
-                long dataValuesReceived,
-                long dataBytesReceived,
-                long grpcBytesReceived
-        ) {
-            this.status = status;
-            this.dataValuesReceived = dataValuesReceived;
-            this.dataBytesReceived = dataBytesReceived;
-            this.grpcBytesReceived = grpcBytesReceived;
-        }
+    protected record QueryTaskResult(
+            boolean status,
+            long dataValuesReceived,
+            long dataBytesReceived,
+            long grpcBytesReceived
+    ) {
     }
 
     /**
@@ -271,7 +255,7 @@ public abstract class QueryBenchmarkBase {
         beginTimeBuilder.setNanoseconds(0);
         beginTimeBuilder.build();
 
-        final long endSeconds = params.startSeconds + 60;
+        final long endSeconds = params.startSeconds + params.numSeconds;
         Timestamp.Builder endTimeBuilder = Timestamp.newBuilder();
         endTimeBuilder.setEpochSeconds(endSeconds);
         endTimeBuilder.setNanoseconds(0);
@@ -283,13 +267,18 @@ public abstract class QueryBenchmarkBase {
         querySpecBuilder.setBeginTime(beginTimeBuilder);
         querySpecBuilder.setEndTime(endTimeBuilder);
         querySpecBuilder.addAllPvNames(params.columnNames);
+        if (params.useSerializedDataColumns) {
+            querySpecBuilder.setUseSerializedDataColumns(true);
+        } else {
+            querySpecBuilder.setUseSerializedDataColumns(false);
+        }
         querySpecBuilder.build();
         requestBuilder.setQuerySpec(querySpecBuilder);
 
         return requestBuilder.build();
     }
 
-    protected static QueryDataRequest buildNextQueryDataRequest() {
+    public static QueryDataRequest buildNextQueryDataRequest() {
         QueryDataRequest.Builder requestBuilder = QueryDataRequest.newBuilder();
         QueryDataRequest.CursorOperation.Builder cursorOperationBuilder = QueryDataRequest.CursorOperation.newBuilder();
         cursorOperationBuilder.setCursorOperationType(QueryDataRequest.CursorOperation.CursorOperationType.CURSOR_OP_NEXT);
@@ -306,7 +295,9 @@ public abstract class QueryBenchmarkBase {
             int numPvs,
             int pvsPerRequest,
             int numThreads,
-            long startSeconds
+            long startSeconds,
+            int numSeconds,
+            boolean useSerializedDataColumns
     ) {
         boolean success = true;
         long dataValuesReceived = 0;
@@ -326,7 +317,13 @@ public abstract class QueryBenchmarkBase {
             currentBatchColumns.add(columnName);
             if (currentBatchColumns.size() == pvsPerRequest) {
                 // add task for existing batch of columns
-                final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+                final QueryDataRequestTaskParams params =
+                        new QueryDataRequestTaskParams(
+                                currentBatchIndex,
+                                currentBatchColumns,
+                                startSeconds,
+                                numSeconds,
+                                useSerializedDataColumns);
                 final QueryDataRequestTask task = newQueryTask(channel, params);
                 taskList.add(task);
                 // start a new batch of columns
@@ -335,13 +332,18 @@ public abstract class QueryBenchmarkBase {
             }
         }
         // add task for final batch of columns, if not empty
-        if (currentBatchColumns.size() > 0) {
-            final QueryDataRequestTaskParams params = new QueryDataRequestTaskParams(currentBatchIndex, currentBatchColumns, startSeconds);
+        if (!currentBatchColumns.isEmpty()) {
+            final QueryDataRequestTaskParams params =
+                    new QueryDataRequestTaskParams(
+                            currentBatchIndex,
+                            currentBatchColumns,
+                            startSeconds,
+                            numSeconds, false);
             final QueryDataRequestTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
 
-        // start performance measurment timer
+        // start performance measurement timer
         final Instant t0 = Instant.now();
 
         // submit tasks to executor service
@@ -416,7 +418,8 @@ public abstract class QueryBenchmarkBase {
             int[] totalNumPvsArray,
             int[] numPvsPerRequestArray,
             int[] numThreadsArray,
-            long startSeconds
+            long startSeconds,
+            boolean useSerializedDataColumns
     ) {
 //        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
@@ -431,7 +434,14 @@ public abstract class QueryBenchmarkBase {
                             "running queryScenario, numPvs: {} pvsPerRequest: {} threads: {}",
                             numPvs,pvsPerRequest, numThreads);
                     BenchmarkScenarioResult scenarioResult =
-                            queryScenario(channel, numPvs, pvsPerRequest, numThreads, startSeconds);
+                            queryScenario(
+                                    channel,
+                                    numPvs,
+                                    pvsPerRequest,
+                                    numThreads,
+                                    startSeconds,
+                                    NUM_SCENARIO_SECONDS,
+                                    useSerializedDataColumns);
                     double writeRate = scenarioResult.valuesPerSecond;
                     rateMap.put(mapKey, writeRate);
                 }
@@ -465,7 +475,8 @@ public abstract class QueryBenchmarkBase {
             QueryBenchmarkBase benchmark,
             int[] totalNumPvsArray,
             int[] numPvsPerRequestArray,
-            int[] numThreadsArray
+            int[] numThreadsArray,
+            boolean useSerializedDataColumns
     ) {
         long startSeconds = Instant.now().getEpochSecond();
 
@@ -484,7 +495,13 @@ public abstract class QueryBenchmarkBase {
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
 
-        benchmark.queryExperiment(channel, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray, startSeconds);
+        benchmark.queryExperiment(
+                channel,
+                totalNumPvsArray,
+                numPvsPerRequestArray,
+                numThreadsArray,
+                startSeconds,
+                useSerializedDataColumns);
 
         // ManagedChannels use resources like threads and TCP connections. To prevent leaking these
         // resources the channel should be shut down when it will no longer be used. If it may be used

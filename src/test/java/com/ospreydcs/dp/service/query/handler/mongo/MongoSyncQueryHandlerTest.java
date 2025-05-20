@@ -47,11 +47,6 @@ public class MongoSyncQueryHandlerTest extends MongoQueryHandlerTestBase {
     }
 
     @Test
-    public void testResponseStreamDispatcherNoData() {
-        super.testResponseStreamDispatcherNoData();
-    }
-
-    @Test
     public void testResponseStreamDispatcher() {
         super.testResponseStreamDispatcher();
     }

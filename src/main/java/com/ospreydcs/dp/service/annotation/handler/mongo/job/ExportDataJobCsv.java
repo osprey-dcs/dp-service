@@ -1,17 +1,17 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
-import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataSetRequest;
+import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
-import com.ospreydcs.dp.service.annotation.handler.mongo.export.DatasetExportXlsxFile;
+import com.ospreydcs.dp.service.annotation.handler.mongo.export.DataExportCsvFile;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
-public class ExportDataSetJobExcel extends ExportDataSetJobAbstractTabular {
+public class ExportDataJobCsv extends ExportDataJobAbstractTabular {
 
-    public ExportDataSetJobExcel(
-            HandlerExportDataSetRequest handlerRequest,
+    public ExportDataJobCsv(
+            HandlerExportDataRequest handlerRequest,
             MongoAnnotationClientInterface mongoAnnotationClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
@@ -19,14 +19,14 @@ public class ExportDataSetJobExcel extends ExportDataSetJobAbstractTabular {
     }
 
     protected String getFileExtension_() {
-        return ExportConfiguration.FILE_EXTENSION_XLSX;
+        return ExportConfiguration.FILE_EXTENSION_CSV;
     }
 
-    protected DatasetExportXlsxFile createExportFile_(
+    protected DataExportCsvFile createExportFile_(
             DataSetDocument dataset,
             String serverFilePath
     ) throws DpException {
-        return new DatasetExportXlsxFile(dataset, serverFilePath);
+        return new DataExportCsvFile(dataset, serverFilePath);
     }
 
 }
