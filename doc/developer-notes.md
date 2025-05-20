@@ -307,6 +307,47 @@ These changes are all made to be backward compatible, so that existing API clien
 
 New ingestion and query performance benchmark applications are added including BenchmarkIngestDataStreamBytes and BenchmarkQueryDataStreamBytes, respectively.
 
+Below is a Java code snippet showing how to convert a list of regular DataColumns to a list of SerializedDataColumns for use in an IngestDataRequest's IngestionDataFrame.
+```
+// build a list of DataColumns
+final List<DataColumn> frameColumns = new ArrayList<>();
+
+// create a DataColumn object
+DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+dataColumnBuilder.setName("S01-GCC01");
+
+// add a DataValue to the column
+DataValue.Builder dataValueBuilder = DataValue.newBuilder().setDoubleValue(12.34);
+dataColumnBuilder.addDataValues(dataValueBuilder.build());
+
+// add DataColumn to list
+frameColumns.add(dataColumnBuilder.build());
+
+// generate a list of SerializedDataColumn objects from list of DataColumn objects, and add them to IngesitonDataFrame
+IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
+        = IngestDataRequest.IngestionDataFrame.newBuilder();
+for (DataColumn dataColumn : frameColumns) {
+    final SerializedDataColumn serializedDataColumn =
+            SerializedDataColumn.newBuilder()
+                    .setName(dataColumn.getName())
+                    .setDataColumnBytes(dataColumn.toByteString())
+                    .build();
+    dataFrameBuilder.addSerializedDataColumns(serializedDataColumn);
+```
+
+
+Below is a Java code snippet showing how to convert a SerializedDataColumn in the query result DataBucket to a regular DataColumn for accessing its name and data values.
+```
+if (responseBucket.hasSerializedDataColumn()) {
+    DataColumn responseDataColumn = null;
+    try {
+        responseDataColumn = DataColumn.parseFrom(responseBucket.getSerializedDataColumn().getDataColumnBytes());
+    } catch (InvalidProtocolBufferException e) {
+        fail("exception parsing DataColumn from SerializedDataColumn: " + e.getMessage());
+    }
+}
+```
+
 
 ### data subscription framework
 
