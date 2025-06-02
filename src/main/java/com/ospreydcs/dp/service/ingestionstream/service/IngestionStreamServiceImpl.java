@@ -14,6 +14,8 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.List;
+
 public class IngestionStreamServiceImpl
         extends DpIngestionStreamServiceGrpc.DpIngestionStreamServiceImplBase
 {
@@ -84,35 +86,35 @@ public class IngestionStreamServiceImpl
         return response;
     }
 
-    private static SubscribeDataEventResponse subscribeDataEventResponse(
-            SubscribeDataEventResponse.SubscribeDataEventResult result
-    ) {
-        return SubscribeDataEventResponse.newBuilder()
-                .setResponseTime(TimestampUtility.getTimestampNow())
-                .setSubscribeDataEventResult(result)
-                .build();
-    }
-
-    private static SubscribeDataEventResponse subscribeDataEventResponseConditionEvent(
-            String pvName,
-            Timestamp dataTimestamp,
-            DataValue dataValue
-    ) {
-        final SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent conditionEvent =
-                SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent.newBuilder()
-                        .setPvName(pvName)
-                        .setTimestamp(dataTimestamp)
-                        .setDataValue(dataValue)
-                        .build();
-
-        final SubscribeDataEventResponse.SubscribeDataEventResult result =
-                SubscribeDataEventResponse.SubscribeDataEventResult.newBuilder()
-                        .setConditionEvent(conditionEvent)
-                        .build();
-
-        return subscribeDataEventResponse(result);
-    }
-
+//    private static SubscribeDataEventResponse subscribeDataEventResponse(
+//            SubscribeDataEventResponse.SubscribeDataEventResult result
+//    ) {
+//        return SubscribeDataEventResponse.newBuilder()
+//                .setResponseTime(TimestampUtility.getTimestampNow())
+//                .setSubscribeDataEventResult(result)
+//                .build();
+//    }
+//
+//    private static SubscribeDataEventResponse subscribeDataEventResponseConditionEvent(
+//            String pvName,
+//            Timestamp dataTimestamp,
+//            DataValue dataValue
+//    ) {
+//        final SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent conditionEvent =
+//                SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent.newBuilder()
+//                        .setPvName(pvName)
+//                        .setTimestamp(dataTimestamp)
+//                        .setDataValue(dataValue)
+//                        .build();
+//
+//        final SubscribeDataEventResponse.SubscribeDataEventResult result =
+//                SubscribeDataEventResponse.SubscribeDataEventResult.newBuilder()
+//                        .setConditionEvent(conditionEvent)
+//                        .build();
+//
+//        return subscribeDataEventResponse(result);
+//    }
+//
     public static void sendSubscribeDataEventResponseReject(
             String msg, StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
@@ -136,47 +138,133 @@ public class IngestionStreamServiceImpl
         responseObserver.onNext(response);
     }
 
-    public static void sendSubscribeDataEventResponseConditionEvent(
-            String pvName,
-            Timestamp dataTimestamp,
-            DataValue dataValue,
-            StreamObserver<SubscribeDataEventResponse> responseObserver
-    ) {
-        final SubscribeDataEventResponse response
-                = subscribeDataEventResponseConditionEvent(pvName, dataTimestamp, dataValue);
-        responseObserver.onNext(response);
-    }
+//    public static void sendSubscribeDataEventResponseConditionEvent(
+//            String pvName,
+//            Timestamp dataTimestamp,
+//            DataValue dataValue,
+//            StreamObserver<SubscribeDataEventResponse> responseObserver
+//    ) {
+//        final SubscribeDataEventResponse response
+//                = subscribeDataEventResponseConditionEvent(pvName, dataTimestamp, dataValue);
+//        responseObserver.onNext(response);
+//    }
 
     public static ValidationResult validateSubscribeDataEventRequest(
             SubscribeDataEventRequest request
     ) {
         // validate common request fields
-        if (request.getPvNamesList().isEmpty()) {
+        if (request.getTriggersList().isEmpty()) {
             return new ValidationResult(
                     true,
-                    "SubscribeDataEventRequest.pvNames must be specified");
+                    "SubscribeDataEventRequest.triggers must be specified");
         }
 
-        // validate contents for various types of eventDef payloads
-        switch (request.getDataEventDefCase()) {
+        // validate each PvConditionTrigger
+        for (SubscribeDataEventRequest.PvConditionTrigger pvConditionTrigger : request.getTriggersList()) {
 
-            case CONDITIONEVENTDEF -> {
-                // validate request containing ConditionEventDef payload
-                SubscribeDataEventRequest.ConditionEventDef eventDef = request.getConditionEventDef();
-                if (eventDef.getOperator() ==
-                        SubscribeDataEventRequest.ConditionEventDef.ConditionOperator.CONDITION_OPERATOR_UNSPECIFIED) {
-                    return new ValidationResult(
-                            true,
-                            "SubscribeDataEventRequest.ConditionEventDef.operator must be specified");
-                }
-            }
-
-            case DATAEVENTDEF_NOT_SET -> {
+            // check that name is specified
+            if (pvConditionTrigger.getPvName().isBlank()) {
                 return new ValidationResult(
                         true,
-                        "SubscribeDataEventRequest.dataEventDef must be specified");
+                        "SubscribeDataEventRequest PvConditionTrigger.pvName must be specified");
+            }
+
+            // check that condition is specified
+            if (pvConditionTrigger.getCondition() ==
+                    SubscribeDataEventRequest.PvConditionTrigger.PvCondition.PV_CONDITION_UNSPECIFIED
+            ) {
+                return new ValidationResult(
+                        true,
+                        "SubscribeDataEventRequest PvConditionTrigger.condition must be specified");
+            }
+
+            // TODO: how to validate that specified pvName is valid
+
+            // TODO: how to validate that PvConditionTrigger value is appropriate for specified pvName and condition,
+            // given that we don't know type of pvName
+        }
+
+        // validate operation
+        {
+            final SubscribeDataEventRequest.DataEventOperation dataEventOperation = request.getOperation();
+
+            // validate targetPvs list not empty
+            final List<String> targetPvs = dataEventOperation.getTargetPvsList();
+            if (targetPvs.isEmpty()) {
+                return new ValidationResult(
+                        true,
+                        "SubscribeDataEventRequest DataEventOperation.targetPvs list must not be empty");
+            }
+
+            // validate each targetPv
+            for (String targetPv : targetPvs) {
+                if (targetPv.isBlank()) {
+                    return new ValidationResult(
+                            true,
+                            "SubscribeDataEventRequest DataEventOperation.targetPvs contains empty string");
+                }
+
+                // TODO: how to validate that specified targetPv name is valid?
+            }
+
+            // validate DataEventWindow
+            {
+                if (!dataEventOperation.hasWindow()) {
+                    return new ValidationResult(
+                            true,
+                            "SubscribeDataEventRequest DataEventOperation.targetPvs contains empty string");
+                }
+
+                final SubscribeDataEventRequest.DataEventOperation.DataEventWindow dataEventWindow =
+                        dataEventOperation.getWindow();
+
+                // validate window type parameters
+                switch (dataEventWindow.getTypeCase()) {
+
+                    // validate DataEventWindow type TimeInterval
+                    case TIMEINTERVAL -> {
+
+                        final SubscribeDataEventRequest.DataEventOperation.DataEventWindow.TimeInterval timeInterval =
+                                dataEventWindow.getTimeInterval();
+
+                        // offset value of zero is allowed, it indicates to start data capture from trigger time
+
+                        // validate that duration is greater than zero
+                        if (timeInterval.getDuration() == 0L) {
+                            return new ValidationResult(
+                                    true,
+                                    "SubscribeDataEventRequest.DataEventOperation.DataEventWindow TimeInterval.duration must be specified");
+                        }
+
+                        // TODO: do we need to check that duration value is "reasonable", whatever that means?
+                    }
+
+                    // validate DataEventWindow type SampleCount
+                    case SAMPLECOUNT -> {
+
+                        final SubscribeDataEventRequest.DataEventOperation.DataEventWindow.SampleCount sampleCount =
+                                dataEventWindow.getSampleCount();
+
+                        // offset value of zero is allowed, it indicates to start data capture from trigger time
+
+                        // validate that size is greater than zero
+                        if (sampleCount.getSize() == 0L) {
+                            return new ValidationResult(
+                                    true,
+                                    "SubscribeDataEventRequest.DataEventOperation.DataEventWindow SampleCount.size must be specified");
+                        }
+
+                    }
+
+                    default -> {
+                        return new ValidationResult(
+                                true,
+                                "SubscribeDataEventRequest.DataEventOperation DataEventWindow.type must be specified");
+                    }
+                }
             }
         }
+
 
         return new ValidationResult(false, "");
     }
@@ -187,14 +275,13 @@ public class IngestionStreamServiceImpl
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
         logger.info(
-                "id: {} subscribeDataEvent request received, dataEventDef: {}",
-                responseObserver.hashCode(),
-                request.getDataEventDefCase().name());
+                "id: {} subscribeDataEvent request received", responseObserver.hashCode());
 
         // validate request
         final ValidationResult validationResult = validateSubscribeDataEventRequest(request);
         if (validationResult.isError) {
             sendSubscribeDataEventResponseReject(validationResult.msg, responseObserver);
+            return;
         }
         
         // add a handler to remove subscription when client closes method connection
