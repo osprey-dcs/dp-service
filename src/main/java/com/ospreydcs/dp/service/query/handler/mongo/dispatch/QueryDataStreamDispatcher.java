@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -43,7 +44,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             final BucketDocument document = cursor.next();
 
             // create result DataBucket from BucketDocument
-            QueryDataResponse.QueryData.DataBucket bucket = null;
+            DataBucket bucket = null;
             try {
                 bucket = BucketDocument.dataBucketFromDocument(document, querySpec);
             } catch (DpException e) {
