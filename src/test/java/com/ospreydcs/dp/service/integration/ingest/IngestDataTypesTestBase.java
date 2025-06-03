@@ -212,10 +212,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             endNanos,
                             false
                     );
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
 
@@ -327,10 +327,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             false
                     );
 
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
 
             // write image content from query to file
@@ -622,10 +622,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             false
                     );
 
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
     }

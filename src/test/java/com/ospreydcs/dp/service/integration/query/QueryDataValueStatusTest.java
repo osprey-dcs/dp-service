@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.integration.query;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
@@ -148,10 +149,10 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             startSeconds + 1,
                             0L,
                             false);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
+            final List<DataBucket> queryBuckets =
                     queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
 
             // this compares the request and response DataColumns including each DataValue and ValueStatus
             QueryTestBase.verifyDataBucket(
@@ -170,10 +171,10 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             startSeconds + 1,
                             0L,
                             false);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
+            final List<DataBucket> queryBuckets =
                     queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
 
             // this compares the request and response DataColumns including each DataValue and ValueStatus
             QueryTestBase.verifyDataBucket(

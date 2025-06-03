@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -347,7 +348,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             try {
                 // verify buckets in response
                 assertTrue(queryData.getDataBucketsCount() > 0);
-                for (QueryDataResponse.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (DataBucket bucket : queryData.getDataBucketsList()) {
 
                     assertTrue(bucket.hasDataColumn());
                     final DataColumn dataColumn = bucket.getDataColumn();

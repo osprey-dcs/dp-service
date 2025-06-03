@@ -53,31 +53,15 @@ public class DataEventSubscriptionManager {
                     final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(List.of(pvName));
 
                     // create observer for subscribeData() API method response stream
-                    final EventMonitorSubscribeDataResponseObserver responseObserver =
-                            new EventMonitorSubscribeDataResponseObserver(pvName, this, handler);
-
-                    // use singleton ingestion client to create an API stub
-                    final IngestionServiceClientUtility.IngestionServiceClient client =
-                            IngestionServiceClientUtility.IngestionServiceClient.getInstance();
-                    final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
-
-                    // call subscribeData() API method to receive data for specified PV from Ingestion Service
-                    StreamObserver<SubscribeDataRequest> requestObserver = stub.subscribeData(responseObserver);
-
-                    SubscribeDataUtility.SubscribeDataCall subscribeDataCall
-                            = new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver);
+                    final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = callSubscribeData(pvName);
 
                     // add entry to map for tracking subscriptions by PV name
                     pvDataSubscriptions.put(pvName, subscribeDataCall);
                 }
 
-                // update map of PV name to list of EventMonitors that subscribe to PV data
-                List<EventMonitor> pvEventMonitorList = pvMonitors.get(pvName);
-                if (pvEventMonitorList == null) {
-                    // this is the first EventMonitor for specified PV, so create a new list
-                    pvEventMonitorList = new ArrayList<>();
-                    pvMonitors.put(pvName, pvEventMonitorList);
-                }
+                // add EventMonitor to list of subscribers for specified pvName
+                final List<EventMonitor> pvEventMonitorList =
+                        pvMonitors.computeIfAbsent(pvName, k -> new ArrayList<>());
                 pvEventMonitorList.add(eventMonitor);
             }
 
@@ -85,6 +69,22 @@ public class DataEventSubscriptionManager {
             // make sure we always unlock by using finally
             writeLock.unlock();
         }
+    }
+
+    private SubscribeDataUtility.SubscribeDataCall callSubscribeData(String pvName) {
+
+        final EventMonitorSubscribeDataResponseObserver responseObserver =
+                new EventMonitorSubscribeDataResponseObserver(pvName, this, handler);
+
+        // use singleton ingestion client to create an API stub
+        final IngestionServiceClientUtility.IngestionServiceClient client =
+                IngestionServiceClientUtility.IngestionServiceClient.getInstance();
+        final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
+
+        // call subscribeData() API method to receive data for specified PV from Ingestion Service
+        final StreamObserver<SubscribeDataRequest> requestObserver = stub.subscribeData(responseObserver);
+
+        return new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver);
     }
 
     public void handleSubscribeDataResult(
@@ -102,14 +102,14 @@ public class DataEventSubscriptionManager {
             // make sure we always unlock by using finally, release lock before invoking EventMonitor processing
             readLock.unlock();
         }
-        if (pvEventMonitorList != null) {
+        if (pvEventMonitorList == null) {
             logger.error("no EventMonitors found for pvName: {}", pvName);
             return;
         }
 
         // sanity check that result data is for the specified PV
         for (DataColumn dataColumn : result.getDataColumnsList()) {
-            if (dataColumn.getName() != pvName) {
+            if (!dataColumn.getName().equals(pvName)) {
                 logger.error("result DataColumn.name: {} mismatch expected pvName: {}",
                         dataColumn.getName(),
                         pvName);
@@ -118,7 +118,7 @@ public class DataEventSubscriptionManager {
         }
 
         // invoke each EventMonitor that uses specified PV
-        for (final EventMonitor eventMonitor : pvEventMonitorList) {
+        for (EventMonitor eventMonitor : pvEventMonitorList) {
             eventMonitor.handleSubscribeDataResult(result);
         }
     }
@@ -137,17 +137,17 @@ public class DataEventSubscriptionManager {
                 final List<EventMonitor> monitorList = pvMonitors.get(pvName);
                 if (monitorList != null) {
                     monitorList.remove(eventMonitor);
-                }
 
-                // if list is empty, cancel the pv data subscription and clean up data structures
-                if (monitorList.isEmpty()) {
-                    pvMonitors.remove(pvName);
-                    final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = pvDataSubscriptions.get(pvName);
-                    if (subscribeDataCall != null) {
-                        // close call to subscribeData() API for this PV
-                        subscribeDataCall.requestObserver.onCompleted();
+                    // if list is empty, cancel the pv data subscription and clean up data structures
+                    if (monitorList.isEmpty()) {
+                        pvMonitors.remove(pvName);
+                        final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = pvDataSubscriptions.get(pvName);
+                        if (subscribeDataCall != null) {
+                            // close call to subscribeData() API for this PV
+                            subscribeDataCall.requestObserver.onCompleted();
+                        }
+                        pvDataSubscriptions.remove(pvName);
                     }
-                    pvDataSubscriptions.remove(pvName);
                 }
             }
 

@@ -4,7 +4,6 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.DataEventSubscriptionManager;
-import com.ospreydcs.dp.service.ingestionstream.handler.monitor.ConditionMonitor;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -37,18 +36,7 @@ public class SubscribeDataEventJob extends HandlerJob {
     public void execute() {
 
         // create an event monitor for the request
-        EventMonitor eventMonitor = null;
-        switch (request.getDataEventDefCase()) {
-            case CONDITIONEVENTDEF -> {
-                eventMonitor = new ConditionMonitor(request, responseObserver, subscriptionManager);
-            }
-            case DATAEVENTDEF_NOT_SET -> {
-                final String errorMsg = "invalid request, SubscribeDataEventRequest.dataEventDef must be specified";
-                logger.debug(errorMsg + " id: " + responseObserver.hashCode());
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
-            }
-        }
-        Objects.requireNonNull(eventMonitor);
+        EventMonitor eventMonitor = new EventMonitor(request, responseObserver, subscriptionManager);
 
         // add event monitor to subscription manager
         subscriptionManager.addEventMonitor(eventMonitor);

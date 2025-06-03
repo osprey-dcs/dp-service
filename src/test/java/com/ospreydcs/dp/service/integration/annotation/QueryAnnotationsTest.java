@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.integration.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
@@ -210,13 +211,13 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                                             false
                                     );
 
-                            final List<QueryDataResponse.QueryData.DataBucket> queryResultBuckets =
+                            final List<DataBucket> queryResultBuckets =
                                     queryDataStream(params, false, "");
                             assertEquals(numBucketsExpected, queryResultBuckets.size());
                             for (String pvName : queryPvNames) {
                                 boolean foundPvBucket = false;
-                                QueryDataResponse.QueryData.DataBucket matchingResponseBucket = null;
-                                for (QueryDataResponse.QueryData.DataBucket responseBucket : queryResultBuckets) {
+                                DataBucket matchingResponseBucket = null;
+                                for (DataBucket responseBucket : queryResultBuckets) {
                                     if (Objects.equals(pvName, responseBucket.getDataColumn().getName())) {
                                         foundPvBucket = true;
                                         matchingResponseBucket = responseBucket;

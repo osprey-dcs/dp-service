@@ -1549,7 +1549,7 @@ public abstract class GrpcIntegrationTestBase {
             int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
             Map<String, IngestionStreamInfo> validationMap,
-            List<QueryDataResponse.QueryData.DataBucket> dataBucketList
+            List<DataBucket> dataBucketList
     ) {
         final List<String> pvNames = params.columnNames();
         final long beginSeconds = params.beginTimeSeconds();
@@ -1558,8 +1558,8 @@ public abstract class GrpcIntegrationTestBase {
         final long endNanos = params.endTimeNanos();
 
         // build map of buckets in query response for vallidation
-        Map<String, TimestampMap<QueryDataResponse.QueryData.DataBucket>> responseBucketMap = new TreeMap<>();
-        for (QueryDataResponse.QueryData.DataBucket dataBucket : dataBucketList) {
+        Map<String, TimestampMap<DataBucket>> responseBucketMap = new TreeMap<>();
+        for (DataBucket dataBucket : dataBucketList) {
 
             // get column name from either regular DataColumn or SerializedDataColumn
             String bucketColumnName = "";
@@ -1575,7 +1575,7 @@ public abstract class GrpcIntegrationTestBase {
             final Timestamp bucketStartTimestamp = bucketDataTimestampsModel.getFirstTimestamp();
             final long bucketStartSeconds = bucketStartTimestamp.getEpochSeconds();
             final long bucketStartNanos = bucketStartTimestamp.getNanoseconds();
-            TimestampMap<QueryDataResponse.QueryData.DataBucket> columnTimestampMap =
+            TimestampMap<DataBucket> columnTimestampMap =
                     responseBucketMap.get(bucketColumnName);
             if (columnTimestampMap == null) {
                 columnTimestampMap = new TimestampMap<>();
@@ -1613,7 +1613,7 @@ public abstract class GrpcIntegrationTestBase {
                     }
 
                     // find the response bucket corresponding to the expected bucket
-                    final QueryDataResponse.QueryData.DataBucket responseBucket =
+                    final DataBucket responseBucket =
                             responseBucketMap.get(columnName).get(columnBucketInfo.startSeconds, beginNanos);
                     final DataTimestampsUtility.DataTimestampsModel responseBucketDataTimestampsModel =
                             new DataTimestampsUtility.DataTimestampsModel(responseBucket.getDataTimestamps());
@@ -1713,7 +1713,7 @@ public abstract class GrpcIntegrationTestBase {
         assertEquals(numSerializedDataColumnsExpected, serializedDataColumnCount);
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryData(
+    protected List<DataBucket> sendQueryData(
             QueryDataRequest request,
             boolean expectReject,
             String expectedRejectMessage
@@ -1741,7 +1741,7 @@ public abstract class GrpcIntegrationTestBase {
         return responseObserver.getDataBucketList();
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> queryData(
+    protected List<DataBucket> queryData(
             QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1750,7 +1750,7 @@ public abstract class GrpcIntegrationTestBase {
         return sendQueryData(request, expectReject, expectedRejectMessage);
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendAndVerifyQueryData(
+    protected List<DataBucket> sendAndVerifyQueryData(
             int numBucketsExpected,
             int numSerializedDataColumnsExpected,
             QueryTestBase.QueryDataRequestParams params,
@@ -1758,7 +1758,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+        final List<DataBucket> dataBucketList =
                 queryData(params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
@@ -1772,7 +1772,7 @@ public abstract class GrpcIntegrationTestBase {
         return dataBucketList;
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataStream(
+    protected List<DataBucket> sendQueryDataStream(
             QueryDataRequest request,
             boolean expectReject,
             String expectedRejectMessage
@@ -1800,7 +1800,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> queryDataStream(
+    protected List<DataBucket> queryDataStream(
             QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
@@ -1817,7 +1817,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+        final List<DataBucket> dataBucketList =
                 queryDataStream(params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
@@ -1829,7 +1829,7 @@ public abstract class GrpcIntegrationTestBase {
                 numBucketsExpected, numSerializedDataColumnsExpected, params, validationMap, dataBucketList);
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> sendQueryDataBidiStream(
+    protected List<DataBucket> sendQueryDataBidiStream(
             QueryDataRequest request,
             int numBucketsExpected,
             boolean expectReject,
@@ -1860,7 +1860,7 @@ public abstract class GrpcIntegrationTestBase {
         }
     }
 
-    protected List<QueryDataResponse.QueryData.DataBucket> queryDataBidiStream(
+    protected List<DataBucket> queryDataBidiStream(
             int numBucketsExpected,
             QueryTestBase.QueryDataRequestParams params,
             boolean expectReject,
@@ -1878,7 +1878,7 @@ public abstract class GrpcIntegrationTestBase {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
+        final List<DataBucket> dataBucketList =
                 queryDataBidiStream(numBucketsExpected, params, expectReject, expectedRejectMessage);
 
         if (expectReject) {
