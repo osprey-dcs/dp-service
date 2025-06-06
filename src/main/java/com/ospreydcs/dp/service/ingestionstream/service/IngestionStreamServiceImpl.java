@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.ingestionstream.service;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.DpIngestionStreamServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
@@ -79,12 +80,10 @@ public class IngestionStreamServiceImpl
                 SubscribeDataEventResponse.AckResult.newBuilder()
                         .build();
 
-        final SubscribeDataEventResponse response = SubscribeDataEventResponse.newBuilder()
+        return SubscribeDataEventResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setAck(result)
                 .build();
-
-        return response;
     }
 
     private static SubscribeDataEventResponse subscribeDataEventResponseEvent(
@@ -273,8 +272,12 @@ public class IngestionStreamServiceImpl
         if (validationResult.isError) {
             sendSubscribeDataEventResponseReject(validationResult.msg, responseObserver);
             return;
+
         }
-        
+
+        // send ack response
+        sendSubscribeDataEventResponseAck(responseObserver);
+
         // add a handler to remove subscription when client closes method connection
         ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
                 (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
