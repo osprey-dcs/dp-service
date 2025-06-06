@@ -18,13 +18,23 @@ public class TimestampUtility {
         return Date.from(timestampInstant);
     }
 
+    public static Instant instantFromTimestamp(Timestamp timestamp) {
+        return Instant.ofEpochSecond(timestamp.getEpochSeconds(), timestamp.getNanoseconds());
+    }
+
+    public static int compare(Timestamp timestamp1, Timestamp timestamp2) {
+        final Instant timestamp1Instant = Instant.ofEpochSecond(
+                timestamp1.getEpochSeconds(), timestamp1.getNanoseconds());
+        final Instant timestamp2Instant = Instant.ofEpochSecond(
+                timestamp2.getEpochSeconds(), timestamp2.getNanoseconds());
+        return timestamp1Instant.compareTo(timestamp2Instant);
+    }
+
     public static Timestamp getTimestampFromInstant(Instant instant) {
-        Timestamp timestamp =
-                Timestamp.newBuilder()
-                        .setEpochSeconds(instant.getEpochSecond())
-                        .setNanoseconds(instant.getNano())
-                        .build();
-        return timestamp;
+        return Timestamp.newBuilder()
+                .setEpochSeconds(instant.getEpochSecond())
+                .setNanoseconds(instant.getNano())
+                .build();
     }
 
     public static Timestamp getTimestampNow() {

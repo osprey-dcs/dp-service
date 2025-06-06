@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.DpIngestionStreamServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -80,41 +81,30 @@ public class IngestionStreamServiceImpl
 
         final SubscribeDataEventResponse response = SubscribeDataEventResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setAckResult(result)
+                .setAck(result)
                 .build();
 
         return response;
     }
 
-//    private static SubscribeDataEventResponse subscribeDataEventResponse(
-//            SubscribeDataEventResponse.SubscribeDataEventResult result
-//    ) {
-//        return SubscribeDataEventResponse.newBuilder()
-//                .setResponseTime(TimestampUtility.getTimestampNow())
-//                .setSubscribeDataEventResult(result)
-//                .build();
-//    }
-//
-//    private static SubscribeDataEventResponse subscribeDataEventResponseConditionEvent(
-//            String pvName,
-//            Timestamp dataTimestamp,
-//            DataValue dataValue
-//    ) {
-//        final SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent conditionEvent =
-//                SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent.newBuilder()
-//                        .setPvName(pvName)
-//                        .setTimestamp(dataTimestamp)
-//                        .setDataValue(dataValue)
-//                        .build();
-//
-//        final SubscribeDataEventResponse.SubscribeDataEventResult result =
-//                SubscribeDataEventResponse.SubscribeDataEventResult.newBuilder()
-//                        .setConditionEvent(conditionEvent)
-//                        .build();
-//
-//        return subscribeDataEventResponse(result);
-//    }
-//
+    private static SubscribeDataEventResponse subscribeDataEventResponseEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
+            DataValue dataValue
+    ) {
+        final SubscribeDataEventResponse.Event event =
+                SubscribeDataEventResponse.Event.newBuilder()
+                        .setEventTime(triggerTimestamp)
+                        .setTrigger(trigger)
+                        .setDataValue(dataValue)
+                        .build();
+
+        return SubscribeDataEventResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setEvent(event)
+                .build();
+    }
+
     public static void sendSubscribeDataEventResponseReject(
             String msg, StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
@@ -138,16 +128,16 @@ public class IngestionStreamServiceImpl
         responseObserver.onNext(response);
     }
 
-//    public static void sendSubscribeDataEventResponseConditionEvent(
-//            String pvName,
-//            Timestamp dataTimestamp,
-//            DataValue dataValue,
-//            StreamObserver<SubscribeDataEventResponse> responseObserver
-//    ) {
-//        final SubscribeDataEventResponse response
-//                = subscribeDataEventResponseConditionEvent(pvName, dataTimestamp, dataValue);
-//        responseObserver.onNext(response);
-//    }
+    public static void sendSubscribeDataEventResponseEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
+            DataValue dataValue,
+            StreamObserver<SubscribeDataEventResponse> responseObserver
+    ) {
+        final SubscribeDataEventResponse response
+                = subscribeDataEventResponseEvent(triggerTimestamp, trigger, dataValue);
+        responseObserver.onNext(response);
+    }
 
     public static ValidationResult validateSubscribeDataEventRequest(
             SubscribeDataEventRequest request
@@ -160,7 +150,7 @@ public class IngestionStreamServiceImpl
         }
 
         // validate each PvConditionTrigger
-        for (SubscribeDataEventRequest.PvConditionTrigger pvConditionTrigger : request.getTriggersList()) {
+        for (PvConditionTrigger pvConditionTrigger : request.getTriggersList()) {
 
             // check that name is specified
             if (pvConditionTrigger.getPvName().isBlank()) {
@@ -170,8 +160,7 @@ public class IngestionStreamServiceImpl
             }
 
             // check that condition is specified
-            if (pvConditionTrigger.getCondition() ==
-                    SubscribeDataEventRequest.PvConditionTrigger.PvCondition.PV_CONDITION_UNSPECIFIED
+            if (pvConditionTrigger.getCondition() == PvConditionTrigger.PvCondition.PV_CONDITION_UNSPECIFIED
             ) {
                 return new ValidationResult(
                         true,
@@ -185,7 +174,7 @@ public class IngestionStreamServiceImpl
         }
 
         // validate operation
-        {
+        if (request.hasOperation()) {
             final SubscribeDataEventRequest.DataEventOperation dataEventOperation = request.getOperation();
 
             // validate targetPvs list not empty
@@ -239,22 +228,24 @@ public class IngestionStreamServiceImpl
                         // TODO: do we need to check that duration value is "reasonable", whatever that means?
                     }
 
-                    // validate DataEventWindow type SampleCount
-                    case SAMPLECOUNT -> {
-
-                        final SubscribeDataEventRequest.DataEventOperation.DataEventWindow.SampleCount sampleCount =
-                                dataEventWindow.getSampleCount();
-
-                        // offset value of zero is allowed, it indicates to start data capture from trigger time
-
-                        // validate that size is greater than zero
-                        if (sampleCount.getSize() == 0L) {
-                            return new ValidationResult(
-                                    true,
-                                    "SubscribeDataEventRequest.DataEventOperation.DataEventWindow SampleCount.size must be specified");
-                        }
-
-                    }
+// SampleCount is not currently supported, it's not clear how it would work when there are multiple PVs possibly
+// using different timescales.
+//
+//                    // validate DataEventWindow type SampleCount
+//                    case SAMPLECOUNT -> {
+//
+//                        final SubscribeDataEventRequest.DataEventOperation.DataEventWindow.SampleCount sampleCount =
+//                                dataEventWindow.getSampleCount();
+//
+//                        // offset value of zero is allowed, it indicates to start data capture from trigger time
+//
+//                        // validate that size is greater than zero
+//                        if (sampleCount.getSize() == 0L) {
+//                            return new ValidationResult(
+//                                    true,
+//                                    "SubscribeDataEventRequest.DataEventOperation.DataEventWindow SampleCount.size must be specified");
+//                        }
+//                    }
 
                     default -> {
                         return new ValidationResult(

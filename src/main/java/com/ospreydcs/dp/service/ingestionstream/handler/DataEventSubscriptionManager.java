@@ -119,7 +119,7 @@ public class DataEventSubscriptionManager {
 
         // invoke each EventMonitor that uses specified PV
         for (EventMonitor eventMonitor : pvEventMonitorList) {
-            eventMonitor.handleSubscribeDataResult(result);
+            eventMonitor.handleSubscribeDataResponse(result);
         }
     }
 
