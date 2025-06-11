@@ -40,7 +40,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                     // we don't support modifying the initial subscription, so send a reject to be clear that multiple
                     // new subscription messages in the request stream is not supported
                     final String errorMsg = "multiple NewSubscription messages not supported in request stream";
-                    logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                    logger.debug(
+                            "id: {} {}" + errorMsg,
+                            responseObserver.hashCode(),
+                            getClass().getSimpleName());
                     monitor.requestCancel();
                     IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
                     return;
@@ -53,7 +56,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
 
                 if (pvNames.isEmpty()) {
                     final String errorMsg = "SubscribeDataRequest.NewSubscription.pvNames list must not be empty";
-                    logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                    logger.debug(
+                            "id: {} {}" + errorMsg,
+                            responseObserver.hashCode(),
+                            getClass().getSimpleName());
                     IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
                     return;
                 }
@@ -80,7 +86,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
             }
 
             case CANCELSUBSCRIPTION -> {
-                logger.debug("id: {} received CancelSubscription request, requesting cancel", responseObserver.hashCode());
+                logger.debug(
+                        "id: {} {} received CancelSubscription request, requesting cancel",
+                        responseObserver.hashCode(),
+                        getClass().getSimpleName());
                 monitor.requestCancel();
                 responseObserver.onCompleted();
             }
@@ -88,7 +97,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
             case REQUEST_NOT_SET -> {
                 final String errorMsg =
                         "received unknown request, expected NewSubscription or CancelSubscription";
-                logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                logger.debug(
+                        "id: {} {} " + errorMsg,
+                        responseObserver.hashCode(),
+                        getClass().getSimpleName());
                 IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
             }
 
@@ -97,14 +109,20 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
 
     @Override
     public void onError(Throwable throwable) {
-        logger.debug("id: {} onError, requesting cancel", responseObserver.hashCode());
+        logger.debug(
+                "id: {} {}.onError, requesting cancel",
+                responseObserver.hashCode(),
+                getClass().getSimpleName());
         monitor.requestCancel();
         responseObserver.onCompleted();
     }
 
     @Override
     public void onCompleted() {
-        logger.debug("id: {} onCompleted, requesting cancel", responseObserver.hashCode());
+        logger.debug(
+                "id: {} {}.onCompleted, requesting cancel",
+                responseObserver.hashCode(),
+                getClass().getSimpleName());
         monitor.requestCancel();
         responseObserver.onCompleted();
     }

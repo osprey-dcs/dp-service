@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.ingestionstream.handler.interfaces;
 
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
+import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import io.grpc.stub.StreamObserver;
 
 public interface IngestionStreamHandlerInterface
@@ -11,10 +13,11 @@ public interface IngestionStreamHandlerInterface
     boolean start();
     boolean stop();
     
-    void handleSubscribeDataEvent(
+    EventMonitor handleSubscribeDataEvent(
             SubscribeDataEventRequest request,
             StreamObserver<SubscribeDataEventResponse> responseObserver);
 
     void cancelDataEventSubscriptions(StreamObserver<SubscribeDataEventResponse> responseObserver);
 
+    ResultStatus addEventMonitorSubscription(EventMonitor eventMonitor);
 }

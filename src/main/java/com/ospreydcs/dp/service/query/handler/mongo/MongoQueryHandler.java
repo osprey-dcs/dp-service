@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -64,12 +64,12 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
+    public ResultStatus validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
         return QueryHandlerUtility.validateQuerySpecData(querySpec);
     }
 
     @Override
-    public ValidationResult validateQueryTableRequest(QueryTableRequest request) {
+    public ResultStatus validateQueryTableRequest(QueryTableRequest request) {
         return QueryHandlerUtility.validateQueryTableRequest(request);
     }
 

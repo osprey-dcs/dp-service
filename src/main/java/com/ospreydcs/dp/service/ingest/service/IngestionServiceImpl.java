@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
@@ -227,14 +227,14 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             StreamObserver<IngestDataResponse> responseObserver
     ) {
         // validate request, send error response for invalid request
-        final ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
+        final ResultStatus resultStatus = IngestionValidationUtility.validateIngestionRequest(request);
         boolean validationError = false;
         String validationMsg = "";
 
-        if (validationResult.isError) {
+        if (resultStatus.isError) {
             // send error reject
             validationError = true;
-            validationMsg = validationResult.msg;
+            validationMsg = resultStatus.msg;
             final IngestDataResponse rejectResponse = ingestionResponseReject(request, validationMsg);
             responseObserver.onNext(rejectResponse);
 

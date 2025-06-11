@@ -5,8 +5,8 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -128,13 +128,13 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         // validate DataSet
-        ValidationResult validationResult = AnnotationValidationUtility.validateDataSet(dataSet);
-        if (validationResult.isError) {
+        ResultStatus resultStatus = AnnotationValidationUtility.validateDataSet(dataSet);
+        if (resultStatus.isError) {
             logger.debug("id: {} CreateDataSetRequest.dataSet validation failed: {}",
                     responseObserver.hashCode(),
-                    validationResult.msg);
+                    resultStatus.msg);
             sendCreateDataSetResponseReject(
-                    validationResult.msg,
+                    resultStatus.msg,
                     responseObserver);
             return;
         }
@@ -362,15 +362,15 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
         // perform validation of base annotation details
         // validate common annotation details
-        final ValidationResult validationResult =
+        final ResultStatus resultStatus =
                 AnnotationValidationUtility.validateCreateAnnotationRequest(request);
-        if (validationResult.isError) {
+        if (resultStatus.isError) {
             logger.debug(
                     "id: {} createAnnotation validation failed: ",
                     responseObserver.hashCode(),
-                    validationResult.msg);
+                    resultStatus.msg);
             sendCreateAnnotationResponseReject(
-                    validationResult.msg,
+                    resultStatus.msg,
                     responseObserver);
             return;
         }
@@ -636,13 +636,13 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         logger.info("id: {} exportData request received", responseObserver.hashCode());
 
         // validate request
-        ValidationResult validationResult = AnnotationValidationUtility.validateExportDataRequest(request);
-        if (validationResult.isError) {
+        ResultStatus resultStatus = AnnotationValidationUtility.validateExportDataRequest(request);
+        if (resultStatus.isError) {
             logger.debug("id: {} ExportDataRequest validation failed: {}",
                     responseObserver.hashCode(),
-                    validationResult.msg);
+                    resultStatus.msg);
             sendExportDataResponseReject(
-                    validationResult.msg,
+                    resultStatus.msg,
                     responseObserver);
             return;
         }

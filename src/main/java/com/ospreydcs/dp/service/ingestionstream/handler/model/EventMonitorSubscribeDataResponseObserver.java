@@ -8,6 +8,9 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 public class EventMonitorSubscribeDataResponseObserver implements StreamObserver<SubscribeDataResponse> {
 
     // static variables
@@ -17,6 +20,7 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     private final String pvName;
     private final DataEventSubscriptionManager subscriptionManager;
     private final IngestionStreamHandler handler;
+    private final CountDownLatch ackLatch = new CountDownLatch(1);
 
     public EventMonitorSubscribeDataResponseObserver(
             final String pvName,
@@ -26,6 +30,23 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
         this.pvName = pvName;
         this.subscriptionManager = subscriptionManager;
         this.handler = handler;
+    }
+
+    public boolean awaitAckLatch() {
+        boolean await = true;
+        try {
+            await = ackLatch.await(1, TimeUnit.MINUTES);
+            if (!await) {
+                final String errorMsg = "timed out waiting for ackLatch";
+                System.err.println(errorMsg);
+            }
+        } catch (InterruptedException e) {
+            final String errorMsg = "InterruptedException waiting for ackLatch";
+            System.err.println(errorMsg);
+//            isError.set(true);
+//            errorMessageList.add(errorMsg);
+        }
+        return await;
     }
 
     @Override
@@ -39,7 +60,7 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
             }
             case ACKRESULT -> {
                 logger.trace("received ack result for pv: {}", pvName);
-                // TODO: nothing necessarily to do, this is just informational
+                ackLatch.countDown();
             }
             case SUBSCRIBEDATARESULT -> {
                 logger.trace("received subscribeData result for pv: {}", pvName);

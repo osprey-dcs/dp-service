@@ -8,19 +8,12 @@ import java.util.List;
 
 public class SubscribeDataUtility {
 
-    public static class SubscribeDataCall {
+    /**
+     * @param requestObserver instance variables
+     */
+    public record SubscribeDataCall(StreamObserver<SubscribeDataRequest> requestObserver,
+                                    StreamObserver<SubscribeDataResponse> responseObserver) {
 
-        // instance variables
-        public final StreamObserver<SubscribeDataRequest> requestObserver;
-        public final StreamObserver<SubscribeDataResponse> responseObserver;
-
-        public SubscribeDataCall(
-                StreamObserver<SubscribeDataRequest> requestObserver,
-                StreamObserver<SubscribeDataResponse> responseObserver
-        ) {
-            this.requestObserver = requestObserver;
-            this.responseObserver = responseObserver;
-        }
     }
 
     public static SubscribeDataRequest buildSubscribeDataRequest(final List<String> pvNames) {
@@ -30,11 +23,9 @@ public class SubscribeDataUtility {
                 .addAllPvNames(pvNames)
                 .build();
 
-        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+        return SubscribeDataRequest.newBuilder()
                 .setNewSubscription(subscription)
                 .build();
-
-        return request;
     }
 
     public static SubscribeDataRequest buildSubscribeDataCancelRequest() {
@@ -43,11 +34,9 @@ public class SubscribeDataUtility {
                 SubscribeDataRequest.CancelSubscription.newBuilder()
                 .build();
 
-        final SubscribeDataRequest request = SubscribeDataRequest.newBuilder()
+        return SubscribeDataRequest.newBuilder()
                 .setCancelSubscription(subscription)
                 .build();
-
-        return request;
     }
 
 }

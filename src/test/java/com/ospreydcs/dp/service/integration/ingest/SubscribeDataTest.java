@@ -78,13 +78,13 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
 
         // send duplicate NewSubscription message in request stream
         new Thread(() -> {
-            subscribeDataCall.requestObserver.onNext(duplicateRequest);
+            subscribeDataCall.requestObserver().onNext(duplicateRequest);
         }).start();
 
         final String expectedDuplicateRejectMessage =
                 "multiple NewSubscription messages not supported in request stream";
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
-                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
+                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver();
         responseObserver.awaitCloseLatch();
         assertTrue(responseObserver.isError());
         assertTrue(responseObserver.getErrorMessage().contains(expectedDuplicateRejectMessage));
@@ -151,17 +151,17 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
 
             // verify all 3 subscriptions received expected messages
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver(),
                     subscriptionPvNames1,
                     ingestionScenarioResult.validationMap(),
                     0);
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver(),
                     subscriptionPvNames2,
                     ingestionScenarioResult.validationMap(),
                     0);
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver(),
                     subscriptionPvNames3,
                     ingestionScenarioResult.validationMap(),
                     0);

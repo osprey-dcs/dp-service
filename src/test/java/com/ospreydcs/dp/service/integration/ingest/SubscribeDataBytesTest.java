@@ -94,17 +94,17 @@ public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
 
             // verify all 3 subscriptions received expected messages
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver(),
                     subscriptionPvNames1,
                     ingestionValidationMap,
                     30);
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver(),
                     subscriptionPvNames2,
                     ingestionValidationMap,
                     30);
             verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver(),
                     subscriptionPvNames3,
                     ingestionValidationMap,
                     30);

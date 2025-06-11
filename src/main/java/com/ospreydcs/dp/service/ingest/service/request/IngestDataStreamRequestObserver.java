@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.ingest.service.request;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataStreamResponse;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
@@ -34,13 +34,13 @@ public class IngestDataStreamRequestObserver extends IngestionStreamRequestObser
         this.requestIdList.add(request.getClientRequestId());
 
         // validate request, send error response for invalid request
-        final ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
+        final ResultStatus resultStatus = IngestionValidationUtility.validateIngestionRequest(request);
         boolean validationError = false;
         String validationMsg = "";
 
-        if (validationResult.isError) {
+        if (resultStatus.isError) {
             validationError = true;
-            validationMsg = validationResult.msg;
+            validationMsg = resultStatus.msg;
             this.rejectedIdList.add(request.getClientRequestId());
 
         }

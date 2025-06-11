@@ -6,6 +6,10 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.DpIngestionStreamServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
@@ -32,8 +36,13 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
+import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
+import com.ospreydcs.dp.service.ingestionstream.IngestionStreamTestBase;
+import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
+import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
+import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -96,6 +105,11 @@ public abstract class GrpcIntegrationTestBase {
     private static AnnotationServiceImpl annotationService;
     private static AnnotationServiceImpl annotationServiceMock;
     protected static ManagedChannel annotationChannel;
+
+    // ingestion stream service instance variables
+    private static IngestionStreamServiceImpl ingestionStreamService;
+    private static IngestionStreamServiceImpl ingestionStreamServiceMock;
+    protected static ManagedChannel ingestionStreamChannel;
 
     // validation static variables
     protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
@@ -223,6 +237,8 @@ public abstract class GrpcIntegrationTestBase {
         // Create a client channel and register for automatic graceful shutdown.
         ingestionChannel = grpcCleanup.register(
                 InProcessChannelBuilder.forName(ingestionServerName).directExecutor().build());
+        // set the default channel in the IngestionServiceClient used for inter-service communication
+        IngestionServiceClientUtility.IngestionServiceClient.setDefaultChannel(ingestionChannel);
 
         // init query service
         QueryHandlerInterface queryHandler = MongoQueryHandler.newMongoSyncQueryHandler();
@@ -255,6 +271,22 @@ public abstract class GrpcIntegrationTestBase {
         // Create a client channel and register for automatic graceful shutdown.
         annotationChannel = grpcCleanup.register(
                 InProcessChannelBuilder.forName(annotationServerName).directExecutor().build());
+
+        // init ingestion stream service
+        IngestionStreamHandlerInterface ingestionStreamHandler =  new IngestionStreamHandler();
+        ingestionStreamService = new IngestionStreamServiceImpl();
+        if (!ingestionStreamService.init(ingestionStreamHandler)) {
+            fail("IngestionStreamServiceImpl.init failed");
+        }
+        ingestionStreamServiceMock = mock(IngestionStreamServiceImpl.class, delegatesTo(ingestionStreamService));
+        // Generate a unique in-process server name.
+        String ingestionStreamServerName = InProcessServerBuilder.generateName();
+        // Create a server, add service, start, and register for automatic graceful shutdown.
+        grpcCleanup.register(InProcessServerBuilder
+                .forName(ingestionStreamServerName).directExecutor().addService(ingestionStreamServiceMock).build().start());
+        // Create a client channel and register for automatic graceful shutdown.
+        ingestionStreamChannel = grpcCleanup.register(
+                InProcessChannelBuilder.forName(ingestionStreamServerName).directExecutor().build());
     }
 
     public static void tearDown() {
@@ -919,7 +951,7 @@ public abstract class GrpcIntegrationTestBase {
         final long eventStopSeconds = startSeconds + 1;
         final long eventStopNanos = 0L;
 
-        // create data for 10 sectors, each containing 3 gauges and 3 bpms
+        // create data for 10 sectors, each containing 3 gauges and 3 bpms with names like S01-GCC01 and S01-BPM01
         final Set<String> gccPvNames = new TreeSet<>();
         final Set<String> bpmPvNames = new TreeSet<>();
         for (int sectorIndex = 1 ; sectorIndex <= 10 ; ++sectorIndex) {
@@ -1118,9 +1150,7 @@ public abstract class GrpcIntegrationTestBase {
             String expectedRejectMessage
     ) {
         final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(pvNameList);
-        final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
-        return subscribeDataCall;
+        return sendSubscribeData(request, expectedResponseCount, expectReject, expectedRejectMessage);
     }
 
     record SubscriptionResponseColumn(
@@ -1254,12 +1284,12 @@ public abstract class GrpcIntegrationTestBase {
 
         // send NewSubscription message in request stream
         new Thread(() -> {
-            subscribeDataCall.requestObserver.onNext(request);
+            subscribeDataCall.requestObserver().onNext(request);
         }).start();
 
         // wait for ack response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
-                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
+                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver();
         responseObserver.awaitCloseLatch();
 
     }
@@ -1267,12 +1297,100 @@ public abstract class GrpcIntegrationTestBase {
     protected void closeSubscribeDataCall(SubscribeDataUtility.SubscribeDataCall subscribeDataCall) {
 
         // close the request stream
-        new Thread(subscribeDataCall.requestObserver::onCompleted).start();
+        new Thread(subscribeDataCall.requestObserver()::onCompleted).start();
 
         // wait for ack response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
-                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver;
+                (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver();
         responseObserver.awaitCloseLatch();
+    }
+
+    private IngestionStreamTestBase.SubscribeDataEventCall sendSubscribeDataEvent(
+            SubscribeDataEventRequest request,
+            int expectedResponseCount,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpIngestionStreamServiceGrpc.DpIngestionStreamServiceStub asyncStub =
+                DpIngestionStreamServiceGrpc.newStub(ingestionStreamChannel);
+
+        final IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver =
+                new IngestionStreamTestBase.SubscribeDataEventResponseObserver(expectedResponseCount);
+
+        // invoke subscribeDataEvent() API method, get handle to request stream
+        StreamObserver<SubscribeDataEventRequest> requestObserver = asyncStub.subscribeDataEvent(responseObserver);
+
+        // send request message in request stream
+        new Thread(() -> {
+            requestObserver.onNext(request);
+        }).start();
+
+        // wait for ack response
+        responseObserver.awaitAckLatch();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+        } else {
+            assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        }
+
+        return new IngestionStreamTestBase.SubscribeDataEventCall(requestObserver, responseObserver);
+    }
+
+    protected IngestionStreamTestBase.SubscribeDataEventCall initiateSubscribeDataEventRequest(
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
+            int expectedResponseCount,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final SubscribeDataEventRequest request = IngestionStreamTestBase.buildSubscribeDataEventRequest(requestParams);
+        return sendSubscribeDataEvent(request, expectedResponseCount, expectReject, expectedRejectMessage);
+    }
+
+    protected void verifySubscribeDataEventResponse(
+            IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver,
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
+            Map<String, IngestionStreamInfo> ingestionValidationMap,
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses
+    ) {
+        // wait for completion of API method response stream and confirm not in error state
+        responseObserver.awaitResponseLatch();
+        assertFalse(responseObserver.isError());
+
+        // get subscription responses for verification of expected contents
+        final List<SubscribeDataEventResponse> responseList = responseObserver.getResponseList();
+
+        // create lists of different response types for further verification
+        final List<SubscribeDataEventResponse.Event> eventResponses = new ArrayList<>();
+        final List<SubscribeDataEventResponse.EventData> eventDataResponses = new ArrayList<>();
+        for (SubscribeDataEventResponse response : responseList) {
+            switch (response.getResultCase()) {
+                case EXCEPTIONALRESULT -> {
+                    fail("received ExceptionalResult");
+                }
+                case ACK -> {
+                    // responseList doesn't contain acks
+                }
+                case EVENT -> {
+                    eventResponses.add(response.getEvent());
+                }
+                case EVENTDATA -> {
+                    eventDataResponses.add(response.getEventData());
+                }
+                case RESULT_NOT_SET -> {
+                    fail("received response with result not set");
+                }
+            }
+        }
+
+        // check Event responses against expected
+        for (SubscribeDataEventResponse.Event event : eventResponses) {
+            final PvConditionTrigger eventTrigger = event.getTrigger();
+            List<SubscribeDataEventResponse.Event> expectedTriggerEventResponses =
+                    expectedEventResponses.get(eventTrigger);
+            assertTrue(expectedTriggerEventResponses.contains(event));
+        }
     }
 
     protected QueryTableResponse.TableResult sendQueryTable(

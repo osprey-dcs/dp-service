@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.DataEventOperation;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
@@ -25,8 +26,8 @@ public class EventMonitor {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    protected final SubscribeDataEventRequest request;
-    protected final StreamObserver<SubscribeDataEventResponse> responseObserver;
+    protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
+    public final StreamObserver<SubscribeDataEventResponse> responseObserver;
     protected final DataEventSubscriptionManager subscriptionManager;
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
     protected final List<Event> triggeredEvents = new ArrayList<>();
@@ -44,12 +45,12 @@ public class EventMonitor {
 
         private final Timestamp triggerTimestamp;
         private final PvConditionTrigger trigger;
-        private final SubscribeDataEventRequest.DataEventOperation operation;
+        private final DataEventOperation operation;
 
         public Event(
                 Timestamp triggerTimestamp,
                 PvConditionTrigger trigger,
-                SubscribeDataEventRequest.DataEventOperation operation
+                DataEventOperation operation
         ) {
             this.triggerTimestamp = triggerTimestamp;
             this.trigger = trigger;
@@ -58,17 +59,17 @@ public class EventMonitor {
     }
 
     public EventMonitor(
-            SubscribeDataEventRequest request,
+            SubscribeDataEventRequest.NewSubscription requestSubscription,
             StreamObserver<SubscribeDataEventResponse> responseObserver,
             DataEventSubscriptionManager subscriptionManager
     ) {
-        this.request = request;
+        this.requestSubscription = requestSubscription;
         this.responseObserver = responseObserver;
         this.subscriptionManager = subscriptionManager;
-        this.initialize(request);
+        this.initialize(requestSubscription);
     }
 
-    private void initialize(SubscribeDataEventRequest request) {
+    private void initialize(SubscribeDataEventRequest.NewSubscription request) {
 
         // initialize pvTriggerMap from request
         for (PvConditionTrigger trigger : request.getTriggersList()) {
@@ -277,7 +278,7 @@ public class EventMonitor {
             PvConditionTrigger trigger,
             DataValue dataValue
     ) {
-        final Event event = new Event(triggerTimestamp, trigger, request.getOperation());
+        final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation());
         this.triggeredEvents.add(event);
         IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
                 triggerTimestamp,
@@ -314,6 +315,13 @@ public class EventMonitor {
                 return;
             }
         }
+    }
+
+    public void requestCancel() {
+//        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
+//        if (canceled.compareAndSet(false, true)) {
+//            handler.removeSourceMonitor(this);
+//        }
     }
 
 }

@@ -14,6 +14,7 @@ public class IngestionServiceClientUtility {
         // static variables
         protected static volatile IngestionServiceClient instance; // singleton pattern
         private static Object mutex = new Object(); // singleton pattern
+        private static ManagedChannel defaultChannel = null;
         
         // instance variables
         private ManagedChannel channel;
@@ -44,12 +45,20 @@ public class IngestionServiceClientUtility {
         }
 
         private void initialize() {
-            final String connectString = getConnectString();
-            channel = Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
+            if (defaultChannel != null) {
+                this.channel = defaultChannel;
+            } else {
+                final String connectString = getConnectString();
+                this.channel = Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
+            }
         }
 
         protected static ConfigurationManager configMgr() {
             return ConfigurationManager.getInstance();
+        }
+
+        public static void setDefaultChannel(ManagedChannel channel) {
+            defaultChannel = channel;
         }
 
         protected static int getPort() {

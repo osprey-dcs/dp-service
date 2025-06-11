@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.model.EventMonitorSubscribeDataResponseObserver;
@@ -36,7 +37,7 @@ public class DataEventSubscriptionManager {
         this.handler = ingestionStreamHandler;
     }
 
-    public void addEventMonitor(final EventMonitor eventMonitor) {
+    public ResultStatus addEventMonitor(final EventMonitor eventMonitor) {
 
         // acquire write lock since method will be called from different threads handling grpc requests/responses
         writeLock.lock();
@@ -53,10 +54,14 @@ public class DataEventSubscriptionManager {
                     final SubscribeDataRequest request = SubscribeDataUtility.buildSubscribeDataRequest(List.of(pvName));
 
                     // create observer for subscribeData() API method response stream
-                    final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = callSubscribeData(pvName);
+                    final CallSubscribeDataResult result = callSubscribeData(pvName);
+                    if (result.isError()) {
+                        return new ResultStatus(true, "time out calling data subscription API");
 
-                    // add entry to map for tracking subscriptions by PV name
-                    pvDataSubscriptions.put(pvName, subscribeDataCall);
+                    } else {
+                        // add entry to map for tracking subscriptions by PV name
+                        pvDataSubscriptions.put(pvName, result.subscribeDataCall());
+                    }
                 }
 
                 // add EventMonitor to list of subscribers for specified pvName
@@ -69,9 +74,17 @@ public class DataEventSubscriptionManager {
             // make sure we always unlock by using finally
             writeLock.unlock();
         }
+
+        return new ResultStatus(false, "");
     }
 
-    private SubscribeDataUtility.SubscribeDataCall callSubscribeData(String pvName) {
+    private record CallSubscribeDataResult(
+            boolean isError,
+            SubscribeDataUtility.SubscribeDataCall subscribeDataCall
+    ) {
+    }
+
+    private CallSubscribeDataResult callSubscribeData(String pvName) {
 
         final EventMonitorSubscribeDataResponseObserver responseObserver =
                 new EventMonitorSubscribeDataResponseObserver(pvName, this, handler);
@@ -83,8 +96,15 @@ public class DataEventSubscriptionManager {
 
         // call subscribeData() API method to receive data for specified PV from Ingestion Service
         final StreamObserver<SubscribeDataRequest> requestObserver = stub.subscribeData(responseObserver);
+        requestObserver.onNext(SubscribeDataUtility.buildSubscribeDataRequest(List.of(pvName)));
 
-        return new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver);
+        if ( ! responseObserver.awaitAckLatch()) {
+            return new CallSubscribeDataResult(true, null);
+        } else {
+            return new CallSubscribeDataResult(
+                    false,
+                    new SubscribeDataUtility.SubscribeDataCall(requestObserver, responseObserver));
+        }
     }
 
     public void handleSubscribeDataResult(
@@ -144,7 +164,7 @@ public class DataEventSubscriptionManager {
                         final SubscribeDataUtility.SubscribeDataCall subscribeDataCall = pvDataSubscriptions.get(pvName);
                         if (subscribeDataCall != null) {
                             // close call to subscribeData() API for this PV
-                            subscribeDataCall.requestObserver.onCompleted();
+                            subscribeDataCall.requestObserver().onCompleted();
                         }
                         pvDataSubscriptions.remove(pvName);
                     }
