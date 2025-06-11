@@ -22,8 +22,8 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     public static final int DEFAULT_NUM_WORKERS = 7;
 
     // instance variables
-    private final DataEventSubscriptionManager subscriptionManager =
-            new DataEventSubscriptionManager(this);
+    private final EventMonitorSubscriptionManager subscriptionManager =
+            new EventMonitorSubscriptionManager(this);
 
     @Override
     protected boolean init_() {
@@ -61,12 +61,14 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
                 request.getNewSubscription(), responseObserver, subscriptionManager);
         final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor);
 
-        logger.debug("adding SubscribeDataEventJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("id: {} adding SubscribeDataEventJob to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
+            logger.error(
+                    "id: {} InterruptedException waiting for requestQueue.put",
+                    responseObserver.hashCode());
             Thread.currentThread().interrupt();
         }
 

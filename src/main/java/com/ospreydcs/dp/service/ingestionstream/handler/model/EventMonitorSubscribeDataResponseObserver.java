@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.model;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataEventSubscriptionManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorJob;
 import io.grpc.stub.StreamObserver;
@@ -18,13 +18,13 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
 
     // instance variables
     private final String pvName;
-    private final DataEventSubscriptionManager subscriptionManager;
+    private final EventMonitorSubscriptionManager subscriptionManager;
     private final IngestionStreamHandler handler;
     private final CountDownLatch ackLatch = new CountDownLatch(1);
 
     public EventMonitorSubscribeDataResponseObserver(
             final String pvName,
-            final DataEventSubscriptionManager subscriptionManager,
+            final EventMonitorSubscriptionManager subscriptionManager,
             final IngestionStreamHandler handler
     ) {
         this.pvName = pvName;

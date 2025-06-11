@@ -11,7 +11,7 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataEventSubscriptionManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -28,7 +28,7 @@ public class EventMonitor {
     // instance variables
     protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
     public final StreamObserver<SubscribeDataEventResponse> responseObserver;
-    protected final DataEventSubscriptionManager subscriptionManager;
+    protected final EventMonitorSubscriptionManager subscriptionManager;
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
     protected final List<Event> triggeredEvents = new ArrayList<>();
     protected final Set<String> targetPvNames = new HashSet<>();
@@ -61,7 +61,7 @@ public class EventMonitor {
     public EventMonitor(
             SubscribeDataEventRequest.NewSubscription requestSubscription,
             StreamObserver<SubscribeDataEventResponse> responseObserver,
-            DataEventSubscriptionManager subscriptionManager
+            EventMonitorSubscriptionManager subscriptionManager
     ) {
         this.requestSubscription = requestSubscription;
         this.responseObserver = responseObserver;

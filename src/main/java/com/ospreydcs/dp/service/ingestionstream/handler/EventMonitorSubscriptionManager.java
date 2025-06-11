@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class DataEventSubscriptionManager {
+public class EventMonitorSubscriptionManager {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -33,7 +33,7 @@ public class DataEventSubscriptionManager {
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
 
-    public DataEventSubscriptionManager(IngestionStreamHandler ingestionStreamHandler) {
+    public EventMonitorSubscriptionManager(IngestionStreamHandler ingestionStreamHandler) {
         this.handler = ingestionStreamHandler;
     }
 

@@ -1,14 +1,10 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.job;
 
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataEventSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

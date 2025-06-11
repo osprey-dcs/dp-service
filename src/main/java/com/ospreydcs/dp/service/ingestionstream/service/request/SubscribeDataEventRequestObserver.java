@@ -32,6 +32,11 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
     @Override
     public void onNext(SubscribeDataEventRequest request) {
 
+        logger.info(
+                "id: {} received {} request",
+                responseObserver.hashCode(),
+                request.getRequestCase().name());
+
         switch (request.getRequestCase()) {
 
             case NEWSUBSCRIPTION -> {
@@ -40,18 +45,15 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                     // we don't support modifying the initial subscription, so send a reject to be clear that multiple
                     // new subscription messages in the request stream is not supported
                     final String errorMsg = "multiple NewSubscription messages not supported in request stream";
-                    logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                    logger.debug(
+                            "id: {} " + errorMsg,
+                            responseObserver.hashCode());
                     monitor.requestCancel();
                     IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
                     return;
                 }
 
-                final SubscribeDataEventRequest.NewSubscription newSubscription = request.getNewSubscription();
-
                 // TODO: validate request, create EventMonitor, handle request
-
-                logger.info(
-                        "id: {} subscribeDataEvent request received", responseObserver.hashCode());
 
                 // validate request
                 final ResultStatus resultStatus =
@@ -80,7 +82,6 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
             }
 
             case CANCELSUBSCRIPTION -> {
-                logger.debug("id: {} received CancelSubscription request, requesting cancel", responseObserver.hashCode());
                 monitor.requestCancel();
                 responseObserver.onCompleted();
             }
@@ -88,7 +89,9 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
             case REQUEST_NOT_SET -> {
                 final String errorMsg =
                         "received unknown request, expected NewSubscription or CancelSubscription";
-                logger.debug("id: {} " + errorMsg, responseObserver.hashCode());
+                logger.debug(
+                        "id: {} " + errorMsg,
+                        responseObserver.hashCode());
                 IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
             }
 
@@ -97,14 +100,18 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
 
     @Override
     public void onError(Throwable throwable) {
-        logger.debug("id: {} onError, requesting cancel", responseObserver.hashCode());
+        logger.debug(
+                "id: {} onError, requesting cancel",
+                responseObserver.hashCode());
         monitor.requestCancel();
         responseObserver.onCompleted();
     }
 
     @Override
     public void onCompleted() {
-        logger.debug("id: {} onCompleted, requesting cancel", responseObserver.hashCode());
+        logger.debug(
+                "id: {} onCompleted, requesting cancel",
+                responseObserver.hashCode());
         monitor.requestCancel();
         responseObserver.onCompleted();
     }
