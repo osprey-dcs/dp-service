@@ -4,11 +4,8 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
-import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.ingestionstream.IngestionStreamTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.AfterClass;
@@ -41,45 +38,248 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
     public void testSubscribeDataEvent() {
 
         {
-            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall1;
+            // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
+            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall1;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams1;
-            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses = new HashMap<>();
-            // invoke subscribeDataEvent()
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses1 = new HashMap<>();
             {
-                // create list of triggers for subscription
-                final List<IngestionStreamTestBase.PvConditionTriggerParams> triggerParamsList = new ArrayList<>();
+                // create list of triggers for request
+                List<PvConditionTrigger> requestTriggers = new ArrayList<>();
 
-                // create trigger
-                final IngestionStreamTestBase.PvConditionTriggerParams triggerParams =
-                        new IngestionStreamTestBase.PvConditionTriggerParams(
-                            "S01-BPM01",
-                            PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO,
-                            DataValue.newBuilder().setDoubleValue(5.0).build());
-                triggerParamsList.add(triggerParams);
-                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
-                        .setPvName(triggerParams.pvName())
-                        .setCondition(triggerParams.condition())
-                        .setValue(triggerParams.value())
-                        .build();
+                // create trigger, add entry to response verification map with trigger and expected Events
+                {
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S01-BPM01")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                            .setValue(DataValue.newBuilder().setDoubleValue(5.0).build())
+                            .build();
+                    requestTriggers.add(trigger);
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                    final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(5.0).build();
+                    final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                            .setTrigger(trigger)
+                            .setDataValue(eventDataValue)
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767467).build())
+                            .build();
+                    triggerExpectedEvents.add(event);
+                    expectedEventResponses1.put(trigger, triggerExpectedEvents);
+                }
 
-                // create list of expected Events for trigger
-                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
-                final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(5.0).build();
-                final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
-                        .setTrigger(trigger)
-                        .setDataValue(eventDataValue)
-                        .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767467).build())
-                        .build();
-                triggerExpectedEvents.add(event);
-                expectedEventResponses.put(trigger, triggerExpectedEvents);
+                // create params object (including trigger params list) for building protobuf request from params
                 requestParams1 =
-                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(triggerParamsList);
-                final int expectedResponseCount = 1; // expect one event message
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+
+                // call subscribeDataEvent() to initiate subscription before running ingestion
+                final int expectedResponseCount = 1; // expect one event message in response
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataEventCall1 =
                         initiateSubscribeDataEventRequest(
                                 requestParams1,
+                                expectedResponseCount,
+                                expectReject,
+                                expectedRejectMessage);
+            }
+
+            // request 2. positive subscribeDataEvent() test: two triggers:
+            // trigger 1: pv S02-GCC-01, trigger condition less than, trigger value 0.2
+            // trigger 2: pv S02-GCC-02, trigger condition greater than, trigger value 9.8
+            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall2;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams2;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses2 = new HashMap<>();
+            {
+                // create list of triggers for request
+                List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+                // create trigger 1 and add entry to map with trigger and corresponding list of expected Events
+                // for response verification
+                {
+                    // create trigger and add to request trigger list
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S02-GCC01")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_LESS)
+                            .setValue(DataValue.newBuilder().setDoubleValue(0.2).build())
+                            .build();
+                    requestTriggers.add(trigger);
+
+                    // create list of expected Events for trigger
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+
+                    // create Event and add to list, data value 0.0
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // create Event and add to list, data value 0.1
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // add entry to response validation map with trigger and list of expected events
+                    expectedEventResponses2.put(trigger, triggerExpectedEvents);
+                }
+
+                // create trigger 2 and add entry to map with trigger and corresponding list of expected Events
+                // for response verification
+                {
+                    // create trigger and add to request trigger list
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S02-GCC02")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_GREATER)
+                            .setValue(DataValue.newBuilder().setDoubleValue(9.8).build())
+                            .build();
+                    requestTriggers.add(trigger);
+
+                    // create list of expected Events for trigger
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+
+                    // create Event and add to list, data value 9.9
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(9.9).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(900000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // add entry to response validation map with trigger and list of expected events
+                    expectedEventResponses2.put(trigger, triggerExpectedEvents);
+                }
+
+                // create params object (including trigger params list) for building protobuf request from params
+                requestParams2 =
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+
+                // call subscribeDataEvent() to initiate subscription before running ingestion
+                final int expectedResponseCount = 1; // expect one event message in response
+                final boolean expectReject = false;
+                final String expectedRejectMessage = "";
+                subscribeDataEventCall2 =
+                        initiateSubscribeDataEventRequest(
+                                requestParams2,
+                                expectedResponseCount,
+                                expectReject,
+                                expectedRejectMessage);
+            }
+
+            // request 3. positive subscribeDataEvent() test: two triggers:
+            // trigger 1: pv S02-GCC-01, trigger condition less than or equal, trigger value 0.2
+            // trigger 2: pv S02-GCC-02, trigger condition greater than or equal, trigger value 9.8
+            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall3;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams3;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses3 = new HashMap<>();
+            {
+                // create list of triggers for request
+                List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+                // create trigger 1 and add entry to map with trigger and corresponding list of expected Events
+                // for response verification
+                {
+                    // create trigger and add to request trigger list
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S02-GCC01")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_LESS_EQ)
+                            .setValue(DataValue.newBuilder().setDoubleValue(0.2).build())
+                            .build();
+                    requestTriggers.add(trigger);
+
+                    // create list of expected Events for trigger
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+
+                    // create Event and add to list, data value 0.0
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // create Event and add to list, data value 0.1
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // create Event and add to list, data value 0.2
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(0.2).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(200000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // add entry to response validation map with trigger and list of expected events
+                    expectedEventResponses3.put(trigger, triggerExpectedEvents);
+                }
+
+                // create trigger 2 and add entry to map with trigger and corresponding list of expected Events
+                // for response verification
+                {
+                    // create trigger and add to request trigger list
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S02-GCC02")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_GREATER_EQ)
+                            .setValue(DataValue.newBuilder().setDoubleValue(9.8).build())
+                            .build();
+                    requestTriggers.add(trigger);
+
+                    // create list of expected Events for trigger
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+
+                    // create Event and add to list, data value 9.8
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(9.8).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(800000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // create Event and add to list, data value 9.9
+                    {
+                        final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                                .setTrigger(trigger)
+                                .setDataValue(DataValue.newBuilder().setDoubleValue(9.9).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(900000000).build())
+                                .build();
+                        triggerExpectedEvents.add(event);
+                    }
+
+                    // add entry to response validation map with trigger and list of expected events
+                    expectedEventResponses3.put(trigger, triggerExpectedEvents);
+                }
+
+                // create params object (including trigger params list) for building protobuf request from params
+                requestParams3 =
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+
+                // call subscribeDataEvent() to initiate subscription before running ingestion
+                final int expectedResponseCount = 1; // expect one event message in response
+                final boolean expectReject = false;
+                final String expectedRejectMessage = "";
+                subscribeDataEventCall3 =
+                        initiateSubscribeDataEventRequest(
+                                requestParams3,
                                 expectedResponseCount,
                                 expectReject,
                                 expectedRejectMessage);
@@ -95,14 +295,30 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                 ingestionScenarioResult = simpleIngestionScenario();
             }
 
-            // verify response messages for subscribeDataEvent() responses
+            // request 1: verify subscribeDataEvent() responses and close request stream
             verifySubscribeDataEventResponse(
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall1.responseObserver(),
                     requestParams1,
                     ingestionScenarioResult.validationMap(),
-                    expectedEventResponses);
-
+                    expectedEventResponses1);
             subscribeDataEventCall1.requestObserver().onCompleted();
+
+
+            // request 2: verify subscribeDataEvent() responses and close request stream
+            verifySubscribeDataEventResponse(
+                    (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
+                    requestParams2,
+                    ingestionScenarioResult.validationMap(),
+                    expectedEventResponses2);
+            subscribeDataEventCall2.requestObserver().onCompleted();
+
+            // request 3: verify subscribeDataEvent() responses and close request stream
+            verifySubscribeDataEventResponse(
+                    (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall3.responseObserver(),
+                    requestParams3,
+                    ingestionScenarioResult.validationMap(),
+                    expectedEventResponses3);
+            subscribeDataEventCall3.requestObserver().onCompleted();
         }
     }
 

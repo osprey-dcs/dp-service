@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.ingestionstream;
 
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
@@ -18,19 +17,12 @@ import static org.junit.Assert.fail;
 
 public class IngestionStreamTestBase {
 
-    public record PvConditionTriggerParams(
-            String pvName,
-            PvConditionTrigger.PvCondition condition,
-            DataValue value
-    ) {
-    }
-
     public record SubscribeDataEventRequestParams(
-            List<PvConditionTriggerParams> triggerParamsList
+            List<PvConditionTrigger> triggers
     ) {
     }
 
-    public record SubscribeDataEventCall(
+    public record SubscribeDataEventCall1(
             StreamObserver<SubscribeDataEventRequest> requestObserver,
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
@@ -147,12 +139,8 @@ public class IngestionStreamTestBase {
                 SubscribeDataEventRequest.NewSubscription.newBuilder();
 
         // add triggers to request
-        for (PvConditionTriggerParams triggerParams : requestParams.triggerParamsList) {
-            newSubscriptionBuilder.addTriggers(PvConditionTrigger.newBuilder()
-                    .setPvName(triggerParams.pvName)
-                    .setCondition(triggerParams.condition)
-                    .setValue(triggerParams.value)
-                    .build());
+        for (PvConditionTrigger trigger : requestParams.triggers) {
+            newSubscriptionBuilder.addTriggers(trigger);
         }
 
         newSubscriptionBuilder.build();
