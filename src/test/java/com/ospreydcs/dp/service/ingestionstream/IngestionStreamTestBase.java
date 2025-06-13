@@ -22,7 +22,7 @@ public class IngestionStreamTestBase {
     ) {
     }
 
-    public record SubscribeDataEventCall1(
+    public record SubscribeDataEventCall(
             StreamObserver<SubscribeDataEventRequest> requestObserver,
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {

@@ -35,11 +35,11 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testSubscribeDataEvent() {
+    public void testSubscribeDataEventTrigger() {
 
         {
             // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
-            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall1;
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams1;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses1 = new HashMap<>();
             {
@@ -73,7 +73,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                 final int expectedResponseCount = 1; // expect one event message in response
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
-                subscribeDataEventCall1 =
+                subscribeDataEventCall =
                         initiateSubscribeDataEventRequest(
                                 requestParams1,
                                 expectedResponseCount,
@@ -84,7 +84,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
             // request 2. positive subscribeDataEvent() test: two triggers:
             // trigger 1: pv S02-GCC-01, trigger condition less than, trigger value 0.2
             // trigger 2: pv S02-GCC-02, trigger condition greater than, trigger value 9.8
-            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall2;
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall2;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams2;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses2 = new HashMap<>();
             {
@@ -176,7 +176,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
             // request 3. positive subscribeDataEvent() test: two triggers:
             // trigger 1: pv S02-GCC-01, trigger condition less than or equal, trigger value 0.2
             // trigger 2: pv S02-GCC-02, trigger condition greater than or equal, trigger value 9.8
-            IngestionStreamTestBase.SubscribeDataEventCall1 subscribeDataEventCall3;
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall3;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams3;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses3 = new HashMap<>();
             {
@@ -297,11 +297,11 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
             // request 1: verify subscribeDataEvent() responses and close request stream
             verifySubscribeDataEventResponse(
-                    (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall1.responseObserver(),
+                    (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver(),
                     requestParams1,
                     ingestionScenarioResult.validationMap(),
                     expectedEventResponses1);
-            subscribeDataEventCall1.requestObserver().onCompleted();
+            subscribeDataEventCall.requestObserver().onCompleted();
 
 
             // request 2: verify subscribeDataEvent() responses and close request stream
@@ -320,6 +320,105 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     expectedEventResponses3);
             subscribeDataEventCall3.requestObserver().onCompleted();
         }
+    }
+
+    @Test
+    public void testSubscribeDataEventReject() {
+
+        // reject reason: empty list of triggers
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> emptyTriggersList = new ArrayList<>(); // EMPTY TRIGGER LIST CAUSES REJECT
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(emptyTriggersList);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final int expectedResponseCount = 0;
+            final boolean expectReject = true; // EXPECT REJECT
+            final String expectedRejectMessage = "SubscribeDataEventRequest.triggers must be specified"; // EXPECTED ERROR MESSAGE
+            subscribeDataEventCall =
+                    initiateSubscribeDataEventRequest(
+                            requestParams,
+                            expectedResponseCount,
+                            expectReject,
+                            expectedRejectMessage);
+        }
+
+        // reject reason: blank trigger PV name
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger with blank PV name
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("") // BLANK PV NAME
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(5.0).build())
+                        .build();
+                requestTriggers.add(trigger);
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+            }
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final int expectedResponseCount = 0;
+            final boolean expectReject = true;  // EXPECT REJECT
+            final String expectedRejectMessage = "SubscribeDataEventRequest PvConditionTrigger.pvName must be specified";
+            subscribeDataEventCall =
+                    initiateSubscribeDataEventRequest(
+                            requestParams,
+                            expectedResponseCount,
+                            expectReject,
+                            expectedRejectMessage);
+        }
+
+        // reject reason: trigger condition not specified
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger with blank PV name
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S01-BPM01")
+                        // DON'T SET CONDITION:  .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(5.0).build())
+                        .build();
+                requestTriggers.add(trigger);
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+            }
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final int expectedResponseCount = 0;
+            final boolean expectReject = true; // EXPECT REJECT
+            final String expectedRejectMessage = "SubscribeDataEventRequest PvConditionTrigger.condition must be specified";
+            subscribeDataEventCall =
+                    initiateSubscribeDataEventRequest(
+                            requestParams,
+                            expectedResponseCount,
+                            expectReject,
+                            expectedRejectMessage);
+        }
+
     }
 
 }

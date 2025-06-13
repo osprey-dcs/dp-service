@@ -12,17 +12,17 @@ public class IngestionStreamValidationUtility {
     public static ResultStatus validateSubscribeDataEventRequest(
             SubscribeDataEventRequest request
     ) {
-        // validate common request fields
+        // list of triggers must be provided
         if (request.getNewSubscription().getTriggersList().isEmpty()) {
             return new ResultStatus(
                     true,
                     "SubscribeDataEventRequest.triggers must be specified");
         }
 
-        // validate each PvConditionTrigger
+        // validate each PvConditionTrigger in list
         for (PvConditionTrigger pvConditionTrigger : request.getNewSubscription().getTriggersList()) {
 
-            // check that name is specified
+            // check that PV name is specified
             if (pvConditionTrigger.getPvName().isBlank()) {
                 return new ResultStatus(
                         true,
@@ -43,7 +43,7 @@ public class IngestionStreamValidationUtility {
             // given that we don't know type of pvName
         }
 
-        // validate operation
+        // operation is optional, so validate if provided
         if (request.getNewSubscription().hasOperation()) {
             final DataEventOperation dataEventOperation = request.getNewSubscription().getOperation();
 
@@ -71,7 +71,7 @@ public class IngestionStreamValidationUtility {
                 if (!dataEventOperation.hasWindow()) {
                     return new ResultStatus(
                             true,
-                            "SubscribeDataEventRequest DataEventOperation.targetPvs contains empty string");
+                            "SubscribeDataEventRequest DataEventOperation.window must be specified");
                 }
 
                 final DataEventOperation.DataEventWindow dataEventWindow =

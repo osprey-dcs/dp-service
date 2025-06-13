@@ -1305,7 +1305,7 @@ public abstract class GrpcIntegrationTestBase {
         responseObserver.awaitCloseLatch();
     }
 
-    private IngestionStreamTestBase.SubscribeDataEventCall1 sendSubscribeDataEvent(
+    private IngestionStreamTestBase.SubscribeDataEventCall sendSubscribeDataEvent(
             SubscribeDataEventRequest request,
             int expectedResponseCount,
             boolean expectReject,
@@ -1335,10 +1335,10 @@ public abstract class GrpcIntegrationTestBase {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
-        return new IngestionStreamTestBase.SubscribeDataEventCall1(requestObserver, responseObserver);
+        return new IngestionStreamTestBase.SubscribeDataEventCall(requestObserver, responseObserver);
     }
 
-    protected IngestionStreamTestBase.SubscribeDataEventCall1 initiateSubscribeDataEventRequest(
+    protected IngestionStreamTestBase.SubscribeDataEventCall initiateSubscribeDataEventRequest(
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
             int expectedResponseCount,
             boolean expectReject,
