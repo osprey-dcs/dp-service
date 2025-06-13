@@ -1362,7 +1362,7 @@ public abstract class GrpcIntegrationTestBase {
         final List<SubscribeDataEventResponse> responseList = responseObserver.getResponseList();
 
         // create lists of different response types for further verification
-        final List<SubscribeDataEventResponse.Event> eventResponses = new ArrayList<>();
+        final Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> actualEventResponses = new HashMap<>();
         final List<SubscribeDataEventResponse.EventData> eventDataResponses = new ArrayList<>();
         for (SubscribeDataEventResponse response : responseList) {
             switch (response.getResultCase()) {
@@ -1373,7 +1373,14 @@ public abstract class GrpcIntegrationTestBase {
                     // responseList doesn't contain acks
                 }
                 case EVENT -> {
-                    eventResponses.add(response.getEvent());
+                    final SubscribeDataEventResponse.Event event = response.getEvent();
+                    final PvConditionTrigger trigger = event.getTrigger();
+                    List<SubscribeDataEventResponse.Event> actualTriggerEvents = actualEventResponses.get(trigger);
+                    if (actualTriggerEvents == null) {
+                        actualTriggerEvents = new ArrayList<>();
+                        actualEventResponses.put(trigger, actualTriggerEvents);
+                    }
+                    actualTriggerEvents.add(event);
                 }
                 case EVENTDATA -> {
                     eventDataResponses.add(response.getEventData());
@@ -1385,12 +1392,7 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         // check Event responses against expected
-        for (SubscribeDataEventResponse.Event event : eventResponses) {
-            final PvConditionTrigger eventTrigger = event.getTrigger();
-            List<SubscribeDataEventResponse.Event> expectedTriggerEventResponses =
-                    expectedEventResponses.get(eventTrigger);
-            assertTrue(expectedTriggerEventResponses.contains(event));
-        }
+        assertEquals(expectedEventResponses, actualEventResponses);
     }
 
     protected QueryTableResponse.TableResult sendQueryTable(
