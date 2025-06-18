@@ -32,9 +32,19 @@ public class EventMonitorSubscriptionManager {
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
+    private final DataBufferManager bufferManager;
 
     public EventMonitorSubscriptionManager(IngestionStreamHandler ingestionStreamHandler) {
         this.handler = ingestionStreamHandler;
+        
+        // Configure buffering with reasonable defaults
+        DataBuffer.DataBufferConfig bufferConfig = new DataBuffer.DataBufferConfig(
+            1000L,     // 1 second flush interval
+            1024 * 1024L, // 1MB max buffer size
+            100,       // 100 max items
+            5000L      // 5 seconds max item age
+        );
+        this.bufferManager = new DataBufferManager(this, bufferConfig);
     }
 
     public ResultStatus addEventMonitor(final EventMonitor eventMonitor) {
@@ -111,6 +121,14 @@ public class EventMonitorSubscriptionManager {
             String pvName,
             SubscribeDataResponse.SubscribeDataResult result
     ) {
+        // Buffer the data instead of processing immediately
+        bufferManager.bufferData(pvName, result);
+    }
+
+    public void processDataResultDirectly(
+            String pvName,
+            SubscribeDataResponse.SubscribeDataResult result
+    ) {
         // acquire read lock since method will be called from different threads handling grpc requests/responses
         readLock.lock();
 
@@ -167,6 +185,8 @@ public class EventMonitorSubscriptionManager {
                             subscribeDataCall.requestObserver().onCompleted();
                         }
                         pvDataSubscriptions.remove(pvName);
+                        // Remove buffer for this PV
+                        bufferManager.removePvBuffer(pvName);
                     }
                 }
             }
@@ -175,6 +195,16 @@ public class EventMonitorSubscriptionManager {
             // make sure we always unlock by using finally
             writeLock.unlock();
         }
+    }
+
+    public void shutdown() {
+        if (bufferManager != null) {
+            bufferManager.shutdown();
+        }
+    }
+
+    public DataBufferManager getBufferManager() {
+        return bufferManager;
     }
 
 }

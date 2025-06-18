@@ -42,6 +42,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams1;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses1 = new HashMap<>();
+            int expectedResponseCount1 = 0;
             {
                 // create list of triggers for request
                 List<PvConditionTrigger> requestTriggers = new ArrayList<>();
@@ -63,6 +64,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                             .build();
                     triggerExpectedEvents.add(event);
                     expectedEventResponses1.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount1 += triggerExpectedEvents.size();
                 }
 
                 // create params object (including trigger params list) for building protobuf request from params
@@ -70,13 +72,12 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
-                final int expectedResponseCount = 1; // expect one event message in response
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataEventCall =
                         initiateSubscribeDataEventRequest(
                                 requestParams1,
-                                expectedResponseCount,
+                                expectedResponseCount1,
                                 expectReject,
                                 expectedRejectMessage);
             }
@@ -87,6 +88,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall2;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams2;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses2 = new HashMap<>();
+            int expectedResponseCount2 = 0;
             {
                 // create list of triggers for request
                 List<PvConditionTrigger> requestTriggers = new ArrayList<>();
@@ -127,6 +129,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                     // add entry to response validation map with trigger and list of expected events
                     expectedEventResponses2.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount2 += triggerExpectedEvents.size();
                 }
 
                 // create trigger 2 and add entry to map with trigger and corresponding list of expected Events
@@ -155,6 +158,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                     // add entry to response validation map with trigger and list of expected events
                     expectedEventResponses2.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount2 += triggerExpectedEvents.size();
                 }
 
                 // create params object (including trigger params list) for building protobuf request from params
@@ -162,13 +166,12 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
-                final int expectedResponseCount = 1; // expect one event message in response
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataEventCall2 =
                         initiateSubscribeDataEventRequest(
                                 requestParams2,
-                                expectedResponseCount,
+                                expectedResponseCount2,
                                 expectReject,
                                 expectedRejectMessage);
             }
@@ -179,6 +182,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall3;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams3;
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses3 = new HashMap<>();
+            int expectedResponseCount3 = 0;
             {
                 // create list of triggers for request
                 List<PvConditionTrigger> requestTriggers = new ArrayList<>();
@@ -229,6 +233,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                     // add entry to response validation map with trigger and list of expected events
                     expectedEventResponses3.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount3 += triggerExpectedEvents.size();
                 }
 
                 // create trigger 2 and add entry to map with trigger and corresponding list of expected Events
@@ -267,6 +272,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                     // add entry to response validation map with trigger and list of expected events
                     expectedEventResponses3.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount3 += triggerExpectedEvents.size();
                 }
 
                 // create params object (including trigger params list) for building protobuf request from params
@@ -274,13 +280,12 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
-                final int expectedResponseCount = 1; // expect one event message in response
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataEventCall3 =
                         initiateSubscribeDataEventRequest(
                                 requestParams3,
-                                expectedResponseCount,
+                                expectedResponseCount3,
                                 expectReject,
                                 expectedRejectMessage);
             }
@@ -300,15 +305,16 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver(),
                     requestParams1,
                     ingestionScenarioResult.validationMap(),
+                    expectedResponseCount1,
                     expectedEventResponses1);
             subscribeDataEventCall.requestObserver().onCompleted();
-
 
             // request 2: verify subscribeDataEvent() responses and close request stream
             verifySubscribeDataEventResponse(
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
                     requestParams2,
                     ingestionScenarioResult.validationMap(),
+                    expectedResponseCount2,
                     expectedEventResponses2);
             subscribeDataEventCall2.requestObserver().onCompleted();
 
@@ -317,6 +323,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall3.responseObserver(),
                     requestParams3,
                     ingestionScenarioResult.validationMap(),
+                    expectedResponseCount3,
                     expectedEventResponses3);
             subscribeDataEventCall3.requestObserver().onCompleted();
         }

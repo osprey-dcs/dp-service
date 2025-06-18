@@ -1352,6 +1352,7 @@ public abstract class GrpcIntegrationTestBase {
             IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver,
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
             Map<String, IngestionStreamInfo> ingestionValidationMap,
+            int expectedResponseCount,
             Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses
     ) {
         // wait for completion of API method response stream and confirm not in error state
@@ -1360,11 +1361,12 @@ public abstract class GrpcIntegrationTestBase {
 
         // get subscription responses for verification of expected contents
         final List<SubscribeDataEventResponse> responseList = responseObserver.getResponseList();
+        assertEquals(expectedResponseCount, responseList.size());
 
         // create lists of different response types for further verification
         final Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> actualEventResponses = new HashMap<>();
         final List<SubscribeDataEventResponse.EventData> eventDataResponses = new ArrayList<>();
-        for (SubscribeDataEventResponse response : responseList) {
+        responseList.forEach(response -> {
             switch (response.getResultCase()) {
                 case EXCEPTIONALRESULT -> {
                     fail("received ExceptionalResult");
@@ -1375,11 +1377,8 @@ public abstract class GrpcIntegrationTestBase {
                 case EVENT -> {
                     final SubscribeDataEventResponse.Event event = response.getEvent();
                     final PvConditionTrigger trigger = event.getTrigger();
-                    List<SubscribeDataEventResponse.Event> actualTriggerEvents = actualEventResponses.get(trigger);
-                    if (actualTriggerEvents == null) {
-                        actualTriggerEvents = new ArrayList<>();
-                        actualEventResponses.put(trigger, actualTriggerEvents);
-                    }
+                    List<SubscribeDataEventResponse.Event> actualTriggerEvents =
+                            actualEventResponses.computeIfAbsent(trigger, k -> new ArrayList<>());
                     actualTriggerEvents.add(event);
                 }
                 case EVENTDATA -> {
@@ -1389,10 +1388,17 @@ public abstract class GrpcIntegrationTestBase {
                     fail("received response with result not set");
                 }
             }
-        }
+        });
 
-        // check Event responses against expected
-        assertEquals(expectedEventResponses, actualEventResponses);
+        // check Event responses against expected, want to just compare maps here but the keys can be ordered differently
+        // which causes assertEquals() to fail
+        //assertEquals(expectedEventResponses, actualEventResponses);
+        assertEquals(expectedEventResponses.size(), actualEventResponses.size());
+        for (Map.Entry<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> entry : expectedEventResponses.entrySet()) {
+            assertTrue(actualEventResponses.containsKey(entry.getKey()));
+            assertEquals(entry.getValue().size(), actualEventResponses.get(entry.getKey()).size());
+            assertEquals(entry.getValue(), actualEventResponses.get(entry.getKey()));
+        }
     }
 
     protected QueryTableResponse.TableResult sendQueryTable(
