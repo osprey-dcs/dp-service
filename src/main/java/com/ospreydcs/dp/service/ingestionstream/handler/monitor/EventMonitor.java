@@ -11,6 +11,8 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
+import com.ospreydcs.dp.service.ingestionstream.handler.DataBuffer;
+import com.ospreydcs.dp.service.ingestionstream.handler.DataBufferManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -32,6 +34,7 @@ public class EventMonitor {
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
     protected final List<Event> triggeredEvents = new ArrayList<>();
     protected final Set<String> targetPvNames = new HashSet<>();
+    protected final DataBufferManager bufferManager;
 
     // local type defs
 
@@ -63,10 +66,32 @@ public class EventMonitor {
             StreamObserver<SubscribeDataEventResponse> responseObserver,
             EventMonitorSubscriptionManager subscriptionManager
     ) {
+        this(requestSubscription, responseObserver, subscriptionManager, createDefaultBufferConfig());
+    }
+
+    public EventMonitor(
+            SubscribeDataEventRequest.NewSubscription requestSubscription,
+            StreamObserver<SubscribeDataEventResponse> responseObserver,
+            EventMonitorSubscriptionManager subscriptionManager,
+            DataBuffer.DataBufferConfig bufferConfig
+    ) {
         this.requestSubscription = requestSubscription;
         this.responseObserver = responseObserver;
         this.subscriptionManager = subscriptionManager;
+        
+        // Create buffer manager with callback to process data
+        this.bufferManager = new DataBufferManager(this::processBufferedData, bufferConfig);
+        
         this.initialize(requestSubscription);
+    }
+
+    private static DataBuffer.DataBufferConfig createDefaultBufferConfig() {
+        return new DataBuffer.DataBufferConfig(
+            500L,      // 500ms flush interval - faster for event monitoring
+            512 * 1024L, // 512KB max buffer size
+            50,        // 50 max items
+            2000L      // 2 seconds max item age - faster processing for events
+        );
     }
 
     private void initialize(SubscribeDataEventRequest.NewSubscription request) {
@@ -294,11 +319,22 @@ public class EventMonitor {
     }
 
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
+        // Buffer the data instead of processing immediately
+        for (DataColumn dataColumn : result.getDataColumnsList()) {
+            bufferManager.bufferData(dataColumn.getName(), result);
+        }
+    }
 
+    private void processBufferedData(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results) {
+        for (SubscribeDataResponse.SubscribeDataResult result : results) {
+            processDataResultDirectly(result);
+        }
+    }
+
+    private void processDataResultDirectly(SubscribeDataResponse.SubscribeDataResult result) {
         final DataTimestamps resultTimestamps = result.getDataTimestamps();
 
         for (DataColumn dataColumn : result.getDataColumnsList()) {
-
             final String columnPvName = dataColumn.getName();
 
             final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnPvName);
@@ -322,6 +358,17 @@ public class EventMonitor {
 //        if (canceled.compareAndSet(false, true)) {
 //            handler.removeSourceMonitor(this);
 //        }
+        shutdown();
+    }
+
+    public void shutdown() {
+        if (bufferManager != null) {
+            bufferManager.shutdown();
+        }
+    }
+
+    public DataBufferManager getBufferManager() {
+        return bufferManager;
     }
 
 }

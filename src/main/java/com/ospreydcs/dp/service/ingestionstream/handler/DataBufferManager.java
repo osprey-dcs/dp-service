@@ -1,7 +1,6 @@
 package com.ospreydcs.dp.service.ingestionstream.handler;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
-import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -16,14 +15,18 @@ public class DataBufferManager {
 
     private static final Logger logger = LogManager.getLogger();
 
+    @FunctionalInterface
+    public interface DataProcessor {
+        void processData(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results);
+    }
+
     private final DataBuffer.DataBufferConfig config;
     private final Map<String, DataBuffer> pvBuffers = new ConcurrentHashMap<>();
     private final ScheduledExecutorService flushScheduler = Executors.newScheduledThreadPool(2);
-    private final EventMonitorSubscriptionManager subscriptionManager;
+    private final DataProcessor dataProcessor;
 
-    public DataBufferManager(EventMonitorSubscriptionManager subscriptionManager, 
-                           DataBuffer.DataBufferConfig config) {
-        this.subscriptionManager = subscriptionManager;
+    public DataBufferManager(DataProcessor dataProcessor, DataBuffer.DataBufferConfig config) {
+        this.dataProcessor = dataProcessor;
         this.config = config;
         startPeriodicFlush();
     }
@@ -110,9 +113,7 @@ public class DataBufferManager {
     }
 
     private void processBufferedResults(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results) {
-        for (SubscribeDataResponse.SubscribeDataResult result : results) {
-            subscriptionManager.processDataResultDirectly(pvName, result);
-        }
+        dataProcessor.processData(pvName, results);
     }
 
     public int getTotalBufferedItems() {
