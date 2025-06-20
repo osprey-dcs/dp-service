@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,19 +30,28 @@ public class DataBuffer {
         private final long flushIntervalMs;
         private final long maxBufferSizeBytes;
         private final int maxBufferItems;
-        private final long maxItemAgeMs;
+        private final long maxItemAgeNanos;
 
-        public DataBufferConfig(long flushIntervalMs, long maxBufferSizeBytes, int maxBufferItems, long maxItemAgeMs) {
+        public DataBufferConfig(long flushIntervalMs, long maxBufferSizeBytes, int maxBufferItems, long maxItemAgeNanos) {
             this.flushIntervalMs = flushIntervalMs;
             this.maxBufferSizeBytes = maxBufferSizeBytes;
             this.maxBufferItems = maxBufferItems;
-            this.maxItemAgeMs = maxItemAgeMs;
+            this.maxItemAgeNanos = maxItemAgeNanos;
         }
 
         public long getFlushIntervalMs() { return flushIntervalMs; }
         public long getMaxBufferSizeBytes() { return maxBufferSizeBytes; }
         public int getMaxBufferItems() { return maxBufferItems; }
-        public long getMaxItemAgeMs() { return maxItemAgeMs; }
+        public long getMaxItemAgeNanos() { return maxItemAgeNanos; }
+
+        // Convenience methods for time conversion
+        public static long millisecondsToNanos(long milliseconds) {
+            return milliseconds * 1_000_000L;
+        }
+
+        public static long secondsToNanos(long seconds) {
+            return seconds * 1_000_000_000L;
+        }
     }
 
     private static class BufferedDataItem {
@@ -94,8 +104,8 @@ public class DataBuffer {
             // Check if any items have exceeded max age
             boolean hasExpiredItems = bufferedItems.stream()
                 .anyMatch(item -> {
-                    long itemAge = now.toEpochMilli() - item.getTimestamp().toEpochMilli();
-                    return itemAge >= config.getMaxItemAgeMs();
+                    Duration itemAge = Duration.between(item.getTimestamp(), now);
+                    return itemAge.toNanos() >= config.getMaxItemAgeNanos();
                 });
             
             return timeSinceLastFlush >= config.getFlushIntervalMs() ||
@@ -120,8 +130,8 @@ public class DataBuffer {
             
             // Only flush items that have reached the configured age
             for (BufferedDataItem item : bufferedItems) {
-                long itemAge = now.toEpochMilli() - item.getTimestamp().toEpochMilli();
-                if (itemAge >= config.getMaxItemAgeMs()) {
+                Duration itemAge = Duration.between(item.getTimestamp(), now);
+                if (itemAge.toNanos() >= config.getMaxItemAgeNanos()) {
                     results.add(item.getResult());
                     itemsToRemove.add(item);
                 }
@@ -232,8 +242,8 @@ public class DataBuffer {
             Instant now = Instant.now();
             return (int) bufferedItems.stream()
                 .filter(item -> {
-                    long itemAge = now.toEpochMilli() - item.getTimestamp().toEpochMilli();
-                    return itemAge >= config.getMaxItemAgeMs();
+                    Duration itemAge = Duration.between(item.getTimestamp(), now);
+                    return itemAge.toNanos() >= config.getMaxItemAgeNanos();
                 })
                 .count();
         } finally {

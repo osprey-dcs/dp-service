@@ -24,7 +24,7 @@ public class DataBufferTest {
             1000L,   // 1 second flush interval
             1024L,   // 1KB max buffer size
             10,      // 10 max items
-            500L     // 500ms max item age
+            500_000_000L     // 500ms max item age in nanoseconds
         );
         dataBuffer = new DataBuffer("test-pv", config);
     }

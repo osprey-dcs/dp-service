@@ -90,7 +90,7 @@ public class EventMonitor {
             500L,      // 500ms flush interval - faster for event monitoring
             512 * 1024L, // 512KB max buffer size
             50,        // 50 max items
-            2000L      // 2 seconds max item age - faster processing for events
+            DataBuffer.DataBufferConfig.secondsToNanos(2)  // 2 seconds max item age - faster processing for events
         );
     }
 
