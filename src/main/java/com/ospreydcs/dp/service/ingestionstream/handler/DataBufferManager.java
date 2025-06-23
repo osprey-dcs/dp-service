@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.ingestionstream.handler;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,7 +19,7 @@ public class DataBufferManager {
 
     @FunctionalInterface
     public interface DataProcessor {
-        void processData(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results);
+        void processData(String pvName, List<DataBuffer.BufferedData> results);
     }
 
     private final DataBuffer.DataBufferConfig config;
@@ -31,9 +33,9 @@ public class DataBufferManager {
         startPeriodicFlush();
     }
 
-    public void bufferData(String pvName, SubscribeDataResponse.SubscribeDataResult result) {
+    public void bufferData(String pvName, DataColumn dataColumn, DataTimestamps dataTimestamps) {
         DataBuffer buffer = pvBuffers.computeIfAbsent(pvName, k -> new DataBuffer(k, config));
-        buffer.addData(result);
+        buffer.addData(dataColumn, dataTimestamps);
         
         if (buffer.shouldFlush()) {
             flushBuffer(pvName, buffer);
@@ -47,7 +49,7 @@ public class DataBufferManager {
     public void forceFlushAllItems() {
         pvBuffers.forEach((pvName, buffer) -> {
             try {
-                List<SubscribeDataResponse.SubscribeDataResult> results = buffer.forceFlushAll();
+                List<DataBuffer.BufferedData> results = buffer.forceFlushAll();
                 if (!results.isEmpty()) {
                     processBufferedResults(pvName, results);
                 }
@@ -103,7 +105,7 @@ public class DataBufferManager {
 
     private void flushBuffer(String pvName, DataBuffer buffer) {
         try {
-            List<SubscribeDataResponse.SubscribeDataResult> results = buffer.flush();
+            List<DataBuffer.BufferedData> results = buffer.flush();
             if (!results.isEmpty()) {
                 processBufferedResults(pvName, results);
             }
@@ -112,7 +114,7 @@ public class DataBufferManager {
         }
     }
 
-    private void processBufferedResults(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results) {
+    private void processBufferedResults(String pvName, List<DataBuffer.BufferedData> results) {
         dataProcessor.processData(pvName, results);
     }
 

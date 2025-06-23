@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.ingestionstream.handler;
 
+import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -57,25 +59,28 @@ public class DataBuffer {
     }
 
     private static class BufferedDataItem {
-        private final SubscribeDataResponse.SubscribeDataResult result;
+        private final DataColumn dataColumn;
+        private final DataTimestamps dataTimestamps;
         private final Instant timestamp;
         private final long estimatedSizeBytes;
 
         public BufferedDataItem(
-                SubscribeDataResponse.SubscribeDataResult result,
+                DataColumn dataColumn,
+                DataTimestamps dataTimestamps,
                 long estimatedSizeBytes
         ) {
-            this.result = result;
+            this.dataColumn = dataColumn;
+            this.dataTimestamps = dataTimestamps;
             this.estimatedSizeBytes = estimatedSizeBytes;
 
-            // set timestamp from result's timestamp
-            //this.timestamp = Instant.now();  // commenting this out from the initial implementation, we want the age of the data
+            // set timestamp from dataTimestamps
             final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
-                    new DataTimestampsUtility.DataTimestampsModel(result.getDataTimestamps());
+                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
             this.timestamp = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
         }
 
-        public SubscribeDataResponse.SubscribeDataResult getResult() { return result; }
+        public DataColumn getDataColumn() { return dataColumn; }
+        public DataTimestamps getDataTimestamps() { return dataTimestamps; }
         public Instant getTimestamp() { return timestamp; }
         public long getEstimatedSizeBytes() { return estimatedSizeBytes; }
     }
@@ -85,11 +90,11 @@ public class DataBuffer {
         this.config = config;
     }
 
-    public void addData(SubscribeDataResponse.SubscribeDataResult result) {
+    public void addData(DataColumn dataColumn, DataTimestamps dataTimestamps) {
         writeLock.lock();
         try {
-            long estimatedSize = estimateDataSize(result);
-            BufferedDataItem item = new BufferedDataItem(result, estimatedSize);
+            long estimatedSize = estimateDataSize(dataColumn);
+            BufferedDataItem item = new BufferedDataItem(dataColumn, dataTimestamps, estimatedSize);
             
             bufferedItems.add(item);
             currentBufferSizeBytes += estimatedSize;
@@ -127,7 +132,20 @@ public class DataBuffer {
         }
     }
 
-    public List<SubscribeDataResponse.SubscribeDataResult> flush() {
+    public static class BufferedData {
+        private final DataColumn dataColumn;
+        private final DataTimestamps dataTimestamps;
+        
+        public BufferedData(DataColumn dataColumn, DataTimestamps dataTimestamps) {
+            this.dataColumn = dataColumn;
+            this.dataTimestamps = dataTimestamps;
+        }
+        
+        public DataColumn getDataColumn() { return dataColumn; }
+        public DataTimestamps getDataTimestamps() { return dataTimestamps; }
+    }
+
+    public List<BufferedData> flush() {
         writeLock.lock();
         try {
             if (bufferedItems.isEmpty()) {
@@ -135,14 +153,14 @@ public class DataBuffer {
             }
 
             Instant now = Instant.now();
-            List<SubscribeDataResponse.SubscribeDataResult> results = new ArrayList<>();
+            List<BufferedData> results = new ArrayList<>();
             List<BufferedDataItem> itemsToRemove = new ArrayList<>();
             
             // Only flush items that have reached the configured age
             for (BufferedDataItem item : bufferedItems) {
                 Duration itemAge = Duration.between(item.getTimestamp(), now);
                 if (itemAge.toNanos() >= config.getMaxItemAgeNanos()) {
-                    results.add(item.getResult());
+                    results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps()));
                     itemsToRemove.add(item);
                 }
             }
@@ -183,50 +201,48 @@ public class DataBuffer {
         }
     }
 
-    private long estimateDataSize(SubscribeDataResponse.SubscribeDataResult result) {
+    private long estimateDataSize(DataColumn dataColumn) {
         AtomicLong size = new AtomicLong(100); // Base overhead for timestamps and structure
         
-        result.getDataColumnsList().forEach(dataColumn -> {
-            size.addAndGet(dataColumn.getName().length() * 2); // String overhead
-            size.addAndGet(dataColumn.getDataValuesList().size() * 50); // Base per-value overhead
-            
-            dataColumn.getDataValuesList().forEach(dataValue -> {
-                switch (dataValue.getValueCase()) {
-                    case STRINGVALUE:
-                        size.addAndGet(dataValue.getStringValue().length() * 2);
-                        break;
-                    case BYTEARRAYVALUE:
-                        size.addAndGet(dataValue.getByteArrayValue().size());
-                        break;
-                    case ARRAYVALUE:
-                        size.addAndGet(dataValue.getArrayValue().getDataValuesCount() * 32);
-                        break;
-                    case STRUCTUREVALUE:
-                        size.addAndGet(dataValue.getStructureValue().getFieldsCount() * 64);
-                        break;
-                    case IMAGEVALUE:
-                        size.addAndGet(dataValue.getImageValue().getImage().size());
-                        break;
-                    default:
-                        size.addAndGet(8); // Primitive types
-                        break;
-                }
-            });
+        size.addAndGet(dataColumn.getName().length() * 2); // String overhead
+        size.addAndGet(dataColumn.getDataValuesList().size() * 50); // Base per-value overhead
+        
+        dataColumn.getDataValuesList().forEach(dataValue -> {
+            switch (dataValue.getValueCase()) {
+                case STRINGVALUE:
+                    size.addAndGet(dataValue.getStringValue().length() * 2);
+                    break;
+                case BYTEARRAYVALUE:
+                    size.addAndGet(dataValue.getByteArrayValue().size());
+                    break;
+                case ARRAYVALUE:
+                    size.addAndGet(dataValue.getArrayValue().getDataValuesCount() * 32);
+                    break;
+                case STRUCTUREVALUE:
+                    size.addAndGet(dataValue.getStructureValue().getFieldsCount() * 64);
+                    break;
+                case IMAGEVALUE:
+                    size.addAndGet(dataValue.getImageValue().getImage().size());
+                    break;
+                default:
+                    size.addAndGet(8); // Primitive types
+                    break;
+            }
         });
         
         return size.get();
     }
 
-    public List<SubscribeDataResponse.SubscribeDataResult> forceFlushAll() {
+    public List<BufferedData> forceFlushAll() {
         writeLock.lock();
         try {
             if (bufferedItems.isEmpty()) {
                 return new ArrayList<>();
             }
 
-            List<SubscribeDataResponse.SubscribeDataResult> results = new ArrayList<>();
+            List<BufferedData> results = new ArrayList<>();
             for (BufferedDataItem item : bufferedItems) {
-                results.add(item.getResult());
+                results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps()));
             }
 
             logger.debug("Force flushing all {} items from buffer for PV: {}, {} bytes", 

@@ -31,46 +31,44 @@ public class DataBufferTest {
 
     @Test
     public void testAgeBasedFlushing() throws InterruptedException {
-        // Create test data
-        SubscribeDataResponse.SubscribeDataResult testResult = createTestResult("test-pv", "test-value");
+        // Create test data with timestamp from 600ms ago (older than maxItemAge of 500ms)
+        long oldTimestamp = System.currentTimeMillis() - 600;
+        SubscribeDataResponse.SubscribeDataResult testResult = createTestResultWithTimestamp("test-pv", "test-value", oldTimestamp);
+        DataColumn testColumn = testResult.getDataColumns(0);
+        DataTimestamps testTimestamps = testResult.getDataTimestamps();
         
         // Add data to buffer
-        dataBuffer.addData(testResult);
+        dataBuffer.addData(testColumn, testTimestamps);
         
-        // Initially, item should not be ready to flush (age < maxItemAge)
-        assertEquals(0, dataBuffer.getItemsReadyToFlush());
-        assertFalse(dataBuffer.shouldFlush());
-        
-        // Wait for items to age beyond the configured threshold
-        Thread.sleep(600); // Wait longer than maxItemAge (500ms)
-        
-        // Now item should be ready to flush due to age
+        // Item should be ready to flush immediately due to age
         assertEquals(1, dataBuffer.getItemsReadyToFlush());
         assertTrue(dataBuffer.shouldFlush());
         
         // Flush and verify aged items are returned
-        List<SubscribeDataResponse.SubscribeDataResult> flushedResults = dataBuffer.flush();
+        List<DataBuffer.BufferedData> flushedResults = dataBuffer.flush();
         assertEquals(1, flushedResults.size());
+        assertEquals("test-pv", flushedResults.get(0).getDataColumn().getName());
         assertEquals(0, dataBuffer.getBufferedItemCount());
     }
 
     @Test
     public void testPartialFlushingByAge() throws InterruptedException {
-        // Add first item
-        dataBuffer.addData(createTestResult("test-pv", "value1"));
+        long now = System.currentTimeMillis();
         
-        // Wait for first item to age
-        Thread.sleep(600);
+        // Add first item with old timestamp (600ms ago, older than maxItemAge of 500ms)
+        SubscribeDataResponse.SubscribeDataResult result1 = createTestResultWithTimestamp("test-pv", "value1", now - 600);
+        dataBuffer.addData(result1.getDataColumns(0), result1.getDataTimestamps());
         
-        // Add second item (should not be aged yet)
-        dataBuffer.addData(createTestResult("test-pv", "value2"));
+        // Add second item with recent timestamp (100ms ago, younger than maxItemAge of 500ms)
+        SubscribeDataResponse.SubscribeDataResult result2 = createTestResultWithTimestamp("test-pv", "value2", now - 100);
+        dataBuffer.addData(result2.getDataColumns(0), result2.getDataTimestamps());
         
         // Should have 1 item ready to flush (the aged one)
         assertEquals(1, dataBuffer.getItemsReadyToFlush());
         assertTrue(dataBuffer.shouldFlush());
         
         // Flush should only return the aged item
-        List<SubscribeDataResponse.SubscribeDataResult> flushedResults = dataBuffer.flush();
+        List<DataBuffer.BufferedData> flushedResults = dataBuffer.flush();
         assertEquals(1, flushedResults.size());
         
         // One item should remain in buffer (the non-aged one)
@@ -79,17 +77,25 @@ public class DataBufferTest {
 
     @Test
     public void testForceFlushAll() {
-        // Add multiple items
-        dataBuffer.addData(createTestResult("test-pv", "value1"));
-        dataBuffer.addData(createTestResult("test-pv", "value2"));
+        long now = System.currentTimeMillis();
+        
+        // Add multiple items with recent timestamps (both younger than maxItemAge)
+        SubscribeDataResponse.SubscribeDataResult result1 = createTestResultWithTimestamp("test-pv", "value1", now - 100);
+        SubscribeDataResponse.SubscribeDataResult result2 = createTestResultWithTimestamp("test-pv", "value2", now - 200);
+        dataBuffer.addData(result1.getDataColumns(0), result1.getDataTimestamps());
+        dataBuffer.addData(result2.getDataColumns(0), result2.getDataTimestamps());
         
         // Force flush all items regardless of age
-        List<SubscribeDataResponse.SubscribeDataResult> flushedResults = dataBuffer.forceFlushAll();
+        List<DataBuffer.BufferedData> flushedResults = dataBuffer.forceFlushAll();
         assertEquals(2, flushedResults.size());
         assertEquals(0, dataBuffer.getBufferedItemCount());
     }
 
     private SubscribeDataResponse.SubscribeDataResult createTestResult(String pvName, String value) {
+        return createTestResultWithTimestamp(pvName, value, System.currentTimeMillis());
+    }
+    
+    private SubscribeDataResponse.SubscribeDataResult createTestResultWithTimestamp(String pvName, String value, long epochMillis) {
         DataValue dataValue = DataValue.newBuilder()
             .setStringValue(value)
             .build();
@@ -100,8 +106,8 @@ public class DataBufferTest {
             .build();
         
         Timestamp timestamp = Timestamp.newBuilder()
-            .setEpochSeconds(System.currentTimeMillis() / 1000)
-            .setNanoseconds(0)
+            .setEpochSeconds(epochMillis / 1000)
+            .setNanoseconds((int)((epochMillis % 1000) * 1_000_000))
             .build();
         
         SamplingClock clock = SamplingClock.newBuilder()

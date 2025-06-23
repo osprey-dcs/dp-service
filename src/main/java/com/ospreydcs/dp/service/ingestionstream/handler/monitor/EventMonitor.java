@@ -321,35 +321,32 @@ public class EventMonitor {
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
         // Buffer the data instead of processing immediately
         for (DataColumn dataColumn : result.getDataColumnsList()) {
-            bufferManager.bufferData(dataColumn.getName(), result);
+            bufferManager.bufferData(dataColumn.getName(), dataColumn, result.getDataTimestamps());
         }
     }
 
-    private void processBufferedData(String pvName, List<SubscribeDataResponse.SubscribeDataResult> results) {
-        for (SubscribeDataResponse.SubscribeDataResult result : results) {
-            processDataResultDirectly(result);
+    private void processBufferedData(String pvName, List<DataBuffer.BufferedData> results) {
+        for (DataBuffer.BufferedData bufferedData : results) {
+            processBufferedDataDirectly(bufferedData);
         }
     }
 
-    private void processDataResultDirectly(SubscribeDataResponse.SubscribeDataResult result) {
-        final DataTimestamps resultTimestamps = result.getDataTimestamps();
+    private void processBufferedDataDirectly(DataBuffer.BufferedData bufferedData) {
+        final DataColumn dataColumn = bufferedData.getDataColumn();
+        final DataTimestamps dataTimestamps = bufferedData.getDataTimestamps();
+        final String columnPvName = dataColumn.getName();
 
-        for (DataColumn dataColumn : result.getDataColumnsList()) {
-            final String columnPvName = dataColumn.getName();
+        final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnPvName);
+        if (pvConditionTrigger != null) {
+            handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
 
-            final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnPvName);
-            if (pvConditionTrigger != null) {
-                handleTriggerPVData(pvConditionTrigger, dataColumn, resultTimestamps);
+        } else if (targetPvNames().contains(columnPvName)) {
+            handleTargetPvData(dataColumn, dataTimestamps);
 
-            } else if (targetPvNames().contains(columnPvName)) {
-                handleTargetPvData(dataColumn, resultTimestamps);
-
-            } else {
-                // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
-                final String errorMsg = "unexpected PV received by EventMonitor: " + columnPvName;
-                handleError(errorMsg);
-                return;
-            }
+        } else {
+            // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
+            final String errorMsg = "unexpected PV received by EventMonitor: " + columnPvName;
+            handleError(errorMsg);
         }
     }
 
