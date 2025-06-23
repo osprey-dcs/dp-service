@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.ingestionstream.handler;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,10 +61,18 @@ public class DataBuffer {
         private final Instant timestamp;
         private final long estimatedSizeBytes;
 
-        public BufferedDataItem(SubscribeDataResponse.SubscribeDataResult result, long estimatedSizeBytes) {
+        public BufferedDataItem(
+                SubscribeDataResponse.SubscribeDataResult result,
+                long estimatedSizeBytes
+        ) {
             this.result = result;
-            this.timestamp = Instant.now();
             this.estimatedSizeBytes = estimatedSizeBytes;
+
+            // set timestamp from result's timestamp
+            //this.timestamp = Instant.now();  // commenting this out from the initial implementation, we want the age of the data
+            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
+                    new DataTimestampsUtility.DataTimestampsModel(result.getDataTimestamps());
+            this.timestamp = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
         }
 
         public SubscribeDataResponse.SubscribeDataResult getResult() { return result; }
