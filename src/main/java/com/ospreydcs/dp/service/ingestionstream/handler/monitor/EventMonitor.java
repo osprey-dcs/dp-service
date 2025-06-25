@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.monitor;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
@@ -26,6 +27,7 @@ public class EventMonitor {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
+    private static final long MAX_MESSAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB message size limit
 
     // instance variables
     protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
@@ -49,6 +51,8 @@ public class EventMonitor {
         private final Timestamp triggerTimestamp;
         private final PvConditionTrigger trigger;
         private final DataEventOperation operation;
+        private final Instant beginTime;
+        private final Instant endTime;
 
         public Event(
                 Timestamp triggerTimestamp,
@@ -58,6 +62,20 @@ public class EventMonitor {
             this.triggerTimestamp = triggerTimestamp;
             this.trigger = trigger;
             this.operation = operation;
+
+            // set begin/end times from operation offset and duration
+            final Instant triggerInstant = TimestampUtility.instantFromTimestamp(triggerTimestamp);
+            beginTime = triggerInstant.plusNanos(operation.getWindow().getTimeInterval().getOffset());
+            endTime = beginTime.plusNanos(operation.getWindow().getTimeInterval().getDuration());
+        }
+
+        public boolean isTargetedByData(DataBuffer.BufferedData bufferedData) {
+            // check if data item time targets this event (data begin time is before event end time and
+            // data end time is after or equal to the event begin time)
+            final Instant dataFirstInstant = bufferedData.getFirstInstant();
+            final Instant dataLastInstant = bufferedData.getLastInstant();
+            return ((dataFirstInstant.isBefore(this.endTime))
+                    && (dataLastInstant.equals(this.beginTime) || (dataLastInstant.isAfter(this.beginTime))));
         }
     }
 
@@ -291,20 +309,25 @@ public class EventMonitor {
                     final String errorMsg = "PvConditionTrigger error getting timestamp for PV: " + columnPvName;
                     handleError(errorMsg);
                 }
-                addEvent(triggerTimestamp, trigger, dataValue);
+                handleTriggeredEvent(triggerTimestamp, trigger, dataValue);
             }
 
             columnValueIndex = columnValueIndex + 1;
         }
     }
 
-    private void addEvent(
+    private void handleTriggeredEvent(
             Timestamp triggerTimestamp,
             PvConditionTrigger trigger,
             DataValue dataValue
     ) {
-        final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation());
-        this.triggeredEvents.add(event);
+        // only add an event to triggered event list if the request includes a DataOperation
+        if (requestSubscription.hasOperation()) {
+            final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation());
+            this.triggeredEvents.add(event);
+        }
+
+        // send an event message in the response stream
         IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
                 triggerTimestamp,
                 trigger,
@@ -313,9 +336,73 @@ public class EventMonitor {
     }
 
     private void handleTargetPvData(
-            DataColumn dataColumn,
-            DataTimestamps resultTimestamps
+            String pvName,
+            List<DataBuffer.BufferedData> bufferedDataList
     ) {
+        if (bufferedDataList.isEmpty()) {
+            return;
+        }
+
+        // iterate through each triggered event, dispatching messages in the response stream for data targeting that event
+        for (Event event : this.triggeredEvents) {
+
+            List<DataBucket> currentDataBuckets = new ArrayList<>();
+            long currentMessageSize = 0;
+            long baseMessageOverhead = 200; // Base overhead for EventData message structure
+
+            // iterate through each data item, check if the data time targets the event
+            for (DataBuffer.BufferedData bufferedData : bufferedDataList) {
+
+                // only dispatch bufferedData in response stream if the data time targets this Event
+                if ( ! event.isTargetedByData(bufferedData)) {
+                    break;
+                }
+
+                // Create DataBucket for this BufferedData item
+                DataBucket dataBucket = DataBucket.newBuilder()
+                        .setDataTimestamps(bufferedData.getDataTimestamps())
+                        .setDataColumn(bufferedData.getDataColumn())
+                        .build();
+
+                long bucketSize = bufferedData.getEstimatedSize();
+
+                // Check if adding this bucket would exceed message size limit
+                if (!currentDataBuckets.isEmpty() &&
+                        (currentMessageSize + bucketSize + baseMessageOverhead) > MAX_MESSAGE_SIZE_BYTES) {
+
+                    // Send current batch and start a new one
+                    sendEventDataMessage(currentDataBuckets);
+                    currentDataBuckets.clear();
+                    currentMessageSize = 0;
+                }
+
+                currentDataBuckets.add(dataBucket);
+                currentMessageSize += bucketSize;
+
+                logger.debug("Added DataBucket for PV: {}, current message size: {} bytes, {} buckets",
+                        pvName, currentMessageSize, currentDataBuckets.size());
+            }
+
+            // Send any remaining data buckets
+            if (!currentDataBuckets.isEmpty()) {
+                sendEventDataMessage(currentDataBuckets);
+            }
+        }
+    }
+
+    private void sendEventDataMessage(List<DataBucket> dataBuckets) {
+        if (dataBuckets.isEmpty()) {
+            return;
+        }
+
+        // Create EventData with Event placeholder and DataBuckets
+        SubscribeDataEventResponse.EventData eventData = SubscribeDataEventResponse.EventData.newBuilder()
+                .addAllDataBuckets(dataBuckets)
+                .build();
+
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseEventData(eventData, responseObserver);
+        
+        logger.debug("Sent EventData message with {} data buckets", dataBuckets.size());
     }
 
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
@@ -326,26 +413,22 @@ public class EventMonitor {
     }
 
     private void processBufferedData(String pvName, List<DataBuffer.BufferedData> results) {
-        for (DataBuffer.BufferedData bufferedData : results) {
-            processBufferedDataDirectly(bufferedData);
-        }
-    }
 
-    private void processBufferedDataDirectly(DataBuffer.BufferedData bufferedData) {
-        final DataColumn dataColumn = bufferedData.getDataColumn();
-        final DataTimestamps dataTimestamps = bufferedData.getDataTimestamps();
-        final String columnPvName = dataColumn.getName();
-
-        final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnPvName);
+        // handle trigger PVs
+        final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(pvName);
         if (pvConditionTrigger != null) {
-            handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
+            for (DataBuffer.BufferedData bufferedData : results) {
+                final DataColumn dataColumn = bufferedData.getDataColumn();
+                final DataTimestamps dataTimestamps = bufferedData.getDataTimestamps();
+                handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
+            }
 
-        } else if (targetPvNames().contains(columnPvName)) {
-            handleTargetPvData(dataColumn, dataTimestamps);
-
+        } else if (targetPvNames().contains(pvName)){
+            // handle target PVs
+            handleTargetPvData(pvName, results);
         } else {
             // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
-            final String errorMsg = "unexpected PV received by EventMonitor: " + columnPvName;
+            final String errorMsg = "unexpected PV received by EventMonitor: " + pvName;
             handleError(errorMsg);
         }
     }

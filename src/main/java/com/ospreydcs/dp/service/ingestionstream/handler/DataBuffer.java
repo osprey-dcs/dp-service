@@ -135,14 +135,37 @@ public class DataBuffer {
     public static class BufferedData {
         private final DataColumn dataColumn;
         private final DataTimestamps dataTimestamps;
+        private final long estimatedSize;
+        private final Instant firstInstant;
+        private final Instant lastInstant;
         
-        public BufferedData(DataColumn dataColumn, DataTimestamps dataTimestamps) {
+        public BufferedData(
+                DataColumn dataColumn,
+                DataTimestamps dataTimestamps,
+                long estimatedSize
+        ) {
             this.dataColumn = dataColumn;
             this.dataTimestamps = dataTimestamps;
+            this.estimatedSize = estimatedSize;
+
+            // set begin / end times from dataTimestamps
+            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
+                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
+            firstInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
+            lastInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getLastTimestamp());
         }
         
         public DataColumn getDataColumn() { return dataColumn; }
         public DataTimestamps getDataTimestamps() { return dataTimestamps; }
+        public long getEstimatedSize() { return estimatedSize; }
+
+        public Instant getFirstInstant() {
+            return firstInstant;
+        }
+
+        public Instant getLastInstant() {
+            return lastInstant;
+        }
     }
 
     public List<BufferedData> flush() {
@@ -160,7 +183,7 @@ public class DataBuffer {
             for (BufferedDataItem item : bufferedItems) {
                 Duration itemAge = Duration.between(item.getTimestamp(), now);
                 if (itemAge.toNanos() >= config.getMaxItemAgeNanos()) {
-                    results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps()));
+                    results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps(), item.getEstimatedSizeBytes()));
                     itemsToRemove.add(item);
                 }
             }
@@ -242,7 +265,7 @@ public class DataBuffer {
 
             List<BufferedData> results = new ArrayList<>();
             for (BufferedDataItem item : bufferedItems) {
-                results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps()));
+                results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps(), item.getEstimatedSizeBytes()));
             }
 
             logger.debug("Force flushing all {} items from buffer for PV: {}, {} bytes", 

@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingestionstream.service;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -128,6 +129,17 @@ public class IngestionStreamServiceImpl
     ) {
         final SubscribeDataEventResponse response
                 = subscribeDataEventResponseEvent(triggerTimestamp, trigger, dataValue);
+        responseObserver.onNext(response);
+    }
+
+    public static void sendSubscribeDataEventResponseEventData(
+            SubscribeDataEventResponse.EventData eventData,
+            StreamObserver<SubscribeDataEventResponse> responseObserver
+    ) {
+        final SubscribeDataEventResponse response = SubscribeDataEventResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setEventData(eventData)
+                .build();
         responseObserver.onNext(response);
     }
 
