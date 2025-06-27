@@ -25,9 +25,15 @@ import java.util.*;
 
 public class EventMonitor {
 
+    // constants
+    private static final long MAX_MESSAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB message size limit
+    private static final long DEFAULT_FLUSH_INTERVAL = 500L; // 500ms flush interval
+    private static final long DEFAULT_MAX_BUFFER_BYTES = 512 * 1024L; // 512KB max buffer size
+    private static final int DEFAULT_MAX_BUFFER_ITEMS = 50; // 50 max items
+    private static final long DEFAULT_BUFFER_AGE_LIMIT_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(2); // 2 seconds max item age
+
     // static variables
     private static final Logger logger = LogManager.getLogger();
-    private static final long MAX_MESSAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB message size limit
 
     // instance variables
     protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
@@ -84,22 +90,34 @@ public class EventMonitor {
             StreamObserver<SubscribeDataEventResponse> responseObserver,
             EventMonitorSubscriptionManager subscriptionManager
     ) {
-        this(requestSubscription, responseObserver, subscriptionManager, createDefaultBufferConfig());
-    }
+        // use negative offset value from request to determine buffer data age limit
+        long negativeOffset = 0L;
+        if (requestSubscription.hasOperation()) {
+            final DataEventOperation operation = requestSubscription.getOperation();
+            if (operation.hasWindow()) {
+                final DataEventOperation.DataEventWindow window = operation.getWindow();
+                if (window.hasTimeInterval()) {
+                    final DataEventOperation.DataEventWindow.TimeInterval interval = window.getTimeInterval();
+                    negativeOffset = Math.abs(interval.getOffset());
+                }
+            }
+        }
+        final long bufferAgeLimit = Math.max(negativeOffset, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
 
-    public EventMonitor(
-            SubscribeDataEventRequest.NewSubscription requestSubscription,
-            StreamObserver<SubscribeDataEventResponse> responseObserver,
-            EventMonitorSubscriptionManager subscriptionManager,
-            DataBuffer.DataBufferConfig bufferConfig
-    ) {
+        // create buffer config using age limit
+        final DataBuffer.DataBufferConfig dataBufferConfig = new DataBuffer.DataBufferConfig(
+                DEFAULT_FLUSH_INTERVAL,
+                DEFAULT_MAX_BUFFER_BYTES,
+                DEFAULT_MAX_BUFFER_ITEMS,
+                bufferAgeLimit);
+
         this.requestSubscription = requestSubscription;
         this.responseObserver = responseObserver;
         this.subscriptionManager = subscriptionManager;
-        
+
         // Create buffer manager with callback to process data
-        this.bufferManager = new DataBufferManager(this::processBufferedData, bufferConfig);
-        
+        this.bufferManager = new DataBufferManager(this::processBufferedData, dataBufferConfig);
+
         this.initialize(requestSubscription);
     }
 
