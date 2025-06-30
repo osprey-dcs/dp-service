@@ -31,6 +31,7 @@ import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
@@ -55,6 +56,7 @@ import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.commons.collections4.list.TreeList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
@@ -1307,7 +1309,8 @@ public abstract class GrpcIntegrationTestBase {
 
     private IngestionStreamTestBase.SubscribeDataEventCall sendSubscribeDataEvent(
             SubscribeDataEventRequest request,
-            int expectedResponseCount,
+            int expectedEventResponseCount,
+            int expectedDataBucketCount,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -1315,7 +1318,8 @@ public abstract class GrpcIntegrationTestBase {
                 DpIngestionStreamServiceGrpc.newStub(ingestionStreamChannel);
 
         final IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver =
-                new IngestionStreamTestBase.SubscribeDataEventResponseObserver(expectedResponseCount);
+                new IngestionStreamTestBase.SubscribeDataEventResponseObserver(
+                        expectedEventResponseCount + expectedDataBucketCount);
 
         // invoke subscribeDataEvent() API method, get handle to request stream
         StreamObserver<SubscribeDataEventRequest> requestObserver = asyncStub.subscribeDataEvent(responseObserver);
@@ -1340,20 +1344,26 @@ public abstract class GrpcIntegrationTestBase {
 
     protected IngestionStreamTestBase.SubscribeDataEventCall initiateSubscribeDataEventRequest(
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
-            int expectedResponseCount,
+            int expectedEventResponseCount,
+            int expectedDataBucketCount,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final SubscribeDataEventRequest request = IngestionStreamTestBase.buildSubscribeDataEventRequest(requestParams);
-        return sendSubscribeDataEvent(request, expectedResponseCount, expectReject, expectedRejectMessage);
+        return sendSubscribeDataEvent(
+                request,
+                expectedEventResponseCount,
+                expectedDataBucketCount,
+                expectReject,
+                expectedRejectMessage);
     }
 
     protected void verifySubscribeDataEventResponse(
             IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver,
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,
             Map<String, IngestionStreamInfo> ingestionValidationMap,
-            int expectedResponseCount,
-            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses,
+            Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses
     ) {
         // wait for completion of API method response stream and confirm not in error state
         responseObserver.awaitResponseLatch();
@@ -1361,11 +1371,10 @@ public abstract class GrpcIntegrationTestBase {
 
         // get subscription responses for verification of expected contents
         final List<SubscribeDataEventResponse> responseList = responseObserver.getResponseList();
-        assertEquals(expectedResponseCount, responseList.size());
 
         // create lists of different response types for further verification
         final Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> actualEventResponses = new HashMap<>();
-        final List<SubscribeDataEventResponse.EventData> eventDataResponses = new ArrayList<>();
+        Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> actualEventDataResponses = new HashMap<>();
         responseList.forEach(response -> {
             switch (response.getResultCase()) {
                 case EXCEPTIONALRESULT -> {
@@ -1377,12 +1386,28 @@ public abstract class GrpcIntegrationTestBase {
                 case EVENT -> {
                     final SubscribeDataEventResponse.Event event = response.getEvent();
                     final PvConditionTrigger trigger = event.getTrigger();
-                    List<SubscribeDataEventResponse.Event> actualTriggerEvents =
+                    final List<SubscribeDataEventResponse.Event> actualTriggerEvents =
                             actualEventResponses.computeIfAbsent(trigger, k -> new ArrayList<>());
                     actualTriggerEvents.add(event);
                 }
                 case EVENTDATA -> {
-                    eventDataResponses.add(response.getEventData());
+                    final SubscribeDataEventResponse.EventData eventData = response.getEventData();
+                    assertTrue(eventData.hasEvent());
+                    final SubscribeDataEventResponse.Event event = eventData.getEvent();
+                    final Map<String, List<Instant>> actualEventBucketTimesMap =
+                            actualEventDataResponses.computeIfAbsent(event, k -> new HashMap<>());
+                    final List<DataBucket> eventBuckets = eventData.getDataBucketsList();
+                    for (DataBucket dataBucket : eventBuckets) {
+                        final DataColumn bucketColumn = dataBucket.getDataColumn();
+                        final DataTimestamps bucketDataTimestamps = dataBucket.getDataTimestamps();
+                        final DataTimestampsUtility.DataTimestampsModel bucketDataTimestampsModel =
+                                new DataTimestampsUtility.DataTimestampsModel(bucketDataTimestamps);
+                        final String bucketPvName = bucketColumn.getName();
+                        final List<Instant> bucketInstants =
+                                actualEventBucketTimesMap.computeIfAbsent(bucketPvName, k -> new TreeList<>());
+                        bucketInstants.add(
+                                TimestampUtility.instantFromTimestamp(bucketDataTimestampsModel.getFirstTimestamp()));
+                    }
                 }
                 case RESULT_NOT_SET -> {
                     fail("received response with result not set");
@@ -1390,14 +1415,33 @@ public abstract class GrpcIntegrationTestBase {
             }
         });
 
-        // check Event responses against expected, want to just compare maps here but the keys can be ordered differently
-        // which causes assertEquals() to fail
-        //assertEquals(expectedEventResponses, actualEventResponses);
+        // check Event responses against expected
+        //assertEquals(expectedEventResponses, actualEventResponses); // maps in different order
         assertEquals(expectedEventResponses.size(), actualEventResponses.size());
         for (Map.Entry<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> entry : expectedEventResponses.entrySet()) {
             assertTrue(actualEventResponses.containsKey(entry.getKey()));
             assertEquals(entry.getValue().size(), actualEventResponses.get(entry.getKey()).size());
             assertEquals(entry.getValue(), actualEventResponses.get(entry.getKey()));
+        }
+
+        // check DataEvent responses against expected
+        if (expectedEventDataResponses != null && !expectedEventDataResponses.isEmpty()) {
+            //assertEquals(expectedEventDataResponses, actualEventDataResponses); // maps in different order
+            for (Map.Entry<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> entry : expectedEventDataResponses.entrySet()) {
+                assertTrue(actualEventDataResponses.containsKey(entry.getKey()));
+                assertEquals(entry.getValue().size(), actualEventDataResponses.get(entry.getKey()).size());
+                final Map<String, List<Instant>> expectedPvMap = entry.getValue();
+                final Map<String, List<Instant>> actualPvMap = actualEventDataResponses.get(entry.getKey());
+                for (var expectedPvEntry : expectedPvMap.entrySet()) {
+                    assertTrue(actualPvMap.containsKey(expectedPvEntry.getKey()));
+                    assertEquals(expectedPvEntry.getValue().size(), actualPvMap.get(expectedPvEntry.getKey()).size());
+                    final List<Instant> expectedInstantList = expectedPvEntry.getValue();
+                    final List<Instant> actualInstantList = actualPvMap.get(expectedPvEntry.getKey());
+                    for (Instant expectedInstant : expectedInstantList) {
+                        assertTrue(actualInstantList.contains(expectedInstant));
+                    }
+                }
+            }
         }
     }
 

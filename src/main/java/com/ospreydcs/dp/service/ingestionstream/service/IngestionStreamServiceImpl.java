@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.ingestionstream.service;
 
-import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -80,17 +79,24 @@ public class IngestionStreamServiceImpl
                 .build();
     }
 
+    public static SubscribeDataEventResponse.Event newEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
+            DataValue dataValue
+    ) {
+        return SubscribeDataEventResponse.Event.newBuilder()
+                .setEventTime(triggerTimestamp)
+                .setTrigger(trigger)
+                .setDataValue(dataValue)
+                .build();
+    }
+
     private static SubscribeDataEventResponse subscribeDataEventResponseEvent(
             Timestamp triggerTimestamp,
             PvConditionTrigger trigger,
             DataValue dataValue
     ) {
-        final SubscribeDataEventResponse.Event event =
-                SubscribeDataEventResponse.Event.newBuilder()
-                        .setEventTime(triggerTimestamp)
-                        .setTrigger(trigger)
-                        .setDataValue(dataValue)
-                        .build();
+        final SubscribeDataEventResponse.Event event = newEvent(triggerTimestamp, trigger, dataValue);
 
         return SubscribeDataEventResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())

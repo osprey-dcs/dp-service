@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingestionstream;
 
+import com.ospreydcs.dp.grpc.v1.ingestionstream.DataEventOperation;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
@@ -18,8 +19,8 @@ import static org.junit.Assert.fail;
 public class IngestionStreamTestBase {
 
     public record SubscribeDataEventRequestParams(
-            List<PvConditionTrigger> triggers
-    ) {
+            List<PvConditionTrigger> triggers,
+            List<String> targetPvs, Long offset, Long duration) {
     }
 
     public record SubscribeDataEventCall(
@@ -60,9 +61,9 @@ public class IngestionStreamTestBase {
 
         public void awaitResponseLatch() {
             try {
-                final boolean await = responseLatch.await(1, TimeUnit.MINUTES);
+                final boolean await = responseLatch.await(10, TimeUnit.SECONDS);
                 if ( ! await) {
-                    fail("timed out waiting for response latch");
+                    fail("timed out waiting for response latch count: " + responseLatch.getCount());
                 }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for responseLatch";
@@ -91,26 +92,43 @@ public class IngestionStreamTestBase {
         @Override
         public void onNext(SubscribeDataEventResponse response) {
 
-            if (response.hasExceptionalResult()) {
+            switch (response.getResultCase()) {
 
-                final String errorMsg = response.getExceptionalResult().getMessage();
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
+                case EXCEPTIONALRESULT -> {
+                    final String errorMsg = response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
 
-                if (ackLatch.getCount() > 0) {
-                    // decrement ackLatch if initial response in stream
+                    if (ackLatch.getCount() > 0) {
+                        // decrement ackLatch if initial response in stream
+                        ackLatch.countDown();
+                    }
+                }
+
+                case ACK -> {
+                    // decrement ackLatch for ack response
                     ackLatch.countDown();
                 }
 
-            } else if (response.hasAck()) {
-                // decrement ackLatch for ack response
-                ackLatch.countDown();
+                case EVENT -> {
+                    // decrement responseLatch for Event response
+                    responseList.add(response);
+                    responseLatch.countDown();
+                }
 
-            } else {
-                // decrement responseLatch for all other responses
-                responseList.add(response);
-                responseLatch.countDown();
+                case EVENTDATA -> {
+                    // decrement responseLatch by number of buckets in EventData response
+                    responseList.add(response);
+                    final SubscribeDataEventResponse.EventData eventData = response.getEventData();
+                    for (int i = 0 ; i < eventData.getDataBucketsCount() ; ++i) {
+                        responseLatch.countDown();
+                    }
+                }
+
+                case RESULT_NOT_SET -> {
+                    fail("result case not set");
+                }
             }
         }
 
@@ -131,7 +149,6 @@ public class IngestionStreamTestBase {
 
     }
 
-
     public static SubscribeDataEventRequest buildSubscribeDataEventRequest(
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams
     ) {
@@ -141,6 +158,24 @@ public class IngestionStreamTestBase {
         // add triggers to request
         for (PvConditionTrigger trigger : requestParams.triggers) {
             newSubscriptionBuilder.addTriggers(trigger);
+        }
+
+        // add DataEventOperation to request
+        if (requestParams.targetPvs() != null) {
+            DataEventOperation.DataEventWindow.TimeInterval timeInterval =
+                    DataEventOperation.DataEventWindow.TimeInterval.newBuilder()
+                            .setOffset(requestParams.offset)
+                            .setDuration(requestParams.duration)
+                            .build();
+            DataEventOperation.DataEventWindow dataEventWindow =
+                    DataEventOperation.DataEventWindow.newBuilder()
+                            .setTimeInterval(timeInterval)
+                            .build();
+            DataEventOperation dataEventOperation = DataEventOperation.newBuilder()
+                    .addAllTargetPvs(requestParams.targetPvs())
+                    .setWindow(dataEventWindow)
+                    .build();
+            newSubscriptionBuilder.setOperation(dataEventOperation);
         }
 
         newSubscriptionBuilder.build();

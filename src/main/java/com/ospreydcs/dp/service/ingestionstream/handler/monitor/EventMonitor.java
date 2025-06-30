@@ -57,22 +57,29 @@ public class EventMonitor {
         private final Timestamp triggerTimestamp;
         private final PvConditionTrigger trigger;
         private final DataEventOperation operation;
+        private final DataValue dataValue;
         private final Instant beginTime;
         private final Instant endTime;
+        private final SubscribeDataEventResponse.Event event;
 
         public Event(
                 Timestamp triggerTimestamp,
                 PvConditionTrigger trigger,
-                DataEventOperation operation
+                DataEventOperation operation,
+                DataValue dataValue
         ) {
             this.triggerTimestamp = triggerTimestamp;
             this.trigger = trigger;
             this.operation = operation;
+            this.dataValue = dataValue;
 
             // set begin/end times from operation offset and duration
             final Instant triggerInstant = TimestampUtility.instantFromTimestamp(triggerTimestamp);
             beginTime = triggerInstant.plusNanos(operation.getWindow().getTimeInterval().getOffset());
             endTime = beginTime.plusNanos(operation.getWindow().getTimeInterval().getDuration());
+
+            // create a protobuf Event object for DataEvent responses
+            event = IngestionStreamServiceImpl.newEvent(triggerTimestamp, trigger, dataValue);
         }
 
         public boolean isTargetedByData(DataBuffer.BufferedData bufferedData) {
@@ -102,7 +109,8 @@ public class EventMonitor {
                 }
             }
         }
-        final long bufferAgeLimit = Math.max(negativeOffset, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
+        long bufferAgeLimit = Math.max(negativeOffset, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
+//        bufferAgeLimit = bufferAgeLimit + DataBuffer.DataBufferConfig.secondsToNanos(10);
 
         // create buffer config using age limit
         final DataBuffer.DataBufferConfig dataBufferConfig = new DataBuffer.DataBufferConfig(
@@ -341,7 +349,7 @@ public class EventMonitor {
     ) {
         // only add an event to triggered event list if the request includes a DataOperation
         if (requestSubscription.hasOperation()) {
-            final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation());
+            final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation(), dataValue);
             this.triggeredEvents.add(event);
         }
 
@@ -373,7 +381,7 @@ public class EventMonitor {
 
                 // only dispatch bufferedData in response stream if the data time targets this Event
                 if ( ! event.isTargetedByData(bufferedData)) {
-                    break;
+                    continue;
                 }
 
                 // Create DataBucket for this BufferedData item
@@ -389,7 +397,7 @@ public class EventMonitor {
                         (currentMessageSize + bucketSize + baseMessageOverhead) > MAX_MESSAGE_SIZE_BYTES) {
 
                     // Send current batch and start a new one
-                    sendEventDataMessage(currentDataBuckets);
+                    sendDataEventMessage(event.event, currentDataBuckets);
                     currentDataBuckets.clear();
                     currentMessageSize = 0;
                 }
@@ -403,18 +411,23 @@ public class EventMonitor {
 
             // Send any remaining data buckets
             if (!currentDataBuckets.isEmpty()) {
-                sendEventDataMessage(currentDataBuckets);
+                sendDataEventMessage(event.event, currentDataBuckets);
             }
         }
     }
 
-    private void sendEventDataMessage(List<DataBucket> dataBuckets) {
+    private void sendDataEventMessage(
+            SubscribeDataEventResponse.Event event,
+            List<DataBucket> dataBuckets
+    ) {
         if (dataBuckets.isEmpty()) {
+            logger.debug("sendDataEventMessage received empty dataBuckets list");
             return;
         }
 
         // Create EventData with Event placeholder and DataBuckets
         SubscribeDataEventResponse.EventData eventData = SubscribeDataEventResponse.EventData.newBuilder()
+                .setEvent(event)
                 .addAllDataBuckets(dataBuckets)
                 .build();
 

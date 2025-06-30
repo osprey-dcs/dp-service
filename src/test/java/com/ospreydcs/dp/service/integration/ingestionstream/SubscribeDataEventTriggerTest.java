@@ -19,7 +19,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertTrue;
 
-public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
+public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -69,7 +69,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                 // create params object (including trigger params list) for building protobuf request from params
                 requestParams1 =
-                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
                 final boolean expectReject = false;
@@ -78,7 +78,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         initiateSubscribeDataEventRequest(
                                 requestParams1,
                                 expectedResponseCount1,
-                                expectReject,
+                                0, expectReject,
                                 expectedRejectMessage);
             }
 
@@ -163,7 +163,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                 // create params object (including trigger params list) for building protobuf request from params
                 requestParams2 =
-                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
                 final boolean expectReject = false;
@@ -172,7 +172,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         initiateSubscribeDataEventRequest(
                                 requestParams2,
                                 expectedResponseCount2,
-                                expectReject,
+                                0, expectReject,
                                 expectedRejectMessage);
             }
 
@@ -277,7 +277,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
                 // create params object (including trigger params list) for building protobuf request from params
                 requestParams3 =
-                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
 
                 // call subscribeDataEvent() to initiate subscription before running ingestion
                 final boolean expectReject = false;
@@ -286,7 +286,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                         initiateSubscribeDataEventRequest(
                                 requestParams3,
                                 expectedResponseCount3,
-                                expectReject,
+                                0, expectReject,
                                 expectedRejectMessage);
             }
 
@@ -305,8 +305,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver(),
                     requestParams1,
                     ingestionScenarioResult.validationMap(),
-                    expectedResponseCount1,
-                    expectedEventResponses1);
+                    expectedEventResponses1, null);
             subscribeDataEventCall.requestObserver().onCompleted();
 
             // request 2: verify subscribeDataEvent() responses and close request stream
@@ -314,8 +313,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
                     requestParams2,
                     ingestionScenarioResult.validationMap(),
-                    expectedResponseCount2,
-                    expectedEventResponses2);
+                    expectedEventResponses2, null);
             subscribeDataEventCall2.requestObserver().onCompleted();
 
             // request 3: verify subscribeDataEvent() responses and close request stream
@@ -323,8 +321,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall3.responseObserver(),
                     requestParams3,
                     ingestionScenarioResult.validationMap(),
-                    expectedResponseCount3,
-                    expectedEventResponses3);
+                    expectedEventResponses3, null);
             subscribeDataEventCall3.requestObserver().onCompleted();
         }
     }
@@ -342,7 +339,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
             // create params object (including trigger params list) for building protobuf request from params
             requestParams =
-                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(emptyTriggersList);
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(emptyTriggersList, null, null, null);
 
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final int expectedResponseCount = 0;
@@ -352,7 +349,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     initiateSubscribeDataEventRequest(
                             requestParams,
                             expectedResponseCount,
-                            expectReject,
+                            0, expectReject,
                             expectedRejectMessage);
         }
 
@@ -377,7 +374,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
             // create params object (including trigger params list) for building protobuf request from params
             requestParams =
-                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
 
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final int expectedResponseCount = 0;
@@ -387,7 +384,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     initiateSubscribeDataEventRequest(
                             requestParams,
                             expectedResponseCount,
-                            expectReject,
+                            0, expectReject,
                             expectedRejectMessage);
         }
 
@@ -412,7 +409,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
 
             // create params object (including trigger params list) for building protobuf request from params
             requestParams =
-                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers);
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
 
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final int expectedResponseCount = 0;
@@ -422,7 +419,7 @@ public class SubscribeDataEventTest extends GrpcIntegrationTestBase {
                     initiateSubscribeDataEventRequest(
                             requestParams,
                             expectedResponseCount,
-                            expectReject,
+                            0, expectReject,
                             expectedRejectMessage);
         }
 
