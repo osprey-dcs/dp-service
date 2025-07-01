@@ -327,7 +327,7 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testSubscribeDataEventReject() {
+    public void testSubscribeDataEventTriggerReject() {
 
         // reject reason: empty list of triggers
         {

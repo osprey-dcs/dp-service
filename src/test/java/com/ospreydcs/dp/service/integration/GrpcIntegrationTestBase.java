@@ -1333,6 +1333,7 @@ public abstract class GrpcIntegrationTestBase {
         responseObserver.awaitAckLatch();
 
         if (expectReject) {
+            assertFalse(expectedRejectMessage.isBlank());
             assertTrue(responseObserver.isError());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {

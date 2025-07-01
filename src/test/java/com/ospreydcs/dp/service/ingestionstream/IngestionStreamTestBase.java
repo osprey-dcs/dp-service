@@ -10,6 +10,7 @@ import io.grpc.stub.StreamObserver;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,10 +19,67 @@ import static org.junit.Assert.fail;
 
 public class IngestionStreamTestBase {
 
-    public record SubscribeDataEventRequestParams(
-            List<PvConditionTrigger> triggers,
-            List<String> targetPvs, Long offset, Long duration) {
-    }
+    public static final class SubscribeDataEventRequestParams {
+        private final List<PvConditionTrigger> triggers;
+        private final List<String> targetPvs;
+        private final Long offset;
+        private final Long duration;
+        public boolean noWindow = false;
+
+        public SubscribeDataEventRequestParams(
+                List<PvConditionTrigger> triggers,
+                List<String> targetPvs,
+                Long offset,
+                Long duration
+        ) {
+            this.triggers = triggers;
+            this.targetPvs = targetPvs;
+            this.offset = offset;
+            this.duration = duration;
+        }
+
+        public List<PvConditionTrigger> triggers() {
+            return triggers;
+        }
+
+        public List<String> targetPvs() {
+            return targetPvs;
+        }
+
+        public Long offset() {
+            return offset;
+        }
+
+        public Long duration() {
+            return duration;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == this) return true;
+            if (obj == null || obj.getClass() != this.getClass()) return false;
+            var that = (SubscribeDataEventRequestParams) obj;
+            return Objects.equals(this.triggers, that.triggers) &&
+                    Objects.equals(this.targetPvs, that.targetPvs) &&
+                    Objects.equals(this.offset, that.offset) &&
+                    Objects.equals(this.duration, that.duration);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(triggers, targetPvs, offset, duration);
+        }
+
+        @Override
+        public String toString() {
+            return "SubscribeDataEventRequestParams[" +
+                    "triggers=" + triggers + ", " +
+                    "targetPvs=" + targetPvs + ", " +
+                    "offset=" + offset + ", " +
+                    "duration=" + duration + ']';
+        }
+
+        }
 
     public record SubscribeDataEventCall(
             StreamObserver<SubscribeDataEventRequest> requestObserver,
@@ -162,19 +220,30 @@ public class IngestionStreamTestBase {
 
         // add DataEventOperation to request
         if (requestParams.targetPvs() != null) {
-            DataEventOperation.DataEventWindow.TimeInterval timeInterval =
-                    DataEventOperation.DataEventWindow.TimeInterval.newBuilder()
-                            .setOffset(requestParams.offset)
-                            .setDuration(requestParams.duration)
-                            .build();
-            DataEventOperation.DataEventWindow dataEventWindow =
-                    DataEventOperation.DataEventWindow.newBuilder()
-                            .setTimeInterval(timeInterval)
-                            .build();
-            DataEventOperation dataEventOperation = DataEventOperation.newBuilder()
-                    .addAllTargetPvs(requestParams.targetPvs())
-                    .setWindow(dataEventWindow)
-                    .build();
+            DataEventOperation dataEventOperation;
+
+            if (requestParams.noWindow) {
+                // causes request to be built with out DataEventWindow for reject testing
+                dataEventOperation = DataEventOperation.newBuilder()
+                        .addAllTargetPvs(requestParams.targetPvs())
+                        .build();
+
+            } else {
+                // regular request handling
+                DataEventOperation.DataEventWindow.TimeInterval timeInterval =
+                        DataEventOperation.DataEventWindow.TimeInterval.newBuilder()
+                                .setOffset(requestParams.offset)
+                                .setDuration(requestParams.duration)
+                                .build();
+                DataEventOperation.DataEventWindow dataEventWindow =
+                        DataEventOperation.DataEventWindow.newBuilder()
+                                .setTimeInterval(timeInterval)
+                                .build();
+                dataEventOperation = DataEventOperation.newBuilder()
+                        .addAllTargetPvs(requestParams.targetPvs())
+                        .setWindow(dataEventWindow)
+                        .build();
+            }
             newSubscriptionBuilder.setOperation(dataEventOperation);
         }
 

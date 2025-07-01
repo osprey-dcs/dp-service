@@ -333,5 +333,270 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
     }
 
-    
+    @Test
+    public void testSubscribeDataEventDataReject() {
+
+        // negative subscribeDataEvent() test: rejected because operation list of target PV names is empty
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses = new HashMap<>();
+            Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses = new HashMap<>();
+            int expectedEventResponseCount = 0;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger
+            SubscribeDataEventResponse.Event event1;
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S03-BPM01")
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(2.5).build())
+                        .build();
+                requestTriggers.add(trigger);
+
+                // add entry to response verification map with trigger and expected Event responses
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
+                event1 = SubscribeDataEventResponse.Event.newBuilder()
+                        .setTrigger(trigger)
+                        .setDataValue(eventDataValue)
+                        .setEventTime(
+                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                        .build();
+                triggerExpectedEvents.add(event1);
+                expectedEventResponses.put(trigger, triggerExpectedEvents);
+                expectedEventResponseCount += triggerExpectedEvents.size();
+            }
+
+            // DataEventOperation details for params
+//            final String pvName1 = "S03-BPM02";
+//            final String pvName2 = "S03-BPM03";
+            final List<String> targetPvs = new ArrayList<>(); // EMPTY LIST OF TARGET PV NAMES CAUSES REJECT
+            final long offset = 2_000_000_000L; // 2 seconds positive trigger time offset
+            final long duration = 3_000_000_000L; // 3 second duration
+
+            // total number of data buckets expected
+            final int expectedDataBucketCount = 8;
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(
+                            requestTriggers,
+                            targetPvs,
+                            offset,
+                            duration);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SubscribeDataEventRequest DataEventOperation.targetPvs list must not be empty";
+            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+                    requestParams,
+                    expectedEventResponseCount,
+                    expectedDataBucketCount,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // negative subscribeDataEvent() test: rejected because operation list of target PV names contains a blank name
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses = new HashMap<>();
+            Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses = new HashMap<>();
+            int expectedEventResponseCount = 0;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger
+            SubscribeDataEventResponse.Event event1;
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S03-BPM01")
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(2.5).build())
+                        .build();
+                requestTriggers.add(trigger);
+
+                // add entry to response verification map with trigger and expected Event responses
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
+                event1 = SubscribeDataEventResponse.Event.newBuilder()
+                        .setTrigger(trigger)
+                        .setDataValue(eventDataValue)
+                        .setEventTime(
+                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                        .build();
+                triggerExpectedEvents.add(event1);
+                expectedEventResponses.put(trigger, triggerExpectedEvents);
+                expectedEventResponseCount += triggerExpectedEvents.size();
+            }
+
+            // DataEventOperation details for params
+            final String pvName1 = "S03-BPM02";
+            final String pvName2 = "    "; // BLANK PV NAME CAUSES REJECT
+            final List<String> targetPvs = List.of(pvName1, pvName2);
+            final long offset = 2_000_000_000L; // 2 seconds positive trigger time offset
+            final long duration = 3_000_000_000L; // 3 second duration
+
+            // total number of data buckets expected
+            final int expectedDataBucketCount = 8;
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(
+                            requestTriggers,
+                            targetPvs,
+                            offset,
+                            duration);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SubscribeDataEventRequest DataEventOperation.targetPvs contains empty string";
+            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+                    requestParams,
+                    expectedEventResponseCount,
+                    expectedDataBucketCount,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // negative subscribeDataEvent() test: rejected because operation list of target PV names contains a blank name
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses = new HashMap<>();
+            Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses = new HashMap<>();
+            int expectedEventResponseCount = 0;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger
+            SubscribeDataEventResponse.Event event1;
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S03-BPM01")
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(2.5).build())
+                        .build();
+                requestTriggers.add(trigger);
+
+                // add entry to response verification map with trigger and expected Event responses
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
+                event1 = SubscribeDataEventResponse.Event.newBuilder()
+                        .setTrigger(trigger)
+                        .setDataValue(eventDataValue)
+                        .setEventTime(
+                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                        .build();
+                triggerExpectedEvents.add(event1);
+                expectedEventResponses.put(trigger, triggerExpectedEvents);
+                expectedEventResponseCount += triggerExpectedEvents.size();
+            }
+
+            // DataEventOperation details for params
+            final String pvName1 = "S03-BPM02";
+            final String pvName2 = "S03-BPM03";
+            final List<String> targetPvs = List.of(pvName1, pvName2);
+            final long offset = 2_000_000_000L; // 2 seconds positive trigger time offset
+            final long duration = 3_000_000_000L; // 3 second duration
+
+            // total number of data buckets expected
+            final int expectedDataBucketCount = 8;
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(
+                            requestTriggers,
+                            targetPvs,
+                            offset,
+                            duration);
+            requestParams.noWindow = true; // BUILDS REQUEST WITHOUT DATAEVENTWINDOW, WHICH CAUSES REJECT
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SubscribeDataEventRequest DataEventOperation.window must be specified";
+            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+                    requestParams,
+                    expectedEventResponseCount,
+                    expectedDataBucketCount,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // negative subscribeDataEvent() test: rejected because window time interval duration is zero
+        {
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses = new HashMap<>();
+            Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses = new HashMap<>();
+            int expectedEventResponseCount = 0;
+
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger
+            SubscribeDataEventResponse.Event event1;
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S03-BPM01")
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                        .setValue(DataValue.newBuilder().setDoubleValue(2.5).build())
+                        .build();
+                requestTriggers.add(trigger);
+
+                // add entry to response verification map with trigger and expected Event responses
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
+                event1 = SubscribeDataEventResponse.Event.newBuilder()
+                        .setTrigger(trigger)
+                        .setDataValue(eventDataValue)
+                        .setEventTime(
+                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                        .build();
+                triggerExpectedEvents.add(event1);
+                expectedEventResponses.put(trigger, triggerExpectedEvents);
+                expectedEventResponseCount += triggerExpectedEvents.size();
+            }
+
+            // DataEventOperation details for params
+            final String pvName1 = "S03-BPM02";
+            final String pvName2 = "S03-BPM03"; // BLANK PV NAME CAUSES REJECT
+            final List<String> targetPvs = List.of(pvName1, pvName2);
+            final long offset = 2_000_000_000L; // 2 seconds positive trigger time offset
+            final long duration = 0L; // 3 second duration
+
+            // total number of data buckets expected
+            final int expectedDataBucketCount = 8;
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(
+                            requestTriggers,
+                            targetPvs,
+                            offset,
+                            duration);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SubscribeDataEventRequest.DataEventOperation.DataEventWindow TimeInterval.duration must be specified";
+            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+                    requestParams,
+                    expectedEventResponseCount,
+                    expectedDataBucketCount,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+    }
+
 }
