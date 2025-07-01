@@ -437,26 +437,28 @@ public class EventMonitor {
     }
 
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
-        // Buffer the data instead of processing immediately
-        for (DataColumn dataColumn : result.getDataColumnsList()) {
-            bufferManager.bufferData(dataColumn.getName(), dataColumn, result.getDataTimestamps());
-        }
+
+             for (DataColumn dataColumn : result.getDataColumnsList()) {
+
+                final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(dataColumn.getName());
+                if (pvConditionTrigger != null) {
+                    // handle trigger PVs
+                    final DataTimestamps dataTimestamps = result.getDataTimestamps();
+                    handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
+
+                } else {
+                    // Buffer the data for target PVs instead of processing immediately
+                    bufferManager.bufferData(dataColumn.getName(), dataColumn, result.getDataTimestamps());
+                }
+            }
     }
 
     private void processBufferedData(String pvName, List<DataBuffer.BufferedData> results) {
 
-        // handle trigger PVs
-        final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(pvName);
-        if (pvConditionTrigger != null) {
-            for (DataBuffer.BufferedData bufferedData : results) {
-                final DataColumn dataColumn = bufferedData.getDataColumn();
-                final DataTimestamps dataTimestamps = bufferedData.getDataTimestamps();
-                handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
-            }
-
-        } else if (targetPvNames().contains(pvName)){
+    if (targetPvNames().contains(pvName)){
             // handle target PVs
             handleTargetPvData(pvName, results);
+
         } else {
             // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
             final String errorMsg = "unexpected PV received by EventMonitor: " + pvName;

@@ -72,10 +72,13 @@ public class DataBuffer {
             this.dataTimestamps = dataTimestamps;
             this.estimatedSizeBytes = estimatedSizeBytes;
 
-            // set timestamp from dataTimestamps
-            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
-                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
-            this.timestamp = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
+//            // set timestamp from dataTimestamps
+//            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
+//                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
+//            this.timestamp = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
+
+            // set timestamp to arrival time
+            this.timestamp = Instant.now();
         }
 
         public DataColumn getDataColumn() { return dataColumn; }

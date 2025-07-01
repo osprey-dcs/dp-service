@@ -39,7 +39,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
         // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
         // Specify DataEventOperation that includes: a 3 second negative offset, a 5 second duration,
         // for target PVs S01-BPM02, S01-BPM03.
-        IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+        IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall1;
         IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams1;
         Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses1 = new HashMap<>();
         Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses1 = new HashMap<>();
@@ -103,10 +103,115 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            subscribeDataEventCall =
+            subscribeDataEventCall1 = initiateSubscribeDataEventRequest(
+                    requestParams1,
+                    expectedEventResponseCount1,
+                    expectedDataBucketCount,
+                    expectReject,
+                    expectedRejectMessage);
+        }
+
+        // 2. request 2. positive subscribeDataEvent() test: simultaneous overlapping triggered events for same subscription
+        IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall2;
+        IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams2;
+        Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses2 = new HashMap<>();
+        Map<SubscribeDataEventResponse.Event, Map<String, List<Instant>>> expectedEventDataResponses2 = new HashMap<>();
+        int expectedEventResponseCount2 = 0;
+        {
+            // create list of triggers for request
+            List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+            // create trigger
+            SubscribeDataEventResponse.Event event1;
+            SubscribeDataEventResponse.Event event2;
+            {
+                PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                        .setPvName("S02-GCC01")
+                        .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_LESS)
+                        .setValue(DataValue.newBuilder().setDoubleValue(0.2).build())
+                        .build();
+                requestTriggers.add(trigger);
+
+                // create list of expected Events for trigger
+                final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+
+                // create Event and add to list, data value 0.0
+                {
+                    event1 = SubscribeDataEventResponse.Event.newBuilder()
+                            .setTrigger(trigger)
+                            .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                            .build();
+                    triggerExpectedEvents.add(event1);
+                }
+
+                // create Event and add to list, data value 0.1
+                {
+                    event2 = SubscribeDataEventResponse.Event.newBuilder()
+                            .setTrigger(trigger)
+                            .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                            .build();
+                    triggerExpectedEvents.add(event2);
+                }
+
+                // add entry to response validation map with trigger and list of expected events
+                expectedEventResponses2.put(trigger, triggerExpectedEvents);
+                expectedEventResponseCount2 += triggerExpectedEvents.size();
+            }
+
+            // DataEventOperation details for params
+            final String pvName1 = "S01-BPM02";
+            final String pvName2 = "S01-BPM03";
+            final List<String> targetPvs = List.of(pvName1, pvName2);
+            final long offset = 0L; // 3 seconds negative trigger time offset
+            final long duration = 5_000_000_000L; // 5 second duration
+
+            // number of buckets expected in EventData responses
+            final int expectedDataBucketCount = 22;
+
+            // add entry for event1 to response verification map with details about expected EventData responses
+            final List<Instant> instantList1 = List.of(
+                    Instant.ofEpochSecond(1698767462L + 0),
+                    Instant.ofEpochSecond(1698767462L + 1),
+                    Instant.ofEpochSecond(1698767462L + 2),
+                    Instant.ofEpochSecond(1698767462L + 3),
+                    Instant.ofEpochSecond(1698767462L + 4)
+            );
+            final Map<String, List<Instant>> pvInstantMap1 = new HashMap<>();
+            expectedEventDataResponses2.put(event1, pvInstantMap1);
+            pvInstantMap1.put(pvName1, instantList1);
+            pvInstantMap1.put(pvName2, instantList1);
+
+            // add entry for event2 to verification map
+            final List<Instant> instantList2 = List.of(
+                    Instant.ofEpochSecond(1698767462L + 0),
+                    Instant.ofEpochSecond(1698767462L + 1),
+                    Instant.ofEpochSecond(1698767462L + 2),
+                    Instant.ofEpochSecond(1698767462L + 3),
+                    Instant.ofEpochSecond(1698767462L + 4),
+                    Instant.ofEpochSecond(1698767462L + 5)
+            );
+            final Map<String, List<Instant>> pvInstantMap2 = new HashMap<>();
+            expectedEventDataResponses2.put(event2, pvInstantMap2);
+            pvInstantMap2.put(pvName1, instantList2);
+            pvInstantMap2.put(pvName2, instantList2);
+
+            // create params object (including trigger params list) for building protobuf request from params
+            requestParams2 =
+                    new IngestionStreamTestBase.SubscribeDataEventRequestParams(
+                            requestTriggers,
+                            targetPvs,
+                            offset,
+                            duration);
+
+            // call subscribeDataEvent() to initiate subscription before running ingestion
+            final boolean expectReject = false;
+            final String expectedRejectMessage = "";
+            subscribeDataEventCall2 =
                     initiateSubscribeDataEventRequest(
-                            requestParams1,
-                            expectedEventResponseCount1,
+                            requestParams2,
+                            expectedEventResponseCount2,
                             expectedDataBucketCount,
                             expectReject,
                             expectedRejectMessage);
@@ -124,12 +229,21 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
         // request 1: verify subscribeDataEvent() responses and close request stream
         verifySubscribeDataEventResponse(
-                (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver(),
+                (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall1.responseObserver(),
                 requestParams1,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses1,
                 expectedEventDataResponses1);
-        subscribeDataEventCall.requestObserver().onCompleted();
+        subscribeDataEventCall1.requestObserver().onCompleted();
+
+        // request 2: verify subscribeDataEvent() responses and close request stream
+        verifySubscribeDataEventResponse(
+                (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
+                requestParams2,
+                ingestionScenarioResult.validationMap(),
+                expectedEventResponses2,
+                expectedEventDataResponses2);
+        subscribeDataEventCall2.requestObserver().onCompleted();
 
     }
 

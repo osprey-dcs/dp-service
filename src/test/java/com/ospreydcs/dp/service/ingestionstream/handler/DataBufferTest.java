@@ -31,16 +31,22 @@ public class DataBufferTest {
 
     @Test
     public void testAgeBasedFlushing() throws InterruptedException {
-        // Create test data with timestamp from 600ms ago (older than maxItemAge of 500ms)
-        long oldTimestamp = System.currentTimeMillis() - 600;
-        SubscribeDataResponse.SubscribeDataResult testResult = createTestResultWithTimestamp("test-pv", "test-value", oldTimestamp);
+        // Create test data
+        SubscribeDataResponse.SubscribeDataResult testResult = createTestResult("test-pv", "test-value");
         DataColumn testColumn = testResult.getDataColumns(0);
         DataTimestamps testTimestamps = testResult.getDataTimestamps();
         
         // Add data to buffer
         dataBuffer.addData(testColumn, testTimestamps);
         
-        // Item should be ready to flush immediately due to age
+        // Initially, item should not be ready to flush (age < maxItemAge)
+        assertEquals(0, dataBuffer.getItemsReadyToFlush());
+        assertFalse(dataBuffer.shouldFlush());
+        
+        // Wait for items to age beyond the configured threshold
+        Thread.sleep(600); // Wait longer than maxItemAge (500ms)
+        
+        // Now item should be ready to flush due to age
         assertEquals(1, dataBuffer.getItemsReadyToFlush());
         assertTrue(dataBuffer.shouldFlush());
         
@@ -53,14 +59,15 @@ public class DataBufferTest {
 
     @Test
     public void testPartialFlushingByAge() throws InterruptedException {
-        long now = System.currentTimeMillis();
-        
-        // Add first item with old timestamp (600ms ago, older than maxItemAge of 500ms)
-        SubscribeDataResponse.SubscribeDataResult result1 = createTestResultWithTimestamp("test-pv", "value1", now - 600);
+        // Add first item
+        SubscribeDataResponse.SubscribeDataResult result1 = createTestResult("test-pv", "value1");
         dataBuffer.addData(result1.getDataColumns(0), result1.getDataTimestamps());
         
-        // Add second item with recent timestamp (100ms ago, younger than maxItemAge of 500ms)
-        SubscribeDataResponse.SubscribeDataResult result2 = createTestResultWithTimestamp("test-pv", "value2", now - 100);
+        // Wait for first item to age
+        Thread.sleep(600);
+        
+        // Add second item (should not be aged yet)
+        SubscribeDataResponse.SubscribeDataResult result2 = createTestResult("test-pv", "value2");
         dataBuffer.addData(result2.getDataColumns(0), result2.getDataTimestamps());
         
         // Should have 1 item ready to flush (the aged one)
