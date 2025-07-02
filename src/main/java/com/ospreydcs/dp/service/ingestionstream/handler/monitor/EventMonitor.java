@@ -438,24 +438,27 @@ public class EventMonitor {
 
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
 
-             for (DataColumn dataColumn : result.getDataColumnsList()) {
+        // Handle each data column from result.  A PV might be treated as both a trigger and target PV.
+        for (DataColumn dataColumn : result.getDataColumnsList()) {
+            final String columnName = dataColumn.getName();
 
-                final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(dataColumn.getName());
-                if (pvConditionTrigger != null) {
-                    // handle trigger PVs
-                    final DataTimestamps dataTimestamps = result.getDataTimestamps();
-                    handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
-
-                } else {
-                    // Buffer the data for target PVs instead of processing immediately
-                    bufferManager.bufferData(dataColumn.getName(), dataColumn, result.getDataTimestamps());
-                }
+            // handle trigger PVs immediately
+            final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnName);
+            if (pvConditionTrigger != null) {
+                final DataTimestamps dataTimestamps = result.getDataTimestamps();
+                handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
             }
+
+            // Buffer the data for target PVs instead of processing immediately
+            if (targetPvNames().contains(columnName)) {
+                bufferManager.bufferData(columnName, dataColumn, result.getDataTimestamps());
+            }
+        }
     }
 
     private void processBufferedData(String pvName, List<DataBuffer.BufferedData> results) {
 
-    if (targetPvNames().contains(pvName)){
+    if (targetPvNames().contains(pvName)) {
             // handle target PVs
             handleTargetPvData(pvName, results);
 

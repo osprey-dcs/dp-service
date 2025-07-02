@@ -219,7 +219,8 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
         // 3. request 3. positive subscribeDataEvent() test: single trigger with value = 2.5 for PV S03-BPM01
         // Specify DataEventOperation that includes: a 2 second positive offset, a 3 second duration,
-        // for target PVs S03-BPM02, S03-BPM03.
+        // for target PVs S03-BPM01, S03-BPM02, S03-BPM03.  Note that S03-BPM01 is being used as both a trigger and
+        // target PV in the subscription.
         IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall3;
         IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams3;
         Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses3 = new HashMap<>();
@@ -254,14 +255,15 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             }
 
             // DataEventOperation details for params
-            final String pvName1 = "S03-BPM02";
-            final String pvName2 = "S03-BPM03";
-            final List<String> targetPvs = List.of(pvName1, pvName2);
+            final String pvName1 = "S03-BPM01";
+            final String pvName2 = "S03-BPM02";
+            final String pvName3 = "S03-BPM03";
+            final List<String> targetPvs = List.of(pvName1, pvName2, pvName3);
             final long offset = 2_000_000_000L; // 2 seconds positive trigger time offset
             final long duration = 3_000_000_000L; // 3 second duration
 
             // total number of data buckets expected
-            final int expectedDataBucketCount = 8;
+            final int expectedDataBucketCount = 12;
 
             // add entry for event1 to response verification map with details about expected EventData responses
             final List<Instant> instantList = List.of(
@@ -274,6 +276,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             expectedEventDataResponses3.put(event1, pvInstantMap);
             pvInstantMap.put(pvName1, instantList);
             pvInstantMap.put(pvName2, instantList);
+            pvInstantMap.put(pvName3, instantList);
 
             // create params object (including trigger params list) for building protobuf request from params
             requestParams3 =
