@@ -31,6 +31,7 @@ public class EventMonitor {
     private static final long DEFAULT_MAX_BUFFER_BYTES = 512 * 1024L; // 512KB max buffer size
     private static final int DEFAULT_MAX_BUFFER_ITEMS = 50; // 50 max items
     private static final long DEFAULT_BUFFER_AGE_LIMIT_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(2); // 2 seconds max item age
+    private static final long DEFAULT_BUFFER_AGE_CUSHION_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(1); // 1 second cushion added to negative trigger time offset buffer age limit
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -97,7 +98,7 @@ public class EventMonitor {
             StreamObserver<SubscribeDataEventResponse> responseObserver,
             EventMonitorSubscriptionManager subscriptionManager
     ) {
-        // use negative offset value from request to determine buffer data age limit
+        // use negative offset value from request to determine buffer data age limit (plus a cushion)
         long negativeOffset = 0L;
         if (requestSubscription.hasOperation()) {
             final DataEventOperation operation = requestSubscription.getOperation();
@@ -105,12 +106,18 @@ public class EventMonitor {
                 final DataEventOperation.DataEventWindow window = operation.getWindow();
                 if (window.hasTimeInterval()) {
                     final DataEventOperation.DataEventWindow.TimeInterval interval = window.getTimeInterval();
-                    negativeOffset = Math.abs(interval.getOffset());
+                    if (interval.getOffset() < 0) {
+                        negativeOffset = Math.abs(interval.getOffset());
+                        negativeOffset = negativeOffset + DEFAULT_BUFFER_AGE_CUSHION_NANOS;
+                    }
                 }
             }
         }
+
+        // Take the maximum of (negative offset + cushion) and the default buffer age limit to set the bufferAgeLimit.
+        // Note that when the offset in the request is non-negative, the value of negativeOffset is zero, and we use
+        // the default buffer age limit.
         long bufferAgeLimit = Math.max(negativeOffset, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
-//        bufferAgeLimit = bufferAgeLimit + DataBuffer.DataBufferConfig.secondsToNanos(10);
 
         // create buffer config using age limit
         final DataBuffer.DataBufferConfig dataBufferConfig = new DataBuffer.DataBufferConfig(
