@@ -26,7 +26,7 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
         // ingest some data
         IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario(null);
         }
 
         // queryProviderMetadata() positive test for empty query result.

@@ -37,7 +37,7 @@ public class QueryDataBidiStreamTest extends GrpcIntegrationTestBase {
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario(null);
         }
 
         // positive queryData() test case, empty query result

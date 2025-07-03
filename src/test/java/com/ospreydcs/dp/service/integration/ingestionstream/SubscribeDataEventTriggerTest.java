@@ -12,6 +12,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,6 +38,8 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
     @Test
     public void testSubscribeDataEventTrigger() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+
         {
             // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
@@ -60,7 +63,7 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                             .setTrigger(trigger)
                             .setDataValue(eventDataValue)
-                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767467).build())
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+5).build())
                             .build();
                     triggerExpectedEvents.add(event);
                     expectedEventResponses1.put(trigger, triggerExpectedEvents);
@@ -107,22 +110,22 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     // create list of expected Events for trigger
                     final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
 
-                    // create Event and add to list, data value 0.0
+                    // create TriggeredEvent and add to list, data value 0.0
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
 
-                    // create Event and add to list, data value 0.1
+                    // create TriggeredEvent and add to list, data value 0.1
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).setNanoseconds(100000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
@@ -146,12 +149,12 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     // create list of expected Events for trigger
                     final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
 
-                    // create Event and add to list, data value 9.9
+                    // create TriggeredEvent and add to list, data value 9.9
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(9.9).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(900000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+9).setNanoseconds(900000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
@@ -201,32 +204,32 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     // create list of expected Events for trigger
                     final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
 
-                    // create Event and add to list, data value 0.0
+                    // create TriggeredEvent and add to list, data value 0.0
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
 
-                    // create Event and add to list, data value 0.1
+                    // create TriggeredEvent and add to list, data value 0.1
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).setNanoseconds(100000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
 
-                    // create Event and add to list, data value 0.2
+                    // create TriggeredEvent and add to list, data value 0.2
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(0.2).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(200000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).setNanoseconds(200000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
@@ -250,22 +253,22 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     // create list of expected Events for trigger
                     final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
 
-                    // create Event and add to list, data value 9.8
+                    // create TriggeredEvent and add to list, data value 9.8
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(9.8).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(800000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+9).setNanoseconds(800000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
 
-                    // create Event and add to list, data value 9.9
+                    // create TriggeredEvent and add to list, data value 9.9
                     {
                         final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
                                 .setTrigger(trigger)
                                 .setDataValue(DataValue.newBuilder().setDoubleValue(9.9).build())
-                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767471).setNanoseconds(900000000).build())
+                                .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+9).setNanoseconds(900000000).build())
                                 .build();
                         triggerExpectedEvents.add(event);
                     }
@@ -297,7 +300,7 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                ingestionScenarioResult = simpleIngestionScenario();
+                ingestionScenarioResult = simpleIngestionScenario(startSeconds);
             }
 
             // request 1: verify subscribeDataEvent() responses and close request stream
@@ -328,6 +331,8 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
 
     @Test
     public void testSubscribeDataEventTriggerReject() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
 
         // reject reason: empty list of triggers
         {

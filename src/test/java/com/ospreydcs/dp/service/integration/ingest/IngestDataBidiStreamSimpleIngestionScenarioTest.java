@@ -26,7 +26,7 @@ public class IngestDataBidiStreamSimpleIngestionScenarioTest extends GrpcIntegra
         // ingest some data
         IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario(null);
         }
     }
 

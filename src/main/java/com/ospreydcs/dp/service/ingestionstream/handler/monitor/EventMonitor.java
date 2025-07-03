@@ -15,6 +15,8 @@ import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.DataBuffer;
 import com.ospreydcs.dp.service.ingestionstream.handler.DataBufferManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEvent;
+import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEventManager;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -41,9 +43,9 @@ public class EventMonitor {
     public final StreamObserver<SubscribeDataEventResponse> responseObserver;
     protected final EventMonitorSubscriptionManager subscriptionManager;
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
-    protected final List<Event> triggeredEvents = new ArrayList<>();
     protected final Set<String> targetPvNames = new HashSet<>();
     protected final DataBufferManager bufferManager;
+    protected final TriggeredEventManager triggeredEventManager;
 
     // local type defs
 
@@ -53,45 +55,6 @@ public class EventMonitor {
             String errorMsg
     ) {}
 
-    protected static class Event {
-
-        private final Timestamp triggerTimestamp;
-        private final PvConditionTrigger trigger;
-        private final DataEventOperation operation;
-        private final DataValue dataValue;
-        private final Instant beginTime;
-        private final Instant endTime;
-        private final SubscribeDataEventResponse.Event event;
-
-        public Event(
-                Timestamp triggerTimestamp,
-                PvConditionTrigger trigger,
-                DataEventOperation operation,
-                DataValue dataValue
-        ) {
-            this.triggerTimestamp = triggerTimestamp;
-            this.trigger = trigger;
-            this.operation = operation;
-            this.dataValue = dataValue;
-
-            // set begin/end times from operation offset and duration
-            final Instant triggerInstant = TimestampUtility.instantFromTimestamp(triggerTimestamp);
-            beginTime = triggerInstant.plusNanos(operation.getWindow().getTimeInterval().getOffset());
-            endTime = beginTime.plusNanos(operation.getWindow().getTimeInterval().getDuration());
-
-            // create a protobuf Event object for DataEvent responses
-            event = IngestionStreamServiceImpl.newEvent(triggerTimestamp, trigger, dataValue);
-        }
-
-        public boolean isTargetedByData(DataBuffer.BufferedData bufferedData) {
-            // check if data item time targets this event (data begin time is before event end time and
-            // data end time is after or equal to the event begin time)
-            final Instant dataFirstInstant = bufferedData.getFirstInstant();
-            final Instant dataLastInstant = bufferedData.getLastInstant();
-            return ((dataFirstInstant.isBefore(this.endTime))
-                    && (dataLastInstant.equals(this.beginTime) || (dataLastInstant.isAfter(this.beginTime))));
-        }
-    }
 
     public EventMonitor(
             SubscribeDataEventRequest.NewSubscription requestSubscription,
@@ -132,6 +95,12 @@ public class EventMonitor {
 
         // Create buffer manager with callback to process data
         this.bufferManager = new DataBufferManager(this::processBufferedData, dataBufferConfig);
+
+        // Create and start triggered event manager
+        TriggeredEventManager.TriggeredEventManagerConfig eventManagerConfig = 
+            TriggeredEventManager.TriggeredEventManagerConfig.createDefault();
+        this.triggeredEventManager = new TriggeredEventManager(eventManagerConfig);
+        this.triggeredEventManager.start();
 
         this.initialize(requestSubscription);
     }
@@ -356,8 +325,14 @@ public class EventMonitor {
     ) {
         // only add an event to triggered event list if the request includes a DataOperation
         if (requestSubscription.hasOperation()) {
-            final Event event = new Event(triggerTimestamp, trigger, requestSubscription.getOperation(), dataValue);
-            this.triggeredEvents.add(event);
+            final TriggeredEvent triggeredEvent = new TriggeredEvent(
+                triggerTimestamp, 
+                trigger, 
+                requestSubscription.getOperation(), 
+                dataValue,
+                triggeredEventManager.getConfig().getExpirationDelayNanos()
+            );
+            this.triggeredEventManager.addTriggeredEvent(triggeredEvent);
         }
 
         // send an event message in the response stream
@@ -377,17 +352,18 @@ public class EventMonitor {
         }
 
         // iterate through each triggered event, dispatching messages in the response stream for data targeting that event
-        for (Event event : this.triggeredEvents) {
+        List<TriggeredEvent> activeEvents = this.triggeredEventManager.getActiveEvents();
+        for (TriggeredEvent triggeredEvent : activeEvents) {
 
             List<DataBucket> currentDataBuckets = new ArrayList<>();
             long currentMessageSize = 0;
             long baseMessageOverhead = 200; // Base overhead for EventData message structure
 
-            // iterate through each data item, check if the data time targets the event
+            // iterate through each data item, check if the data time targets the triggeredEvent
             for (DataBuffer.BufferedData bufferedData : bufferedDataList) {
 
-                // only dispatch bufferedData in response stream if the data time targets this Event
-                if ( ! event.isTargetedByData(bufferedData)) {
+                // only dispatch bufferedData in response stream if the data time targets this TriggeredEvent
+                if ( ! triggeredEvent.isTargetedByData(bufferedData)) {
                     continue;
                 }
 
@@ -404,7 +380,7 @@ public class EventMonitor {
                         (currentMessageSize + bucketSize + baseMessageOverhead) > MAX_MESSAGE_SIZE_BYTES) {
 
                     // Send current batch and start a new one
-                    sendDataEventMessage(event.event, currentDataBuckets);
+                    sendDataEventMessage(triggeredEvent.getEvent(), currentDataBuckets);
                     currentDataBuckets.clear();
                     currentMessageSize = 0;
                 }
@@ -418,7 +394,7 @@ public class EventMonitor {
 
             // Send any remaining data buckets
             if (!currentDataBuckets.isEmpty()) {
-                sendDataEventMessage(event.event, currentDataBuckets);
+                sendDataEventMessage(triggeredEvent.getEvent(), currentDataBuckets);
             }
         }
     }
@@ -432,7 +408,7 @@ public class EventMonitor {
             return;
         }
 
-        // Create EventData with Event placeholder and DataBuckets
+        // Create EventData with TriggeredEvent placeholder and DataBuckets
         SubscribeDataEventResponse.EventData eventData = SubscribeDataEventResponse.EventData.newBuilder()
                 .setEvent(event)
                 .addAllDataBuckets(dataBuckets)
@@ -487,6 +463,9 @@ public class EventMonitor {
     public void shutdown() {
         if (bufferManager != null) {
             bufferManager.shutdown();
+        }
+        if (triggeredEventManager != null) {
+            triggeredEventManager.shutdown();
         }
     }
 

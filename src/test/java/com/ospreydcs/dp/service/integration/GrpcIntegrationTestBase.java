@@ -931,9 +931,14 @@ public abstract class GrpcIntegrationTestBase {
         return validationMap;
     }
 
-    protected IngestionScenarioResult simpleIngestionScenario() {
+    protected IngestionScenarioResult simpleIngestionScenario(Long scenarioStartSeconds) {
 
-        final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        long startSeconds;
+        if (scenarioStartSeconds == null) {
+            startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        } else {
+            startSeconds = scenarioStartSeconds;
+        }
         final long startNanos = 0L;
 
         // register providers used by scenario
@@ -1416,7 +1421,7 @@ public abstract class GrpcIntegrationTestBase {
             }
         });
 
-        // check Event responses against expected
+        // check TriggeredEvent responses against expected
         //assertEquals(expectedEventResponses, actualEventResponses); // maps in different order
         assertEquals(expectedEventResponses.size(), actualEventResponses.size());
         for (Map.Entry<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> entry : expectedEventResponses.entrySet()) {

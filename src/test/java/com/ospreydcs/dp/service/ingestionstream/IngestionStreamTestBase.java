@@ -170,7 +170,7 @@ public class IngestionStreamTestBase {
                 }
 
                 case EVENT -> {
-                    // decrement responseLatch for Event response
+                    // decrement responseLatch for TriggeredEvent response
                     responseList.add(response);
                     responseLatch.countDown();
                 }

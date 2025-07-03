@@ -36,6 +36,8 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
     @Test
     public void testSubscribeDataEventData() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+
         // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
         // Specify DataEventOperation that includes: a 3 second negative offset, a 5 second duration,
         // for target PVs S01-BPM02, S01-BPM03.
@@ -58,13 +60,13 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(5.0).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
-                        .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767467).build())
+                        .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+5).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses1.put(trigger, triggerExpectedEvents);
@@ -81,11 +83,11 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // add entry for event1 to response verification map with details about expected EventData responses
             final int expectedDataBucketCount = 10;
             final List<Instant> instantList = List.of(
-                    Instant.ofEpochSecond(1698767462L + 2),
-                    Instant.ofEpochSecond(1698767462L + 3),
-                    Instant.ofEpochSecond(1698767462L + 4),
-                    Instant.ofEpochSecond(1698767462L + 5),
-                    Instant.ofEpochSecond(1698767462L + 6)
+                    Instant.ofEpochSecond(startSeconds + 2),
+                    Instant.ofEpochSecond(startSeconds + 3),
+                    Instant.ofEpochSecond(startSeconds + 4),
+                    Instant.ofEpochSecond(startSeconds + 5),
+                    Instant.ofEpochSecond(startSeconds + 6)
             );
             final Map<String, List<Instant>> pvInstantMap = new HashMap<>();
             expectedEventDataResponses1.put(event1, pvInstantMap);
@@ -135,22 +137,22 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                 // create list of expected Events for trigger
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
 
-                // create Event and add to list, data value 0.0
+                // create TriggeredEvent and add to list, data value 0.0
                 {
                     event1 = SubscribeDataEventResponse.Event.newBuilder()
                             .setTrigger(trigger)
                             .setDataValue(DataValue.newBuilder().setDoubleValue(0).build())
-                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).build())
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).build())
                             .build();
                     triggerExpectedEvents.add(event1);
                 }
 
-                // create Event and add to list, data value 0.1
+                // create TriggeredEvent and add to list, data value 0.1
                 {
                     event2 = SubscribeDataEventResponse.Event.newBuilder()
                             .setTrigger(trigger)
                             .setDataValue(DataValue.newBuilder().setDoubleValue(0.1).build())
-                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(1698767462).setNanoseconds(100000000).build())
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds).setNanoseconds(100000000).build())
                             .build();
                     triggerExpectedEvents.add(event2);
                 }
@@ -172,11 +174,11 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
             // add entry for event1 to response verification map with details about expected EventData responses
             final List<Instant> instantList1 = List.of(
-                    Instant.ofEpochSecond(1698767462L + 0),
-                    Instant.ofEpochSecond(1698767462L + 1),
-                    Instant.ofEpochSecond(1698767462L + 2),
-                    Instant.ofEpochSecond(1698767462L + 3),
-                    Instant.ofEpochSecond(1698767462L + 4)
+                    Instant.ofEpochSecond(startSeconds + 0),
+                    Instant.ofEpochSecond(startSeconds + 1),
+                    Instant.ofEpochSecond(startSeconds + 2),
+                    Instant.ofEpochSecond(startSeconds + 3),
+                    Instant.ofEpochSecond(startSeconds + 4)
             );
             final Map<String, List<Instant>> pvInstantMap1 = new HashMap<>();
             expectedEventDataResponses2.put(event1, pvInstantMap1);
@@ -185,12 +187,12 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
             // add entry for event2 to verification map
             final List<Instant> instantList2 = List.of(
-                    Instant.ofEpochSecond(1698767462L + 0),
-                    Instant.ofEpochSecond(1698767462L + 1),
-                    Instant.ofEpochSecond(1698767462L + 2),
-                    Instant.ofEpochSecond(1698767462L + 3),
-                    Instant.ofEpochSecond(1698767462L + 4),
-                    Instant.ofEpochSecond(1698767462L + 5)
+                    Instant.ofEpochSecond(startSeconds + 0),
+                    Instant.ofEpochSecond(startSeconds + 1),
+                    Instant.ofEpochSecond(startSeconds + 2),
+                    Instant.ofEpochSecond(startSeconds + 3),
+                    Instant.ofEpochSecond(startSeconds + 4),
+                    Instant.ofEpochSecond(startSeconds + 5)
             );
             final Map<String, List<Instant>> pvInstantMap2 = new HashMap<>();
             expectedEventDataResponses2.put(event2, pvInstantMap2);
@@ -240,14 +242,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
                         .setEventTime(
-                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                                Timestamp.newBuilder().setEpochSeconds(startSeconds+2).setNanoseconds(500000000).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses3.put(trigger, triggerExpectedEvents);
@@ -267,10 +269,10 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
             // add entry for event1 to response verification map with details about expected EventData responses
             final List<Instant> instantList = List.of(
-                    Instant.ofEpochSecond(1698767462L + 4),
-                    Instant.ofEpochSecond(1698767462L + 5),
-                    Instant.ofEpochSecond(1698767462L + 6),
-                    Instant.ofEpochSecond(1698767462L + 7)
+                    Instant.ofEpochSecond(startSeconds + 4),
+                    Instant.ofEpochSecond(startSeconds + 5),
+                    Instant.ofEpochSecond(startSeconds + 6),
+                    Instant.ofEpochSecond(startSeconds + 7)
             );
             final Map<String, List<Instant>> pvInstantMap = new HashMap<>();
             expectedEventDataResponses3.put(event1, pvInstantMap);
@@ -304,7 +306,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = simpleIngestionScenario(startSeconds);
         }
 
         // request 1: verify subscribeDataEvent() responses and close request stream
@@ -339,6 +341,8 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
     @Test
     public void testSubscribeDataEventDataReject() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+
         // negative subscribeDataEvent() test: rejected because operation list of target PV names is empty
         {
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
@@ -360,14 +364,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
                         .setEventTime(
-                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                                Timestamp.newBuilder().setEpochSeconds(startSeconds+2).setNanoseconds(500000000).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses.put(trigger, triggerExpectedEvents);
@@ -425,14 +429,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
                         .setEventTime(
-                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                                Timestamp.newBuilder().setEpochSeconds(startSeconds+2).setNanoseconds(500000000).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses.put(trigger, triggerExpectedEvents);
@@ -490,14 +494,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
                         .setEventTime(
-                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                                Timestamp.newBuilder().setEpochSeconds(startSeconds+2).setNanoseconds(500000000).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses.put(trigger, triggerExpectedEvents);
@@ -556,14 +560,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                         .build();
                 requestTriggers.add(trigger);
 
-                // add entry to response verification map with trigger and expected Event responses
+                // add entry to response verification map with trigger and expected TriggeredEvent responses
                 final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
                 final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(2.5).build();
                 event1 = SubscribeDataEventResponse.Event.newBuilder()
                         .setTrigger(trigger)
                         .setDataValue(eventDataValue)
                         .setEventTime(
-                                Timestamp.newBuilder().setEpochSeconds(1698767464).setNanoseconds(500000000).build())
+                                Timestamp.newBuilder().setEpochSeconds(startSeconds+2).setNanoseconds(500000000).build())
                         .build();
                 triggerExpectedEvents.add(event1);
                 expectedEventResponses.put(trigger, triggerExpectedEvents);
