@@ -4,10 +4,12 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
+import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.SubscribeDataEventJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
+import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,8 +24,25 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     public static final int DEFAULT_NUM_WORKERS = 7;
 
     // instance variables
-    private final EventMonitorSubscriptionManager subscriptionManager =
-            new EventMonitorSubscriptionManager(this);
+
+    private EventMonitorSubscriptionManager subscriptionManager = null;
+    private final IngestionServiceClientUtility.IngestionServiceClient ingestionServiceClient;
+
+    public IngestionStreamHandler() {
+        super();
+        this.ingestionServiceClient = new IngestionServiceClientUtility.IngestionServiceClient();
+        initializeSubscriptionManager(ingestionServiceClient);
+    }
+
+    public IngestionStreamHandler(ManagedChannel channel) {
+        super();
+        this.ingestionServiceClient = new IngestionServiceClientUtility.IngestionServiceClient(channel);
+        initializeSubscriptionManager(ingestionServiceClient);
+    }
+
+    private void initializeSubscriptionManager(IngestionServiceClientUtility.IngestionServiceClient client) {
+        this.subscriptionManager = new EventMonitorSubscriptionManager(this, client);
+    }
 
     @Override
     protected boolean init_() {
@@ -34,7 +53,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     @Override
     protected boolean fini_() {
         logger.trace("fini_");
-        subscriptionManager.shutdown();
+        this.subscriptionManager.shutdown();
         return true;
     }
 
@@ -59,7 +78,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     ) {
         // create an event monitor for the request
         EventMonitor eventMonitor = new EventMonitor(
-                request.getNewSubscription(), responseObserver, subscriptionManager);
+                request.getNewSubscription(), responseObserver, this.subscriptionManager);
         final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor);
 
         logger.debug("id: {} adding SubscribeDataEventJob to queue", responseObserver.hashCode());

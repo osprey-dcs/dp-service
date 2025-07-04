@@ -11,11 +11,6 @@ public class IngestionServiceClientUtility {
     
     public static class IngestionServiceClient {
 
-        // static variables
-        protected static volatile IngestionServiceClient instance; // singleton pattern
-        private static Object mutex = new Object(); // singleton pattern
-        private static ManagedChannel defaultChannel = null;
-        
         // instance variables
         private ManagedChannel channel;
         
@@ -25,40 +20,17 @@ public class IngestionServiceClientUtility {
         public static final String CFG_KEY_HOSTNAME = "GrpcClient.hostname";
         public static final String DEFAULT_HOSTNAME = "localhost";
 
-        protected IngestionServiceClient() {
-            // singleton pattern
+        public IngestionServiceClient() {
+            final String connectString = getConnectString();
+            this.channel = Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
         }
 
-        public static IngestionServiceClient getInstance() {
-            // singleton pattern
-            IngestionServiceClient client = instance;
-            if (client == null) {
-                synchronized (mutex) {
-                    client = instance;
-                    if (client == null) {
-                        instance = client = new IngestionServiceClient();
-                        instance.initialize();
-                    }
-                }
-            }
-            return client;
-        }
-
-        private void initialize() {
-            if (defaultChannel != null) {
-                this.channel = defaultChannel;
-            } else {
-                final String connectString = getConnectString();
-                this.channel = Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
-            }
+        public IngestionServiceClient(ManagedChannel channel) {
+            this.channel = channel;
         }
 
         protected static ConfigurationManager configMgr() {
             return ConfigurationManager.getInstance();
-        }
-
-        public static void setDefaultChannel(ManagedChannel channel) {
-            defaultChannel = channel;
         }
 
         protected static int getPort() {

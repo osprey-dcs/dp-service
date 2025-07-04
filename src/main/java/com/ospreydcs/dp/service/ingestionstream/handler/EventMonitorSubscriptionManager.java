@@ -32,9 +32,14 @@ public class EventMonitorSubscriptionManager {
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
+    private final IngestionServiceClientUtility.IngestionServiceClient ingestionServiceClient;
 
-    public EventMonitorSubscriptionManager(IngestionStreamHandler ingestionStreamHandler) {
+    public EventMonitorSubscriptionManager(
+            IngestionStreamHandler ingestionStreamHandler,
+            IngestionServiceClientUtility.IngestionServiceClient ingestionServiceClient
+    ) {
         this.handler = ingestionStreamHandler;
+        this.ingestionServiceClient = ingestionServiceClient;
     }
 
     public ResultStatus addEventMonitor(final EventMonitor eventMonitor) {
@@ -89,10 +94,7 @@ public class EventMonitorSubscriptionManager {
         final EventMonitorSubscribeDataResponseObserver responseObserver =
                 new EventMonitorSubscribeDataResponseObserver(pvName, this, handler);
 
-        // use singleton ingestion client to create an API stub
-        final IngestionServiceClientUtility.IngestionServiceClient client =
-                IngestionServiceClientUtility.IngestionServiceClient.getInstance();
-        final DpIngestionServiceGrpc.DpIngestionServiceStub stub = client.newStub();
+        final DpIngestionServiceGrpc.DpIngestionServiceStub stub = this.ingestionServiceClient.newStub();
 
         // call subscribeData() API method to receive data for specified PV from Ingestion Service
         final StreamObserver<SubscribeDataRequest> requestObserver = stub.subscribeData(responseObserver);

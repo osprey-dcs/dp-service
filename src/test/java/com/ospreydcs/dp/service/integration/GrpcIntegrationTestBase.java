@@ -115,10 +115,9 @@ public abstract class GrpcIntegrationTestBase {
     protected static ManagedChannel ingestionStreamChannel;
 
     // validation static variables
-    protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap = new TreeMap<>();
-    protected static Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap = new HashMap<>();
-    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap =
-            new HashMap<>();
+    protected static Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap;
+    protected static Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap;
+    protected static Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap;
 
     // constants
     protected static final int INGESTION_PROVIDER_ID = 1;
@@ -221,6 +220,11 @@ public abstract class GrpcIntegrationTestBase {
 
     public static void setUp() throws Exception {
 
+        // init data structures
+        createDataSetIdParamsMap = new TreeMap<>();
+        createDataSetParamsIdMap = new HashMap<>();
+        createAnnotationParamsIdMap = new HashMap<>();
+
         // init the mongo client interface for db verification, globally changes database name to dp-test
         mongoClient = new MongoTestClient();
         mongoClient.init();
@@ -240,8 +244,6 @@ public abstract class GrpcIntegrationTestBase {
         // Create a client channel and register for automatic graceful shutdown.
         ingestionChannel = grpcCleanup.register(
                 InProcessChannelBuilder.forName(ingestionServerName).directExecutor().build());
-        // set the default channel in the IngestionServiceClient used for inter-service communication
-        IngestionServiceClientUtility.IngestionServiceClient.setDefaultChannel(ingestionChannel);
 
         // init query service
         QueryHandlerInterface queryHandler = MongoQueryHandler.newMongoSyncQueryHandler();
@@ -276,7 +278,8 @@ public abstract class GrpcIntegrationTestBase {
                 InProcessChannelBuilder.forName(annotationServerName).directExecutor().build());
 
         // init ingestion stream service
-        IngestionStreamHandlerInterface ingestionStreamHandler =  new IngestionStreamHandler();
+        IngestionStreamHandler ingestionStreamHandlerInstance = new IngestionStreamHandler(ingestionChannel);
+        IngestionStreamHandlerInterface ingestionStreamHandler =  ingestionStreamHandlerInstance;
         ingestionStreamService = new IngestionStreamServiceImpl();
         if (!ingestionStreamService.init(ingestionStreamHandler)) {
             fail("IngestionStreamServiceImpl.init failed");
@@ -293,18 +296,33 @@ public abstract class GrpcIntegrationTestBase {
     }
 
     public static void tearDown() {
+
+        ingestionStreamService.fini();
         annotationService.fini();
         queryService.fini();
         ingestionService.fini();
-        ingestionStreamService.fini();
+
+        ingestionStreamService = null;
+        annotationService = null;
+        queryService = null;
+        ingestionService = null;
+
+        ingestionStreamServiceMock = null;
+        annotationServiceMock = null;
+        queryServiceMock = null;
+        ingestionServiceMock = null;
+
+        ingestionStreamChannel = null;
+        annotationChannel = null;
+        queryChannel = null;
+        ingestionChannel = null;
+
         mongoClient.fini();
         mongoClient = null;
-        ingestionServiceMock = null;
-        ingestionStreamServiceMock = null;
-        // Reset the singleton default channel to prevent stale channel reuse between tests
-        IngestionServiceClientUtility.IngestionServiceClient.setDefaultChannel(null);
-        // Reset the singleton instance itself to ensure clean state between tests
-        resetIngestionServiceClientSingleton();
+
+        createAnnotationParamsIdMap = null;
+        createDataSetParamsIdMap = null;
+        createDataSetIdParamsMap = null;
     }
 
     protected static RegisterProviderResponse sendRegsiterProvider(
