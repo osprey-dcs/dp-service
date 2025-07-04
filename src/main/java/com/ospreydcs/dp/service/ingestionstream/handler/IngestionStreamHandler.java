@@ -34,6 +34,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     @Override
     protected boolean fini_() {
         logger.trace("fini_");
+        subscriptionManager.shutdown();
         return true;
     }
 

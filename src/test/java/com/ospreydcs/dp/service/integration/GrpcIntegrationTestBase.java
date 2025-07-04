@@ -69,6 +69,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.ClassRule;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -295,9 +296,15 @@ public abstract class GrpcIntegrationTestBase {
         annotationService.fini();
         queryService.fini();
         ingestionService.fini();
+        ingestionStreamService.fini();
         mongoClient.fini();
         mongoClient = null;
         ingestionServiceMock = null;
+        ingestionStreamServiceMock = null;
+        // Reset the singleton default channel to prevent stale channel reuse between tests
+        IngestionServiceClientUtility.IngestionServiceClient.setDefaultChannel(null);
+        // Reset the singleton instance itself to ensure clean state between tests
+        resetIngestionServiceClientSingleton();
     }
 
     protected static RegisterProviderResponse sendRegsiterProvider(
@@ -1040,6 +1047,20 @@ public abstract class GrpcIntegrationTestBase {
         }
 
         return new IngestionScenarioResult(providerInfoMap, validationMap);
+    }
+
+    /**
+     * Helper method to reset the IngestionServiceClient singleton instance using reflection.
+     * This ensures clean state between tests by forcing recreation of the singleton.
+     */
+    private static void resetIngestionServiceClientSingleton() {
+        try {
+            Field instanceField = IngestionServiceClientUtility.IngestionServiceClient.class.getDeclaredField("instance");
+            instanceField.setAccessible(true);
+            instanceField.set(null, null);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            logger.warn("Could not reset IngestionServiceClient singleton: {}", e.getMessage());
+        }
     }
 
     private static class QueryRequestStatusResult {
