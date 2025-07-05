@@ -3,10 +3,7 @@ package com.ospreydcs.dp.service.integration.ingest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
-import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -20,17 +17,17 @@ public class IngestDataUnaryTypesTest extends IngestDataTypesTestBase {
             IngestionTestBase.IngestionRequestParams params,
             IngestDataRequest ingestionRequest
     ) {
-        return sendAndVerifyIngestData(params, ingestionRequest, 0);
+        return ingestionServiceWrapper.sendAndVerifyIngestData(params, ingestionRequest, 0);
     }
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test

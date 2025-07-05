@@ -6,9 +6,7 @@ import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.util.List;
 
@@ -19,14 +17,14 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -39,7 +37,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage = "SubscribeDataRequest.NewSubscription.pvNames list must not be empty";
             final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                    initiateSubscribeDataRequest(
+                    ingestionServiceWrapper.initiateSubscribeDataRequest(
                             subscriptionPvNames, expectedResponseCount, expectReject, expectedRejectMessage);
         }
     }
@@ -56,7 +54,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
                     "received unknown request, expected NewSubscription or CancelSubscription";
             final SubscribeDataRequest request = buildSubscribeDataRequestNoPayload();
             final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                    initiateSubscribeDataRequest(
+                    ingestionServiceWrapper.initiateSubscribeDataRequest(
                             request, expectedResponseCount, expectReject, expectedRejectMessage);
         }
     }
@@ -71,7 +69,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
         final boolean expectReject = false;
         final String expectedRejectMessage = "";
         final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
-                initiateSubscribeDataRequest(
+                ingestionServiceWrapper.initiateSubscribeDataRequest(
                         subscriptionPvNames, expectedResponseCount, expectReject, expectedRejectMessage);
         final SubscribeDataRequest duplicateRequest =
                 SubscribeDataUtility.buildSubscribeDataRequest(subscriptionPvNames);
@@ -113,7 +111,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall1 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames1, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
@@ -124,7 +122,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall2 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames2, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
@@ -135,42 +133,42 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall3 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames3, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
             // run a simple ingestion scenario that will publish to all 3 subscriptions
-            IngestionScenarioResult ingestionScenarioResult;
+            GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
             {
                 // create some data for testing query APIs
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                ingestionScenarioResult = simpleIngestionScenario(null);
+                ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
             }
 
             // verify all 3 subscriptions received expected messages
-            verifySubscribeDataResponse(
+            ingestionServiceWrapper.verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver(),
                     subscriptionPvNames1,
                     ingestionScenarioResult.validationMap(),
                     0);
-            verifySubscribeDataResponse(
+            ingestionServiceWrapper.verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver(),
                     subscriptionPvNames2,
                     ingestionScenarioResult.validationMap(),
                     0);
-            verifySubscribeDataResponse(
+            ingestionServiceWrapper.verifySubscribeDataResponse(
                     (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver(),
                     subscriptionPvNames3,
                     ingestionScenarioResult.validationMap(),
                     0);
 
             // 2) cancel subscription with explicit cancel message
-            cancelSubscribeDataCall(subscribeDataCall2);
+            ingestionServiceWrapper.cancelSubscribeDataCall(subscribeDataCall2);
 
             // 3) cancel subscription by closing client request stream
-            closeSubscribeDataCall(subscribeDataCall3);
+            ingestionServiceWrapper.closeSubscribeDataCall(subscribeDataCall3);
         }
     }
 

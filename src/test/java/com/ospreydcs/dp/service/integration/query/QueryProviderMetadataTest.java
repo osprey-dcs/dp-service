@@ -1,32 +1,33 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+
+import static com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper.GCC_INGESTION_PROVIDER;
 
 @RunWith(JUnit4.class)
 public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void testQueryProviderMetadata() {
 
         // ingest some data
-        IngestionScenarioResult ingestionScenarioResult;
+        GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = simpleIngestionScenario(null);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
         }
 
         // queryProviderMetadata() positive test for empty query result.
@@ -34,7 +35,7 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
             final String undefinedProviderId = "undefined-provider-id";
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyQueryProviderMetadata(
+            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
                     undefinedProviderId,
                     null,
                     expectReject,
@@ -44,9 +45,9 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
 
         // queryProviderMetadata() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
         {
-            final IngestionProviderInfo gccProviderInfo =
+            final GrpcIntegrationIngestionServiceWrapper.IngestionProviderInfo gccProviderInfo =
                     ingestionScenarioResult.providerInfoMap().get(GCC_INGESTION_PROVIDER);
-            sendAndVerifyQueryProviderMetadata(
+            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
                     gccProviderInfo.providerId(),
                     gccProviderInfo,
                     false,
@@ -62,7 +63,7 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
             final String blankProviderId = "";
             final boolean expectReject = true;
             final String expectedRejectMessage = "QueryProviderMetadataRequest.providerId must be specified";
-            sendAndVerifyQueryProviderMetadata(
+            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
                     blankProviderId,
                     null,
                     expectReject,

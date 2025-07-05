@@ -3,9 +3,7 @@ package com.ospreydcs.dp.service.integration.ingest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,14 +13,14 @@ import java.util.Map;
 
 public class IngestDataStreamBytesTest extends GrpcIntegrationTestBase {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -33,7 +31,7 @@ public class IngestDataStreamBytesTest extends GrpcIntegrationTestBase {
         {
             final String providerName = "Provider-1";
             final Map<String, String> attributeMap = Map.of("IOC", "IOC-2", "subsystem", "power");
-            providerId = registerProvider(providerName, attributeMap);
+            providerId = ingestionServiceWrapper.registerProvider(providerName, attributeMap);
         }
 
         // positive test case, successful ingestion
@@ -100,7 +98,7 @@ public class IngestDataStreamBytesTest extends GrpcIntegrationTestBase {
 
             // send request and examine response
             final int numSerializedDataColumnsExpected = 1;
-            sendAndVerifyIngestDataStream(
+            ingestionServiceWrapper.sendAndVerifyIngestDataStream(
                     paramsList,
                     requestList,
                     numSerializedDataColumnsExpected,

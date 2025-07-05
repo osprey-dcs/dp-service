@@ -8,9 +8,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,14 +19,14 @@ import static org.junit.Assert.assertTrue;
 
 public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -45,7 +43,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -65,7 +63,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.TextCriterion text must be specified";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -85,7 +83,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final String expectedRejectMessage =
                     "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -98,11 +96,9 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
     public void testQueryAnnotationsPositive() {
 
         // run ingestion, create datasets and annotations needed for tests
-        AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
-        CreateDataSetScenarioResult createDataSetScenarioResult =
-                AnnotationIntegrationTestIntermediate.createDataSetScenario();
-        CreateAnnotationScenarioResult createAnnotationScenarioResult =
-                AnnotationIntegrationTestIntermediate.createAnnotationScenario(
+        annotationIngestionScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario();
+        CreateAnnotationScenarioResult createAnnotationScenarioResult = createAnnotationScenario(
                         createDataSetScenarioResult.firstHalfDataSetId, createDataSetScenarioResult.secondHalfDataSetId);
 
         // queryAnnotations() negative test: empty query result.
@@ -115,7 +111,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -143,7 +139,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -172,7 +168,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            annotationsQueryResult = sendAndVerifyQueryAnnotations(
+            annotationsQueryResult = annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -212,7 +208,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                                     );
 
                             final List<DataBucket> queryResultBuckets =
-                                    queryDataStream(params, false, "");
+                                    queryServiceWrapper.queryDataStream(params, false, "");
                             assertEquals(numBucketsExpected, queryResultBuckets.size());
                             for (String pvName : queryPvNames) {
                                 boolean foundPvBucket = false;
@@ -245,7 +241,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -262,7 +258,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -279,7 +275,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -296,7 +292,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -313,7 +309,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
@@ -331,7 +327,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryAnnotations(
+            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                     queryParams,
                     expectReject,
                     expectedRejectMessage,

@@ -6,11 +6,10 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.ingestionstream.IngestionStreamTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,14 +22,14 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -105,7 +104,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            subscribeDataEventCall1 = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall1 = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams1,
                     expectedEventResponseCount1,
                     expectedDataBucketCount,
@@ -211,7 +210,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
             subscribeDataEventCall2 =
-                    initiateSubscribeDataEventRequest(
+                    ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                             requestParams2,
                             expectedEventResponseCount2,
                             expectedDataBucketCount,
@@ -291,7 +290,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // call subscribeDataEvent() to initiate subscription before running ingestion
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            subscribeDataEventCall3 = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall3 = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams3,
                     expectedEventResponseCount3,
                     expectedDataBucketCount,
@@ -300,17 +299,17 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
         }
 
         // run a simple ingestion scenario that will publish data relevant to subscriptions
-        IngestionScenarioResult ingestionScenarioResult;
+        GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
             // create some data for testing query APIs
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = simpleIngestionScenario(startSeconds);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds);
         }
 
         // request 1: verify subscribeDataEvent() responses and close request stream
-        verifySubscribeDataEventResponse(
+        ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall1.responseObserver(),
                 requestParams1,
                 ingestionScenarioResult.validationMap(),
@@ -319,7 +318,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
         subscribeDataEventCall1.requestObserver().onCompleted();
 
         // request 2: verify subscribeDataEvent() responses and close request stream
-        verifySubscribeDataEventResponse(
+        ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
                 requestParams2,
                 ingestionScenarioResult.validationMap(),
@@ -328,7 +327,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
         subscribeDataEventCall2.requestObserver().onCompleted();
 
         // request 3: verify subscribeDataEvent() responses and close request stream
-        verifySubscribeDataEventResponse(
+        ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall3.responseObserver(),
                 requestParams3,
                 ingestionScenarioResult.validationMap(),
@@ -400,7 +399,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "SubscribeDataEventRequest DataEventOperation.targetPvs list must not be empty";
-            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams,
                     expectedEventResponseCount,
                     expectedDataBucketCount,
@@ -465,7 +464,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "SubscribeDataEventRequest DataEventOperation.targetPvs contains empty string";
-            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams,
                     expectedEventResponseCount,
                     expectedDataBucketCount,
@@ -531,7 +530,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "SubscribeDataEventRequest DataEventOperation.window must be specified";
-            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams,
                     expectedEventResponseCount,
                     expectedDataBucketCount,
@@ -596,7 +595,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "SubscribeDataEventRequest.DataEventOperation.DataEventWindow TimeInterval.duration must be specified";
-            subscribeDataEventCall = initiateSubscribeDataEventRequest(
+            subscribeDataEventCall = ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
                     requestParams,
                     expectedEventResponseCount,
                     expectedDataBucketCount,

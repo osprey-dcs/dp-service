@@ -9,9 +9,7 @@ import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,14 +17,14 @@ import java.util.Map;
 
 public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -41,7 +39,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
             final String expectedRejectMessage = "CreateAnnotationRequest.ownerId must be specified";
-            sendAndVerifyCreateAnnotation(
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
@@ -54,7 +52,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
             final String expectedRejectMessage = "CreateAnnotationRequest.name must be specified";
-            sendAndVerifyCreateAnnotation(
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
@@ -67,7 +65,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, new ArrayList<>());
             final String expectedRejectMessage = "CreateAnnotationRequest.dataSetIds must not be empty";
-            sendAndVerifyCreateAnnotation(
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
@@ -80,7 +78,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
             AnnotationTestBase.CreateAnnotationRequestParams params =
                     new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, List.of(invalidDataSetId));
             final String expectedRejectMessage = "no DataSetDocument found with id";
-            sendAndVerifyCreateAnnotation(
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                     params, true, expectedRejectMessage);
         }
 
@@ -90,15 +88,13 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
     public void testCreateAnnotationPositive() {
 
         // ingest some data
-        AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        annotationIngestionScenario();
 
         // create some datasets
-        CreateDataSetScenarioResult createDataSetScenarioResult =
-                AnnotationIntegrationTestIntermediate.createDataSetScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario();
 
         // positive test case defined in superclass so it can be used to generate annotations for query and export tests
-        CreateAnnotationScenarioResult createAnnotationScenarioResult =
-                AnnotationIntegrationTestIntermediate.createAnnotationScenario(
+        CreateAnnotationScenarioResult createAnnotationScenarioResult = createAnnotationScenario(
                         createDataSetScenarioResult.firstHalfDataSetId, createDataSetScenarioResult.secondHalfDataSetId);
 
         {
@@ -132,7 +128,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "no AnnotationDocument found with id: junk12345";
-            sendAndVerifyCreateAnnotation(
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                     params, expectReject, expectedRejectMessage);
         }
 

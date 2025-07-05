@@ -3,8 +3,9 @@ package com.ospreydcs.dp.service.integration.annotation;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.protobuf.EventMetadataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
+import org.junit.After;
+import org.junit.Before;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,30 +22,30 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
-    @BeforeClass
-    public static void setUp() throws Exception {
+    @Before
+    public void setUp() throws Exception {
 
-        GrpcIntegrationTestBase.setUp();
+        super.setUp();
 
         startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
         startNanos = 0L;
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
-    public static Map<String, IngestionStreamInfo> annotationIngestionScenario() {
+    public Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> annotationIngestionScenario() {
 
         // register ingestion provider
         final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
-        final String providerId = registerProvider(providerName, null);
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
         {
             // run ingestion scenario
 
-            final List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
+            final List<GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
 
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             for (int sectorIndex = 1; sectorIndex <= 10; ++sectorIndex) {
@@ -57,8 +58,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     final long interval = 100_000_000L;
                     final int numBuckets = 10;
                     final int numSecondsPerBucket = 1;
-                    final IngestionColumnInfo columnInfoTenths =
-                            new IngestionColumnInfo(
+                    final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoTenths =
+                            new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                                     gccName,
                                     requestIdBase,
                                     providerId,
@@ -84,8 +85,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     final long interval = 100_000_000L;
                     final int numBuckets = 10;
                     final int numSecondsPerBucket = 1;
-                    final IngestionColumnInfo columnInfoTenths =
-                            new IngestionColumnInfo(
+                    final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoTenths =
+                            new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                                     bpmName,
                                     requestIdBase,
                                     providerId,
@@ -107,7 +108,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
             {
                 // perform ingestion for specified list of columns
-                return ingestDataBidiStreamFromColumn(
+                return ingestionServiceWrapper.ingestDataBidiStreamFromColumn(
                         ingestionColumnInfoList,
                         startSeconds,
                         startNanos,
@@ -136,7 +137,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
     }
 
-    protected static CreateDataSetScenarioResult createDataSetScenario() {
+    protected CreateDataSetScenarioResult createDataSetScenario() {
 
         String firstHalfDataSetId;
         String secondHalfDataSetId;
@@ -189,7 +190,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             firstHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
             firstHalfDataSetId =
-                    sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
@@ -201,7 +202,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             secondHalfDataSetParams =
                     new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
             secondHalfDataSetId =
-                    sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 
@@ -233,7 +234,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
     }
 
-    protected static CreateAnnotationScenarioResult createAnnotationScenario(
+    protected CreateAnnotationScenarioResult createAnnotationScenario(
             String firstHalfDataSetId,
             String secondHalfDataSetId
     ) {
@@ -285,7 +286,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     attributeMap,
                                     eventMetadataParams,
                                     null);
-                    final String createdAnnotationId = sendAndVerifyCreateAnnotation(
+                    final String createdAnnotationId = annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                             firstHalfParams, false, "");
                     expectedQueryByNameAnnotations.add(firstHalfParams);
                     if (owner.equals("craigmcc")) {
@@ -311,7 +312,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     null,
                                     null);
                     secondHalfAnnotationIds.add(
-                            sendAndVerifyCreateAnnotation(
+                            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
                                     secondHalfParams, false, ""));
                 }
             }
@@ -348,7 +349,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             annotationWithAllFieldsParams = params;
 
             final String expectedRejectMessage = null;
-            sendAndVerifyCreateAnnotation(params, false, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, false, expectedRejectMessage);
         }
 
         return new CreateAnnotationScenarioResult(
