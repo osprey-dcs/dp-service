@@ -17,6 +17,7 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -32,7 +33,7 @@ import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-public class GrpcIntegrationIngestionServiceWrapper {
+public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServiceWrapperBase<IngestionServiceImpl> {
 
     // static variables
     @ClassRule
@@ -45,11 +46,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
-    // instance variables
-    protected MongoTestClient mongoClient;
-    private IngestionServiceImpl ingestionService;
-    private IngestionServiceImpl ingestionServiceMock;
-    protected ManagedChannel ingestionChannel;
+    // instance variables (common ones inherited from base class)
 
     public record IngestionProviderInfo(
             String providerId,
@@ -155,44 +152,42 @@ public class GrpcIntegrationIngestionServiceWrapper {
         return ConfigurationManager.getInstance();
     }
 
-    public void init(MongoTestClient mongoClient) {
-        this.mongoClient = mongoClient;
+    @Override
+    protected boolean initService() {
         IngestionHandlerInterface ingestionHandler = MongoIngestionHandler.newMongoSyncIngestionHandler();
-        ingestionService = new IngestionServiceImpl();
-        if (!ingestionService.init(ingestionHandler)) {
-            fail("IngestionServiceImpl.init failed");
-        }
-        ingestionServiceMock = mock(IngestionServiceImpl.class, delegatesTo(ingestionService));
-        // Generate a unique in-process server name.
-        String ingestionServerName = InProcessServerBuilder.generateName();
-        // Create a server, add service, start, and register for automatic graceful shutdown.
-        try {
-            grpcCleanup.register(InProcessServerBuilder
-                    .forName(ingestionServerName).directExecutor().addService(ingestionServiceMock).build().start());
-        } catch (IOException e) {
-            fail("IOException creating grpc server");
-        }
-        // Create a client channel and register for automatic graceful shutdown.
-        ingestionChannel = grpcCleanup.register(
-                InProcessChannelBuilder.forName(ingestionServerName).directExecutor().build());
+        service = new IngestionServiceImpl();
+        return service.init(ingestionHandler);
+    }
+
+    @Override
+    protected void finiService() {
+        service.fini();
+    }
+
+    @Override
+    protected IngestionServiceImpl createServiceMock(IngestionServiceImpl service) {
+        return mock(IngestionServiceImpl.class, delegatesTo(service));
+    }
+
+    @Override
+    protected GrpcCleanupRule getGrpcCleanupRule() {
+        return grpcCleanup;
+    }
+
+    @Override
+    protected String getServiceName() {
+        return "IngestionServiceImpl";
     }
 
     public ManagedChannel getIngestionChannel() {
-        return this.ingestionChannel;
+        return this.channel;
     }
 
-    public void fini() {
-        ingestionService.fini();
-        ingestionService = null;
-        ingestionServiceMock = null;
-        ingestionChannel = null;
-    }
-    
-        protected RegisterProviderResponse sendRegsiterProvider(
+    protected RegisterProviderResponse sendRegsiterProvider(
             RegisterProviderRequest request
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
-                DpIngestionServiceGrpc.newStub(ingestionChannel);
+                DpIngestionServiceGrpc.newStub(channel);
 
         final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
                 new RegisterProviderUtility.RegisterProviderResponseObserver();
@@ -299,7 +294,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
     protected IngestDataResponse sendIngestData(IngestDataRequest request) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
-                DpIngestionServiceGrpc.newStub(ingestionChannel);
+                DpIngestionServiceGrpc.newStub(channel);
 
         final IngestionTestBase.IngestionResponseObserver responseObserver =
                 new IngestionTestBase.IngestionResponseObserver(1);
@@ -323,7 +318,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
             List<IngestDataRequest> requestList
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
-                DpIngestionServiceGrpc.newStub(ingestionChannel);
+                DpIngestionServiceGrpc.newStub(channel);
 
         final IngestionTestBase.IngestDataStreamResponseObserver responseObserver =
                 new IngestionTestBase.IngestDataStreamResponseObserver();
@@ -342,7 +337,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
     protected List<IngestDataResponse> sendIngestDataBidiStream(List<IngestDataRequest> requestList) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
-                DpIngestionServiceGrpc.newStub(ingestionChannel);
+                DpIngestionServiceGrpc.newStub(channel);
 
         final IngestionTestBase.IngestionResponseObserver responseObserver =
                 new IngestionTestBase.IngestionResponseObserver(requestList.size());
@@ -936,7 +931,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
             String expectedRejectMessage
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub
-                = DpIngestionServiceGrpc.newStub(ingestionChannel);
+                = DpIngestionServiceGrpc.newStub(channel);
 
         final IngestionTestBase.QueryRequestStatusResponseObserver responseObserver =
                 new IngestionTestBase.QueryRequestStatusResponseObserver();
@@ -991,7 +986,7 @@ public class GrpcIntegrationIngestionServiceWrapper {
     ) {
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
-                DpIngestionServiceGrpc.newStub(ingestionChannel);
+                DpIngestionServiceGrpc.newStub(channel);
 
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
                 new IngestionTestBase.SubscribeDataResponseObserver(expectedResponseCount);

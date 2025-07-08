@@ -23,6 +23,7 @@ import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
@@ -55,67 +56,67 @@ import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-public class GrpcIntegrationAnnotationServiceWrapper {
+public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServiceWrapperBase<AnnotationServiceImpl> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
     @ClassRule public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
 
-    // instance variables
-    protected MongoTestClient mongoClient;
-    private AnnotationServiceImpl annotationService;
-    private AnnotationServiceImpl annotationServiceMock;
-    protected ManagedChannel annotationChannel;
+    // instance variables (common ones inherited from base class)
     protected Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap;
     protected Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap;
     protected Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap;
 
 
     public void init(MongoTestClient mongoClient) {
-
-        this.mongoClient = mongoClient;
-
         // init data structures
         createDataSetIdParamsMap = new TreeMap<>();
         createDataSetParamsIdMap = new HashMap<>();
         createAnnotationParamsIdMap = new HashMap<>();
 
-        AnnotationHandlerInterface annotationHandler = MongoAnnotationHandler.newMongoSyncAnnotationHandler();
-        annotationService = new AnnotationServiceImpl();
-        if (!annotationService.init(annotationHandler)) {
-            fail("AnnotationServiceImpl.init failed");
-        }
-        annotationServiceMock = mock(AnnotationServiceImpl.class, delegatesTo(annotationService));
-        // Generate a unique in-process server name.
-        String annotationServerName = InProcessServerBuilder.generateName();
-        // Create a server, add service, start, and register for automatic graceful shutdown.
-        try {
-            grpcCleanup.register(InProcessServerBuilder
-                    .forName(annotationServerName).directExecutor().addService(annotationServiceMock).build().start());
-        } catch (IOException e) {
-            fail("IOException starting grpc server");
-        }
-        // Create a client channel and register for automatic graceful shutdown.
-        annotationChannel = grpcCleanup.register(
-                InProcessChannelBuilder.forName(annotationServerName).directExecutor().build());
+        super.init(mongoClient);
     }
 
-    public void fini() {
-        annotationService.fini();
-        annotationService = null;
-        annotationServiceMock = null;
-        annotationChannel = null;
+    @Override
+    protected boolean initService() {
+        AnnotationHandlerInterface annotationHandler = MongoAnnotationHandler.newMongoSyncAnnotationHandler();
+        service = new AnnotationServiceImpl();
+        return service.init(annotationHandler);
+    }
 
+    @Override
+    protected void finiService() {
+        service.fini();
+    }
+
+    @Override
+    protected AnnotationServiceImpl createServiceMock(AnnotationServiceImpl service) {
+        return mock(AnnotationServiceImpl.class, delegatesTo(service));
+    }
+
+    @Override
+    protected GrpcCleanupRule getGrpcCleanupRule() {
+        return grpcCleanup;
+    }
+
+    @Override
+    protected String getServiceName() {
+        return "AnnotationServiceImpl";
+    }
+
+    @Override
+    public void fini() {
+        super.fini();
         createAnnotationParamsIdMap = null;
         createDataSetParamsIdMap = null;
         createDataSetIdParamsMap = null;
     }
     
-        protected String sendCreateDataSet(
+    protected String sendCreateDataSet(
                 CreateDataSetRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                DpAnnotationServiceGrpc.newStub(annotationChannel);
+                DpAnnotationServiceGrpc.newStub(channel);
 
         final AnnotationTestBase.CreateDataSetResponseObserver responseObserver =
                 new AnnotationTestBase.CreateDataSetResponseObserver();
@@ -175,7 +176,7 @@ public class GrpcIntegrationAnnotationServiceWrapper {
             String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                DpAnnotationServiceGrpc.newStub(annotationChannel);
+                DpAnnotationServiceGrpc.newStub(channel);
 
         final AnnotationTestBase.QueryDataSetsResponseObserver responseObserver =
                 new AnnotationTestBase.QueryDataSetsResponseObserver();
@@ -289,7 +290,7 @@ public class GrpcIntegrationAnnotationServiceWrapper {
             CreateAnnotationRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                DpAnnotationServiceGrpc.newStub(annotationChannel);
+                DpAnnotationServiceGrpc.newStub(channel);
 
         final AnnotationTestBase.CreateAnnotationResponseObserver responseObserver =
                 new AnnotationTestBase.CreateAnnotationResponseObserver();
@@ -365,7 +366,7 @@ public class GrpcIntegrationAnnotationServiceWrapper {
             String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                DpAnnotationServiceGrpc.newStub(annotationChannel);
+                DpAnnotationServiceGrpc.newStub(channel);
 
         final AnnotationTestBase.QueryAnnotationsResponseObserver responseObserver =
                 new AnnotationTestBase.QueryAnnotationsResponseObserver();
@@ -532,7 +533,7 @@ public class GrpcIntegrationAnnotationServiceWrapper {
             String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                DpAnnotationServiceGrpc.newStub(annotationChannel);
+                DpAnnotationServiceGrpc.newStub(channel);
 
         final AnnotationTestBase.ExportDataResponseObserver responseObserver =
                 new AnnotationTestBase.ExportDataResponseObserver();

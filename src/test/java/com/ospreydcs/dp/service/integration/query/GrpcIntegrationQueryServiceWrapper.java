@@ -16,6 +16,7 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
@@ -33,51 +34,43 @@ import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-public class GrpcIntegrationQueryServiceWrapper {
+public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWrapperBase<QueryServiceImpl> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
     @ClassRule public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
 
-    // instance variables
-    protected MongoTestClient mongoClient;
-    private QueryServiceImpl queryService;
-    private QueryServiceImpl queryServiceMock;
-    protected ManagedChannel queryChannel;
+    // instance variables (common ones inherited from base class)
 
     public Channel getQueryChannel() {
-        return this.queryChannel;
+        return this.channel;
     }
 
-    public void init(MongoTestClient mongoClient) {
-        this.mongoClient = mongoClient;
-        // init query service
+    @Override
+    protected boolean initService() {
         QueryHandlerInterface queryHandler = MongoQueryHandler.newMongoSyncQueryHandler();
-        queryService = new QueryServiceImpl();
-        if (!queryService.init(queryHandler)) {
-            fail("QueryServiceImpl.init failed");
-        }
-        queryServiceMock = mock(QueryServiceImpl.class, delegatesTo(queryService));
-        // Generate a unique in-process server name.
-        String queryServerName = InProcessServerBuilder.generateName();
-        // Create a server, add service, start, and register for automatic graceful shutdown.
-        try {
-            grpcCleanup.register(InProcessServerBuilder
-                    .forName(queryServerName).directExecutor().addService(queryServiceMock).build().start());
-        } catch (IOException e) {
-            fail("IOException starting grpc server");
-        }
-        // Create a client channel and register for automatic graceful shutdown.
-        queryChannel = grpcCleanup.register(
-                InProcessChannelBuilder.forName(queryServerName).directExecutor().build());
-
+        service = new QueryServiceImpl();
+        return service.init(queryHandler);
     }
 
-    public void fini() {
-        queryService.fini();
-        queryService = null;
-        queryServiceMock = null;
-        queryChannel = null;
+    @Override
+    protected void finiService() {
+        service.fini();
+    }
+
+    @Override
+    protected QueryServiceImpl createServiceMock(QueryServiceImpl service) {
+        return mock(QueryServiceImpl.class, delegatesTo(service));
+    }
+
+    @Override
+    protected GrpcCleanupRule getGrpcCleanupRule() {
+        return grpcCleanup;
+    }
+
+    @Override
+    protected String getServiceName() {
+        return "QueryServiceImpl";
     }
     
     protected QueryTableResponse.TableResult sendQueryTable(
@@ -85,7 +78,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryTableResponseObserver responseObserver =
                 new QueryTestBase.QueryTableResponseObserver();
@@ -523,7 +516,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
                 QueryTestBase.QueryDataResponseStreamObserver.newQueryDataUnaryObserver();
@@ -582,7 +575,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
                 QueryTestBase.QueryDataResponseStreamObserver.newQueryDataStreamObserver();
@@ -640,7 +633,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryDataResponseStreamObserver responseObserver =
                 QueryTestBase.QueryDataResponseStreamObserver.newQueryDataBidiStreamObserver(numBucketsExpected);
@@ -702,7 +695,7 @@ public class GrpcIntegrationQueryServiceWrapper {
     protected List<QueryPvMetadataResponse.MetadataResult.PvInfo> sendQueryPvMetadata(
             QueryPvMetadataRequest request, boolean expectReject, String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryPvMetadataResponseObserver responseObserver =
                 new QueryTestBase.QueryPvMetadataResponseObserver();
@@ -835,7 +828,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryProvidersResponseObserver responseObserver =
                 new QueryTestBase.QueryProvidersResponseObserver();
@@ -909,7 +902,7 @@ public class GrpcIntegrationQueryServiceWrapper {
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(queryChannel);
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
         final QueryTestBase.QueryProviderMetadataResponseObserver responseObserver =
                 new QueryTestBase.QueryProviderMetadataResponseObserver();

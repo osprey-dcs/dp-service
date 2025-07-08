@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.ingestionstream.IngestionStreamTestBase;
 import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
+import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
@@ -36,52 +37,50 @@ import static org.junit.Assert.*;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 
-public class GrpcIntegrationIngestionStreamServiceWrapper {
+public class GrpcIntegrationIngestionStreamServiceWrapper extends GrpcIntegrationServiceWrapperBase<IngestionStreamServiceImpl> {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
     @ClassRule
     public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
 
-    // instance variables
-    protected MongoTestClient mongoClient;
-    private IngestionStreamServiceImpl ingestionStreamService;
-    private IngestionStreamServiceImpl ingestionStreamServiceMock;
-    protected ManagedChannel ingestionStreamChannel;
+    // instance variables (common ones inherited from base class)
+    private ManagedChannel ingestionChannel;
 
     public void init(MongoTestClient mongoClient, ManagedChannel ingestionChannel) {
-
-        this.mongoClient = mongoClient;
-
-        IngestionStreamHandler ingestionStreamHandlerInstance = new IngestionStreamHandler(ingestionChannel);
-        IngestionStreamHandlerInterface ingestionStreamHandler =  ingestionStreamHandlerInstance;
-        ingestionStreamService = new IngestionStreamServiceImpl();
-        if (!ingestionStreamService.init(ingestionStreamHandler)) {
-            fail("IngestionStreamServiceImpl.init failed");
-        }
-        ingestionStreamServiceMock = mock(IngestionStreamServiceImpl.class, delegatesTo(ingestionStreamService));
-        // Generate a unique in-process server name.
-        String ingestionStreamServerName = InProcessServerBuilder.generateName();
-        // Create a server, add service, start, and register for automatic graceful shutdown.
-        try {
-            grpcCleanup.register(InProcessServerBuilder
-                    .forName(ingestionStreamServerName).directExecutor().addService(ingestionStreamServiceMock).build().start());
-        } catch (IOException e) {
-            fail("IOException starting grpc server");
-        }
-        // Create a client channel and register for automatic graceful shutdown.
-        ingestionStreamChannel = grpcCleanup.register(
-                InProcessChannelBuilder.forName(ingestionStreamServerName).directExecutor().build());
+        this.ingestionChannel = ingestionChannel;
+        super.init(mongoClient);
     }
 
-    public void fini() {
-        ingestionStreamService.fini();
-        ingestionStreamService = null;
-        ingestionStreamServiceMock = null;
-        ingestionStreamChannel = null;
+    @Override
+    protected boolean initService() {
+        IngestionStreamHandler ingestionStreamHandlerInstance = new IngestionStreamHandler(ingestionChannel);
+        IngestionStreamHandlerInterface ingestionStreamHandler = ingestionStreamHandlerInstance;
+        service = new IngestionStreamServiceImpl();
+        return service.init(ingestionStreamHandler);
+    }
+
+    @Override
+    protected void finiService() {
+        service.fini();
+    }
+
+    @Override
+    protected IngestionStreamServiceImpl createServiceMock(IngestionStreamServiceImpl service) {
+        return mock(IngestionStreamServiceImpl.class, delegatesTo(service));
+    }
+
+    @Override
+    protected GrpcCleanupRule getGrpcCleanupRule() {
+        return grpcCleanup;
+    }
+
+    @Override
+    protected String getServiceName() {
+        return "IngestionStreamServiceImpl";
     }
     
-        private IngestionStreamTestBase.SubscribeDataEventCall sendSubscribeDataEvent(
+    private IngestionStreamTestBase.SubscribeDataEventCall sendSubscribeDataEvent(
             SubscribeDataEventRequest request,
             int expectedEventResponseCount,
             int expectedDataBucketCount,
@@ -89,7 +88,7 @@ public class GrpcIntegrationIngestionStreamServiceWrapper {
             String expectedRejectMessage
     ) {
         final DpIngestionStreamServiceGrpc.DpIngestionStreamServiceStub asyncStub =
-                DpIngestionStreamServiceGrpc.newStub(ingestionStreamChannel);
+                DpIngestionStreamServiceGrpc.newStub(channel);
 
         final IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver =
                 new IngestionStreamTestBase.SubscribeDataEventResponseObserver(
