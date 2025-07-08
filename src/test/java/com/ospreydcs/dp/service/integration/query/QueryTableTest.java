@@ -6,6 +6,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.*;
 
+import java.time.Instant;
 import java.util.List;
 
 public class QueryTableTest extends GrpcIntegrationTestBase {
@@ -26,7 +27,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
     @Test
     public void queryTableTest() {
 
-        final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        final long startSeconds = Instant.now().getEpochSecond();
 
         // use request data contained by validationMap to verify query results
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
@@ -35,7 +36,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds);
         }
 
         // negative test, rejected because list of PV names is empty

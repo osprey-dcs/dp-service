@@ -5,6 +5,8 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.time.Instant;
+
 @RunWith(JUnit4.class)
 public class IngestDataBidiStreamSimpleIngestionScenarioTest extends GrpcIntegrationTestBase {
 
@@ -24,7 +26,7 @@ public class IngestDataBidiStreamSimpleIngestionScenarioTest extends GrpcIntegra
         // ingest some data
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond());
         }
     }
 

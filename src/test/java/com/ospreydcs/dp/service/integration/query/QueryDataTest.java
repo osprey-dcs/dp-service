@@ -9,6 +9,7 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.time.Instant;
 import java.util.List;
 
 @RunWith(JUnit4.class)
@@ -31,13 +32,14 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
     public void testQueryData() {
 
         // use request data contained by validationMap to verify query results
+        final long startSeconds = Instant.now().getEpochSecond();
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
             // create some data for testing query APIs
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds);
         }
 
         // positive queryData() test case, empty query result
@@ -45,7 +47,6 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             final List<String> pvNames = List.of("junk", "stuff"); // bogus PV names
 
             // select 5 seconds of data for each pv
-            final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
             final long beginSeconds = startSeconds + 1;
             final long beginNanos = 0L;
             final long endSeconds = startSeconds + 6;
@@ -78,7 +79,6 @@ public class QueryDataTest extends GrpcIntegrationTestBase {
             final List<String> pvNames = List.of("S01-GCC01", "S01-BPM01");
 
             // select 5 seconds of data for each pv
-            final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
             final long beginSeconds = startSeconds + 1;
             final long beginNanos = 0L;
             final long endSeconds = startSeconds + 6;

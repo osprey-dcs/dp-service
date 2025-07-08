@@ -6,6 +6,8 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.time.Instant;
+
 import static com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper.GCC_INGESTION_PROVIDER;
 
 @RunWith(JUnit4.class)
@@ -27,7 +29,7 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
         // ingest some data
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(null);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond());
         }
 
         // queryProviderMetadata() positive test for empty query result.
