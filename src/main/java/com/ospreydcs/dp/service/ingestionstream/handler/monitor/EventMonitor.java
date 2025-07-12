@@ -18,12 +18,14 @@ import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscription
 import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEvent;
 import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEventManager;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EventMonitor {
 
@@ -46,6 +48,8 @@ public class EventMonitor {
     protected final Set<String> targetPvNames = new HashSet<>();
     protected final DataBufferManager bufferManager;
     protected final TriggeredEventManager triggeredEventManager;
+    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    private final AtomicBoolean closeRequested = new AtomicBoolean(false);
 
     // local type defs
 
@@ -453,19 +457,43 @@ public class EventMonitor {
     }
 
     public void requestCancel() {
-//        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
-//        if (canceled.compareAndSet(false, true)) {
-//            handler.removeSourceMonitor(this);
-//        }
-        shutdown();
+        logger.debug("requestCancel id: {}", responseObserver.hashCode());
+
+        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
+        if (cancelRequested.compareAndSet(false, true)) {
+            shutdown();
+        }
     }
 
-    public void shutdown() {
+    private void shutdown() {
+
+        logger.debug("shutdown id: {}", responseObserver.hashCode());
+
         if (bufferManager != null) {
             bufferManager.shutdown();
         }
+
         if (triggeredEventManager != null) {
             triggeredEventManager.shutdown();
+        }
+    }
+    
+    public void close() {
+
+        if (closeRequested.compareAndSet(false, true)) {
+
+            ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
+                    (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
+            if (!serverCallStreamObserver.isCancelled()) {
+                logger.debug(
+                        "EventMonitor.close() calling responseObserver.onCompleted id: {}",
+                        responseObserver.hashCode());
+                responseObserver.onCompleted();
+            } else {
+                logger.debug(
+                        "EventMonitor.close() responseObserver already closed id: {}",
+                        responseObserver.hashCode());
+            }
         }
     }
 

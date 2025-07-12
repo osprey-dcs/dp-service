@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class DataSubscriptionManager {
+public class SourceMonitorSubscriptionManager {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -30,7 +30,7 @@ public class DataSubscriptionManager {
 
     public boolean fini() {
 
-        logger.debug("DataSubscriptionManager fini");
+        logger.debug("SourceMonitorSubscriptionManager fini");
 
         readLock.lock();
 

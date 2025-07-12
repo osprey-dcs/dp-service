@@ -130,6 +130,19 @@ public class IngestionStreamTestBase {
                 errorMessageList.add(errorMsg);
             }
         }
+        
+        public void awaitCloseLatch() {
+            try {
+                closeLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for closeLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+
 
         public List<SubscribeDataEventResponse> getResponseList() {
             return responseList;
@@ -193,7 +206,7 @@ public class IngestionStreamTestBase {
         @Override
         public void onError(Throwable t) {
             Status status = Status.fromThrowable(t);
-            final String errorMsg = "onError: " + status;
+            final String errorMsg = "onError status: " + status;
             System.err.println(errorMsg);
             isError.set(true);
             errorMessageList.add(errorMsg);
@@ -201,7 +214,7 @@ public class IngestionStreamTestBase {
 
         @Override
         public void onCompleted() {
-            System.out.println("onCompleted");
+            System.out.println("SubscribeDataEventResponseObserver onCompleted");
             closeLatch.countDown();
         }
 
@@ -223,7 +236,7 @@ public class IngestionStreamTestBase {
             DataEventOperation dataEventOperation;
 
             if (requestParams.noWindow) {
-                // causes request to be built with out DataEventWindow for reject testing
+                // causes request to be built without DataEventWindow for reject testing
                 dataEventOperation = DataEventOperation.newBuilder()
                         .addAllTargetPvs(requestParams.targetPvs())
                         .build();
@@ -251,5 +264,18 @@ public class IngestionStreamTestBase {
 
         return SubscribeDataEventRequest.newBuilder().setNewSubscription(newSubscriptionBuilder).build();
     }
+    
+    public static SubscribeDataEventRequest buildSubscribeDataEventCancelRequest() {
+
+        final SubscribeDataEventRequest.CancelSubscription cancelSubscription =
+                SubscribeDataEventRequest.CancelSubscription.newBuilder()
+                .build();
+
+        return SubscribeDataEventRequest.newBuilder()
+                .setCancelSubscription(cancelSubscription)
+                .build();
+    }
+
+
 
 }

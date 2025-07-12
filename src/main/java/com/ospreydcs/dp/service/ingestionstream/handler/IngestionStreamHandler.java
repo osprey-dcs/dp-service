@@ -97,9 +97,8 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
 
     @Override
     public void cancelDataEventSubscriptions(
-            StreamObserver<SubscribeDataEventResponse> responseObserver
-    ) {
-        // TODO
+            EventMonitor eventMonitor) {
+        subscriptionManager.cancelEventMonitor(eventMonitor);
     }
 
     @Override

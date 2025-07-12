@@ -44,6 +44,8 @@ public class EventMonitorSubscriptionManager {
 
     public ResultStatus addEventMonitor(final EventMonitor eventMonitor) {
 
+        logger.debug("addEventMonitor id: {}", eventMonitor.responseObserver.hashCode());
+
         // acquire write lock since method will be called from different threads handling grpc requests/responses
         writeLock.lock();
         try {
@@ -113,6 +115,8 @@ public class EventMonitorSubscriptionManager {
             String pvName,
             SubscribeDataResponse.SubscribeDataResult result
     ) {
+        logger.debug("handleSubscribeDataResult pv: {}", pvName);
+
         // acquire read lock since method will be called from different threads handling grpc requests/responses
         readLock.lock();
 
@@ -147,6 +151,8 @@ public class EventMonitorSubscriptionManager {
 
     public void cancelEventMonitor(EventMonitor eventMonitor) {
 
+        logger.debug("cancelEventMonitor id: {}", eventMonitor.responseObserver.hashCode());
+
         // acquire write lock since method will be called from different threads handling grpc requests/responses
         writeLock.lock();
         try {
@@ -180,12 +186,15 @@ public class EventMonitorSubscriptionManager {
     }
 
     public void shutdown() {
+        logger.debug("shutdown");
+
         // Shutdown all EventMonitors which will handle their own buffer cleanup
         writeLock.lock();
         try {
             for (List<EventMonitor> monitorList : pvMonitors.values()) {
                 for (EventMonitor eventMonitor : monitorList) {
-                    eventMonitor.shutdown();
+                    eventMonitor.requestCancel();
+                    eventMonitor.close();
                 }
             }
         } finally {

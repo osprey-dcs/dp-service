@@ -11,7 +11,6 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
-import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,7 +27,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     // instance variables
 
     final private MongoIngestionClientInterface mongoIngestionClient;
-    final private DataSubscriptionManager subscriptionManager = new DataSubscriptionManager();
+    final private SourceMonitorSubscriptionManager subscriptionManager = new SourceMonitorSubscriptionManager();
 
     public MongoIngestionHandler(MongoIngestionClientInterface client) {
         this.mongoIngestionClient = client;
@@ -46,7 +45,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
-    public DataSubscriptionManager getSubscriptionManager() {
+    public SourceMonitorSubscriptionManager getSubscriptionManager() {
         return subscriptionManager;
     }
 
@@ -58,7 +57,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             return false;
         }
         if (!subscriptionManager.init()) {
-            logger.error("error in DataSubscriptionManager.init");
+            logger.error("error in SourceMonitorSubscriptionManager.init");
             return false;
         }
         return true;
@@ -67,7 +66,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     @Override
     protected boolean fini_() {
         if (!subscriptionManager.fini()) {
-            logger.error("error in DataSubscriptionManager.fini");
+            logger.error("error in SourceMonitorSubscriptionManager.fini");
         }
         if (!mongoIngestionClient.fini()) {
             logger.error("error in mongoIngestionClient.fini");

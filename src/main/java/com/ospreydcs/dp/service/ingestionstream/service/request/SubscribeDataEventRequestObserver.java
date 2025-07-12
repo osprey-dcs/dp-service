@@ -65,6 +65,8 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
 
                 }
 
+// We don't need this because clean up happens explicitly triggered by IngestionStreamHandler.fini(), but keeping the code
+// because we might need it for setting other handlers on the connection.
 //                // add a handler to remove subscription when client closes method connection
 //                ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
 //                        (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
@@ -82,8 +84,7 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
             }
 
             case CANCELSUBSCRIPTION -> {
-                monitor.requestCancel();
-                responseObserver.onCompleted();
+                handleCancel();
             }
 
             case REQUEST_NOT_SET -> {
@@ -103,16 +104,22 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
         logger.debug(
                 "id: {} onError, requesting cancel",
                 responseObserver.hashCode());
-        monitor.requestCancel();
-        responseObserver.onCompleted();
+        handleCancel();
     }
 
     @Override
     public void onCompleted() {
         logger.debug(
-                "id: {} onCompleted, requesting cancel",
-                responseObserver.hashCode());
+                "id: {} onCompleted, requesting cancel ({})",
+                responseObserver.hashCode(),
+                responseObserver);
+        handleCancel();
+    }
+
+    private void handleCancel() {
+        handler.cancelDataEventSubscriptions(monitor);
         monitor.requestCancel();
         responseObserver.onCompleted();
     }
+
 }

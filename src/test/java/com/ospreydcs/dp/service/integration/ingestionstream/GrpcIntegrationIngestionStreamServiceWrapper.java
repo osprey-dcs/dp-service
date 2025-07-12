@@ -218,5 +218,32 @@ public class GrpcIntegrationIngestionStreamServiceWrapper extends GrpcIntegratio
             }
         }
     }
+    
+    protected void cancelSubscribeDataEventCall(IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall) {
+
+        final SubscribeDataEventRequest request = IngestionStreamTestBase.buildSubscribeDataEventCancelRequest();
+
+        // send NewSubscription message in request stream
+        new Thread(() -> {
+            subscribeDataEventCall.requestObserver().onNext(request);
+        }).start();
+
+        // wait for response stream to close
+        final IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver =
+                (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        responseObserver.awaitCloseLatch();
+
+    }
+
+    protected void closeSubscribeDataEventCall(IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall) {
+
+        // close the request stream
+        new Thread(subscribeDataEventCall.requestObserver()::onCompleted).start();
+
+        // wait for response stream to close
+        final IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver =
+                (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        responseObserver.awaitCloseLatch();
+    }
 
 }

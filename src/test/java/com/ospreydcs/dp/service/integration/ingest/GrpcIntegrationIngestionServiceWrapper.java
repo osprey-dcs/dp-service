@@ -9,7 +9,6 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
-import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
@@ -19,13 +18,10 @@ import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import io.grpc.ManagedChannel;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.junit.ClassRule;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 
@@ -1165,7 +1161,7 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
             subscribeDataCall.requestObserver().onNext(request);
         }).start();
 
-        // wait for ack response stream to close
+        // wait for response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
                 (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver();
         responseObserver.awaitCloseLatch();
@@ -1177,7 +1173,7 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         // close the request stream
         new Thread(subscribeDataCall.requestObserver()::onCompleted).start();
 
-        // wait for ack response stream to close
+        // wait for response stream to close
         final IngestionTestBase.SubscribeDataResponseObserver responseObserver =
                 (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall.responseObserver();
         responseObserver.awaitCloseLatch();

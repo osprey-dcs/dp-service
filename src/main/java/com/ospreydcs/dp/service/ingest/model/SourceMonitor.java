@@ -23,7 +23,7 @@ public class SourceMonitor {
     private final IngestionHandlerInterface handler;
     public final List<String> pvNames;
     public final StreamObserver<SubscribeDataResponse> responseObserver;
-    public final AtomicBoolean canceled = new AtomicBoolean(false);
+    public final AtomicBoolean cancelRequested = new AtomicBoolean(false);
 
     public SourceMonitor(
             IngestionHandlerInterface handler,
@@ -45,12 +45,12 @@ public class SourceMonitor {
                 (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
         if (!serverCallStreamObserver.isCancelled()) {
             logger.debug(
-                    "DataSubscriptionManager fini calling responseObserver.onCompleted id: {}",
+                    "SourceMonitor.close() calling responseObserver.onCompleted id: {}",
                     responseObserver.hashCode());
             responseObserver.onCompleted();
         } else {
             logger.debug(
-                    "DataSubscriptionManager fini responseObserver already closed id: {}",
+                    "SourceMonitor.close() responseObserver already closed id: {}",
                     responseObserver.hashCode());
         }
     }
@@ -107,7 +107,7 @@ public class SourceMonitor {
 
     public void requestCancel() {
         // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
-        if (canceled.compareAndSet(false, true)) {
+        if (cancelRequested.compareAndSet(false, true)) {
             handler.removeSourceMonitor(this);
         }
     }

@@ -67,6 +67,8 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                     return;
                 }
 
+// We don't need this because clean up happens explicitly triggered by MongoIngestionHandler.fini(), but keeping the code
+// because we might need it for setting other handlers on the connection.
 //                // add a handler to remove subscription when client closes method connection
 //                ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
 //                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
@@ -88,8 +90,7 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
             }
 
             case CANCELSUBSCRIPTION -> {
-                monitor.requestCancel();
-                responseObserver.onCompleted();
+                handleCancel();
             }
 
             case REQUEST_NOT_SET -> {
@@ -110,8 +111,7 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                 "id: {} {}.onError, requesting cancel",
                 responseObserver.hashCode(),
                 getClass().getSimpleName());
-        monitor.requestCancel();
-        responseObserver.onCompleted();
+        handleCancel();
     }
 
     @Override
@@ -120,6 +120,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                 "id: {} {}.onCompleted, requesting cancel",
                 responseObserver.hashCode(),
                 getClass().getSimpleName());
+        handleCancel();
+    }
+
+    private void handleCancel() {
         monitor.requestCancel();
         responseObserver.onCompleted();
     }

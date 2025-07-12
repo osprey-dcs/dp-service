@@ -308,32 +308,32 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds);
         }
 
-        // request 1: verify subscribeDataEvent() responses and close request stream
+        // request 1: verify subscribeDataEvent() responses and close request stream explicitly with onCompleted().
         ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall1.responseObserver(),
                 requestParams1,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses1,
                 expectedEventDataResponses1);
-        subscribeDataEventCall1.requestObserver().onCompleted();
+        ingestionStreamServiceWrapper.closeSubscribeDataEventCall(subscribeDataEventCall1);
 
-        // request 2: verify subscribeDataEvent() responses and close request stream
+        // request 2: verify subscribeDataEvent() responses and close request stream explicitly with cancel request.
         ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall2.responseObserver(),
                 requestParams2,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses2,
                 expectedEventDataResponses2);
-        subscribeDataEventCall2.requestObserver().onCompleted();
+        ingestionStreamServiceWrapper.cancelSubscribeDataEventCall(subscribeDataEventCall2);
 
-        // request 3: verify subscribeDataEvent() responses and close request stream
+        // request 3: verify subscribeDataEvent() responses and let server close API stream implicitly
         ingestionStreamServiceWrapper.verifySubscribeDataEventResponse(
                 (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall3.responseObserver(),
                 requestParams3,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses3,
                 expectedEventDataResponses3);
-        subscribeDataEventCall3.requestObserver().onCompleted();
+//        subscribeDataEventCall3.requestObserver().onCompleted();
 
     }
 
