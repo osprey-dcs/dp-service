@@ -1,10 +1,7 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.monitor;
 
-import com.ospreydcs.dp.grpc.v1.common.DataBucket;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.DataEventOperation;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
@@ -359,9 +356,9 @@ public class EventMonitor {
         List<TriggeredEvent> activeEvents = this.triggeredEventManager.getActiveEvents();
         for (TriggeredEvent triggeredEvent : activeEvents) {
 
-            List<DataBucket> currentDataBuckets = new ArrayList<>();
+            final List<DataBucket> currentDataBuckets = new ArrayList<>();
             long currentMessageSize = 0;
-            long baseMessageOverhead = 200; // Base overhead for EventData message structure
+            final long baseMessageOverhead = 200; // Base overhead for EventData message structure
 
             // iterate through each data item, check if the data time targets the triggeredEvent
             for (DataBuffer.BufferedData bufferedData : bufferedDataList) {
@@ -372,12 +369,17 @@ public class EventMonitor {
                 }
 
                 // Create DataBucket for this BufferedData item
-                DataBucket dataBucket = DataBucket.newBuilder()
-                        .setDataTimestamps(bufferedData.getDataTimestamps())
-                        .setDataColumn(bufferedData.getDataColumn())
-                        .build();
+                final DataBucket.Builder dataBucketBuilder = DataBucket.newBuilder();
+                dataBucketBuilder.setDataTimestamps(bufferedData.getDataTimestamps());
+                if (bufferedData.getDataColumn() != null) {
+                    dataBucketBuilder.setDataColumn(bufferedData.getDataColumn());
+                }
+                if (bufferedData.getSerializedDataColumn() != null) {
+                    dataBucketBuilder.setSerializedDataColumn(bufferedData.getSerializedDataColumn());
+                }
+                final DataBucket dataBucket = dataBucketBuilder.build();
 
-                long bucketSize = bufferedData.getEstimatedSize();
+                final long bucketSize = bufferedData.getEstimatedSize();
 
                 // Check if adding this bucket would exceed message size limit
                 if (!currentDataBuckets.isEmpty() &&
@@ -425,20 +427,44 @@ public class EventMonitor {
 
     public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
 
-        // Handle each data column from result.  A PV might be treated as both a trigger and target PV.
+        // Handle each DataColumn from result.  A PV might be treated as both a trigger and target PV.
         for (DataColumn dataColumn : result.getDataColumnsList()) {
             final String columnName = dataColumn.getName();
 
             // handle trigger PVs immediately
             final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnName);
             if (pvConditionTrigger != null) {
-                final DataTimestamps dataTimestamps = result.getDataTimestamps();
-                handleTriggerPVData(pvConditionTrigger, dataColumn, dataTimestamps);
+                handleTriggerPVData(pvConditionTrigger, dataColumn, result.getDataTimestamps());
             }
 
             // Buffer the data for target PVs instead of processing immediately
             if (targetPvNames().contains(columnName)) {
                 bufferManager.bufferData(columnName, dataColumn, result.getDataTimestamps());
+            }
+        }
+
+        // Handle each SerializedDataColumn from result.  A PV might be treated as both a trigger and target PV.
+        for (SerializedDataColumn serializedDataColumn : result.getSerializedDataColumnsList()) {
+            final String columnName = serializedDataColumn.getName();
+
+            // handle trigger PVs immediately
+            final PvConditionTrigger pvConditionTrigger = pvTriggerMap.get(columnName);
+            if (pvConditionTrigger != null) {
+                final DataColumn dataColumn;
+                try {
+                    dataColumn = DataColumn.parseFrom(serializedDataColumn.getDataColumnBytes());
+                } catch (InvalidProtocolBufferException e) {
+                    final String errorMsg = "InvalidProtocolBufferException msg: " + e.getMessage();
+                    logger.error(errorMsg + " id: " + responseObserver.hashCode());
+                    IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
+                    return;
+                }
+                handleTriggerPVData(pvConditionTrigger, dataColumn, result.getDataTimestamps());
+            }
+
+            // Buffer the data for target PVs instead of processing immediately.
+            if (targetPvNames().contains(columnName)) {
+                bufferManager.bufferSerializedData(columnName, serializedDataColumn, result.getDataTimestamps());
             }
         }
     }

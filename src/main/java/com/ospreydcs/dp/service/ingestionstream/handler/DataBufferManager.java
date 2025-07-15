@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingestionstream.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,6 +38,19 @@ public class DataBufferManager {
         DataBuffer buffer = pvBuffers.computeIfAbsent(pvName, k -> new DataBuffer(k, config));
         buffer.addData(dataColumn, dataTimestamps);
         
+        if (buffer.shouldFlush()) {
+            flushBuffer(pvName, buffer);
+        }
+    }
+
+    public void bufferSerializedData(
+            String pvName,
+            SerializedDataColumn serializedDataColumn,
+            DataTimestamps dataTimestamps
+    ) {
+        DataBuffer buffer = pvBuffers.computeIfAbsent(pvName, k -> new DataBuffer(k, config));
+        buffer.addSerializedData(serializedDataColumn, dataTimestamps);
+
         if (buffer.shouldFlush()) {
             flushBuffer(pvName, buffer);
         }

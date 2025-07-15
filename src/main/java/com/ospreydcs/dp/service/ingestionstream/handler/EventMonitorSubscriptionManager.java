@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.ingestionstream.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
@@ -138,6 +139,14 @@ public class EventMonitorSubscriptionManager {
             if (!dataColumn.getName().equals(pvName)) {
                 logger.error("result DataColumn.name: {} mismatch expected pvName: {}",
                         dataColumn.getName(),
+                        pvName);
+                return;
+            }
+        }
+        for (SerializedDataColumn serializedDataColumn : result.getSerializedDataColumnsList()) {
+            if (!serializedDataColumn.getName().equals(pvName)) {
+                logger.error("result SerializedDataColumn.name: {} mismatch expected pvName: {}",
+                        serializedDataColumn.getName(),
                         pvName);
                 return;
             }

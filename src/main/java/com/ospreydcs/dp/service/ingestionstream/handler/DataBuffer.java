@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingestionstream.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.apache.logging.log4j.LogManager;
@@ -58,33 +59,73 @@ public class DataBuffer {
     }
 
     private static class BufferedDataItem {
-        private final DataColumn dataColumn;
+        private DataColumn dataColumn = null;
+        private SerializedDataColumn serializedDataColumn = null;
         private final DataTimestamps dataTimestamps;
         private final Instant timestamp;
         private final long estimatedSizeBytes;
+
+        private BufferedDataItem(
+                DataTimestamps dataTimestamps,
+                long estimatedSizeBytes
+        ) {
+            this.dataTimestamps = dataTimestamps;
+            this.estimatedSizeBytes = estimatedSizeBytes;
+            this.timestamp = Instant.now();
+        }
 
         public BufferedDataItem(
                 DataColumn dataColumn,
                 DataTimestamps dataTimestamps,
                 long estimatedSizeBytes
         ) {
+            this(dataTimestamps, estimatedSizeBytes);
             this.dataColumn = dataColumn;
-            this.dataTimestamps = dataTimestamps;
-            this.estimatedSizeBytes = estimatedSizeBytes;
+        }
 
-//            // set timestamp from dataTimestamps
-//            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
-//                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
-//            this.timestamp = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
-
-            // set timestamp to arrival time
-            this.timestamp = Instant.now();
+        public BufferedDataItem(
+                SerializedDataColumn serializedDataColumn,
+                DataTimestamps dataTimestamps,
+                long estimatedSizeBytes
+        ) {
+            this(dataTimestamps, estimatedSizeBytes);
+            this.serializedDataColumn = serializedDataColumn;
         }
 
         public DataColumn getDataColumn() { return dataColumn; }
         public DataTimestamps getDataTimestamps() { return dataTimestamps; }
         public Instant getTimestamp() { return timestamp; }
         public long getEstimatedSizeBytes() { return estimatedSizeBytes; }
+        public SerializedDataColumn getSerializedDataColumn() { return serializedDataColumn; }
+    }
+
+    public static class BufferedData {
+        private final DataColumn dataColumn;
+        private final SerializedDataColumn serializedDataColumn;
+        private final DataTimestamps dataTimestamps;
+        private final long estimatedSize;
+        private final Instant firstInstant;
+        private final Instant lastInstant;
+
+        public BufferedData(BufferedDataItem bufferedDataItem) {
+            this.dataColumn = bufferedDataItem.getDataColumn();
+            this.serializedDataColumn = bufferedDataItem.getSerializedDataColumn();
+            this.dataTimestamps = bufferedDataItem.getDataTimestamps();
+            this.estimatedSize = bufferedDataItem.getEstimatedSizeBytes();
+
+            // set begin / end times from dataTimestamps
+            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
+                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
+            firstInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
+            lastInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getLastTimestamp());
+        }
+
+        public DataColumn getDataColumn() { return dataColumn; }
+        public SerializedDataColumn getSerializedDataColumn() { return serializedDataColumn; }
+        public DataTimestamps getDataTimestamps() { return dataTimestamps; }
+        public long getEstimatedSize() { return estimatedSize; }
+        public Instant getFirstInstant() { return firstInstant; }
+        public Instant getLastInstant() { return lastInstant; }
     }
 
     public DataBuffer(String pvName, DataBufferConfig config) {
@@ -101,8 +142,24 @@ public class DataBuffer {
             bufferedItems.add(item);
             currentBufferSizeBytes += estimatedSize;
             
-            logger.debug("Added data to buffer for PV: {}, buffer size: {} bytes, {} items", 
+            logger.debug("Added DataColumn to buffer for PV: {}, buffer size: {} bytes, {} items",
                         pvName, currentBufferSizeBytes, bufferedItems.size());
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    public void addSerializedData(SerializedDataColumn serializedDataColumn, DataTimestamps dataTimestamps) {
+        writeLock.lock();
+        try {
+            long estimatedSize = estimateSerializedDataSize(serializedDataColumn);
+            BufferedDataItem item = new BufferedDataItem(serializedDataColumn, dataTimestamps, estimatedSize);
+
+            bufferedItems.add(item);
+            currentBufferSizeBytes += estimatedSize;
+
+            logger.debug("Added SerializedDataColumn to buffer for PV: {}, buffer size: {} bytes, {} items",
+                    pvName, currentBufferSizeBytes, bufferedItems.size());
         } finally {
             writeLock.unlock();
         }
@@ -134,42 +191,6 @@ public class DataBuffer {
         }
     }
 
-    public static class BufferedData {
-        private final DataColumn dataColumn;
-        private final DataTimestamps dataTimestamps;
-        private final long estimatedSize;
-        private final Instant firstInstant;
-        private final Instant lastInstant;
-        
-        public BufferedData(
-                DataColumn dataColumn,
-                DataTimestamps dataTimestamps,
-                long estimatedSize
-        ) {
-            this.dataColumn = dataColumn;
-            this.dataTimestamps = dataTimestamps;
-            this.estimatedSize = estimatedSize;
-
-            // set begin / end times from dataTimestamps
-            final DataTimestampsUtility.DataTimestampsModel dataTimestampsModel =
-                    new DataTimestampsUtility.DataTimestampsModel(dataTimestamps);
-            firstInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getFirstTimestamp());
-            lastInstant = TimestampUtility.instantFromTimestamp(dataTimestampsModel.getLastTimestamp());
-        }
-        
-        public DataColumn getDataColumn() { return dataColumn; }
-        public DataTimestamps getDataTimestamps() { return dataTimestamps; }
-        public long getEstimatedSize() { return estimatedSize; }
-
-        public Instant getFirstInstant() {
-            return firstInstant;
-        }
-
-        public Instant getLastInstant() {
-            return lastInstant;
-        }
-    }
-
     public List<BufferedData> flush() {
         writeLock.lock();
         try {
@@ -185,7 +206,7 @@ public class DataBuffer {
             for (BufferedDataItem item : bufferedItems) {
                 Duration itemAge = Duration.between(item.getTimestamp(), now);
                 if (itemAge.toNanos() >= config.getMaxItemAgeNanos()) {
-                    results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps(), item.getEstimatedSizeBytes()));
+                    results.add(new BufferedData(item));
                     itemsToRemove.add(item);
                 }
             }
@@ -258,6 +279,14 @@ public class DataBuffer {
         return size.get();
     }
 
+    private long estimateSerializedDataSize(SerializedDataColumn serializedDataColumn) {
+        AtomicLong size = new AtomicLong(100); // Base overhead for timestamps and structure
+        size.addAndGet(serializedDataColumn.getName().length() * 2); // String overhead
+        size.addAndGet(50); // Base overhead for data column bytes.
+        size.addAndGet(serializedDataColumn.getSerializedSize());
+        return size.get();
+    }
+
     public List<BufferedData> forceFlushAll() {
         writeLock.lock();
         try {
@@ -267,7 +296,7 @@ public class DataBuffer {
 
             List<BufferedData> results = new ArrayList<>();
             for (BufferedDataItem item : bufferedItems) {
-                results.add(new BufferedData(item.getDataColumn(), item.getDataTimestamps(), item.getEstimatedSizeBytes()));
+                results.add(new BufferedData(item));
             }
 
             logger.debug("Force flushing all {} items from buffer for PV: {}, {} bytes", 
