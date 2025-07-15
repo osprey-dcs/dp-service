@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.integration.annotation;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,8 +22,11 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
     @Test
     public void testCreateDataSetReject() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
-        annotationIngestionScenario();
+        annotationIngestionScenario(startSeconds);
 
         {
             // createDataSet() negative test - request should be rejected because name not specified
@@ -89,6 +93,6 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
         }
 
         // positive test case defined in super class so it can be used to generate datasets for other tests
-        createDataSetScenario();
+        createDataSetScenario(startSeconds);
     }
 }

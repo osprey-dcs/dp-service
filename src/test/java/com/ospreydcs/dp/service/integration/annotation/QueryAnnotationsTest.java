@@ -5,11 +5,11 @@ import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -95,11 +95,16 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
     @Test
     public void testQueryAnnotationsPositive() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // run ingestion, create datasets and annotations needed for tests
-        annotationIngestionScenario();
-        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario();
+        annotationIngestionScenario(startSeconds);
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario(startSeconds);
         CreateAnnotationScenarioResult createAnnotationScenarioResult = createAnnotationScenario(
-                        createDataSetScenarioResult.firstHalfDataSetId, createDataSetScenarioResult.secondHalfDataSetId);
+                startSeconds,
+                createDataSetScenarioResult.firstHalfDataSetId(),
+                createDataSetScenarioResult.secondHalfDataSetId());
 
         // queryAnnotations() negative test: empty query result.
         {
@@ -130,7 +135,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
              */
 
             final String ownerId = "craigmcc";
-            final String datasetId = createDataSetScenarioResult.firstHalfDataSetId;
+            final String datasetId = createDataSetScenarioResult.firstHalfDataSetId();
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setOwnerCriterion(ownerId);
@@ -143,7 +148,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc);
+                    createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc());
         }
 
         // queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
@@ -172,7 +177,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc);
+                    createAnnotationScenarioResult.firstHalfAnnotationsOwnerCraigmcc());
 
             // query data test using result of queryAnnotations()
             {
@@ -236,7 +241,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
         {
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setIdCriterion(createAnnotationScenarioResult.annotationIdOwnerCraigmccComment1);
+            queryParams.setIdCriterion(createAnnotationScenarioResult.annotationIdOwnerCraigmccComment1());
 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
@@ -245,7 +250,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    createAnnotationScenarioResult.expectedQueryByIdResultAnnotations);
+                    createAnnotationScenarioResult.expectedQueryByIdResultAnnotations());
         }
 
         // queryAnnotations() positive test for query by TextCriterion (over name field).
@@ -262,7 +267,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    createAnnotationScenarioResult.expectedQueryByNameAnnotations);
+                    createAnnotationScenarioResult.expectedQueryByNameAnnotations());
         }
 
         // queryAnnotations() positive test for query by TextCriterion (over eventMetadata.description field).
@@ -279,12 +284,12 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
+                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
         }
 
         // queryAnnotations() positive test for query by AnnotationCriterion (by id of related annotation).
         {
-            final String relatedAnnotationId = createAnnotationScenarioResult.secondHalfAnnotationIds.get(0);
+            final String relatedAnnotationId = createAnnotationScenarioResult.secondHalfAnnotationIds().get(0);
             final AnnotationTestBase.QueryAnnotationsParams queryParams =
                     new AnnotationTestBase.QueryAnnotationsParams();
             queryParams.setAnnotationsCriterion(relatedAnnotationId);
@@ -296,7 +301,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
+                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
         }
 
         // queryAnnotations() positive test for query by Tags (tag value).
@@ -313,7 +318,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
+                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
         }
 
         // queryAnnotations() positive test for query by Attributes (attribute key and value).
@@ -331,7 +336,7 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
                     queryParams,
                     expectReject,
                     expectedRejectMessage,
-                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams));
+                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
         }
 
     }

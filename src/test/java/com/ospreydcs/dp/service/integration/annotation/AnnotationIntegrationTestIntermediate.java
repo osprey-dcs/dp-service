@@ -13,22 +13,29 @@ import java.util.Map;
 
 public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBase {
 
-    // static variables
-    protected static long startSeconds;
-    protected static long startNanos;
-
     // constants
     private static final int INGESTION_PROVIDER_ID = 1;
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
+    protected record CreateDataSetScenarioResult(
+            String firstHalfDataSetId,
+            String secondHalfDataSetId,
+            AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams,
+            AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams) {
+    }
+
+    protected record CreateAnnotationScenarioResult(
+            List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
+            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations,
+            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations,
+            List<String> secondHalfAnnotationIds, String annotationIdOwnerCraigmccComment1,
+            AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams) {
+    }
+
     @Before
     public void setUp() throws Exception {
-
         super.setUp();
-
-        startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
-        startNanos = 0L;
     }
 
     @After
@@ -36,13 +43,23 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         super.tearDown();
     }
 
-    public Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> annotationIngestionScenario() {
-
-        // register ingestion provider
-        final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
-        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
-
+    public Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> annotationIngestionScenario(
+            Long scenarioStartSeconds
+    ) {
         {
+            // set startSeconds and startNanos from method parameters
+            long startSeconds;
+            if (scenarioStartSeconds == null) {
+                startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+            } else {
+                startSeconds = scenarioStartSeconds;
+            }
+            final long startNanos = 0L;
+
+            // register ingestion provider
+            final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
+            final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
+
             // run ingestion scenario
 
             final List<GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();
@@ -67,7 +84,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     numBuckets,
                                     numSecondsPerBucket,
                                     false,
-                                    true,
+                                    true,  // using SerializedDataColumns
                                     null,
                                     null,
                                     null,
@@ -94,7 +111,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     numBuckets,
                                     numSecondsPerBucket,
                                     false,
-                                    true,
+                                    true, // using SerializedDataColumns
                                     null,
                                     null,
                                     null,
@@ -117,27 +134,17 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
     }
     
-    protected static class CreateDataSetScenarioResult {
-
-        public final String firstHalfDataSetId;
-        public final String secondHalfDataSetId;
-        public final AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams;
-        public final AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams;
-
-        protected CreateDataSetScenarioResult(
-                String firstHalfDataSetId,
-                String secondHalfDataSetId,
-                AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams,
-                AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams
-        ) {
-            this.firstHalfDataSetId = firstHalfDataSetId;
-            this.secondHalfDataSetId = secondHalfDataSetId;
-            this.firstHalfDataSetParams = firstHalfDataSetParams;
-            this.secondHalfDataSetParams = secondHalfDataSetParams;
+    protected CreateDataSetScenarioResult createDataSetScenario(
+            Long scenarioStartSeconds
+    ) {
+        // set startSeconds and startNanos from method parameters
+        long startSeconds;
+        if (scenarioStartSeconds == null) {
+            startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        } else {
+            startSeconds = scenarioStartSeconds;
         }
-    }
-
-    protected CreateDataSetScenarioResult createDataSetScenario() {
+        final long startNanos = 0L;
 
         String firstHalfDataSetId;
         String secondHalfDataSetId;
@@ -210,35 +217,20 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                 firstHalfDataSetId, secondHalfDataSetId, firstHalfDataSetParams, secondHalfDataSetParams);
     }
 
-    protected static class CreateAnnotationScenarioResult {
-
-        public final List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc;
-        public final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations;
-        public final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations;
-        public final List<String> secondHalfAnnotationIds;
-        public final String annotationIdOwnerCraigmccComment1;
-        public final AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams;
-
-        protected CreateAnnotationScenarioResult(
-                List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
-                List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations,
-                List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations,
-                List<String> secondHalfAnnotationIds, String annotationIdOwnerCraigmccComment1, AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams
-        ) {
-            this.firstHalfAnnotationsOwnerCraigmcc = firstHalfAnnotationsOwnerCraigmcc;
-            this.expectedQueryByIdResultAnnotations = expectedQueryByIdResultAnnotations;
-            this.expectedQueryByNameAnnotations = expectedQueryByNameAnnotations;
-            this.secondHalfAnnotationIds = secondHalfAnnotationIds;
-            this.annotationIdOwnerCraigmccComment1 = annotationIdOwnerCraigmccComment1;
-            this.annotationWithAllFieldsParams = annotationWithAllFieldsParams;
-        }
-    }
-
     protected CreateAnnotationScenarioResult createAnnotationScenario(
+            Long scenarioStartSeconds,
             String firstHalfDataSetId,
             String secondHalfDataSetId
     ) {
-
+        // set startSeconds and startNanos from method parameters
+        long startSeconds;
+        if (scenarioStartSeconds == null) {
+            startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        } else {
+            startSeconds = scenarioStartSeconds;
+        }
+        final long startNanos = 0L;
+        
         final List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
         final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
         final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();

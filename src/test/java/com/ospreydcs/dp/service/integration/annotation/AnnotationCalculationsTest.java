@@ -15,6 +15,7 @@ import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,18 +38,21 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
     @Test
     public void testAnnotationCalculations() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
         Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap =
-                annotationIngestionScenario();
+                annotationIngestionScenario(startSeconds);
 
         // create some datasets
-        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario(startSeconds);
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: list of data frames is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -77,7 +81,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // request should be rejected because: data frame name not specified
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: SamplingClock";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -128,7 +132,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -179,7 +183,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -230,7 +234,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // request should be rejected because: DataColumns list is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -276,7 +280,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations negative test: rejected because startTime is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -329,7 +333,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations negative test: rejected because periodNanos is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -382,7 +386,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations negative test: rejected because count is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -435,7 +439,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations negative test: rejected because DataColumn name not specified
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -488,7 +492,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations negative test: rejected because DataColumn is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -542,7 +546,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // Also provides positive and negative coverage for exporting calculations.
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: SamplingClock";
 
             // Create calculations for request, with 6 data frames, each with 2 columns.
@@ -621,8 +625,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -701,8 +705,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
@@ -781,8 +785,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
@@ -861,8 +865,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 null,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -882,8 +886,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 null,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -1042,7 +1046,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // dataset time range
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "calculations time range doesn't overlap dataset time range";
 
             // Create calculations for request, with 6 data frames, each with 2 columns.
@@ -1125,8 +1129,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
                 ExportDataResponse.ExportDataResult exportResult =
                         annotationServiceWrapper.sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -1136,7 +1140,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 false,
                                 "");
 
-                System.err.println("dataset id for non-overlapping time range: " + createDataSetScenarioResult.secondHalfDataSetId);
+                System.err.println("dataset id for non-overlapping time range: " + createDataSetScenarioResult.secondHalfDataSetId());
             }
 
         }
@@ -1145,7 +1149,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // rejected because TimestampList is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -1196,7 +1200,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // createAnnotation() with calculations positive test using DataTimestamps.TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: TimestampList";
 
             // create calculations for request, with 2 data frames, each with 2 columns

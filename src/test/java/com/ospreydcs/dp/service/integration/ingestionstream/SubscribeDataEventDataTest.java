@@ -314,7 +314,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                 requestParams1,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses1,
-                expectedEventDataResponses1);
+                expectedEventDataResponses1, 0);
         ingestionStreamServiceWrapper.closeSubscribeDataEventCall(subscribeDataEventCall1);
 
         // request 2: verify subscribeDataEvent() responses and close request stream explicitly with cancel request.
@@ -323,7 +323,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                 requestParams2,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses2,
-                expectedEventDataResponses2);
+                expectedEventDataResponses2, 0);
         ingestionStreamServiceWrapper.cancelSubscribeDataEventCall(subscribeDataEventCall2);
 
         // request 3: verify subscribeDataEvent() responses and let server close API stream implicitly
@@ -332,7 +332,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                 requestParams3,
                 ingestionScenarioResult.validationMap(),
                 expectedEventResponses3,
-                expectedEventDataResponses3);
+                expectedEventDataResponses3, 0);
 //        subscribeDataEventCall3.requestObserver().onCompleted();
 
     }
