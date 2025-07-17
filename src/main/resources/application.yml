@@ -109,3 +109,57 @@ Export:
   # like hdf5, because each bucket is written to file as it is accessed from the database without building
   # in-memory data strcutures.
   tabularExportFileSizeLimitBytes: 4096000
+
+# ingestionStreamServer: Settings for the ingestion stream server process.
+IngestionStreamServer:
+
+  # ingestionStreamServer.port: Network port for Ingestion Stream Service gRPC.
+  port: 50054
+
+# ingestionStreamHandler: Settings for the Ingestion Stream Service request handler.
+IngestionStreamHandler:
+
+  # ingestionStreamHandler.numWorkers: Number of worker threads used by the Ingestion Stream Service request handler.
+  # This parameter might take some tuning on deployments to get the best performance.
+  numWorkers: 7
+
+  # IngestionStreamHandler.EventMonitor: Settings for the Ingestion Stream handler's EventMonitor.
+  EventMonitor:
+
+    # IngestionStreamHandler.EventMonitor.maxMessageSizeBytes: Maximum message size in subscribeDataEvent() response stream.
+    maxMessageSizeBytes: 4096000
+
+    # Settings for the EventMonitor's DataBuffers, for buffering PV subscription data.
+    DataBuffer:
+
+      # IngestionStreamHandler.EventMonitor.DataBuffer.flushIntervalMillis: Buffer flush interval in milliseconds.
+      flushIntervalMillis: 500
+
+      # IngestionStreamHandler.EventMonitor.DataBuffer.maxBufferBytes: Max buffer size in bytes, will flush when size is reached.
+      maxBufferBytes: 524288
+
+      # IngestionStreamHandler.EventMonitor.DataBuffer.maxBufferItems: Max buffer size in number of buckets, will flush when size is reached.
+      maxBufferItems: 50
+
+      # IngestionStreamHandler.EventMonitor.DataBuffer.ageLimitNanos: Default max age for buffered data in nanos, will flush when limit is reached.
+      # Used for buffer size when event trigger time offset is non-negative.
+      # 1 billion nanos == 1 second.
+      ageLimitNanos: 2000000000
+
+      # IngestionStreamHandler.EventMonitor.DataBuffer.ageCushionNanos: Extra cushion added to buffer for event trigger with negative time offset.
+      # Buffer age limit will be negative trigger time offset in nanos plus cushion.
+      # 1 billion nanos == 1 second.
+      ageCushionNanos: 1000000000
+
+    # Settings for the EventMonitor's TriggeredEventManager, for managing events after they are triggered.
+    TriggeredEventManager:
+
+      # IngestionStreamHandler.EventMonitor.TriggeredEventManager.eventExpirationNanos: How long after event end time
+      # to remove the event from the TriggeredEventManager. End time is event trigger time offset plus duration.
+      # 1 billion nanos == 1 second.
+      eventExpirationNanos: 5000000000
+
+      # IngestionStreamHandler.EventMonitor.TriggeredEventManager.eventCleanupIntervalMillis: How often to check for
+      # expired events, in milliseconds.
+      # 1000 millis == 1 second.
+      eventCleanupIntervalMillis: 5000

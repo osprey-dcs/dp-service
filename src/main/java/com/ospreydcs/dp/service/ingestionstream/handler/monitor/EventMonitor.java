@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.DataEventOperation;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.DataBuffer;
@@ -26,13 +27,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EventMonitor {
 
-    // constants
-    private static final long MAX_MESSAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB message size limit
-    private static final long DEFAULT_FLUSH_INTERVAL = 500L; // 500ms flush interval
+    // EventMonitor constants
+    private static final long DEFAULT_MAX_MESSAGE_SIZE_BYTES = 4096000L; // 4MB message size limit
+    private static final String CFG_KEY_MAX_MESSAGE_SIZE_BYTES = "IngestionStreamHandler.EventMonitor.maxMessageSizeBytes";
+
+    // DataBuffer constants
+    private static final long DEFAULT_FLUSH_INTERVAL_MILLIS = 500L; // 500ms flush interval
+    private static final String CFG_KEY_FLUSH_INTERVAL_MILLIS = "IngestionStreamHandler.EventMonitor.DataBuffer.flushIntervalMillis";
     private static final long DEFAULT_MAX_BUFFER_BYTES = 512 * 1024L; // 512KB max buffer size
+    private static final String CFG_KEY_MAX_BUFFER_BYTES = "IngestionStreamHandler.EventMonitor.DataBuffer.maxBufferBytes";
     private static final int DEFAULT_MAX_BUFFER_ITEMS = 50; // 50 max items
+    private static final String CFG_KEY_MAX_BUFFER_ITEMS = "IngestionStreamHandler.EventMonitor.DataBuffer.maxBufferItems";
     private static final long DEFAULT_BUFFER_AGE_LIMIT_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(2); // 2 seconds max item age
+    private static final String CFG_KEY_BUFFER_AGE_LIMIT_NANOS = "IngestionStreamHandler.EventMonitor.DataBuffer.ageLimitNanos";
     private static final long DEFAULT_BUFFER_AGE_CUSHION_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(1); // 1 second cushion added to negative trigger time offset buffer age limit
+    private static final String CFG_KEY_BUFFER_AGE_CUSHION_NANOS = "IngestionStreamHandler.EventMonitor.DataBuffer.ageCushionNanos";
+
+    // TriggeredEventManager constants
+    private static final long DEFAULT_EVENT_EXPIRATION_NANOS = DataBuffer.DataBufferConfig.secondsToNanos(5);
+    private static final String CFG_KEY_EVENT_EXPIRATION_NANOS = "IngestionStreamHandler.EventMonitor.TriggeredEventManager.eventExpirationNanos";
+    private static final long DEFAULT_EVENT_CLEANUP_INTERVAL_MILLIS = 5000L;
+    private static final String CFG_KEY_EVENT_CLEANUP_INTERVAL_MILLIS = "IngestionStreamHandler.EventMonitor.TriggeredEventManager.eventCleanupIntervalMillis";
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -48,8 +63,44 @@ public class EventMonitor {
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private final AtomicBoolean closeRequested = new AtomicBoolean(false);
 
-    // local type defs
+    // configuration accessors
+    protected static ConfigurationManager configMgr() {
+        return ConfigurationManager.getInstance();
+    }
 
+    private long getMaxMessageSizeBytes() {
+        return configMgr().getConfigLong(CFG_KEY_MAX_MESSAGE_SIZE_BYTES, DEFAULT_MAX_MESSAGE_SIZE_BYTES);
+    }
+
+    private long getFlushIntervalMillis() {
+        return configMgr().getConfigLong(CFG_KEY_FLUSH_INTERVAL_MILLIS, DEFAULT_FLUSH_INTERVAL_MILLIS);
+    }
+
+    private long getMaxBufferBytes() {
+        return configMgr().getConfigLong(CFG_KEY_MAX_BUFFER_BYTES, DEFAULT_MAX_BUFFER_BYTES);
+    }
+
+    private int getMaxBufferItems() {
+        return configMgr().getConfigInteger(CFG_KEY_MAX_BUFFER_ITEMS, DEFAULT_MAX_BUFFER_ITEMS);
+    }
+
+    private long getBufferAgeLimitNanos() {
+        return configMgr().getConfigLong(CFG_KEY_BUFFER_AGE_LIMIT_NANOS, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
+    }
+
+    private long getBufferAgeCushionNanos() {
+        return configMgr().getConfigLong(CFG_KEY_BUFFER_AGE_CUSHION_NANOS, DEFAULT_BUFFER_AGE_CUSHION_NANOS);
+    }
+
+    private long getEventExpirationNanos() {
+        return configMgr().getConfigLong(CFG_KEY_EVENT_EXPIRATION_NANOS, DEFAULT_EVENT_EXPIRATION_NANOS);
+    }
+
+    private long getCleanupIntervalMillis() {
+        return configMgr().getConfigLong(CFG_KEY_EVENT_CLEANUP_INTERVAL_MILLIS, DEFAULT_EVENT_CLEANUP_INTERVAL_MILLIS);
+    }
+
+    // local type defs
     private static record TriggerResult(
             boolean isTriggered,
             boolean isError,
@@ -72,7 +123,7 @@ public class EventMonitor {
                     final DataEventOperation.DataEventWindow.TimeInterval interval = window.getTimeInterval();
                     if (interval.getOffset() < 0) {
                         negativeOffset = Math.abs(interval.getOffset());
-                        negativeOffset = negativeOffset + DEFAULT_BUFFER_AGE_CUSHION_NANOS;
+                        negativeOffset = negativeOffset + getBufferAgeCushionNanos();
                     }
                 }
             }
@@ -81,13 +132,13 @@ public class EventMonitor {
         // Take the maximum of (negative offset + cushion) and the default buffer age limit to set the bufferAgeLimit.
         // Note that when the offset in the request is non-negative, the value of negativeOffset is zero, and we use
         // the default buffer age limit.
-        long bufferAgeLimit = Math.max(negativeOffset, DEFAULT_BUFFER_AGE_LIMIT_NANOS);
+        long bufferAgeLimit = Math.max(negativeOffset, getBufferAgeLimitNanos());
 
         // create buffer config using age limit
         final DataBuffer.DataBufferConfig dataBufferConfig = new DataBuffer.DataBufferConfig(
-                DEFAULT_FLUSH_INTERVAL,
-                DEFAULT_MAX_BUFFER_BYTES,
-                DEFAULT_MAX_BUFFER_ITEMS,
+                getFlushIntervalMillis(),
+                getMaxBufferBytes(),
+                getMaxBufferItems(),
                 bufferAgeLimit);
 
         this.requestSubscription = requestSubscription;
@@ -98,21 +149,14 @@ public class EventMonitor {
         this.bufferManager = new DataBufferManager(this::processBufferedData, dataBufferConfig);
 
         // Create and start triggered event manager
-        TriggeredEventManager.TriggeredEventManagerConfig eventManagerConfig = 
-            TriggeredEventManager.TriggeredEventManagerConfig.createDefault();
+        TriggeredEventManager.TriggeredEventManagerConfig eventManagerConfig =
+            new TriggeredEventManager.TriggeredEventManagerConfig(
+                    getEventExpirationNanos(),
+                    getCleanupIntervalMillis());
         this.triggeredEventManager = new TriggeredEventManager(eventManagerConfig);
         this.triggeredEventManager.start();
 
         this.initialize(requestSubscription);
-    }
-
-    private static DataBuffer.DataBufferConfig createDefaultBufferConfig() {
-        return new DataBuffer.DataBufferConfig(
-            500L,      // 500ms flush interval - faster for event monitoring
-            512 * 1024L, // 512KB max buffer size
-            50,        // 50 max items
-            DataBuffer.DataBufferConfig.secondsToNanos(2)  // 2 seconds max item age - faster processing for events
-        );
     }
 
     private void initialize(SubscribeDataEventRequest.NewSubscription request) {
@@ -383,7 +427,7 @@ public class EventMonitor {
 
                 // Check if adding this bucket would exceed message size limit
                 if (!currentDataBuckets.isEmpty() &&
-                        (currentMessageSize + bucketSize + baseMessageOverhead) > MAX_MESSAGE_SIZE_BYTES) {
+                        (currentMessageSize + bucketSize + baseMessageOverhead) > getMaxMessageSizeBytes()) {
 
                     // Send current batch and start a new one
                     sendDataEventMessage(triggeredEvent.getEvent(), currentDataBuckets);

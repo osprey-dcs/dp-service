@@ -32,14 +32,6 @@ public class TriggeredEventManager {
         public static long secondsToNanos(long seconds) {
             return seconds * 1_000_000_000L;
         }
-
-        // Default configuration
-        public static TriggeredEventManagerConfig createDefault() {
-            return new TriggeredEventManagerConfig(
-                secondsToNanos(5), // 5 seconds expiration delay
-                5000L              // 5 seconds cleanup interval
-            );
-        }
     }
 
     private final TriggeredEventManagerConfig config;
