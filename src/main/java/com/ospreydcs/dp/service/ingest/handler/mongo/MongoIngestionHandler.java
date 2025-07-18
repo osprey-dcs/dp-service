@@ -4,13 +4,15 @@ import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
-import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoAsyncIngestionClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.QueryRequestStatusJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
+import com.ospreydcs.dp.service.ingest.handler.mongo.job.SubscribeDataJob;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,20 +29,25 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     // instance variables
 
     final private MongoIngestionClientInterface mongoIngestionClient;
+    final private MongoQueryClientInterface mongoQueryClient;
     final private SourceMonitorSubscriptionManager subscriptionManager = new SourceMonitorSubscriptionManager();
 
-    public MongoIngestionHandler(MongoIngestionClientInterface client) {
-        this.mongoIngestionClient = client;
+    public MongoIngestionHandler(
+            MongoIngestionClientInterface mongoIngestionClient,
+            MongoQueryClientInterface mongoQueryClient
+    ) {
+        this.mongoIngestionClient = mongoIngestionClient;
+        this.mongoQueryClient = mongoQueryClient;
     }
 
     public static MongoIngestionHandler newMongoSyncIngestionHandler() {
-        return new MongoIngestionHandler(new MongoSyncIngestionClient());
+        return new MongoIngestionHandler(new MongoSyncIngestionClient(), new MongoSyncQueryClient());
     }
 
-    public static MongoIngestionHandler newMongoAsyncIngestionHandler() {
-        return new MongoIngestionHandler(new MongoAsyncIngestionClient());
-    }
-
+//    public static MongoIngestionHandler newMongoAsyncIngestionHandler() {
+//        return new MongoIngestionHandler(new MongoAsyncIngestionClient());
+//    }
+//
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
@@ -56,6 +63,10 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("error in mongoIngestionClient.init");
             return false;
         }
+        if (!mongoQueryClient.init()) {
+            logger.error("error in mongoQueryClient.init");
+            return false;
+        }
         if (!subscriptionManager.init()) {
             logger.error("error in SourceMonitorSubscriptionManager.init");
             return false;
@@ -67,6 +78,9 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     protected boolean fini_() {
         if (!subscriptionManager.fini()) {
             logger.error("error in SourceMonitorSubscriptionManager.fini");
+        }
+        if (!mongoQueryClient.fini()) {
+            logger.error("error in MongoQueryClient.fini");
         }
         if (!mongoIngestionClient.fini()) {
             logger.error("error in mongoIngestionClient.fini");
@@ -131,14 +145,28 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     }
 
     @Override
-    public void addSourceMonitor(
-            SourceMonitor monitor
+    public void handleSubscribeData(
+            SubscribeDataRequest request, StreamObserver<SubscribeDataResponse> responseObserver, SourceMonitor monitor
     ) {
+        final SubscribeDataJob job =
+                new SubscribeDataJob(
+                        request, 
+                        responseObserver, 
+                        monitor,
+                        subscriptionManager,
+                        mongoIngestionClient,
+                        mongoQueryClient);
+
         logger.debug(
-                "addSourceMonitor adding subscription for id: {}",
+                "adding SubscribeDataJob id: {} to queue",
                 monitor.responseObserver.hashCode());
-        this.subscriptionManager.addSubscription(monitor);
-        monitor.sendAck();
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override

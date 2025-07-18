@@ -85,7 +85,7 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                 monitor = new SourceMonitor(handler, pvNames, responseObserver);
 
                 // handle request
-                handler.addSourceMonitor(monitor);
+                handler.handleSubscribeData(subscribeDataRequest, responseObserver, monitor);
 
             }
 

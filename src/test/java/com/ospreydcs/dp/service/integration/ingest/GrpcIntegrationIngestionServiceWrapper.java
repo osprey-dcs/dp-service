@@ -810,7 +810,7 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         return validationMap;
     }
 
-    public IngestionScenarioResult simpleIngestionScenario(Long scenarioStartSeconds) {
+    public IngestionScenarioResult simpleIngestionScenario(Long scenarioStartSeconds, boolean assignUniqueProviderName) {
 
         long startSeconds;
         if (scenarioStartSeconds == null) {
@@ -821,9 +821,11 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         final long startNanos = 0L;
 
         // register providers used by scenario
-        final String gccProviderName = GCC_INGESTION_PROVIDER;
+        final String gccProviderName =
+                assignUniqueProviderName ? GCC_INGESTION_PROVIDER+startSeconds : GCC_INGESTION_PROVIDER;
         final String gccProviderId = registerProvider(gccProviderName, null);
-        final String bpmProviderName = BPM_INGESTION_PROVIDER;
+        final String bpmProviderName =
+                assignUniqueProviderName ? BPM_INGESTION_PROVIDER+startSeconds : BPM_INGESTION_PROVIDER;
         final String bpmProviderId = registerProvider(bpmProviderName, null);
 
         List<IngestionColumnInfo> ingestionColumnInfoList = new ArrayList<>();

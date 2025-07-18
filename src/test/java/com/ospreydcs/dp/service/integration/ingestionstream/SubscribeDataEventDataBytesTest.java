@@ -39,6 +39,13 @@ public class SubscribeDataEventDataBytesTest extends AnnotationIntegrationTestIn
 
         final long startSeconds = Instant.now().getEpochSecond();
 
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            annotationIngestionScenario(startSeconds-600);
+        }
+
         // positive subscribeDataEvent() test with coverage for SerializedDataColumns flowing from ingestion requests
         // through subscribeData() API to subscribeDataEvent() API response stream.
         // Single trigger with value = 5.0 for PV S01-BPM01.

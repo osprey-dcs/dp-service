@@ -20,7 +20,11 @@ public interface IngestionHandlerInterface {
     void handleQueryRequestStatus(
             QueryRequestStatusRequest request, StreamObserver<QueryRequestStatusResponse> responseObserver);
 
-    void addSourceMonitor(SourceMonitor monitor);
+    void handleSubscribeData(
+            SubscribeDataRequest request,
+            StreamObserver<SubscribeDataResponse> responseStreamObserver,
+            SourceMonitor monitor);
+
     void removeSourceMonitor(SourceMonitor monitor);
 
 }

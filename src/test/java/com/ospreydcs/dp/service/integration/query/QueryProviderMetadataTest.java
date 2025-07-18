@@ -29,7 +29,7 @@ public class QueryProviderMetadataTest extends GrpcIntegrationTestBase {
         // ingest some data
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond());
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond(), false);
         }
 
         // queryProviderMetadata() positive test for empty query result.

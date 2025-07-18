@@ -35,10 +35,6 @@ public class SourceMonitor {
         this.responseObserver = responseObserver;
     }
 
-    public void sendAck() {
-        IngestionServiceImpl.sendSubscribeDataResponseAck(responseObserver);
-    }
-
     public void close() {
 
         ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =

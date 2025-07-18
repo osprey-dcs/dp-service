@@ -37,6 +37,15 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
 
         final long startSeconds = Instant.now().getEpochSecond();
 
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            ingestionServiceWrapper.simpleIngestionScenario(
+                    startSeconds-600,
+                    true);
+        }
+
         // 1. request 1. positive subscribeDataEvent() test: single trigger with value = 5.0 for PV S01-BPM01
         // Specify DataEventOperation that includes: a 3 second negative offset, a 5 second duration,
         // for target PVs S01-BPM02, S01-BPM03.
@@ -305,7 +314,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds);
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds, false);
         }
 
         // request 1: verify subscribeDataEvent() responses and close request stream explicitly with onCompleted().
@@ -472,7 +481,7 @@ public class SubscribeDataEventDataTest extends GrpcIntegrationTestBase {
                     expectedRejectMessage);
         }
 
-        // negative subscribeDataEvent() test: rejected because operation list of target PV names contains a blank name
+        // negative subscribeDataEvent() test: rejected because DataEventOperation.window not specified
         {
             IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams;

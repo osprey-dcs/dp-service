@@ -33,6 +33,13 @@ public class SubscribeDataBytesTest extends AnnotationIntegrationTestIntermediat
         final long startSeconds = Instant.now().getEpochSecond();
         final long startNanos = 0L;
 
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            annotationIngestionScenario(startSeconds-600);
+        }
+
         // Provides coverage for subscribeData() where the ingestion requests use SerializedDataColumns,
         // so that the SubscribeDataResponse messages also contain byte data.  The scenario uses
         // annotationIngestionScenario() to send such ingestion requests instead of simpleIngestionScenario().

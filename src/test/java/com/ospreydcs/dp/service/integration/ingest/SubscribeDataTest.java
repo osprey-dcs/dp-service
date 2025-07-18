@@ -65,6 +65,17 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
 
         // negative test case for subscribeData(), sending multiple NewSubscription messages causes reject
 
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            ingestionServiceWrapper.simpleIngestionScenario(
+                    startSeconds-600,
+                    true);
+        }
+
         final List<String> subscriptionPvNames = List.of("S09-GCC01", "S09-GCC01", "S09-BPM01");
         final int expectedResponseCount = 30;
         final boolean expectReject = false;
@@ -90,9 +101,45 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
     }
 
     @Test
+    public void testRejectInvalidPvName() {
+
+        // negative test case for subscribeData(), sending request containing an invalid PV name
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            ingestionServiceWrapper.simpleIngestionScenario(
+                    startSeconds-600,
+                    true);
+        }
+
+        final List<String> subscriptionPvNames = List.of("junk");
+        final int expectedResponseCount = 30;
+        final boolean expectReject = true;
+        String expectedRejectMessage = "PV names not found in archive: [junk]";
+        final SubscribeDataUtility.SubscribeDataCall subscribeDataCall =
+                ingestionServiceWrapper.initiateSubscribeDataRequest(
+                        subscriptionPvNames, expectedResponseCount, expectReject, expectedRejectMessage);
+    }
+
+    @Test
     public void testSubscribeDataPositive() {
 
         {
+            final long startSeconds = Instant.now().getEpochSecond();
+
+            {
+                // Pre-populate some data in the archive for the PVs that we will be using.
+                // This is necessary because validation is performed that data exists in the archive for the
+                // PV names in subscribeData() requests.
+                ingestionServiceWrapper.simpleIngestionScenario(
+                        startSeconds-600,
+                        true);
+            }
+
             // positive test cases for subscribeData() with 3 different alternatives for canceling subscription:
             // 1) implicit close on ingestion server shutdown
             // 2) explicit CancelSubscription message in request stream and
@@ -145,7 +192,7 @@ public class SubscribeDataTest extends GrpcIntegrationTestBase {
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond());
+                ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds, false);
             }
 
             // verify all 3 subscriptions received expected messages

@@ -14,7 +14,7 @@ import java.util.Map;
 public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBase {
 
     // constants
-    private static final int INGESTION_PROVIDER_ID = 1;
+    private static final String INGESTION_PROVIDER_NAME_BASE = "provider-";
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
@@ -57,7 +57,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             final long startNanos = 0L;
 
             // register ingestion provider
-            final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
+            final String providerName = INGESTION_PROVIDER_NAME_BASE + startSeconds;
             final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
             // run ingestion scenario
