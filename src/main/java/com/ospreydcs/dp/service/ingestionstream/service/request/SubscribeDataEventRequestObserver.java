@@ -53,8 +53,6 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                     return;
                 }
 
-                // TODO: validate request, create EventMonitor, handle request
-
                 // validate request
                 final ResultStatus resultStatus =
                         IngestionStreamValidationUtility.validateSubscribeDataEventRequest(request);
@@ -62,7 +60,6 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                     IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(
                             resultStatus.msg, responseObserver);
                     return;
-
                 }
 
 // We don't need this because clean up happens explicitly triggered by IngestionStreamHandler.fini(), but keeping the code

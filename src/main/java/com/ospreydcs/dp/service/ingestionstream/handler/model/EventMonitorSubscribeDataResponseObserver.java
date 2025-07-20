@@ -1,15 +1,21 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.model;
 
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
-import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorJob;
+import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorSubscribeDataResponseJob;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EventMonitorSubscribeDataResponseObserver implements StreamObserver<SubscribeDataResponse> {
 
@@ -21,6 +27,9 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     private final EventMonitorSubscriptionManager subscriptionManager;
     private final IngestionStreamHandler handler;
     private final CountDownLatch ackLatch = new CountDownLatch(1);
+    private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicBoolean isError = new AtomicBoolean(false);
+
 
     public EventMonitorSubscribeDataResponseObserver(
             final String pvName,
@@ -43,10 +52,22 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
         } catch (InterruptedException e) {
             final String errorMsg = "InterruptedException waiting for ackLatch";
             System.err.println(errorMsg);
-//            isError.set(true);
-//            errorMessageList.add(errorMsg);
+            isError.set(true);
+            errorMessageList.add(errorMsg);
         }
         return await;
+    }
+
+    public boolean isError() {
+        return isError.get();
+    }
+
+    public String getErrorMessage() {
+        if (!errorMessageList.isEmpty()) {
+            return errorMessageList.get(0);
+        } else {
+            return "";
+        }
     }
 
     @Override
@@ -55,25 +76,29 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     ) {
         switch (subscribeDataResponse.getResultCase()) {
             case EXCEPTIONALRESULT -> {
-                logger.trace("received exceptional result for pv: {}", pvName);
-                // TODO: nothing else to do because stream should have also been closed? confirm
+                isError.set(true);
+                errorMessageList.add(subscribeDataResponse.getExceptionalResult().getMessage());
+//                if (subscribeDataResponse.getExceptionalResult().getExceptionalResultStatus() == ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT) {
+//                    isReject.set(true);
+//                } else {
+//                    isError.set(true);
+//                }
             }
             case ACKRESULT -> {
-                logger.trace("received ack result for pv: {}", pvName);
-                ackLatch.countDown();
             }
             case SUBSCRIBEDATARESULT -> {
-                logger.trace("received subscribeData result for pv: {}", pvName);
-                final EventMonitorJob job = new EventMonitorJob(
-                        pvName, subscriptionManager, subscribeDataResponse.getSubscribeDataResult());
-                handler.addJob(job);
             }
             case RESULT_NOT_SET -> {
-                logger.trace("received result not set for pv: {}", pvName);
-                // TODO: maybe we should do the same as onError / onCompleted here to clean up?
-                // this is not expected but not sure what subsequent messaging would be if anything
             }
         }
+
+        // decrement ackLatch for initial response
+        ackLatch.countDown();
+
+        // dispatch response to subscription manager for handling
+        final EventMonitorSubscribeDataResponseJob job = new EventMonitorSubscribeDataResponseJob(
+                pvName, subscriptionManager, subscribeDataResponse);
+        handler.addJob(job);
     }
 
     @Override

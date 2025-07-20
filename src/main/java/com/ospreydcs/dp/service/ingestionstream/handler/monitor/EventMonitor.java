@@ -170,12 +170,21 @@ public class EventMonitor {
         targetPvNames.addAll(request.getOperation().getTargetPvsList());
     }
 
-    protected void handleError(
-            String errorMsg
+    public void handleError(
+            String errorMsg,
+            boolean cancelSubscriptions
     ) {
         logger.debug("handleError msg: {}", errorMsg);
-        subscriptionManager.cancelEventMonitor(this);
+
+        if (cancelSubscriptions) {
+            subscriptionManager.cancelEventMonitor(this);
+        }
+
+        // dispatch error message but don't close response stream with onCompleted()
         IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
+
+        requestCancel();
+        close();
     }
 
     private Set<String> triggerPvNames() {
@@ -255,7 +264,7 @@ public class EventMonitor {
                 final String errorMsg = "PvConditionTrigger type mismatch PV name: " + columnPvName
                         + " PV data type: " + dataValue.getValueCase().name()
                         + " trigger value data type: " + triggerValue.getValueCase().name();
-                handleError(errorMsg);
+                handleError(errorMsg, true);
                 return;
             }
 
@@ -345,7 +354,7 @@ public class EventMonitor {
                 final String errorMsg =
                         "PvConditionTrigger error comparing data value for PV name: " + columnPvName
                                 + " msg: " + resultErrorMsg;
-                handleError(errorMsg);
+                handleError(errorMsg, true);
                 return;
             }
 
@@ -354,7 +363,7 @@ public class EventMonitor {
                         DataTimestampsUtility.timestampForIndex(dataTimestamps, columnValueIndex);
                 if (triggerTimestamp == null) {
                     final String errorMsg = "PvConditionTrigger error getting timestamp for PV: " + columnPvName;
-                    handleError(errorMsg);
+                    handleError(errorMsg, true);
                 }
                 handleTriggeredEvent(triggerTimestamp, trigger, dataValue);
             }
@@ -500,7 +509,7 @@ public class EventMonitor {
                 } catch (InvalidProtocolBufferException e) {
                     final String errorMsg = "InvalidProtocolBufferException msg: " + e.getMessage();
                     logger.error(errorMsg + " id: " + responseObserver.hashCode());
-                    IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
+                    handleError(errorMsg, true);
                     return;
                 }
                 handleTriggerPVData(pvConditionTrigger, dataColumn, result.getDataTimestamps());
@@ -522,7 +531,7 @@ public class EventMonitor {
         } else {
             // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
             final String errorMsg = "unexpected PV received by EventMonitor: " + pvName;
-            handleError(errorMsg);
+            handleError(errorMsg, true);
         }
     }
 

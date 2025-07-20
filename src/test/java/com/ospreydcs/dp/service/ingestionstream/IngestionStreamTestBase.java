@@ -167,18 +167,15 @@ public class IngestionStreamTestBase {
 
                 case EXCEPTIONALRESULT -> {
                     final String errorMsg = response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
+                    System.err.println("SubscribeDataEventResponseOberver received ExceptionalResult: " + errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);
-
-                    if (ackLatch.getCount() > 0) {
-                        // decrement ackLatch if initial response in stream
-                        ackLatch.countDown();
-                    }
+                    ackLatch.countDown();
                 }
 
                 case ACK -> {
                     // decrement ackLatch for ack response
+                    System.err.println("SubscribeDataEventResponseOberver received ack");
                     ackLatch.countDown();
                 }
 

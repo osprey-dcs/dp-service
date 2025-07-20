@@ -6,7 +6,7 @@ import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
-import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorJob;
+import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorSubscribeDataResponseJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.SubscribeDataEventJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import io.grpc.ManagedChannel;
@@ -62,7 +62,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
-    public void addJob(EventMonitorJob job) {
+    public void addJob(EventMonitorSubscribeDataResponseJob job) {
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {

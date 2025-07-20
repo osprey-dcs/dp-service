@@ -59,8 +59,9 @@ public class SubscribeDataJob extends HandlerJob {
 
         // check for error executing mongo query
         if (pvMetadata == null ) {
-            dispatcher.sendError(
-                    "database error looking up metadata for PV names: " + uniquePvNames.toString());
+            final String errorMsg = "database error looking up metadata for PV names: " + uniquePvNames.toString();
+            logger.debug(errorMsg + " sending error response id: " + this.responseObserver.hashCode());
+            dispatcher.sendError(errorMsg);
             return;
         }
         
@@ -76,7 +77,9 @@ public class SubscribeDataJob extends HandlerJob {
 
         // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
         if (! uniquePvNames.isEmpty()) {
-            dispatcher.sendReject("PV names not found in archive: " + uniquePvNames.toString());
+            final String errorMsg = "PV names not found in archive: " + uniquePvNames.toString();
+            logger.debug(errorMsg + " sending reject response id: " + this.responseObserver.hashCode());
+            dispatcher.sendReject(errorMsg);
             return;
         }
 
