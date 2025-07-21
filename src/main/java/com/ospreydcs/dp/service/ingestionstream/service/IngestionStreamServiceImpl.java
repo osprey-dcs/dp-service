@@ -109,7 +109,10 @@ public class IngestionStreamServiceImpl
     ) {
         final SubscribeDataEventResponse response = subscribeDataEventResponseReject(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
+
+        // Don't close the response stream, let the EventMonitor decide when to do it (so we don't call onCompleted()
+        // more than once).
+        // responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataEventResponseError(

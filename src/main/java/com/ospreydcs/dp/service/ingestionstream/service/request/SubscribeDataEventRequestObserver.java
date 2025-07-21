@@ -46,10 +46,10 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                     // new subscription messages in the request stream is not supported
                     final String errorMsg = "multiple NewSubscription messages not supported in request stream";
                     logger.debug(
-                            "id: {} " + errorMsg,
-                            responseObserver.hashCode());
-                    monitor.requestCancel();
-                    IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
+                            "id: {} monitor: {}" + errorMsg,
+                            responseObserver.hashCode(),
+                            monitor.hashCode());
+                    monitor.handleReject(errorMsg);
                     return;
                 }
 
@@ -78,6 +78,8 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
 
                 // dispatch to handler
                 monitor = handler.handleSubscribeDataEvent(request, responseObserver);
+
+                logger.debug("id: {} created monitor: {}", responseObserver.hashCode(), monitor.hashCode());
             }
 
             case CANCELSUBSCRIPTION -> {
@@ -90,7 +92,7 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                 logger.debug(
                         "id: {} " + errorMsg,
                         responseObserver.hashCode());
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
+                monitor.handleReject(errorMsg);
             }
 
         }
@@ -114,9 +116,8 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
     }
 
     private void handleCancel() {
-        handler.cancelDataEventSubscriptions(monitor);
-        monitor.requestCancel();
-        responseObserver.onCompleted();
+        monitor.requestShutdown();
+        monitor.requestClose();
     }
 
 }

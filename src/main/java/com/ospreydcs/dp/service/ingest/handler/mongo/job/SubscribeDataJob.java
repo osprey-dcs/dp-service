@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.ingest.handler.mongo.SourceMonitorSubscriptionManager;
+import com.ospreydcs.dp.service.ingest.handler.mongo.SourceMonitorPublisher;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.dispatch.SubscribeDataDispatcher;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
@@ -26,7 +26,7 @@ public class SubscribeDataJob extends HandlerJob {
     private final SubscribeDataRequest request;
     private final StreamObserver<SubscribeDataResponse> responseObserver;
     private final SourceMonitor monitor;
-    private final SourceMonitorSubscriptionManager subscriptionManager;
+    private final SourceMonitorPublisher subscriptionManager;
     private final MongoIngestionClientInterface mongoIngestionClient;
     private final MongoQueryClientInterface mongoQueryClient;
     private final SubscribeDataDispatcher dispatcher;
@@ -35,7 +35,7 @@ public class SubscribeDataJob extends HandlerJob {
             SubscribeDataRequest request,
             StreamObserver<SubscribeDataResponse> responseObserver,
             SourceMonitor monitor,
-            SourceMonitorSubscriptionManager subscriptionManager,
+            SourceMonitorPublisher subscriptionManager,
             MongoIngestionClientInterface mongoIngestionClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
@@ -83,8 +83,8 @@ public class SubscribeDataJob extends HandlerJob {
             return;
         }
 
-        // add SourceMonitor to subscriptionManager
-        this.subscriptionManager.addSubscription(monitor);
+        // add SourceMonitor to publisher
+        this.subscriptionManager.addMonitor(monitor);
 
         // send an ack message in the response stream
         dispatcher.sendAck();

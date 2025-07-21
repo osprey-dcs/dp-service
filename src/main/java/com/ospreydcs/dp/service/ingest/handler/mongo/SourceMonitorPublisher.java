@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class SourceMonitorSubscriptionManager {
+public class SourceMonitorPublisher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -30,7 +30,7 @@ public class SourceMonitorSubscriptionManager {
 
     public boolean fini() {
 
-        logger.debug("SourceMonitorSubscriptionManager fini");
+        logger.debug("SourceMonitorPublisher fini");
 
         readLock.lock();
 
@@ -38,9 +38,7 @@ public class SourceMonitorSubscriptionManager {
             // create a set of all SourceMonitors, eliminating duplicates for subscriptions to multiple PVs
             Set<SourceMonitor> sourceMonitors = new HashSet<>();
             for (List<SourceMonitor> monitorList : subscriptionMap.values()) {
-                for (SourceMonitor monitor : monitorList) {
-                    sourceMonitors.add(monitor);
-                }
+                sourceMonitors.addAll(monitorList);
             }
 
             // close each response stream in set
@@ -59,18 +57,14 @@ public class SourceMonitorSubscriptionManager {
      * Add a subscription entry to map data structure.  We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void addSubscription(SourceMonitor monitor) {
+    public void addMonitor(SourceMonitor monitor) {
 
         writeLock.lock();
         try {
             // use try...finally to make sure we unlock
 
             for (String pvName : monitor.pvNames) {
-                List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
-                if (sourceMonitors == null) {
-                    sourceMonitors = new ArrayList<>();
-                    subscriptionMap.put(pvName, sourceMonitors);
-                }
+                List<SourceMonitor> sourceMonitors = subscriptionMap.computeIfAbsent(pvName, k -> new ArrayList<>());
                 sourceMonitors.add(monitor);
             }
 
@@ -132,7 +126,7 @@ public class SourceMonitorSubscriptionManager {
      * We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void removeSubscriptions(SourceMonitor monitor) {
+    public void removeMonitor(SourceMonitor monitor) {
 
         writeLock.lock();
         try {

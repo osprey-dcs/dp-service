@@ -2,39 +2,39 @@ package com.ospreydcs.dp.service.ingestionstream.handler.job;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class EventMonitorSubscribeDataResponseJob extends HandlerJob {
 
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
+
     // instance variables
-    private final String pvName;
-    private final EventMonitorSubscriptionManager subscriptionManager;
+    private final EventMonitor eventMonitor;
     private final SubscribeDataResponse subscribeDataResponse;
     private final boolean isError;
     private final boolean isCompleted;
 
     public EventMonitorSubscribeDataResponseJob(
-            String pvName,
-            EventMonitorSubscriptionManager subscriptionManager,
+            EventMonitor eventMonitor,
             SubscribeDataResponse subscribeDataResponse
     ) {
         super();
-        this.pvName = pvName;
-        this.subscriptionManager = subscriptionManager;
+        this.eventMonitor = eventMonitor;
         this.subscribeDataResponse = subscribeDataResponse;
         this.isError = false;
         this.isCompleted = false;
     }
 
     public EventMonitorSubscribeDataResponseJob(
-            String pvName,
-            EventMonitorSubscriptionManager subscriptionManager,
+            EventMonitor eventMonitor,
             boolean isError,
             boolean isCompleted
     ) {
         super();
-        this.pvName = pvName;
-        this.subscriptionManager = subscriptionManager;
+        this.eventMonitor = eventMonitor;
         this.subscribeDataResponse = null;
         this.isError = isError;
         this.isCompleted = isCompleted;
@@ -42,14 +42,15 @@ public class EventMonitorSubscribeDataResponseJob extends HandlerJob {
 
     @Override
     public void execute() {
+
+        logger.debug("executing EventMonitorSubscribeDataResponseJob id: {}", eventMonitor.hashCode());
+
         if (subscribeDataResponse != null) {
-            subscriptionManager.handleSubscribeDataResponse(pvName, subscribeDataResponse);
+            eventMonitor.handleSubscribeDataResult(subscribeDataResponse);
+
         } else if (isError) {
-            subscriptionManager.handleExceptionalResult(
-                    pvName, "subscribeData() unexpected error in response stream for pv: " + pvName);
+
         } else if (isCompleted) {
-            subscriptionManager.handleExceptionalResult(
-                    pvName, "subscribeData() response stream closed for pv: " + pvName);
         }
     }
 }

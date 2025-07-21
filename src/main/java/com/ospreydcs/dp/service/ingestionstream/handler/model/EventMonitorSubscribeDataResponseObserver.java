@@ -1,11 +1,9 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.model;
 
-import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
-import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorSubscribeDataResponseJob;
+import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,8 +21,7 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final String pvName;
-    private final EventMonitorSubscriptionManager subscriptionManager;
+    private final EventMonitor eventMonitor;
     private final IngestionStreamHandler handler;
     private final CountDownLatch ackLatch = new CountDownLatch(1);
     private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
@@ -32,12 +29,10 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
 
 
     public EventMonitorSubscribeDataResponseObserver(
-            final String pvName,
-            final EventMonitorSubscriptionManager subscriptionManager,
+            final EventMonitor eventMonitor,
             final IngestionStreamHandler handler
     ) {
-        this.pvName = pvName;
-        this.subscriptionManager = subscriptionManager;
+        this.eventMonitor = eventMonitor;
         this.handler = handler;
     }
 
@@ -48,6 +43,8 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
             if (!await) {
                 final String errorMsg = "timed out waiting for ackLatch";
                 System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
             }
         } catch (InterruptedException e) {
             final String errorMsg = "InterruptedException waiting for ackLatch";
@@ -74,6 +71,11 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
     public void onNext(
             SubscribeDataResponse subscribeDataResponse
     ) {
+        logger.debug(
+                "received SubscribeDataResponse type: {} id: {}",
+                subscribeDataResponse.getResultCase().name(),
+                this.hashCode());
+
         switch (subscribeDataResponse.getResultCase()) {
             case EXCEPTIONALRESULT -> {
                 isError.set(true);
@@ -97,19 +99,19 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
 
         // dispatch response to subscription manager for handling
         final EventMonitorSubscribeDataResponseJob job = new EventMonitorSubscribeDataResponseJob(
-                pvName, subscriptionManager, subscribeDataResponse);
+                eventMonitor, subscribeDataResponse);
         handler.addJob(job);
     }
 
     @Override
     public void onError(Throwable throwable) {
-        // TODO - notify subscriptionManager of problem so it can clean up,
+        // TODO - notify subscribeDataCallManager of problem so it can clean up,
         // by either calling subscribeData() again or cleaning up subscription manager data structures
     }
 
     @Override
     public void onCompleted() {
-        // TODO - notify subscriptionManager of problem so it can clean up,
+        // TODO - notify subscribeDataCallManager of problem so it can clean up,
         // by either calling subscribeData() again or cleaning up subscription manager data structures
     }
 }

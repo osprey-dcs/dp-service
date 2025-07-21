@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.ingestionstream.handler;
+package com.ospreydcs.dp.service.ingestionstream.handler.monitor;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

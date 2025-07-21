@@ -9,7 +9,7 @@ import io.grpc.ManagedChannel;
 
 public class IngestionServiceClientUtility {
     
-    public static class IngestionServiceClient {
+    public static class IngestionServiceGrpcClient {
 
         // instance variables
         private ManagedChannel channel;
@@ -20,12 +20,12 @@ public class IngestionServiceClientUtility {
         public static final String CFG_KEY_HOSTNAME = "GrpcClient.hostname";
         public static final String DEFAULT_HOSTNAME = "localhost";
 
-        public IngestionServiceClient() {
+        public IngestionServiceGrpcClient() {
             final String connectString = getConnectString();
             this.channel = Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
         }
 
-        public IngestionServiceClient(ManagedChannel channel) {
+        public IngestionServiceGrpcClient(ManagedChannel channel) {
             this.channel = channel;
         }
 

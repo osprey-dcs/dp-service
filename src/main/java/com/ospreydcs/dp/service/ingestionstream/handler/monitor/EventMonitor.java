@@ -8,13 +8,12 @@ import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataBuffer;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataBufferManager;
-import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorSubscriptionManager;
-import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEvent;
-import com.ospreydcs.dp.service.ingestionstream.handler.TriggeredEventManager;
+import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
+import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
@@ -55,11 +54,13 @@ public class EventMonitor {
     // instance variables
     protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
     public final StreamObserver<SubscribeDataEventResponse> responseObserver;
-    protected final EventMonitorSubscriptionManager subscriptionManager;
+    private final IngestionStreamHandler handler;
+    protected final EventMonitorManager eventMonitorManager;
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
     protected final Set<String> targetPvNames = new HashSet<>();
     protected final DataBufferManager bufferManager;
     protected final TriggeredEventManager triggeredEventManager;
+    protected final SubscribeDataCallManager subscribeDataCallManager;
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private final AtomicBoolean closeRequested = new AtomicBoolean(false);
 
@@ -111,8 +112,16 @@ public class EventMonitor {
     public EventMonitor(
             SubscribeDataEventRequest.NewSubscription requestSubscription,
             StreamObserver<SubscribeDataEventResponse> responseObserver,
-            EventMonitorSubscriptionManager subscriptionManager
+            IngestionStreamHandler handler,
+            EventMonitorManager eventMonitorManager,
+            IngestionServiceClientUtility.IngestionServiceGrpcClient ingestionServiceGrpcClient
     ) {
+        this.requestSubscription = requestSubscription;
+        this.responseObserver = responseObserver;
+        this.handler = handler;
+        this.eventMonitorManager = eventMonitorManager;
+        this.subscribeDataCallManager = new SubscribeDataCallManager(this, handler, ingestionServiceGrpcClient);
+
         // use negative offset value from request to determine buffer data age limit (plus a cushion)
         long negativeOffset = 0L;
         if (requestSubscription.hasOperation()) {
@@ -141,10 +150,6 @@ public class EventMonitor {
                 getMaxBufferItems(),
                 bufferAgeLimit);
 
-        this.requestSubscription = requestSubscription;
-        this.responseObserver = responseObserver;
-        this.subscriptionManager = subscriptionManager;
-
         // Create buffer manager with callback to process data
         this.bufferManager = new DataBufferManager(this::processBufferedData, dataBufferConfig);
 
@@ -170,21 +175,30 @@ public class EventMonitor {
         targetPvNames.addAll(request.getOperation().getTargetPvsList());
     }
 
+    public void handleReject(String errorMsg) {
+
+        logger.debug("handleReject msg: {}", errorMsg);
+
+        // dispatch reject message but don't close response stream with onCompleted()
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
+
+        requestShutdown();
+        requestClose();
+    }
+
     public void handleError(
-            String errorMsg,
-            boolean cancelSubscriptions
+            String errorMsg
     ) {
         logger.debug("handleError msg: {}", errorMsg);
 
-        if (cancelSubscriptions) {
-            subscriptionManager.cancelEventMonitor(this);
-        }
+        // remove monitor from manager
+        eventMonitorManager.removeEventMonitor(this);
 
         // dispatch error message but don't close response stream with onCompleted()
         IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
 
-        requestCancel();
-        close();
+        requestShutdown();
+        requestClose();
     }
 
     private Set<String> triggerPvNames() {
@@ -196,16 +210,46 @@ public class EventMonitor {
     }
 
     public Set<String> getPvNames() {
-
         final Set<String> pvNames = new HashSet<>();
-
         // add names for trigger PVs
         pvNames.addAll(triggerPvNames());
-
         // add names for target PVs
         pvNames.addAll(targetPvNames());
-
         return pvNames;
+    }
+
+    public ResultStatus initiateSubscription() {
+        return subscribeDataCallManager.initiateSubscription();
+    }
+
+    public void handleSubscribeDataResult(SubscribeDataResponse subscribeDataResponse) {
+        logger.debug(
+                "handleSubscribeDataResult type: {} id: {}",
+                subscribeDataResponse.getResultCase().name(),
+                this.hashCode());
+
+        switch (subscribeDataResponse.getResultCase()) {
+            case EXCEPTIONALRESULT -> {
+                logger.debug("received exceptional result");
+                handleExceptionalResult(subscribeDataResponse.getExceptionalResult());
+            }
+            case ACKRESULT -> {
+                logger.trace("received ack result");
+                // nothing to do
+            }
+            case SUBSCRIBEDATARESULT -> {
+                logger.trace("received subscribeData result");
+                handleSubscribeDataResult(subscribeDataResponse.getSubscribeDataResult());
+            }
+            case RESULT_NOT_SET -> {
+                logger.trace("received result not set");
+                handleError("result not set in SubscribeDataResponse");
+            }
+        }
+    }
+
+    public void handleExceptionalResult(ExceptionalResult exceptionalResult) {
+        handleError(exceptionalResult.getMessage());
     }
 
     private static <T extends Comparable<T>> TriggerResult checkTrigger(
@@ -264,7 +308,7 @@ public class EventMonitor {
                 final String errorMsg = "PvConditionTrigger type mismatch PV name: " + columnPvName
                         + " PV data type: " + dataValue.getValueCase().name()
                         + " trigger value data type: " + triggerValue.getValueCase().name();
-                handleError(errorMsg, true);
+                handleError(errorMsg);
                 return;
             }
 
@@ -354,7 +398,7 @@ public class EventMonitor {
                 final String errorMsg =
                         "PvConditionTrigger error comparing data value for PV name: " + columnPvName
                                 + " msg: " + resultErrorMsg;
-                handleError(errorMsg, true);
+                handleError(errorMsg);
                 return;
             }
 
@@ -363,7 +407,7 @@ public class EventMonitor {
                         DataTimestampsUtility.timestampForIndex(dataTimestamps, columnValueIndex);
                 if (triggerTimestamp == null) {
                     final String errorMsg = "PvConditionTrigger error getting timestamp for PV: " + columnPvName;
-                    handleError(errorMsg, true);
+                    handleError(errorMsg);
                 }
                 handleTriggeredEvent(triggerTimestamp, trigger, dataValue);
             }
@@ -478,7 +522,7 @@ public class EventMonitor {
         logger.debug("Sent EventData message with {} data buckets", dataBuckets.size());
     }
 
-    public void handleSubscribeDataResponse(SubscribeDataResponse.SubscribeDataResult result) {
+    public void handleSubscribeDataResult(SubscribeDataResponse.SubscribeDataResult result) {
 
         // Handle each DataColumn from result.  A PV might be treated as both a trigger and target PV.
         for (DataColumn dataColumn : result.getDataColumnsList()) {
@@ -509,7 +553,7 @@ public class EventMonitor {
                 } catch (InvalidProtocolBufferException e) {
                     final String errorMsg = "InvalidProtocolBufferException msg: " + e.getMessage();
                     logger.error(errorMsg + " id: " + responseObserver.hashCode());
-                    handleError(errorMsg, true);
+                    handleError(errorMsg);
                     return;
                 }
                 handleTriggerPVData(pvConditionTrigger, dataColumn, result.getDataTimestamps());
@@ -531,33 +575,33 @@ public class EventMonitor {
         } else {
             // this shouldn't happen, indicates we subscribed the EventMonitor to the wrong PVs...
             final String errorMsg = "unexpected PV received by EventMonitor: " + pvName;
-            handleError(errorMsg, true);
+            handleError(errorMsg);
         }
     }
 
-    public void requestCancel() {
+    public void requestShutdown() {
+
         logger.debug("requestCancel id: {}", responseObserver.hashCode());
 
         // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
         if (cancelRequested.compareAndSet(false, true)) {
-            shutdown();
+
+            // terminate subscribeData() subscription
+            subscribeDataCallManager.terminateSubscription();
+
+            // shutdown DataBufferManager
+            if (bufferManager != null) {
+                bufferManager.shutdown();
+            }
+
+            // shutdown TriggeredEventManager
+            if (triggeredEventManager != null) {
+                triggeredEventManager.shutdown();
+            }
         }
     }
 
-    private void shutdown() {
-
-        logger.debug("shutdown id: {}", responseObserver.hashCode());
-
-        if (bufferManager != null) {
-            bufferManager.shutdown();
-        }
-
-        if (triggeredEventManager != null) {
-            triggeredEventManager.shutdown();
-        }
-    }
-    
-    public void close() {
+    public void requestClose() {
 
         if (closeRequested.compareAndSet(false, true)) {
 

@@ -1,9 +1,8 @@
-package com.ospreydcs.dp.service.ingestionstream.handler;
+package com.ospreydcs.dp.service.ingestionstream.handler.monitor;
 
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
-import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

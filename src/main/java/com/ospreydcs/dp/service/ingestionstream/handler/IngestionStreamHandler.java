@@ -3,7 +3,6 @@ package com.ospreydcs.dp.service.ingestionstream.handler;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
-import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorSubscribeDataResponseJob;
@@ -25,23 +24,23 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
 
     // instance variables
 
-    private EventMonitorSubscriptionManager subscriptionManager = null;
-    private final IngestionServiceClientUtility.IngestionServiceClient ingestionServiceClient;
+    private EventMonitorManager eventMonitorManager = null;
+    private final IngestionServiceClientUtility.IngestionServiceGrpcClient ingestionServiceGrpcClient;
 
     public IngestionStreamHandler() {
         super();
-        this.ingestionServiceClient = new IngestionServiceClientUtility.IngestionServiceClient();
-        initializeSubscriptionManager(ingestionServiceClient);
+        this.ingestionServiceGrpcClient = new IngestionServiceClientUtility.IngestionServiceGrpcClient();
+        initializeSubscriptionManager(ingestionServiceGrpcClient);
     }
 
     public IngestionStreamHandler(ManagedChannel channel) {
         super();
-        this.ingestionServiceClient = new IngestionServiceClientUtility.IngestionServiceClient(channel);
-        initializeSubscriptionManager(ingestionServiceClient);
+        this.ingestionServiceGrpcClient = new IngestionServiceClientUtility.IngestionServiceGrpcClient(channel);
+        initializeSubscriptionManager(ingestionServiceGrpcClient);
     }
 
-    private void initializeSubscriptionManager(IngestionServiceClientUtility.IngestionServiceClient client) {
-        this.subscriptionManager = new EventMonitorSubscriptionManager(this, client);
+    private void initializeSubscriptionManager(IngestionServiceClientUtility.IngestionServiceGrpcClient client) {
+        this.eventMonitorManager = new EventMonitorManager(this);
     }
 
     @Override
@@ -53,7 +52,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     @Override
     protected boolean fini_() {
         logger.trace("fini_");
-        this.subscriptionManager.shutdown();
+        this.eventMonitorManager.shutdown();
         return true;
     }
 
@@ -78,8 +77,14 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     ) {
         // create an event monitor for the request
         EventMonitor eventMonitor = new EventMonitor(
-                request.getNewSubscription(), responseObserver, this.subscriptionManager);
-        final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor);
+                request.getNewSubscription(),
+                responseObserver,
+                this,
+                this.eventMonitorManager,
+                this.ingestionServiceGrpcClient);
+
+        // create job for EventMonitor
+        final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor, eventMonitorManager);
 
         logger.debug("id: {} adding SubscribeDataEventJob to queue", responseObserver.hashCode());
 
@@ -93,17 +98,6 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
         }
 
         return eventMonitor;
-    }
-
-    @Override
-    public void cancelDataEventSubscriptions(
-            EventMonitor eventMonitor) {
-        subscriptionManager.cancelEventMonitor(eventMonitor);
-    }
-
-    @Override
-    public ResultStatus addEventMonitorSubscription(EventMonitor eventMonitor) {
-        return subscriptionManager.addEventMonitor(eventMonitor);
     }
 
 }

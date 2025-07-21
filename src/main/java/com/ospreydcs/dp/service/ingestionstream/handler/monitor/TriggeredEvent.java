@@ -1,4 +1,4 @@
-package com.ospreydcs.dp.service.ingestionstream.handler;
+package com.ospreydcs.dp.service.ingestionstream.handler.monitor;
 
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;

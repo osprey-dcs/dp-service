@@ -16,8 +16,4 @@ public interface IngestionStreamHandlerInterface
     EventMonitor handleSubscribeDataEvent(
             SubscribeDataEventRequest request,
             StreamObserver<SubscribeDataEventResponse> responseObserver);
-
-    void cancelDataEventSubscriptions(EventMonitor eventMonitor);
-
-    ResultStatus addEventMonitorSubscription(EventMonitor eventMonitor);
 }

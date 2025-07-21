@@ -132,7 +132,7 @@ public class IngestDataJob extends HandlerJob {
 
             } else {
                 // publish new data to subscribers
-                handler.getSubscriptionManager().publishDataSubscriptions(request);
+                handler.getSourceMonitorPublisher().publishDataSubscriptions(request);
             }
         }
         

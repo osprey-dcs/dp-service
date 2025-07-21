@@ -30,7 +30,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     final private MongoIngestionClientInterface mongoIngestionClient;
     final private MongoQueryClientInterface mongoQueryClient;
-    final private SourceMonitorSubscriptionManager subscriptionManager = new SourceMonitorSubscriptionManager();
+    final private SourceMonitorPublisher sourceMonitorPublisher = new SourceMonitorPublisher();
 
     public MongoIngestionHandler(
             MongoIngestionClientInterface mongoIngestionClient,
@@ -52,8 +52,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
-    public SourceMonitorSubscriptionManager getSubscriptionManager() {
-        return subscriptionManager;
+    public SourceMonitorPublisher getSourceMonitorPublisher() {
+        return sourceMonitorPublisher;
     }
 
     @Override
@@ -67,8 +67,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("error in mongoQueryClient.init");
             return false;
         }
-        if (!subscriptionManager.init()) {
-            logger.error("error in SourceMonitorSubscriptionManager.init");
+        if (!sourceMonitorPublisher.init()) {
+            logger.error("error in SourceMonitorPublisher.init");
             return false;
         }
         return true;
@@ -76,8 +76,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     @Override
     protected boolean fini_() {
-        if (!subscriptionManager.fini()) {
-            logger.error("error in SourceMonitorSubscriptionManager.fini");
+        if (!sourceMonitorPublisher.fini()) {
+            logger.error("error in SourceMonitorPublisher.fini");
         }
         if (!mongoQueryClient.fini()) {
             logger.error("error in MongoQueryClient.fini");
@@ -153,7 +153,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
                         request, 
                         responseObserver, 
                         monitor,
-                        subscriptionManager,
+                        sourceMonitorPublisher,
                         mongoIngestionClient,
                         mongoQueryClient);
 
@@ -174,6 +174,6 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         logger.debug(
                 "cancelDataSubscriptions removing subscriptions for id: {}",
                 monitor.responseObserver.hashCode());
-        this.subscriptionManager.removeSubscriptions(monitor);
+        this.sourceMonitorPublisher.removeMonitor(monitor);
     }
 }
