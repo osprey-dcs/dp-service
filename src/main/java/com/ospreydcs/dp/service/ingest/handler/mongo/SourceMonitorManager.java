@@ -126,8 +126,7 @@ public class SourceMonitorManager {
      * We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void terminateMonitor(SourceMonitor monitor) {
-
+    public void removeMonitor(SourceMonitor monitor) {
         writeLock.lock();
         try {
             // use try...finally to make sure we unlock
@@ -136,7 +135,7 @@ public class SourceMonitorManager {
                 List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
                 if (sourceMonitors != null) {
                     logger.debug(
-                            "removeSubscriptions removing subscription for id: {} pv: {}",
+                            "removing subscription for id: {} pv: {}",
                             monitor.responseObserver.hashCode(), pvName);
                     sourceMonitors.remove(monitor);
                 }
@@ -145,7 +144,16 @@ public class SourceMonitorManager {
         } finally {
             writeLock.unlock();
         }
+    }
 
+    public void terminateMonitor(SourceMonitor monitor) {
+
+        logger.debug("terminateMonitor id: {}", monitor.responseObserver.hashCode());
+
+        // remove SourceMonitor from local data structures
+        this.removeMonitor(monitor);
+
+        // terminate the SourceMonitor
         monitor.requestShutdown();
     }
 }

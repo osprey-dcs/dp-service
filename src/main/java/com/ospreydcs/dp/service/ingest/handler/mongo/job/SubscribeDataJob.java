@@ -83,9 +83,6 @@ public class SubscribeDataJob extends HandlerJob {
             return;
         }
 
-        // add SourceMonitor to publisher
-        this.manager.addMonitor(monitor);
-
         // send an ack message in the response stream
         dispatcher.sendAck();
     }

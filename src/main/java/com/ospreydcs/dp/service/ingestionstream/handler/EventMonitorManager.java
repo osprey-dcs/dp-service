@@ -42,7 +42,7 @@ public class EventMonitorManager {
         }
     }
 
-    public void removeEventMonitor(EventMonitor eventMonitor) {
+    private void removeEventMonitor(EventMonitor eventMonitor) {
 
         logger.debug("removeEventMonitor id: {}", eventMonitor.responseObserver.hashCode());
 
@@ -55,6 +55,17 @@ public class EventMonitorManager {
             // make sure we always unlock by using finally
             writeLock.unlock();
         }
+    }
+
+    public void terminateMonitor(final EventMonitor eventMonitor) {
+
+        logger.debug("terminateMonitor id: {}", eventMonitor.responseObserver.hashCode());
+
+        // remove EventMonitor from list of managed monitors
+        this.removeEventMonitor(eventMonitor);
+
+        // terminate the EventMonitor
+        eventMonitor.requestShutdown();
     }
 
     public void shutdown() {

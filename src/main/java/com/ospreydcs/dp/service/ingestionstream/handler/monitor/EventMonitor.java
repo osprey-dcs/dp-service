@@ -12,8 +12,8 @@ import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.ingest.utility.IngestionServiceClientUtility;
-import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorManager;
 import com.ospreydcs.dp.service.ingestionstream.handler.IngestionStreamHandler;
+import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
@@ -56,8 +56,7 @@ public class EventMonitor {
     // instance variables
     protected final SubscribeDataEventRequest.NewSubscription requestSubscription;
     public final StreamObserver<SubscribeDataEventResponse> responseObserver;
-    private final IngestionStreamHandler handler;
-    protected final EventMonitorManager eventMonitorManager;
+    private final IngestionStreamHandlerInterface handler;
     protected final Map<String, PvConditionTrigger> pvTriggerMap = new HashMap<>();
     protected final Set<String> targetPvNames = new HashSet<>();
     protected final DataBufferManager bufferManager;
@@ -118,13 +117,11 @@ public class EventMonitor {
             SubscribeDataEventRequest.NewSubscription requestSubscription,
             StreamObserver<SubscribeDataEventResponse> responseObserver,
             IngestionStreamHandler handler,
-            EventMonitorManager eventMonitorManager,
             IngestionServiceClientUtility.IngestionServiceGrpcClient ingestionServiceGrpcClient
     ) {
         this.requestSubscription = requestSubscription;
         this.responseObserver = responseObserver;
         this.handler = handler;
-        this.eventMonitorManager = eventMonitorManager;
         this.subscribeDataCallManager = new SubscribeDataCallManager(this, handler, ingestionServiceGrpcClient);
 
         // use negative offset value from request to determine buffer data age limit (plus a cushion)
@@ -194,16 +191,13 @@ public class EventMonitor {
             readLock.unlock();
         }
 
-        requestShutdown();
+        initiateShutdown();
     }
 
     public void handleError(
             String errorMsg
     ) {
         logger.debug("handleError msg: {}", errorMsg);
-
-        // remove monitor from manager
-        eventMonitorManager.removeEventMonitor(this);
 
         readLock.lock();
         try {
@@ -215,7 +209,12 @@ public class EventMonitor {
             readLock.unlock();
         }
 
-        requestShutdown();
+        initiateShutdown();
+    }
+
+    public void initiateShutdown() {
+        // remove monitor from manager
+        handler.terminateEventMonitor(this);
     }
 
     private Set<String> triggerPvNames() {

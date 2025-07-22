@@ -80,8 +80,10 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
                 request.getNewSubscription(),
                 responseObserver,
                 this,
-                this.eventMonitorManager,
                 this.ingestionServiceGrpcClient);
+
+        // add EventMonitor to manager
+        eventMonitorManager.addEventMonitor(eventMonitor);
 
         // create job for EventMonitor
         final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor, eventMonitorManager);
@@ -98,6 +100,14 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
         }
 
         return eventMonitor;
+    }
+
+    @Override
+    public void terminateEventMonitor(EventMonitor eventMonitor) {
+        logger.debug(
+                "terminateEventMonitor id: {}",
+                eventMonitor.responseObserver.hashCode());
+        this.eventMonitorManager.terminateMonitor(eventMonitor);
     }
 
 }

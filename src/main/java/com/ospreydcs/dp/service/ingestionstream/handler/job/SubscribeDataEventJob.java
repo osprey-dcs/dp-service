@@ -32,7 +32,7 @@ public class SubscribeDataEventJob extends HandlerJob {
     @Override
     public void execute() {
 
-        logger.debug("executing EventMonitorSubscribeDataResponseJob id: {}", eventMonitor.hashCode());
+        logger.debug("executing SubscribeDataEventJob id: {}", eventMonitor.hashCode());
 
         // initiate EventMonitor subscription
         ResultStatus subscriptionStatue = eventMonitor.initiateSubscription();
@@ -46,8 +46,5 @@ public class SubscribeDataEventJob extends HandlerJob {
             // send ack response
             IngestionStreamServiceImpl.sendSubscribeDataEventResponseAck(eventMonitor.responseObserver);
         }
-
-        // add monitor to manager
-        eventMonitorManager.addEventMonitor(eventMonitor);
     }
 }

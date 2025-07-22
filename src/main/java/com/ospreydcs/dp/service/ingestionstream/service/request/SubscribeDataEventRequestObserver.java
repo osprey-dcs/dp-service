@@ -57,33 +57,24 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                 final ResultStatus resultStatus =
                         IngestionStreamValidationUtility.validateSubscribeDataEventRequest(request);
                 if (resultStatus.isError) {
+                    // send reject directly and close response stream since we don't yet have an EventMonitor to do so
                     IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(
                             resultStatus.msg, responseObserver);
+                    responseObserver.onCompleted();
                     return;
                 }
-
-// We don't need this because clean up happens explicitly triggered by IngestionStreamHandler.fini(), but keeping the code
-// because we might need it for setting other handlers on the connection.
-//                // add a handler to remove subscription when client closes method connection
-//                ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
-//                        (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
-//                serverCallStreamObserver.setOnCancelHandler(
-//                        () -> {
-//                            logger.trace("onCancelHandler id: {}", responseObserver.hashCode());
-//                            if (handler != null) {
-//                                handler.cancelDataEventSubscriptions(responseObserver);
-//                            }
-//                        }
-//                );
 
                 // dispatch to handler
                 monitor = handler.handleSubscribeDataEvent(request, responseObserver);
 
-                logger.debug("id: {} created monitor: {}", responseObserver.hashCode(), monitor.hashCode());
+                logger.debug(
+                        "id: {} created EventMonitor: {}",
+                        responseObserver.hashCode(),
+                        monitor.hashCode());
             }
 
             case CANCELSUBSCRIPTION -> {
-                handleCancel();
+                initiateShutdown();
             }
 
             case REQUEST_NOT_SET -> {
@@ -92,7 +83,9 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
                 logger.debug(
                         "id: {} " + errorMsg,
                         responseObserver.hashCode());
-                monitor.handleReject(errorMsg);
+                if (monitor != null) {
+                    monitor.handleReject(errorMsg);
+                }
             }
 
         }
@@ -101,22 +94,23 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
     @Override
     public void onError(Throwable throwable) {
         logger.debug(
-                "id: {} onError, requesting cancel",
+                "id: {} onError",
                 responseObserver.hashCode());
-        handleCancel();
+        initiateShutdown();
     }
 
     @Override
     public void onCompleted() {
         logger.debug(
-                "id: {} onCompleted, requesting cancel ({})",
-                responseObserver.hashCode(),
-                responseObserver);
-        handleCancel();
+                "id: {} onCompleted",
+                responseObserver.hashCode());
+        initiateShutdown();
     }
 
-    private void handleCancel() {
-        monitor.requestShutdown();
+    private void initiateShutdown() {
+        if (this.monitor != null) {
+            handler.terminateEventMonitor(this.monitor);
+        }
     }
 
 }

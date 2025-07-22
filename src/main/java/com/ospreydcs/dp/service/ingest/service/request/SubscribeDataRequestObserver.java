@@ -72,6 +72,11 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
 
                 // handle request
                 monitor = handler.handleSubscribeData(subscribeDataRequest, responseObserver);
+
+                logger.debug(
+                        "id: {} created SourceMonitor: {}",
+                        responseObserver.hashCode(),
+                        monitor.hashCode());
             }
 
             case CANCELSUBSCRIPTION -> {
@@ -97,18 +102,16 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
     @Override
     public void onError(Throwable throwable) {
         logger.debug(
-                "id: {} {}.onError, requesting cancel",
-                responseObserver.hashCode(),
-                getClass().getSimpleName());
+                "id: {} onError",
+                responseObserver.hashCode());
         initiateShutdown();
     }
 
     @Override
     public void onCompleted() {
         logger.debug(
-                "id: {} {}.onCompleted, requesting cancel",
-                responseObserver.hashCode(),
-                getClass().getSimpleName());
+                "id: {} onCompleted",
+                responseObserver.hashCode());
         initiateShutdown();
     }
 

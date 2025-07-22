@@ -150,7 +150,11 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             StreamObserver<SubscribeDataResponse> responseObserver
     ) {
         // create SourceMonitor for request
-        final SourceMonitor monitor = new SourceMonitor(this, request.getNewSubscription().getPvNamesList(), responseObserver);
+        final SourceMonitor monitor =
+                new SourceMonitor(this, request.getNewSubscription().getPvNamesList(), responseObserver);
+
+        // add SourceMonitor to manager
+        sourceMonitorManager.addMonitor(monitor);
 
         final SubscribeDataJob job =
                 new SubscribeDataJob(
