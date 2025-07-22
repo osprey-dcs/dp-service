@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
 import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.ingest.handler.mongo.SourceMonitorPublisher;
+import com.ospreydcs.dp.service.ingest.handler.mongo.SourceMonitorManager;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.dispatch.SubscribeDataDispatcher;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
@@ -26,7 +26,7 @@ public class SubscribeDataJob extends HandlerJob {
     private final SubscribeDataRequest request;
     private final StreamObserver<SubscribeDataResponse> responseObserver;
     private final SourceMonitor monitor;
-    private final SourceMonitorPublisher subscriptionManager;
+    private final SourceMonitorManager manager;
     private final MongoIngestionClientInterface mongoIngestionClient;
     private final MongoQueryClientInterface mongoQueryClient;
     private final SubscribeDataDispatcher dispatcher;
@@ -35,14 +35,14 @@ public class SubscribeDataJob extends HandlerJob {
             SubscribeDataRequest request,
             StreamObserver<SubscribeDataResponse> responseObserver,
             SourceMonitor monitor,
-            SourceMonitorPublisher subscriptionManager,
+            SourceMonitorManager manager,
             MongoIngestionClientInterface mongoIngestionClient,
             MongoQueryClientInterface mongoQueryClient
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
         this.monitor = monitor;
-        this.subscriptionManager = subscriptionManager;
+        this.manager = manager;
         this.mongoIngestionClient = mongoIngestionClient;
         this.mongoQueryClient = mongoQueryClient;
         this.dispatcher = new SubscribeDataDispatcher(responseObserver, request);
@@ -84,7 +84,7 @@ public class SubscribeDataJob extends HandlerJob {
         }
 
         // add SourceMonitor to publisher
-        this.subscriptionManager.addMonitor(monitor);
+        this.manager.addMonitor(monitor);
 
         // send an ack message in the response stream
         dispatcher.sendAck();

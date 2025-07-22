@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class SourceMonitorPublisher {
+public class SourceMonitorManager {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -30,7 +30,7 @@ public class SourceMonitorPublisher {
 
     public boolean fini() {
 
-        logger.debug("SourceMonitorPublisher fini");
+        logger.debug("fini");
 
         readLock.lock();
 
@@ -43,7 +43,7 @@ public class SourceMonitorPublisher {
 
             // close each response stream in set
             for (SourceMonitor monitor : sourceMonitors) {
-                monitor.close();
+                monitor.requestShutdown();
             }
 
         } finally {
@@ -122,11 +122,11 @@ public class SourceMonitorPublisher {
     }
 
     /**
-     * Remove all subscriptions from map for specified SourceMonitor.
+     * Remove all subscriptions from map for specified SourceMonitor, and then request shutdown.
      * We use a write lock for thread safety between calling threads
      * (e.g., threads handling registration of subscriptions).
      */
-    public void removeMonitor(SourceMonitor monitor) {
+    public void terminateMonitor(SourceMonitor monitor) {
 
         writeLock.lock();
         try {
@@ -145,5 +145,7 @@ public class SourceMonitorPublisher {
         } finally {
             writeLock.unlock();
         }
+
+        monitor.requestShutdown();
     }
 }

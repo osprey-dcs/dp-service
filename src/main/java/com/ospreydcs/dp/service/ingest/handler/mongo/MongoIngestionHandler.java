@@ -30,7 +30,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     final private MongoIngestionClientInterface mongoIngestionClient;
     final private MongoQueryClientInterface mongoQueryClient;
-    final private SourceMonitorPublisher sourceMonitorPublisher = new SourceMonitorPublisher();
+    final private SourceMonitorManager sourceMonitorManager = new SourceMonitorManager();
 
     public MongoIngestionHandler(
             MongoIngestionClientInterface mongoIngestionClient,
@@ -52,8 +52,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
-    public SourceMonitorPublisher getSourceMonitorPublisher() {
-        return sourceMonitorPublisher;
+    public SourceMonitorManager getSourceMonitorPublisher() {
+        return sourceMonitorManager;
     }
 
     @Override
@@ -67,8 +67,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("error in mongoQueryClient.init");
             return false;
         }
-        if (!sourceMonitorPublisher.init()) {
-            logger.error("error in SourceMonitorPublisher.init");
+        if (!sourceMonitorManager.init()) {
+            logger.error("error in SourceMonitorManager.init");
             return false;
         }
         return true;
@@ -76,8 +76,8 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     @Override
     protected boolean fini_() {
-        if (!sourceMonitorPublisher.fini()) {
-            logger.error("error in SourceMonitorPublisher.fini");
+        if (!sourceMonitorManager.fini()) {
+            logger.error("error in SourceMonitorManager.fini");
         }
         if (!mongoQueryClient.fini()) {
             logger.error("error in MongoQueryClient.fini");
@@ -145,15 +145,19 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
     }
 
     @Override
-    public void handleSubscribeData(
-            SubscribeDataRequest request, StreamObserver<SubscribeDataResponse> responseObserver, SourceMonitor monitor
+    public SourceMonitor handleSubscribeData(
+            SubscribeDataRequest request,
+            StreamObserver<SubscribeDataResponse> responseObserver
     ) {
+        // create SourceMonitor for request
+        final SourceMonitor monitor = new SourceMonitor(this, request.getNewSubscription().getPvNamesList(), responseObserver);
+
         final SubscribeDataJob job =
                 new SubscribeDataJob(
                         request, 
                         responseObserver, 
                         monitor,
-                        sourceMonitorPublisher,
+                        sourceMonitorManager,
                         mongoIngestionClient,
                         mongoQueryClient);
 
@@ -167,13 +171,15 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
             logger.error("InterruptedException waiting for requestQueue.put");
             Thread.currentThread().interrupt();
         }
+
+        return monitor;
     }
 
     @Override
-    public void removeSourceMonitor(SourceMonitor monitor) {
+    public void terminateSourceMonitor(SourceMonitor monitor) {
         logger.debug(
-                "cancelDataSubscriptions removing subscriptions for id: {}",
+                "terminateSourceMonitor id: {}",
                 monitor.responseObserver.hashCode());
-        this.sourceMonitorPublisher.removeMonitor(monitor);
+        this.sourceMonitorManager.terminateMonitor(monitor);
     }
 }

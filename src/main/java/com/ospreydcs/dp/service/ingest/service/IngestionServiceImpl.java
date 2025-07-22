@@ -505,7 +505,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     ) {
         final SubscribeDataResponse response = subscribeDataResponseReject(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataResponseError(
@@ -513,7 +512,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     ) {
         final SubscribeDataResponse response = subscribeDataResponseError(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataResponseAck(

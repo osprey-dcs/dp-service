@@ -48,8 +48,8 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                     logger.debug(
                             "id: {} " + errorMsg,
                             responseObserver.hashCode());
-                    monitor.requestCancel();
-                    IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
+                    monitor.handleReject(errorMsg);
+                    initiateShutdown();
                     return;
                 }
 
@@ -63,34 +63,19 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                     logger.debug(
                             "id: {} " + errorMsg,
                             responseObserver.hashCode());
+
+                    // send reject directly since we don't yet have an EventMonitor
                     IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
+                    responseObserver.onCompleted();
                     return;
                 }
 
-// We don't need this because clean up happens explicitly triggered by MongoIngestionHandler.fini(), but keeping the code
-// because we might need it for setting other handlers on the connection.
-//                // add a handler to remove subscription when client closes method connection
-//                ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-//                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-//                serverCallStreamObserver.setOnCancelHandler(
-//                        () -> {
-//                            logger.trace("onCancelHandler id: {}", responseObserver.hashCode());
-//                            if (handler != null) {
-//                                handler.cancelDataSubscriptions(responseObserver);
-//                            }
-//                        }
-//                );
-
-                // create SourceMonitor for request
-                monitor = new SourceMonitor(handler, pvNames, responseObserver);
-
                 // handle request
-                handler.handleSubscribeData(subscribeDataRequest, responseObserver, monitor);
-
+                monitor = handler.handleSubscribeData(subscribeDataRequest, responseObserver);
             }
 
             case CANCELSUBSCRIPTION -> {
-                handleCancel();
+                initiateShutdown();
             }
 
             case REQUEST_NOT_SET -> {
@@ -100,6 +85,10 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                         "id: {} " + errorMsg,
                         responseObserver.hashCode());
                 IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
+                if (monitor == null) {
+                    responseObserver.onCompleted();
+                }
+                initiateShutdown();
             }
 
         }
@@ -111,7 +100,7 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                 "id: {} {}.onError, requesting cancel",
                 responseObserver.hashCode(),
                 getClass().getSimpleName());
-        handleCancel();
+        initiateShutdown();
     }
 
     @Override
@@ -120,11 +109,12 @@ public class SubscribeDataRequestObserver implements StreamObserver<SubscribeDat
                 "id: {} {}.onCompleted, requesting cancel",
                 responseObserver.hashCode(),
                 getClass().getSimpleName());
-        handleCancel();
+        initiateShutdown();
     }
 
-    private void handleCancel() {
-        monitor.requestCancel();
-        responseObserver.onCompleted();
+    private void initiateShutdown() {
+        if (monitor != null) {
+            handler.terminateSourceMonitor(this.monitor);
+        }
     }
 }
