@@ -46,11 +46,13 @@ public class EventMonitorSubscribeDataResponseJob extends HandlerJob {
         logger.debug("executing EventMonitorSubscribeDataResponseJob id: {}", eventMonitor.hashCode());
 
         if (subscribeDataResponse != null) {
-            eventMonitor.handleSubscribeDataResult(subscribeDataResponse);
+            eventMonitor.handleSubscribeDataResponse(subscribeDataResponse);
 
         } else if (isError) {
+            eventMonitor.handleError("unexpected grpc error in subscribeData() response stream");
 
         } else if (isCompleted) {
+            eventMonitor.handleError("subscribeData() response stream unexpectedly closed");
         }
     }
 }

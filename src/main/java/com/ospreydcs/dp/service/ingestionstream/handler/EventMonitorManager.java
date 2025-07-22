@@ -61,14 +61,13 @@ public class EventMonitorManager {
         logger.debug("shutdown");
 
         // Shutdown all EventMonitors which will handle their own buffer cleanup
-        writeLock.lock();
+        readLock.lock();
         try {
             for (EventMonitor eventMonitor : monitors) {
                 eventMonitor.requestShutdown();
-                eventMonitor.requestClose();
-            }
+             }
         } finally {
-            writeLock.unlock();
+            readLock.unlock();
         }
     }
 

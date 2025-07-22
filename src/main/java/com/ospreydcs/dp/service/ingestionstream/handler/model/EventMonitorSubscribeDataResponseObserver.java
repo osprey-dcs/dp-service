@@ -98,20 +98,29 @@ public class EventMonitorSubscribeDataResponseObserver implements StreamObserver
         ackLatch.countDown();
 
         // dispatch response to subscription manager for handling
-        final EventMonitorSubscribeDataResponseJob job = new EventMonitorSubscribeDataResponseJob(
-                eventMonitor, subscribeDataResponse);
+        final EventMonitorSubscribeDataResponseJob job =
+                new EventMonitorSubscribeDataResponseJob(eventMonitor, subscribeDataResponse);
         handler.addJob(job);
     }
 
     @Override
     public void onError(Throwable throwable) {
-        // TODO - notify subscribeDataCallManager of problem so it can clean up,
-        // by either calling subscribeData() again or cleaning up subscription manager data structures
+        logger.debug(
+                "onError unexpected grpc error for id: {} msg: {}",
+                this.hashCode(),
+                throwable.getMessage());
+        final EventMonitorSubscribeDataResponseJob job =
+                new EventMonitorSubscribeDataResponseJob(eventMonitor, true, false);
+        handler.addJob(job);
     }
 
     @Override
     public void onCompleted() {
-        // TODO - notify subscribeDataCallManager of problem so it can clean up,
-        // by either calling subscribeData() again or cleaning up subscription manager data structures
+        logger.debug(
+                "onCompleted() response stream closed for id: {}",
+                this.hashCode());
+        final EventMonitorSubscribeDataResponseJob job =
+                new EventMonitorSubscribeDataResponseJob(eventMonitor, false, true);
+        handler.addJob(job);
     }
 }

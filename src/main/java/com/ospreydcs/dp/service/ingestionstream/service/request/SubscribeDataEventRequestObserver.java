@@ -117,7 +117,6 @@ public class SubscribeDataEventRequestObserver implements StreamObserver<Subscri
 
     private void handleCancel() {
         monitor.requestShutdown();
-        monitor.requestClose();
     }
 
 }

@@ -23,6 +23,8 @@ import org.apache.logging.log4j.Logger;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class EventMonitor {
 
@@ -61,8 +63,11 @@ public class EventMonitor {
     protected final DataBufferManager bufferManager;
     protected final TriggeredEventManager triggeredEventManager;
     protected final SubscribeDataCallManager subscribeDataCallManager;
-    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
-    private final AtomicBoolean closeRequested = new AtomicBoolean(false);
+    private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwLock.readLock();
+    private final Lock writeLock = rwLock.writeLock();
+
 
     // configuration accessors
     protected static ConfigurationManager configMgr() {
@@ -179,11 +184,17 @@ public class EventMonitor {
 
         logger.debug("handleReject msg: {}", errorMsg);
 
-        // dispatch reject message but don't close response stream with onCompleted()
-        IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
+        readLock.lock();
+        try {
+            if (!shutdownRequested.get()) {
+                // dispatch reject message but don't close response stream with onCompleted()
+                IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
+            }
+        } finally {
+            readLock.unlock();
+        }
 
         requestShutdown();
-        requestClose();
     }
 
     public void handleError(
@@ -194,11 +205,17 @@ public class EventMonitor {
         // remove monitor from manager
         eventMonitorManager.removeEventMonitor(this);
 
-        // dispatch error message but don't close response stream with onCompleted()
-        IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
+        readLock.lock();
+        try {
+            if (!shutdownRequested.get()) {
+                // dispatch error message but don't close response stream with onCompleted()
+                IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
+            }
+        } finally {
+            readLock.unlock();
+        }
 
         requestShutdown();
-        requestClose();
     }
 
     private Set<String> triggerPvNames() {
@@ -222,7 +239,7 @@ public class EventMonitor {
         return subscribeDataCallManager.initiateSubscription();
     }
 
-    public void handleSubscribeDataResult(SubscribeDataResponse subscribeDataResponse) {
+    public void handleSubscribeDataResponse(SubscribeDataResponse subscribeDataResponse) {
         logger.debug(
                 "handleSubscribeDataResult type: {} id: {}",
                 subscribeDataResponse.getResultCase().name(),
@@ -433,12 +450,20 @@ public class EventMonitor {
             this.triggeredEventManager.addTriggeredEvent(triggeredEvent);
         }
 
-        // send an event message in the response stream
-        IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
-                triggerTimestamp,
-                trigger,
-                dataValue,
-                this.responseObserver);
+        readLock.lock();
+        try {
+            if (!shutdownRequested.get()) {
+                // send an event message in the response stream
+                IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
+                        triggerTimestamp,
+                        trigger,
+                        dataValue,
+                        this.responseObserver);
+            }
+        } finally {
+            readLock.unlock();
+        }
+
     }
 
     private void handleTargetPvData(
@@ -517,12 +542,19 @@ public class EventMonitor {
                 .addAllDataBuckets(dataBuckets)
                 .build();
 
-        IngestionStreamServiceImpl.sendSubscribeDataEventResponseEventData(eventData, responseObserver);
-        
+        readLock.lock();
+        try {
+            if (!shutdownRequested.get()) {
+                IngestionStreamServiceImpl.sendSubscribeDataEventResponseEventData(eventData, responseObserver);
+            }
+        } finally {
+            readLock.unlock();
+        }
+
         logger.debug("Sent EventData message with {} data buckets", dataBuckets.size());
     }
 
-    public void handleSubscribeDataResult(SubscribeDataResponse.SubscribeDataResult result) {
+    private void handleSubscribeDataResult(SubscribeDataResponse.SubscribeDataResult result) {
 
         // Handle each DataColumn from result.  A PV might be treated as both a trigger and target PV.
         for (DataColumn dataColumn : result.getDataColumnsList()) {
@@ -581,47 +613,49 @@ public class EventMonitor {
 
     public void requestShutdown() {
 
-        logger.debug("requestCancel id: {}", responseObserver.hashCode());
+        logger.debug("requestShutdown id: {}", responseObserver.hashCode());
 
-        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
-        if (cancelRequested.compareAndSet(false, true)) {
+        // acquire write lock since method will be called from different threads handling grpc requests/responses
+        writeLock.lock();
+        try {
 
-            // terminate subscribeData() subscription
-            subscribeDataCallManager.terminateSubscription();
+            // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
+            if (shutdownRequested.compareAndSet(false, true)) {
 
-            // shutdown DataBufferManager
-            if (bufferManager != null) {
-                bufferManager.shutdown();
+                // terminate subscribeData() subscription
+                subscribeDataCallManager.terminateSubscription();
+
+                // shutdown DataBufferManager
+                if (bufferManager != null) {
+                    bufferManager.shutdown();
+                }
+
+                // shutdown TriggeredEventManager
+                if (triggeredEventManager != null) {
+                    triggeredEventManager.shutdown();
+                }
+
+                // close API response stream
+                ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
+                        (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
+                if (!serverCallStreamObserver.isCancelled()) {
+                    logger.debug(
+                            "requestShutdown() calling responseObserver.onCompleted id: {}",
+                            responseObserver.hashCode());
+                    responseObserver.onCompleted();
+                } else {
+                    logger.debug(
+                            "requestShutdown() responseObserver already closed id: {}",
+                            responseObserver.hashCode());
+                }
+
             }
 
-            // shutdown TriggeredEventManager
-            if (triggeredEventManager != null) {
-                triggeredEventManager.shutdown();
-            }
+        } finally {
+            // make sure we always unlock by using finally
+            writeLock.unlock();
         }
-    }
 
-    public void requestClose() {
-
-        if (closeRequested.compareAndSet(false, true)) {
-
-            ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
-                    (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
-            if (!serverCallStreamObserver.isCancelled()) {
-                logger.debug(
-                        "EventMonitor.close() calling responseObserver.onCompleted id: {}",
-                        responseObserver.hashCode());
-                responseObserver.onCompleted();
-            } else {
-                logger.debug(
-                        "EventMonitor.close() responseObserver already closed id: {}",
-                        responseObserver.hashCode());
-            }
-        }
-    }
-
-    public DataBufferManager getBufferManager() {
-        return bufferManager;
     }
 
 }
