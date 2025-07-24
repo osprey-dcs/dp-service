@@ -58,6 +58,8 @@ public abstract class GrpcIntegrationTestBase {
 
     public void tearDown() {
 
+        logger.debug("GrpcIntegrationTestBase tearDown");
+
         ingestionStreamServiceWrapper.fini();
         annotationServiceWrapper.fini();
         queryServiceWrapper.fini();

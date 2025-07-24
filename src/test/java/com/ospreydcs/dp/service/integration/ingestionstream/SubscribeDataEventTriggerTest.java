@@ -31,6 +31,7 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
 
     @After
     public void tearDown() {
+        logger.debug("SubscribeDataEventTriggerTest tearDown");
         super.tearDown();
     }
 
@@ -334,6 +335,88 @@ public class SubscribeDataEventTriggerTest extends GrpcIntegrationTestBase {
                     ingestionScenarioResult.validationMap(),
                     expectedEventResponses3, null, 0);
             subscribeDataEventCall3.requestObserver().onCompleted();
+        }
+    }
+
+    @Test
+    public void testSubscribeDataEventTriggerRejectDataTypeMismatch() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            ingestionServiceWrapper.simpleIngestionScenario(
+                    startSeconds-600,
+                    true);
+        }
+
+        {
+            // Negative test case: Data type for PvConditionTrigger in request mismatches actual data.
+            // Request uses integer, actual data is double.
+            IngestionStreamTestBase.SubscribeDataEventCall subscribeDataEventCall;
+            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams1;
+            Map<PvConditionTrigger, List<SubscribeDataEventResponse.Event>> expectedEventResponses1 = new HashMap<>();
+            int expectedResponseCount1 = 0;
+            {
+                // create list of triggers for request
+                List<PvConditionTrigger> requestTriggers = new ArrayList<>();
+
+                // create trigger, add entry to response verification map with trigger and expected Events
+                {
+                    PvConditionTrigger trigger = PvConditionTrigger.newBuilder()
+                            .setPvName("S01-BPM01")
+                            .setCondition(PvConditionTrigger.PvCondition.PV_CONDITION_EQUAL_TO)
+                            .setValue(DataValue.newBuilder().setIntValue(5).build())  // INVALID DATA TYPE FOR PV
+                            .build();
+                    requestTriggers.add(trigger);
+                    final List<SubscribeDataEventResponse.Event> triggerExpectedEvents = new ArrayList<>();
+                    final DataValue eventDataValue = DataValue.newBuilder().setDoubleValue(5.0).build();
+                    final SubscribeDataEventResponse.Event event = SubscribeDataEventResponse.Event.newBuilder()
+                            .setTrigger(trigger)
+                            .setDataValue(eventDataValue)
+                            .setEventTime(Timestamp.newBuilder().setEpochSeconds(startSeconds+5).build())
+                            .build();
+                    triggerExpectedEvents.add(event);
+                    expectedEventResponses1.put(trigger, triggerExpectedEvents);
+                    expectedResponseCount1 += triggerExpectedEvents.size();
+                }
+
+                // create params object (including trigger params list) for building protobuf request from params
+                requestParams1 =
+                        new IngestionStreamTestBase.SubscribeDataEventRequestParams(requestTriggers, null, null, null);
+
+                // call subscribeDataEvent() to initiate subscription before running ingestion
+                final boolean expectReject = false;
+                final String expectedRejectMessage = "";
+                subscribeDataEventCall =
+                        ingestionStreamServiceWrapper.initiateSubscribeDataEventRequest(
+                                requestParams1,
+                                expectedResponseCount1,
+                                0,
+                                expectReject,
+                                expectedRejectMessage);
+            }
+
+            // run a simple ingestion scenario that will publish data relevant to subscriptions
+            GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
+            {
+                // create some data for testing query APIs
+                // create data for 10 sectors, each containing 3 gauges and 3 bpms
+                // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
+                // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
+                ingestionScenarioResult =
+                        ingestionServiceWrapper.simpleIngestionScenario(startSeconds, false);
+            }
+
+            // request 1: verify error for data type mismatch between specified PvConditionTrigger and actual data.
+            final String expectedErrorMessage =
+                    "PvConditionTrigger type mismatch PV name: S01-BPM01 PV data type: DOUBLEVALUE trigger value data type: INTVALUE";
+            ingestionStreamServiceWrapper.verifySubscribeDataEventError(
+                    (IngestionStreamTestBase.SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver(),
+                    expectedErrorMessage);
+            subscribeDataEventCall.requestObserver().onCompleted();
         }
     }
 

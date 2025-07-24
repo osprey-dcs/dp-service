@@ -612,11 +612,11 @@ public class EventMonitor {
 
     public void requestShutdown() {
 
-        logger.debug("requestShutdown id: {}", responseObserver.hashCode());
-
         // acquire write lock since method will be called from different threads handling grpc requests/responses
         writeLock.lock();
         try {
+
+            logger.debug("requestShutdown id: {}", responseObserver.hashCode());
 
             // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
             if (shutdownRequested.compareAndSet(false, true)) {
@@ -635,6 +635,7 @@ public class EventMonitor {
                 }
 
                 // close API response stream
+                logger.debug("closing subsscribeData() API subscription id: {}", responseObserver.hashCode());
                 ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
                         (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
                 if (!serverCallStreamObserver.isCancelled()) {

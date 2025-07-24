@@ -20,6 +20,8 @@ import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.ClassRule;
 
 import java.time.Instant;
@@ -34,6 +36,7 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
     // static variables
     @ClassRule
     public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
+    private static final Logger logger = LogManager.getLogger();
 
     // constants
     protected static final int INGESTION_PROVIDER_ID = 1;
@@ -351,11 +354,14 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         responseObserver.await();
         requestObserver.onCompleted();
 
+        logger.debug("sendIngestDataBidiStream completed");
+
         if (responseObserver.isError()) {
             return new ArrayList<>();
         } else {
             return responseObserver.getResponseList();
         }
+
     }
 
     protected List<BucketDocument> verifyIngestionHandling(

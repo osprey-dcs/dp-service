@@ -130,6 +130,16 @@ public class GrpcIntegrationIngestionStreamServiceWrapper extends GrpcIntegratio
                 expectedRejectMessage);
     }
 
+    protected void verifySubscribeDataEventError(
+            IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver,
+            String errorMsg
+    ) {
+        // wait for error in API response stream
+        responseObserver.awaitCloseLatch();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains(errorMsg));
+    }
+
     protected void verifySubscribeDataEventResponse(
             IngestionStreamTestBase.SubscribeDataEventResponseObserver responseObserver,
             IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams,

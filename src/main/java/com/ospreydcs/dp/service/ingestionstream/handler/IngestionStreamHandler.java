@@ -53,6 +53,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
     protected boolean fini_() {
         logger.trace("fini_");
         this.eventMonitorManager.shutdown();
+        logger.debug("IngestionStreamHandler fini complete");
         return true;
     }
 
