@@ -23,8 +23,6 @@ import org.apache.logging.log4j.Logger;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class EventMonitor {
 
@@ -63,9 +61,6 @@ public class EventMonitor {
     protected final TriggeredEventManager triggeredEventManager;
     protected final SubscribeDataCallManager subscribeDataCallManager;
     private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
-    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-    private final Lock readLock = rwLock.readLock();
-    private final Lock writeLock = rwLock.writeLock();
 
 
     // configuration accessors
@@ -177,37 +172,31 @@ public class EventMonitor {
         targetPvNames.addAll(request.getOperation().getTargetPvsList());
     }
 
-    public void handleReject(String errorMsg) {
+    public synchronized void handleReject(String errorMsg) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
 
         logger.debug("handleReject msg: {}", errorMsg);
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-                // dispatch reject message but don't close response stream with onCompleted()
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
-            }
-        } finally {
-            readLock.unlock();
-        }
+        // dispatch reject message but don't close response stream with onCompleted()
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseReject(errorMsg, responseObserver);
 
         initiateShutdown();
     }
 
-    public void handleError(
+    public synchronized void handleError(
             String errorMsg
     ) {
+        if (shutdownRequested.get()) {
+            return;
+        }
+
         logger.debug("handleError msg: {}", errorMsg);
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-                // dispatch error message but don't close response stream with onCompleted()
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
-            }
-        } finally {
-            readLock.unlock();
-        }
+        // dispatch error message but don't close response stream with onCompleted()
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
 
         initiateShutdown();
     }
@@ -432,11 +421,15 @@ public class EventMonitor {
         }
     }
 
-    private void handleTriggeredEvent(
+    private synchronized void handleTriggeredEvent(
             Timestamp triggerTimestamp,
             PvConditionTrigger trigger,
             DataValue dataValue
     ) {
+        if (shutdownRequested.get()) {
+            return;
+        }
+
         // only add an event to triggered event list if the request includes a DataOperation
         if (requestSubscription.hasOperation()) {
             final TriggeredEvent triggeredEvent = new TriggeredEvent(
@@ -449,20 +442,12 @@ public class EventMonitor {
             this.triggeredEventManager.addTriggeredEvent(triggeredEvent);
         }
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-                // send an event message in the response stream
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
-                        triggerTimestamp,
-                        trigger,
-                        dataValue,
-                        this.responseObserver);
-            }
-        } finally {
-            readLock.unlock();
-        }
-
+        // send an event message in the response stream
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseEvent(
+                triggerTimestamp,
+                trigger,
+                dataValue,
+                this.responseObserver);
     }
 
     private void handleTargetPvData(
@@ -526,10 +511,14 @@ public class EventMonitor {
         }
     }
 
-    private void sendDataEventMessage(
+    private synchronized void sendDataEventMessage(
             SubscribeDataEventResponse.Event event,
             List<DataBucket> dataBuckets
     ) {
+        if (shutdownRequested.get()) {
+            return;
+        }
+
         if (dataBuckets.isEmpty()) {
             logger.debug("sendDataEventMessage received empty dataBuckets list");
             return;
@@ -541,14 +530,7 @@ public class EventMonitor {
                 .addAllDataBuckets(dataBuckets)
                 .build();
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseEventData(eventData, responseObserver);
-            }
-        } finally {
-            readLock.unlock();
-        }
+        IngestionStreamServiceImpl.sendSubscribeDataEventResponseEventData(eventData, responseObserver);
 
         logger.debug("Sent EventData message with {} data buckets", dataBuckets.size());
     }
@@ -610,52 +592,41 @@ public class EventMonitor {
         }
     }
 
-    public void requestShutdown() {
+    public synchronized void requestShutdown() {
 
-        // acquire write lock since method will be called from different threads handling grpc requests/responses
-        writeLock.lock();
-        try {
+        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
+        if (shutdownRequested.compareAndSet(false, true)) {
 
             logger.debug("requestShutdown id: {}", responseObserver.hashCode());
 
-            // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
-            if (shutdownRequested.compareAndSet(false, true)) {
+            // terminate subscribeData() subscription
+            subscribeDataCallManager.terminateSubscription();
 
-                // terminate subscribeData() subscription
-                subscribeDataCallManager.terminateSubscription();
-
-                // shutdown DataBufferManager
-                if (bufferManager != null) {
-                    bufferManager.shutdown();
-                }
-
-                // shutdown TriggeredEventManager
-                if (triggeredEventManager != null) {
-                    triggeredEventManager.shutdown();
-                }
-
-                // close API response stream
-                logger.debug("closing subsscribeData() API subscription id: {}", responseObserver.hashCode());
-                ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
-                        (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
-                if (!serverCallStreamObserver.isCancelled()) {
-                    logger.debug(
-                            "requestShutdown() calling responseObserver.onCompleted id: {}",
-                            responseObserver.hashCode());
-                    responseObserver.onCompleted();
-                } else {
-                    logger.debug(
-                            "requestShutdown() responseObserver already closed id: {}",
-                            responseObserver.hashCode());
-                }
-
+            // shutdown DataBufferManager
+            if (bufferManager != null) {
+                bufferManager.shutdown();
             }
 
-        } finally {
-            // make sure we always unlock by using finally
-            writeLock.unlock();
-        }
+            // shutdown TriggeredEventManager
+            if (triggeredEventManager != null) {
+                triggeredEventManager.shutdown();
+            }
 
+            // close API response stream
+            logger.debug("closing subsscribeData() API subscription id: {}", responseObserver.hashCode());
+            ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
+                    (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
+            if (!serverCallStreamObserver.isCancelled()) {
+                logger.debug(
+                        "requestShutdown() calling responseObserver.onCompleted id: {}",
+                        responseObserver.hashCode());
+                responseObserver.onCompleted();
+            } else {
+                logger.debug(
+                        "requestShutdown() responseObserver already closed id: {}",
+                        responseObserver.hashCode());
+            }
+        }
     }
 
 }

@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -17,6 +18,7 @@ public class EventMonitorManager {
     // instance variables
     private final IngestionStreamHandler handler;
     private final List<EventMonitor> monitors = new ArrayList<>();
+    public final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
@@ -28,6 +30,10 @@ public class EventMonitorManager {
     }
 
     public void addEventMonitor(final EventMonitor eventMonitor) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
 
         logger.debug("addEventMonitor id: {}", eventMonitor.responseObserver.hashCode());
 
@@ -43,6 +49,10 @@ public class EventMonitorManager {
     }
 
     private void removeEventMonitor(EventMonitor eventMonitor) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
 
         logger.debug("removeEventMonitor id: {}", eventMonitor.responseObserver.hashCode());
 
@@ -69,16 +79,27 @@ public class EventMonitorManager {
     }
 
     public void shutdown() {
+
         logger.debug("shutdown");
 
-        // Shutdown all EventMonitors which will handle their own buffer cleanup
-        readLock.lock();
-        try {
-            for (EventMonitor eventMonitor : monitors) {
+        if (shutdownRequested.compareAndSet(false, true)) {
+
+            // Shutdown all managed monitors, but only acquire readLock to copy the list of monitors.
+            // We'll terminate the monitors after releasing the lock.
+            List<EventMonitor> monitorsCopy;
+
+            readLock.lock();
+            try {
+
+                monitorsCopy = new ArrayList<>(monitors);
+
+            } finally {
+                readLock.unlock();
+            }
+
+            for (EventMonitor eventMonitor : monitorsCopy) {
                 eventMonitor.requestShutdown();
-             }
-        } finally {
-            readLock.unlock();
+            }
         }
     }
 
