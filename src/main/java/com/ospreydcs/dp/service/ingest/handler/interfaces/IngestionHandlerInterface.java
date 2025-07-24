@@ -11,6 +11,7 @@ public interface IngestionHandlerInterface {
     boolean fini();
     boolean start();
     boolean stop();
+    boolean getShutdownRequested();
 
     void handleRegisterProvider(
             RegisterProviderRequest request, StreamObserver<RegisterProviderResponse> responseObserver);

@@ -27,9 +27,6 @@ public class SourceMonitor {
     public final List<String> pvNames;
     public final StreamObserver<SubscribeDataResponse> responseObserver;
     public final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
-    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-    private final Lock readLock = rwLock.readLock();
-    private final Lock writeLock = rwLock.writeLock();
 
     public SourceMonitor(
             IngestionHandlerInterface handler,
@@ -46,33 +43,26 @@ public class SourceMonitor {
             final DataTimestamps requestDataTimestamps,
             final List<DataColumn> responseDataColumns
     ) {
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
+        if (!shutdownRequested.get()) {
 
-                final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+            final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                    (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
 
-                if (!serverCallStreamObserver.isCancelled()) {
-                    logger.debug(
-                            "publishing DataColumns for id: {} pv: {}",
-                            responseObserver.hashCode(),
-                            pvName);
-                    IngestionServiceImpl.sendSubscribeDataResponse(
-                            requestDataTimestamps, responseDataColumns, responseObserver);
+            if (!serverCallStreamObserver.isCancelled()) {
+                logger.debug(
+                        "publishing DataColumns for id: {} pv: {}",
+                        responseObserver.hashCode(),
+                        pvName);
+                IngestionServiceImpl.sendSubscribeDataResponse(
+                        requestDataTimestamps, responseDataColumns, responseObserver);
 
-                } else {
-                    logger.trace(
-                            "not publishing DataColumns, subscription already closed for id: {} pv: {}",
-                            responseObserver.hashCode(),
-                            pvName);
-                }
+            } else {
+                logger.trace(
+                        "not publishing DataColumns, subscription already closed for id: {} pv: {}",
+                        responseObserver.hashCode(),
+                        pvName);
             }
-
-        } finally {
-            readLock.unlock();
         }
-
     }
 
     public void publishSerializedDataColumns(
@@ -80,31 +70,25 @@ public class SourceMonitor {
             final DataTimestamps requestDataTimestamps,
             final List<SerializedDataColumn> responseSerializedColumns
     ) {
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
+        if (!shutdownRequested.get()) {
 
-                final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+            final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                    (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
 
-                if (!serverCallStreamObserver.isCancelled()) {
-                    logger.debug(
-                            "publishing SerializedDataColumns for id: {} pv: {}",
-                            responseObserver.hashCode(),
-                            pvName);
-                    IngestionServiceImpl.sendSubscribeDataResponseSerializedColumns(
-                            requestDataTimestamps, responseSerializedColumns, responseObserver);
+            if (!serverCallStreamObserver.isCancelled()) {
+                logger.debug(
+                        "publishing SerializedDataColumns for id: {} pv: {}",
+                        responseObserver.hashCode(),
+                        pvName);
+                IngestionServiceImpl.sendSubscribeDataResponseSerializedColumns(
+                        requestDataTimestamps, responseSerializedColumns, responseObserver);
 
-                } else {
-                    logger.trace(
-                            "not publishing SerializedDataColumns, subscription already closed for id: {} pv: {}",
-                            responseObserver.hashCode(),
-                            pvName);
-                }
+            } else {
+                logger.trace(
+                        "not publishing SerializedDataColumns, subscription already closed for id: {} pv: {}",
+                        responseObserver.hashCode(),
+                        pvName);
             }
-
-        } finally {
-            readLock.unlock();
         }
     }
 
@@ -115,15 +99,9 @@ public class SourceMonitor {
                 responseObserver.hashCode(),
                 errorMsg);
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-
-                // dispatch error message but don't close response stream with onCompleted()
-                IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
-            }
-        } finally {
-            readLock.unlock();
+        if (!shutdownRequested.get()) {
+            // dispatch error message but don't close response stream with onCompleted()
+            IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
         }
     }
 
@@ -134,15 +112,9 @@ public class SourceMonitor {
                 responseObserver.hashCode(),
                 errorMsg);
 
-        readLock.lock();
-        try {
-            if (!shutdownRequested.get()) {
-
-                // dispatch error message but don't close response stream with onCompleted()
-                IngestionServiceImpl.sendSubscribeDataResponseError(errorMsg, responseObserver);
-            }
-        } finally {
-            readLock.unlock();
+        if (!shutdownRequested.get()) {
+            // dispatch error message but don't close response stream with onCompleted()
+            IngestionServiceImpl.sendSubscribeDataResponseError(errorMsg, responseObserver);
         }
     }
 
@@ -150,31 +122,22 @@ public class SourceMonitor {
 
         logger.debug("requestShutdown id: {}", responseObserver.hashCode());
 
-        // acquire write lock since method will be called from different threads handling grpc requests/responses
-        writeLock.lock();
-        try {
+        // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
+        if (shutdownRequested.compareAndSet(false, true)) {
 
-            // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
-            if (shutdownRequested.compareAndSet(false, true)) {
-
-                // close API response stream
-                ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                        (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-                if (!serverCallStreamObserver.isCancelled()) {
-                    logger.debug(
-                            "SourceMonitor.close() calling responseObserver.onCompleted id: {}",
-                            responseObserver.hashCode());
-                    responseObserver.onCompleted();
-                } else {
-                    logger.debug(
-                            "SourceMonitor.close() responseObserver already closed id: {}",
-                            responseObserver.hashCode());
-                }
+            // close API response stream
+            ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                    (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+            if (!serverCallStreamObserver.isCancelled()) {
+                logger.debug(
+                        "SourceMonitor.close() calling responseObserver.onCompleted id: {}",
+                        responseObserver.hashCode());
+                responseObserver.onCompleted();
+            } else {
+                logger.debug(
+                        "SourceMonitor.close() responseObserver already closed id: {}",
+                        responseObserver.hashCode());
             }
-
-        } finally {
-            // make sure we always unlock by using finally
-            writeLock.unlock();
         }
     }
 }

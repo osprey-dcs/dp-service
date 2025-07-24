@@ -79,6 +79,20 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         return response;
     }
 
+    public static IngestDataStreamResponse ingestDataStreamResponseStreamReject(
+            IngestDataRequest request, String msg) {
+
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
+                .setMessage(msg)
+                .build();
+        final IngestDataStreamResponse response = IngestDataStreamResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+        return response;
+    }
+
     public static IngestDataResponse ingestionResponseAck(IngestDataRequest request) {
 
         final int numRows = getNumRequestRows(request);
@@ -185,6 +199,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 responseObserver.hashCode(),
                 request.getProviderName());
 
+        if (handler.getShutdownRequested()) {
+            sendRegisterProviderResponseReject("service is shutdown", responseObserver);
+            return;
+        }
+
         // validate request
         if (request.getProviderName().isBlank()) {
             final String errorMsg = "RegisterProviderRequest.providerName must be specified";
@@ -226,6 +245,13 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             IngestDataRequest request,
             StreamObserver<IngestDataResponse> responseObserver
     ) {
+        if (handler.getShutdownRequested()) {
+            final IngestDataResponse rejectResponse = ingestionResponseReject(request, "service is shutdown");
+            responseObserver.onNext(rejectResponse);
+            responseObserver.onCompleted();
+            return;
+        }
+
         // validate request, send error response for invalid request
         final ResultStatus resultStatus = IngestionValidationUtility.validateIngestionRequest(request);
         boolean validationError = false;
@@ -350,6 +376,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             StreamObserver<QueryRequestStatusResponse> responseObserver
     ) {
         logger.info("id: {} queryRequestStatus request received", responseObserver.hashCode());
+
+        if (handler.getShutdownRequested()) {
+            sendQueryRequestStatusResponseReject("service is shutdown", responseObserver);
+            return;
+        }
 
         // check that request contains non-empty list of criteria
         final List<QueryRequestStatusRequest.QueryRequestStatusCriterion> criterionList = request.getCriteriaList();

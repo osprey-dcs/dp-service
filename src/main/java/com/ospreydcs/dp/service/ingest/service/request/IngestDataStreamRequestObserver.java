@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.ingest.service.request;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataStreamResponse;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
@@ -30,6 +31,14 @@ public class IngestDataStreamRequestObserver extends IngestionStreamRequestObser
 
     @Override
     protected void handleIngestionRequest_(IngestDataRequest request) {
+
+        if (handler.getShutdownRequested()) {
+            final IngestDataStreamResponse rejectResponse =
+                    IngestionServiceImpl.ingestDataStreamResponseStreamReject(request, "service is shutdown");
+            responseObserver.onNext(rejectResponse);
+            responseObserver.onCompleted();
+            return;
+        }
 
         this.requestIdList.add(request.getClientRequestId());
 

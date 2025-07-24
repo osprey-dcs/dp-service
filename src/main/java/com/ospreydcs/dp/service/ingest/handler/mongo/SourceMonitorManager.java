@@ -9,6 +9,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -19,6 +20,7 @@ public class SourceMonitorManager {
 
     // instance variables
     private final Map<String, List<SourceMonitor>> subscriptionMap = new HashMap<>();
+    public final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
@@ -30,24 +32,35 @@ public class SourceMonitorManager {
 
     public boolean fini() {
 
-        logger.debug("fini");
+        logger.debug("SourceMonitorManager fini");
 
-        readLock.lock();
+        if (shutdownRequested.compareAndSet(false, true)) {
 
-        try {
-            // create a set of all SourceMonitors, eliminating duplicates for subscriptions to multiple PVs
-            Set<SourceMonitor> sourceMonitors = new HashSet<>();
-            for (List<SourceMonitor> monitorList : subscriptionMap.values()) {
-                sourceMonitors.addAll(monitorList);
+            // only acquire readLock to access local data structure, release before shutting down the monitors
+            readLock.lock();
+
+            Set<SourceMonitor> sourceMonitors = null;
+            try {
+
+                logger.debug("SourceMonitorManager fini shutting down SourceMonitors");
+
+                // create a set of all SourceMonitors, eliminating duplicates for subscriptions to multiple PVs
+                sourceMonitors = new HashSet<>();
+                for (List<SourceMonitor> monitorList : subscriptionMap.values()) {
+                    sourceMonitors.addAll(monitorList);
+                }
+
+            } finally {
+                // release the lock after accessing data structure but before shutting down monitors
+                readLock.unlock();
             }
+            Objects.requireNonNull(sourceMonitors);
 
-            // close each response stream in set
+            // after releasing lock, close each response stream in set
             for (SourceMonitor monitor : sourceMonitors) {
                 monitor.requestShutdown();
             }
 
-        } finally {
-            readLock.unlock();
         }
 
         return true;
@@ -58,6 +71,10 @@ public class SourceMonitorManager {
      * (e.g., threads handling registration of subscriptions).
      */
     public void addMonitor(SourceMonitor monitor) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
 
         writeLock.lock();
         try {
@@ -80,44 +97,57 @@ public class SourceMonitorManager {
      */
     public void publishDataSubscriptions(IngestDataRequest request) {
 
-        readLock.lock();
-        try {
-            // use try...finally to make sure we unlock
+        if (shutdownRequested.get()) {
+            return;
+        }
 
-            final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
+        final DataTimestamps requestDataTimestamps = request.getIngestionDataFrame().getDataTimestamps();
 
-            // publish regular DataColumns in request that have subscribers
-            for (DataColumn requestDataColumn : request.getIngestionDataFrame().getDataColumnsList()) {
+        // publish regular DataColumns in request that have subscribers
+        for (DataColumn requestDataColumn : request.getIngestionDataFrame().getDataColumnsList()) {
+            final String pvName = requestDataColumn.getName();
 
-                final String pvName = requestDataColumn.getName();
-                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
-                if (sourceMonitors != null) {
-                    // publish data via monitors
-                    final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
-                    for (SourceMonitor monitor : sourceMonitors) {
-                        // publish data to subscriber if response stream is active
-                        monitor.publishDataColumns(pvName, requestDataTimestamps, responseDataColumns);
-                    }
-                }
+            // acquire readLock only long enough to read local data structure
+            readLock.lock();
+            List<SourceMonitor> sourceMonitors = null;
+            try {
+                sourceMonitors = subscriptionMap.get(pvName);
+            } finally {
+                readLock.unlock();
             }
 
-            // publish SerializedDataColumns in request that have subscribers
-            for (SerializedDataColumn requestSerializedColumn : request.getIngestionDataFrame().getSerializedDataColumnsList()) {
-
-                final String pvName = requestSerializedColumn.getName();
-                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
-                if (sourceMonitors != null) {
-                    // publish data via monitors
-                    final List<SerializedDataColumn> responseSerializedColumns = List.of(requestSerializedColumn);
-                    for (SourceMonitor monitor : sourceMonitors) {
-                        // publish data to subscriber if response stream is active
-                        monitor.publishSerializedDataColumns(pvName, requestDataTimestamps, responseSerializedColumns);
-                    }
+            if (sourceMonitors != null) {
+                // publish data via monitors
+                final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
+                for (SourceMonitor monitor : sourceMonitors) {
+                    // publish data to subscriber if response stream is active
+                    monitor.publishDataColumns(pvName, requestDataTimestamps, responseDataColumns);
                 }
             }
+        }
 
-        } finally {
-            readLock.unlock();
+        // publish SerializedDataColumns in request that have subscribers
+        for (SerializedDataColumn requestSerializedColumn : request.getIngestionDataFrame().getSerializedDataColumnsList()) {
+
+            final String pvName = requestSerializedColumn.getName();
+
+            // acquire readLock only long enough to read local data structure
+            readLock.lock();
+            List<SourceMonitor> sourceMonitors = null;
+            try {
+                sourceMonitors = subscriptionMap.get(pvName);
+            } finally {
+                readLock.unlock();
+            }
+
+            if (sourceMonitors != null) {
+                // publish data via monitors
+                final List<SerializedDataColumn> responseSerializedColumns = List.of(requestSerializedColumn);
+                for (SourceMonitor monitor : sourceMonitors) {
+                    // publish data to subscriber if response stream is active
+                    monitor.publishSerializedDataColumns(pvName, requestDataTimestamps, responseSerializedColumns);
+                }
+            }
         }
     }
 
@@ -127,6 +157,11 @@ public class SourceMonitorManager {
      * (e.g., threads handling registration of subscriptions).
      */
     public void removeMonitor(SourceMonitor monitor) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
+
         writeLock.lock();
         try {
             // use try...finally to make sure we unlock
@@ -147,6 +182,10 @@ public class SourceMonitorManager {
     }
 
     public void terminateMonitor(SourceMonitor monitor) {
+
+        if (shutdownRequested.get()) {
+            return;
+        }
 
         logger.debug("terminateMonitor id: {}", monitor.responseObserver.hashCode());
 

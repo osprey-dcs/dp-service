@@ -76,6 +76,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 
     @Override
     protected boolean fini_() {
+        logger.debug("MongoIngestionHandler fini start");
         if (!sourceMonitorManager.fini()) {
             logger.error("error in SourceMonitorManager.fini");
         }
@@ -85,6 +86,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         if (!mongoIngestionClient.fini()) {
             logger.error("error in mongoIngestionClient.fini");
         }
+        logger.debug("MongoIngestionHandler fini complete");
         return true;
     }
 
