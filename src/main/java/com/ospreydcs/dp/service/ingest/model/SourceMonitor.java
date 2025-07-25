@@ -38,7 +38,7 @@ public class SourceMonitor {
         this.responseObserver = responseObserver;
     }
 
-    public synchronized void publishDataColumns(
+    public void publishDataColumns(
             final String pvName,
             final DataTimestamps requestDataTimestamps,
             final List<DataColumn> responseDataColumns
@@ -65,7 +65,7 @@ public class SourceMonitor {
         }
     }
 
-    public synchronized void publishSerializedDataColumns(
+    public void publishSerializedDataColumns(
             final String pvName,
             final DataTimestamps requestDataTimestamps,
             final List<SerializedDataColumn> responseSerializedColumns
@@ -92,7 +92,7 @@ public class SourceMonitor {
         }
     }
 
-    public synchronized void handleReject(String errorMsg) {
+    public void handleReject(String errorMsg) {
 
         logger.debug(
                 "handleReject id: {} msg: {}",
@@ -105,7 +105,7 @@ public class SourceMonitor {
         }
     }
 
-    public synchronized void handleError(String errorMsg) {
+    public void handleError(String errorMsg) {
 
         logger.debug(
                 "handleError id: {} msg: {}",
@@ -118,7 +118,7 @@ public class SourceMonitor {
         }
     }
 
-    public synchronized void requestShutdown() {
+    public void requestShutdown() {
 
         logger.debug("requestShutdown id: {}", responseObserver.hashCode());
 

@@ -109,20 +109,20 @@ public class SourceMonitorManager {
 
             // acquire readLock only long enough to read local data structure
             readLock.lock();
-            List<SourceMonitor> sourceMonitors = null;
+            List<SourceMonitor> sourceMonitorsCopy;
             try {
-                sourceMonitors = subscriptionMap.get(pvName);
+                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                sourceMonitorsCopy =
+                        (sourceMonitors == null) ? new ArrayList<>() : new ArrayList<>(sourceMonitors);
             } finally {
                 readLock.unlock();
             }
 
-            if (sourceMonitors != null) {
-                // publish data via monitors
-                final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
-                for (SourceMonitor monitor : sourceMonitors) {
-                    // publish data to subscriber if response stream is active
-                    monitor.publishDataColumns(pvName, requestDataTimestamps, responseDataColumns);
-                }
+            // publish data via monitors
+            final List<DataColumn> responseDataColumns = List.of(requestDataColumn);
+            for (SourceMonitor monitor : sourceMonitorsCopy) {
+                // publish data to subscriber if response stream is active
+                monitor.publishDataColumns(pvName, requestDataTimestamps, responseDataColumns);
             }
         }
 
@@ -133,20 +133,20 @@ public class SourceMonitorManager {
 
             // acquire readLock only long enough to read local data structure
             readLock.lock();
-            List<SourceMonitor> sourceMonitors = null;
+            List<SourceMonitor> sourceMonitorsCopy;
             try {
-                sourceMonitors = subscriptionMap.get(pvName);
+                final List<SourceMonitor> sourceMonitors = subscriptionMap.get(pvName);
+                sourceMonitorsCopy =
+                        (sourceMonitors == null) ? new ArrayList<>() : new ArrayList<>(sourceMonitors);
             } finally {
                 readLock.unlock();
             }
 
-            if (sourceMonitors != null) {
-                // publish data via monitors
-                final List<SerializedDataColumn> responseSerializedColumns = List.of(requestSerializedColumn);
-                for (SourceMonitor monitor : sourceMonitors) {
-                    // publish data to subscriber if response stream is active
-                    monitor.publishSerializedDataColumns(pvName, requestDataTimestamps, responseSerializedColumns);
-                }
+            // publish data via monitors
+            final List<SerializedDataColumn> responseSerializedColumns = List.of(requestSerializedColumn);
+            for (SourceMonitor monitor : sourceMonitorsCopy) {
+                // publish data to subscriber if response stream is active
+                monitor.publishSerializedDataColumns(pvName, requestDataTimestamps, responseSerializedColumns);
             }
         }
     }

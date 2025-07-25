@@ -172,7 +172,7 @@ public class EventMonitor {
         targetPvNames.addAll(request.getOperation().getTargetPvsList());
     }
 
-    public synchronized void handleReject(String errorMsg) {
+    public void handleReject(String errorMsg) {
 
         if (shutdownRequested.get()) {
             return;
@@ -186,7 +186,7 @@ public class EventMonitor {
         initiateShutdown();
     }
 
-    public synchronized void handleError(
+    public void handleError(
             String errorMsg
     ) {
         if (shutdownRequested.get()) {
@@ -421,7 +421,7 @@ public class EventMonitor {
         }
     }
 
-    private synchronized void handleTriggeredEvent(
+    private void handleTriggeredEvent(
             Timestamp triggerTimestamp,
             PvConditionTrigger trigger,
             DataValue dataValue
@@ -511,7 +511,7 @@ public class EventMonitor {
         }
     }
 
-    private synchronized void sendDataEventMessage(
+    private void sendDataEventMessage(
             SubscribeDataEventResponse.Event event,
             List<DataBucket> dataBuckets
     ) {
@@ -592,7 +592,7 @@ public class EventMonitor {
         }
     }
 
-    public synchronized void requestShutdown() {
+    public void requestShutdown() {
 
         // use AtomicBoolean flag to control cancel, we only need one caller thread cleaning things up
         if (shutdownRequested.compareAndSet(false, true)) {
