@@ -43,26 +43,16 @@ public class SourceMonitor {
             final DataTimestamps requestDataTimestamps,
             final List<DataColumn> responseDataColumns
     ) {
-        if (!shutdownRequested.get()) {
-
-            final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                    (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-
-            if (!serverCallStreamObserver.isCancelled()) {
-                logger.debug(
-                        "publishing DataColumns for id: {} pv: {}",
-                        responseObserver.hashCode(),
-                        pvName);
-                IngestionServiceImpl.sendSubscribeDataResponse(
-                        requestDataTimestamps, responseDataColumns, responseObserver);
-
-            } else {
-                logger.trace(
-                        "not publishing DataColumns, subscription already closed for id: {} pv: {}",
-                        responseObserver.hashCode(),
-                        pvName);
-            }
+        if (!safeToSendResponse()) {
+            return;
         }
+
+        logger.debug(
+                "publishing DataColumns for id: {} pv: {}",
+                responseObserver.hashCode(),
+                pvName);
+        IngestionServiceImpl.sendSubscribeDataResponse(
+                requestDataTimestamps, responseDataColumns, responseObserver);
     }
 
     public void publishSerializedDataColumns(
@@ -70,26 +60,16 @@ public class SourceMonitor {
             final DataTimestamps requestDataTimestamps,
             final List<SerializedDataColumn> responseSerializedColumns
     ) {
-        if (!shutdownRequested.get()) {
-
-            final ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
-                    (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
-
-            if (!serverCallStreamObserver.isCancelled()) {
-                logger.debug(
-                        "publishing SerializedDataColumns for id: {} pv: {}",
-                        responseObserver.hashCode(),
-                        pvName);
-                IngestionServiceImpl.sendSubscribeDataResponseSerializedColumns(
-                        requestDataTimestamps, responseSerializedColumns, responseObserver);
-
-            } else {
-                logger.trace(
-                        "not publishing SerializedDataColumns, subscription already closed for id: {} pv: {}",
-                        responseObserver.hashCode(),
-                        pvName);
-            }
+        if (!safeToSendResponse()) {
+            return;
         }
+
+        logger.debug(
+                "publishing SerializedDataColumns for id: {} pv: {}",
+                responseObserver.hashCode(),
+                pvName);
+        IngestionServiceImpl.sendSubscribeDataResponseSerializedColumns(
+                requestDataTimestamps, responseSerializedColumns, responseObserver);
     }
 
     public void handleReject(String errorMsg) {
@@ -99,10 +79,12 @@ public class SourceMonitor {
                 responseObserver.hashCode(),
                 errorMsg);
 
-        if (!shutdownRequested.get()) {
-            // dispatch error message but don't close response stream with onCompleted()
-            IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
+        if (!safeToSendResponse()) {
+            return;
         }
+
+        // dispatch error message but don't close response stream with onCompleted()
+        IngestionServiceImpl.sendSubscribeDataResponseReject(errorMsg, responseObserver);
     }
 
     public void handleError(String errorMsg) {
@@ -112,10 +94,22 @@ public class SourceMonitor {
                 responseObserver.hashCode(),
                 errorMsg);
 
-        if (!shutdownRequested.get()) {
-            // dispatch error message but don't close response stream with onCompleted()
-            IngestionServiceImpl.sendSubscribeDataResponseError(errorMsg, responseObserver);
+        if (!safeToSendResponse()) {
+            return;
         }
+
+        // dispatch error message but don't close response stream with onCompleted()
+        IngestionServiceImpl.sendSubscribeDataResponseError(errorMsg, responseObserver);
+    }
+
+    private boolean safeToSendResponse() {
+        if (shutdownRequested.get()) {
+            return false;
+        }
+        
+        ServerCallStreamObserver<SubscribeDataResponse> serverCallStreamObserver =
+                (ServerCallStreamObserver<SubscribeDataResponse>) responseObserver;
+        return !serverCallStreamObserver.isCancelled();
     }
 
     public void requestShutdown() {

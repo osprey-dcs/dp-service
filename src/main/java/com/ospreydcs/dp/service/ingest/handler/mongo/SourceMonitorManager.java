@@ -189,10 +189,10 @@ public class SourceMonitorManager {
 
         logger.debug("terminateMonitor id: {}", monitor.responseObserver.hashCode());
 
-        // remove SourceMonitor from local data structures
-        this.removeMonitor(monitor);
-
-        // terminate the SourceMonitor
+        // terminate the SourceMonitor first (before acquiring any locks)
         monitor.requestShutdown();
+
+        // then remove SourceMonitor from local data structures
+        this.removeMonitor(monitor);
     }
 }

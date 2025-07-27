@@ -174,7 +174,7 @@ public class EventMonitor {
 
     public void handleReject(String errorMsg) {
 
-        if (shutdownRequested.get()) {
+        if (!safeToSendResponse()) {
             return;
         }
 
@@ -189,7 +189,7 @@ public class EventMonitor {
     public void handleError(
             String errorMsg
     ) {
-        if (shutdownRequested.get()) {
+        if (!safeToSendResponse()) {
             return;
         }
 
@@ -199,6 +199,16 @@ public class EventMonitor {
         IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
 
         initiateShutdown();
+    }
+
+    private boolean safeToSendResponse() {
+        if (shutdownRequested.get()) {
+            return false;
+        }
+        
+        ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
+                (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
+        return !serverCallStreamObserver.isCancelled();
     }
 
     public void initiateShutdown() {
@@ -228,8 +238,13 @@ public class EventMonitor {
     }
 
     public void handleSubscribeDataResponse(SubscribeDataResponse subscribeDataResponse) {
+        // Early exit if shutdown requested or stream closed
+        if (!safeToSendResponse()) {
+            return;
+        }
+        
         logger.debug(
-                "handleSubscribeDataResult type: {} id: {}",
+                "handleSubscribeDataResponse type: {} id: {}",
                 subscribeDataResponse.getResultCase().name(),
                 this.hashCode());
 
@@ -426,7 +441,7 @@ public class EventMonitor {
             PvConditionTrigger trigger,
             DataValue dataValue
     ) {
-        if (shutdownRequested.get()) {
+        if (!safeToSendResponse()) {
             return;
         }
 
@@ -515,7 +530,7 @@ public class EventMonitor {
             SubscribeDataEventResponse.Event event,
             List<DataBucket> dataBuckets
     ) {
-        if (shutdownRequested.get()) {
+        if (!safeToSendResponse()) {
             return;
         }
 
@@ -613,7 +628,7 @@ public class EventMonitor {
             }
 
             // close API response stream
-            logger.debug("closing subsscribeData() API subscription id: {}", responseObserver.hashCode());
+            logger.debug("closing subscribeData() API subscription id: {}", responseObserver.hashCode());
             ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
                     (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
             if (!serverCallStreamObserver.isCancelled()) {

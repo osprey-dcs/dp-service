@@ -71,11 +71,11 @@ public class EventMonitorManager {
 
         logger.debug("terminateMonitor id: {}", eventMonitor.responseObserver.hashCode());
 
-        // remove EventMonitor from list of managed monitors
-        this.removeEventMonitor(eventMonitor);
-
         // terminate the EventMonitor
         eventMonitor.requestShutdown();
+
+        // remove EventMonitor from list of managed monitors
+        this.removeEventMonitor(eventMonitor);
     }
 
     public void shutdown() {
