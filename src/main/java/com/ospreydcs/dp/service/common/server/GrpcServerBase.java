@@ -17,6 +17,14 @@ public abstract class GrpcServerBase {
     private static final int TIMEOUT_TERMINATION_SECS = 30;
     private static final String CFG_KEY_INCOMING_MESSAGE_SIZE_LIMIT_BYTES = "GrpcServer.incomingMessageSizeLimitBytes";
     private static final int DEFAULT_INCOMING_MESSAGE_SIZE_LIMIT_BYTES = 4_096_000;
+    private static final String CFG_KEY_SERVER_KEEP_ALIVE_TIME_SECONDS = "GrpcServer.keepAliveTimeSeconds";
+    private static final int DEFAULT_SERVER_KEEP_ALIVE_TIME_SECONDS = 60;
+    private static final String CFG_KEY_SERVER_KEEP_ALIVE_TIMEOUT_SECONDS = "GrpcServer.keepAliveTimeoutSeconds";
+    private static final int DEFAULT_SERVER_KEEP_ALIVE_TIMEOUT_SECONDS = 20;
+    private static final String CFG_KEY_SERVER_PERMIT_KEEP_ALIVE_TIME_SECONDS = "GrpcServer.permitKeepAliveTimeSeconds";
+    private static final int DEFAULT_SERVER_PERMIT_KEEP_ALIVE_TIME_SECONDS = 30;
+    private static final String CFG_KEY_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS = "GrpcServer.permitKeepAliveWithoutCalls";
+    private static final boolean DEFAULT_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS = true;
 
     // static variables
     private static final Logger LOGGER = LogManager.getLogger();
@@ -50,12 +58,35 @@ public abstract class GrpcServerBase {
 
         int port = getPort_();
 
+        int keepAliveTimeSeconds = configMgr().getConfigInteger(
+                CFG_KEY_SERVER_KEEP_ALIVE_TIME_SECONDS,
+                DEFAULT_SERVER_KEEP_ALIVE_TIME_SECONDS
+        );
+        int keepAliveTimeoutSeconds = configMgr().getConfigInteger(
+                CFG_KEY_SERVER_KEEP_ALIVE_TIMEOUT_SECONDS,
+                DEFAULT_SERVER_KEEP_ALIVE_TIMEOUT_SECONDS
+        );
+        int permitKeepAliveTime = configMgr().getConfigInteger(
+                CFG_KEY_SERVER_PERMIT_KEEP_ALIVE_TIME_SECONDS,
+                DEFAULT_SERVER_PERMIT_KEEP_ALIVE_TIME_SECONDS
+        );
+        boolean permitKeepAliveWithoutCalls = configMgr().getConfigBoolean(
+                CFG_KEY_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS,
+                DEFAULT_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS
+        );
+
         server = Grpc.newServerBuilderForPort(port, InsecureServerCredentials.create())
                 .addService(serviceImpl)
                 .maxInboundMessageSize(getIncomingMessageSizeLimitBytes())
+                .keepAliveTime(keepAliveTimeSeconds, TimeUnit.SECONDS)
+                .keepAliveTimeout(keepAliveTimeoutSeconds, TimeUnit.SECONDS)
+                .permitKeepAliveTime(permitKeepAliveTime, TimeUnit.SECONDS)
+                .permitKeepAliveWithoutCalls(permitKeepAliveWithoutCalls)
                 .build()
                 .start();
+
         LOGGER.info("Server started, listening on " + port);
+
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {

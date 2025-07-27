@@ -20,11 +20,34 @@ GrpcClient:
   # GrpcClient.hostname: Name of host running Data Platform services.
   hostname: localhost
 
+  # GrpcClient.keepAliveTimeSeconds: Sets the time (in seconds) since the last receipt before sending a keepalive ping.
+  keepAliveTimeSeconds: 45
+
+  # GrpcClient.keepAliveTimeoutSeconds: Sets the time (in seconds) to wait for a response after sending a keepalive ping.
+  keepAliveTimeoutSeconds: 20
+
+  # GrpcClient.keepAliveWithoutCalls: If true, enables sending keepalive pings even when no active RPCs are present on the channel.
+  keepAliveWithoutCalls: true
+
 # GrpcServer: General settings for running gRPC servers.
 GrpcServer:
 
   # GrpcServer.maxMessageSizeBytesIncoming: Limit on incoming gRPC message size in bytes, enforced by gRPC framework.
   incomingMessageSizeLimitBytes: 4096000
+
+  # GrpcServer.keepAliveTimeSeconds: Sets the time (in seconds) without read activity before a keepalive ping is sent.
+  keepAliveTimeSeconds: 60
+
+  # GrpcServer.keepAliveTimeoutSeconds: Sets the time (in seconds) to wait for read activity after sending a keepalive ping.
+  # If no activity is detected within this timeout, the connection is closed.
+  keepAliveTimeoutSeconds: 20
+
+  # GrpcServer.permitKeepAliveTimeSeconds: Sets the minimum keepalive time (in seconds) that clients are allowed to configure.
+  # This prevents clients from sending pings too frequently.
+  permitKeepAliveTimeSeconds: 30
+
+  # GrpcServer.permitKeepAliveWithoutCalls: If true, allows clients to send keepalive pings even when there are no active RPCs on the connection.
+  permitKeepAliveWithoutCalls: true
 
 # IngestionServer: Settings for the Ingestion server process.
 IngestionServer:
