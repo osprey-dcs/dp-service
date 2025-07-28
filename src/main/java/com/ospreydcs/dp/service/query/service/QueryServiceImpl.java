@@ -2,8 +2,8 @@ package com.ospreydcs.dp.service.query.service;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -250,35 +250,35 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 querySpec.getBeginTime().getEpochSeconds(),
                 querySpec.getEndTime().getEpochSeconds());
 
-        ValidationResult validationResult = validateQueryDataRequest(request);
-        if (validationResult.isError) {
-            sendQueryDataResponseReject(validationResult.msg, responseObserver);
+        ResultStatus resultStatus = validateQueryDataRequest(request);
+        if (resultStatus.isError) {
+            sendQueryDataResponseReject(resultStatus.msg, responseObserver);
             return null;
         } else {
             return querySpec;
         }
     }
 
-    protected ValidationResult validateQueryDataRequest(QueryDataRequest request) {
+    protected ResultStatus validateQueryDataRequest(QueryDataRequest request) {
 
         // check that query request contains a QuerySpec
         if (!request.hasQuerySpec()) {
             String errorMsg = "QueryRequest does not contain a QuerySpec";
-            return new ValidationResult(true, errorMsg);
+            return new ResultStatus(true, errorMsg);
         }
 
         QueryDataRequest.QuerySpec querySpec = request.getQuerySpec();
 
         // validate request
-        ValidationResult validationResult = handler.validateQuerySpecData(querySpec);
+        ResultStatus resultStatus = handler.validateQuerySpecData(querySpec);
 
         // send reject if request is invalid
-        if (validationResult.isError) {
-            String validationMsg = validationResult.msg;
-            return new ValidationResult(true, validationMsg);
+        if (resultStatus.isError) {
+            String validationMsg = resultStatus.msg;
+            return new ResultStatus(true, validationMsg);
         }
 
-        return new ValidationResult(false, "");
+        return new ResultStatus(false, "");
     }
 
     @Override
@@ -318,11 +318,11 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 responseObserver.hashCode());
 
         // validate request
-        ValidationResult validationResult = handler.validateQueryTableRequest(request);
+        ResultStatus resultStatus = handler.validateQueryTableRequest(request);
 
         // send reject if request is invalid
-        if (validationResult.isError) {
-            String validationMsg = validationResult.msg;
+        if (resultStatus.isError) {
+            String validationMsg = resultStatus.msg;
             sendQueryTableResponseReject(validationMsg, responseObserver);
             return;
         }

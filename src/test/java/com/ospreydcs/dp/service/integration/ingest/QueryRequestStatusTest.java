@@ -8,9 +8,7 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -29,14 +27,14 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -54,7 +52,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
 
                 // register ingestion provider
                 final String providerName = String.valueOf(providerIndex);
-                final String providerId = registerProvider(providerName, null);
+                final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
                 providerIdMap.put(providerName, providerId);
 
                 // use same seconds value for both requests to get duplicate id
@@ -83,7 +81,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                                     values,
                                     null, false);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
-                    sendAndVerifyIngestData(params, request, 0);
+                    ingestionServiceWrapper.sendAndVerifyIngestData(params, request, 0);
                 }
 
                 // send request that will be rejected because of empty string in columnNames list
@@ -111,7 +109,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion, manually inspect reject response
-                    final IngestDataResponse response = sendIngestData(request); // don't verify ingestion since it will be rejected
+                    final IngestDataResponse response = ingestionServiceWrapper.sendIngestData(request); // don't verify ingestion since it will be rejected
                     assertTrue(response.getProviderId() == providerId);
                     assertTrue(response.getClientRequestId().equals(requestId));
                     assertTrue(response.hasExceptionalResult());
@@ -150,7 +148,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion since it will fail, manually inspect ack response
-                    final IngestDataResponse response = sendIngestData(request); // don't verify ingestion since it will fail
+                    final IngestDataResponse response = ingestionServiceWrapper.sendIngestData(request); // don't verify ingestion since it will fail
                     assertTrue(response.getProviderId() == providerId);
                     assertTrue(response.getClientRequestId().equals(requestId));
                     assertTrue(response.hasAckResult()); // request should be acked but error during processing
@@ -194,7 +192,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyQueryRequestStatus(params, expectedResponseMap, expectReject, expectedRejectMessage);
+            ingestionServiceWrapper.sendAndVerifyQueryRequestStatus(params, expectedResponseMap, expectReject, expectedRejectMessage);
         }
 
         {
@@ -237,7 +235,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                             expectedIdsCreated);
             expectedResponseMap.addExpectedResponse(expectedResponse);
 
-            sendAndVerifyQueryRequestStatus(params, expectedResponseMap, false, "");
+            ingestionServiceWrapper.sendAndVerifyQueryRequestStatus(params, expectedResponseMap, false, "");
         }
 
         {
@@ -304,7 +302,7 @@ public class QueryRequestStatusTest extends GrpcIntegrationTestBase {
                 expectedResponseMap.addExpectedResponse(expectedResponse);
             }
 
-            sendAndVerifyQueryRequestStatus(params, expectedResponseMap, false, "");
+            ingestionServiceWrapper.sendAndVerifyQueryRequestStatus(params, expectedResponseMap, false, "");
         }
     }
 

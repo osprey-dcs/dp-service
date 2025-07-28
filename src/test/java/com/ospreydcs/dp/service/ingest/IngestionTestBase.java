@@ -460,37 +460,11 @@ public class IngestionTestBase {
         public void onCompleted() {
         }
     }
-    
-    public static class QueryRequestStatusParams {
-        
-        public final String providerId;
-        public final String providerName;
-        public final String requestId;
-        public final List<IngestionRequestStatus> status;
-        public final Long beginSeconds;
-        public final Long beginNanos;
-        public final Long endSeconds;
-        public final Long endNanos;
 
-        public QueryRequestStatusParams(
-                String providerId,
-                String providerName,
-                String requestId,
-                List<IngestionRequestStatus> status,
-                Long beginSeconds,
-                Long beginNanos,
-                Long endSeconds,
-                Long endNanos
-        ) {
-            this.providerId = providerId;
-            this.providerName = providerName;
-            this.requestId = requestId;
-            this.status = status;
-            this.beginSeconds = beginSeconds;
-            this.beginNanos = beginNanos;
-            this.endSeconds = endSeconds;
-            this.endNanos = endNanos;
-        }
+    public record QueryRequestStatusParams(String providerId, String providerName, String requestId,
+                                           List<IngestionRequestStatus> status, Long beginSeconds, Long beginNanos,
+                                           Long endSeconds, Long endNanos) {
+
     }
 
     public static class QueryRequestStatusExpectedResponse {

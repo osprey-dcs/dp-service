@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.ingest.handler;
 
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import org.junit.Test;
 
@@ -36,7 +36,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("providerId must be specified"));
     }
@@ -63,7 +63,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("clientRequestId must be specified"));
     }
@@ -91,7 +91,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertEquals(
                 result.msg,
@@ -122,7 +122,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         null, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("columns list cannot be empty"));
     }
@@ -154,7 +154,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.contains("mismatch numValues:"));
     }
@@ -185,7 +185,7 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
                         IngestionDataType.DOUBLE,
                         values, null, false);
         IngestDataRequest request = buildIngestionRequest(params);
-        ValidationResult result = IngestionValidationUtility.validateIngestionRequest(request);
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertTrue(result.isError);
         assertTrue(result.msg.equals("name must be specified for all DataColumns"));
     }

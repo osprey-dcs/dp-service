@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.benchmark;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -77,7 +78,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
             int numResultBuckets = queryData.getDataBucketsCount();
             logger.trace("stream: {} received data result numBuckets: {}", streamNumber, numResultBuckets);
 
-            for (QueryDataResponse.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+            for (DataBucket bucket : queryData.getDataBucketsList()) {
 
                 int dataValuesCount = 0;
                 if (bucket.hasDataColumn()) {

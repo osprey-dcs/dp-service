@@ -13,14 +13,14 @@ public abstract class QueueHandlerBase {
     private static final Logger logger = LogManager.getLogger();
 
     // constants
-    protected static final int TIMEOUT_SECONDS = 60;
+    protected static final int TIMEOUT_SECONDS = 10;
     protected static final int MAX_QUEUE_SIZE = 1;
     protected static final int POLL_TIMEOUT_SECONDS = 1;
 
     // instance variables
     protected ExecutorService executorService = null;
     protected BlockingQueue<HandlerJob> requestQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
-    private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+    protected final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
 
     // abstract method interface
     protected abstract boolean init_();
@@ -68,6 +68,10 @@ public abstract class QueueHandlerBase {
         }
     }
 
+    public boolean getShutdownRequested() {
+        return shutdownRequested.get();
+    }
+
     public boolean init() {
 
         logger.trace("init");
@@ -100,28 +104,36 @@ public abstract class QueueHandlerBase {
         if (shutdownRequested.get()) {
             return true;
         }
-
         shutdownRequested.set(true);
 
-        logger.trace("fini");
+        logger.trace("QueueHandlerBase fini");
 
-        // shut down executor service
-        try {
-            logger.trace("shutting down executorService");
-            executorService.shutdown();
-            executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            logger.trace("executorService shutdown completed");
-        } catch (InterruptedException ex) {
-            executorService.shutdownNow();
-            logger.error("InterruptedException in executorService.shutdown: " + ex.getMessage());
-            Thread.currentThread().interrupt();
-        }
-
+        // shut down service
         if (!fini_()) {
             logger.error("error in fini_()");
         }
 
-        logger.info("fini shutdown completed");
+        // shut down executor service thread pool and workers
+        logger.trace("fini shutting down executorService");
+        executorService.shutdown(); // disable new tasks from being submitted
+        try {
+            boolean terminated = executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!terminated) {
+                logger.error("fini timed out in executorService.awaitTermination()");
+                executorService.shutdownNow(); // cancel currently executing tasks
+                if (!executorService.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    logger.error("fini time out in executorService.shutdownNow()");
+                }
+            } else {
+                logger.trace("executorService shutdown completed");
+            }
+        } catch (InterruptedException ex) {
+            logger.error("fini InterruptedException in executorService.awaitTermination: " + ex.getMessage());
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        logger.info("QueueHandlerBase fini completed");
 
         return true;
     }

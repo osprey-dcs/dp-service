@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.handler.IngestionValidationUtility;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
@@ -73,6 +73,20 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         final IngestDataResponse response = IngestDataResponse.newBuilder()
                 .setProviderId(request.getProviderId())
                 .setClientRequestId(request.getClientRequestId())
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+        return response;
+    }
+
+    public static IngestDataStreamResponse ingestDataStreamResponseStreamReject(
+            IngestDataRequest request, String msg) {
+
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
+                .setMessage(msg)
+                .build();
+        final IngestDataStreamResponse response = IngestDataStreamResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -185,6 +199,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
                 responseObserver.hashCode(),
                 request.getProviderName());
 
+        if (handler.getShutdownRequested()) {
+            sendRegisterProviderResponseReject("service is shutdown", responseObserver);
+            return;
+        }
+
         // validate request
         if (request.getProviderName().isBlank()) {
             final String errorMsg = "RegisterProviderRequest.providerName must be specified";
@@ -226,15 +245,22 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             IngestDataRequest request,
             StreamObserver<IngestDataResponse> responseObserver
     ) {
+        if (handler.getShutdownRequested()) {
+            final IngestDataResponse rejectResponse = ingestionResponseReject(request, "service is shutdown");
+            responseObserver.onNext(rejectResponse);
+            responseObserver.onCompleted();
+            return;
+        }
+
         // validate request, send error response for invalid request
-        final ValidationResult validationResult = IngestionValidationUtility.validateIngestionRequest(request);
+        final ResultStatus resultStatus = IngestionValidationUtility.validateIngestionRequest(request);
         boolean validationError = false;
         String validationMsg = "";
 
-        if (validationResult.isError) {
+        if (resultStatus.isError) {
             // send error reject
             validationError = true;
-            validationMsg = validationResult.msg;
+            validationMsg = resultStatus.msg;
             final IngestDataResponse rejectResponse = ingestionResponseReject(request, validationMsg);
             responseObserver.onNext(rejectResponse);
 
@@ -350,6 +376,11 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
             StreamObserver<QueryRequestStatusResponse> responseObserver
     ) {
         logger.info("id: {} queryRequestStatus request received", responseObserver.hashCode());
+
+        if (handler.getShutdownRequested()) {
+            sendQueryRequestStatusResponseReject("service is shutdown", responseObserver);
+            return;
+        }
 
         // check that request contains non-empty list of criteria
         final List<QueryRequestStatusRequest.QueryRequestStatusCriterion> criterionList = request.getCriteriaList();
@@ -505,7 +536,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     ) {
         final SubscribeDataResponse response = subscribeDataResponseReject(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataResponseError(
@@ -513,7 +543,6 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
     ) {
         final SubscribeDataResponse response = subscribeDataResponseError(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataResponseAck(

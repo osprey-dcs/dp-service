@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -23,7 +24,7 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
     private MongoCursor<BucketDocument> mongoCursor = null;
     private final Object cursorLock = new Object(); // used for synchronized access to cursor which is not thread safe
     private final AtomicBoolean cursorClosed = new AtomicBoolean(false);
-    private QueryDataResponse.QueryData.DataBucket nextBucket = null;
+    private DataBucket nextBucket = null;
     private int nextBucketSize = 0;
 
     public QueryDataBidiStreamDispatcher(
@@ -74,7 +75,7 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
                 final BucketDocument document = this.mongoCursor.next();
 
                 // build DataBucket from BucketDocument
-                QueryDataResponse.QueryData.DataBucket bucket = null;
+                DataBucket bucket = null;
                 try {
                     bucket = BucketDocument.dataBucketFromDocument(document, querySpec);
                 } catch (DpException e) {

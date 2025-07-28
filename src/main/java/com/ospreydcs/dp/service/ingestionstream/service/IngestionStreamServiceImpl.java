@@ -3,13 +3,10 @@ package com.ospreydcs.dp.service.ingestionstream.service;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.DpIngestionStreamServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.*;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
 import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
-import io.grpc.stub.ServerCallStreamObserver;
+import com.ospreydcs.dp.service.ingestionstream.service.request.SubscribeDataEventRequestObserver;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -76,41 +73,35 @@ public class IngestionStreamServiceImpl
                 SubscribeDataEventResponse.AckResult.newBuilder()
                         .build();
 
-        final SubscribeDataEventResponse response = SubscribeDataEventResponse.newBuilder()
-                .setResponseTime(TimestampUtility.getTimestampNow())
-                .setAckResult(result)
-                .build();
-
-        return response;
-    }
-
-    private static SubscribeDataEventResponse subscribeDataEventResponse(
-            SubscribeDataEventResponse.SubscribeDataEventResult result
-    ) {
         return SubscribeDataEventResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setSubscribeDataEventResult(result)
+                .setAck(result)
                 .build();
     }
 
-    private static SubscribeDataEventResponse subscribeDataEventResponseConditionEvent(
-            String pvName,
-            Timestamp dataTimestamp,
+    public static SubscribeDataEventResponse.Event newEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
             DataValue dataValue
     ) {
-        final SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent conditionEvent =
-                SubscribeDataEventResponse.SubscribeDataEventResult.ConditionEvent.newBuilder()
-                        .setPvName(pvName)
-                        .setTimestamp(dataTimestamp)
-                        .setDataValue(dataValue)
-                        .build();
+        return SubscribeDataEventResponse.Event.newBuilder()
+                .setEventTime(triggerTimestamp)
+                .setTrigger(trigger)
+                .setDataValue(dataValue)
+                .build();
+    }
 
-        final SubscribeDataEventResponse.SubscribeDataEventResult result =
-                SubscribeDataEventResponse.SubscribeDataEventResult.newBuilder()
-                        .setConditionEvent(conditionEvent)
-                        .build();
+    private static SubscribeDataEventResponse subscribeDataEventResponseEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
+            DataValue dataValue
+    ) {
+        final SubscribeDataEventResponse.Event event = newEvent(triggerTimestamp, trigger, dataValue);
 
-        return subscribeDataEventResponse(result);
+        return SubscribeDataEventResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setEvent(event)
+                .build();
     }
 
     public static void sendSubscribeDataEventResponseReject(
@@ -118,7 +109,10 @@ public class IngestionStreamServiceImpl
     ) {
         final SubscribeDataEventResponse response = subscribeDataEventResponseReject(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
+
+        // Don't close the response stream, let the EventMonitor decide when to do it (so we don't call onCompleted()
+        // more than once).
+        // responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataEventResponseError(
@@ -126,7 +120,10 @@ public class IngestionStreamServiceImpl
     ) {
         final SubscribeDataEventResponse response = subscribeDataEventResponseError(msg);
         responseObserver.onNext(response);
-        responseObserver.onCompleted();
+
+        // Don't close the response stream, let the EventMonitor decide when to do it (so we don't call onCompleted()
+        // more than once).
+        // responseObserver.onCompleted();
     }
 
     public static void sendSubscribeDataEventResponseAck(
@@ -136,80 +133,32 @@ public class IngestionStreamServiceImpl
         responseObserver.onNext(response);
     }
 
-    public static void sendSubscribeDataEventResponseConditionEvent(
-            String pvName,
-            Timestamp dataTimestamp,
+    public static void sendSubscribeDataEventResponseEvent(
+            Timestamp triggerTimestamp,
+            PvConditionTrigger trigger,
             DataValue dataValue,
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
         final SubscribeDataEventResponse response
-                = subscribeDataEventResponseConditionEvent(pvName, dataTimestamp, dataValue);
+                = subscribeDataEventResponseEvent(triggerTimestamp, trigger, dataValue);
         responseObserver.onNext(response);
     }
 
-    public static ValidationResult validateSubscribeDataEventRequest(
-            SubscribeDataEventRequest request
+    public static void sendSubscribeDataEventResponseEventData(
+            SubscribeDataEventResponse.EventData eventData,
+            StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
-        // validate common request fields
-        if (request.getPvNamesList().isEmpty()) {
-            return new ValidationResult(
-                    true,
-                    "SubscribeDataEventRequest.pvNames must be specified");
-        }
-
-        // validate contents for various types of eventDef payloads
-        switch (request.getDataEventDefCase()) {
-
-            case CONDITIONEVENTDEF -> {
-                // validate request containing ConditionEventDef payload
-                SubscribeDataEventRequest.ConditionEventDef eventDef = request.getConditionEventDef();
-                if (eventDef.getOperator() ==
-                        SubscribeDataEventRequest.ConditionEventDef.ConditionOperator.CONDITION_OPERATOR_UNSPECIFIED) {
-                    return new ValidationResult(
-                            true,
-                            "SubscribeDataEventRequest.ConditionEventDef.operator must be specified");
-                }
-            }
-
-            case DATAEVENTDEF_NOT_SET -> {
-                return new ValidationResult(
-                        true,
-                        "SubscribeDataEventRequest.dataEventDef must be specified");
-            }
-        }
-
-        return new ValidationResult(false, "");
+        final SubscribeDataEventResponse response = SubscribeDataEventResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setEventData(eventData)
+                .build();
+        responseObserver.onNext(response);
     }
 
     @Override
-    public void subscribeDataEvent(
-            SubscribeDataEventRequest request,
+    public StreamObserver<SubscribeDataEventRequest> subscribeDataEvent(
             StreamObserver<SubscribeDataEventResponse> responseObserver
     ) {
-        logger.info(
-                "id: {} subscribeDataEvent request received, dataEventDef: {}",
-                responseObserver.hashCode(),
-                request.getDataEventDefCase().name());
-
-        // validate request
-        final ValidationResult validationResult = validateSubscribeDataEventRequest(request);
-        if (validationResult.isError) {
-            sendSubscribeDataEventResponseReject(validationResult.msg, responseObserver);
-        }
-        
-        // add a handler to remove subscription when client closes method connection
-        ServerCallStreamObserver<SubscribeDataEventResponse> serverCallStreamObserver =
-                (ServerCallStreamObserver<SubscribeDataEventResponse>) responseObserver;
-        serverCallStreamObserver.setOnCancelHandler(
-                () -> {
-                    logger.trace("onCancelHandler id: {}", responseObserver.hashCode());
-                    if (handler != null) {
-                        handler.cancelDataEventSubscriptions(responseObserver);
-                    }
-                }
-        );
-        
-        // dispatch to handler
-        handler.handleSubscribeDataEvent(request, responseObserver);
+        return new SubscribeDataEventRequestObserver(responseObserver, handler);
     }
 }

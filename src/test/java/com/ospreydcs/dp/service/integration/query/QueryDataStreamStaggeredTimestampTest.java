@@ -1,12 +1,11 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -25,14 +24,14 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -47,9 +46,9 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
 
         // register ingestion provider
         final String providerName = String.valueOf(INGESTION_PROVIDER_ID);
-        final String providerId = registerProvider(providerName, null);
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
-        List<IngestionColumnInfo> columnInfoList = new ArrayList<>();
+        List<GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo> columnInfoList = new ArrayList<>();
 
         {
             // ingest data with timestamps every tenth of a second
@@ -57,15 +56,23 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             final long intervalTenths = 100_000_000L;
             final int numBucketsTenths = 30;
             final int numSecondsPerBucketTenths = 1;
-            final IngestionColumnInfo columnInfoTenths =
-                    new IngestionColumnInfo(
+            final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoTenths =
+                    new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                             columnNameTenths,
                             requestIdBaseTenths,
                             providerId,
                             intervalTenths,
                             numBucketsTenths,
                             numSecondsPerBucketTenths, 
-                            false, false, null, null, null, null, null, null, null);
+                            false,
+                            false,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null);
             columnInfoList.add(columnInfoTenths);
         }
 
@@ -75,15 +82,23 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             final long intervalFifths = 200_000_000L;
             final int numBucketsFifths = 10;
             final int numSecondsPerBucketFifths = 3;
-            final IngestionColumnInfo columnInfoFifths =
-                    new IngestionColumnInfo(
+            final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoFifths =
+                    new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                             columnNameFifths,
                             requestIdBaseFifths,
                             providerId,
                             intervalFifths,
                             numBucketsFifths,
-                            numSecondsPerBucketFifths, 
-                            false, false, null, null, null, null, null, null, null);
+                            numSecondsPerBucketFifths,
+                            false,
+                            false,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null);
             columnInfoList.add(columnInfoFifths);
         }
 
@@ -93,15 +108,23 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             final long intervalQuarters = 250_000_000L;
             final int numBucketsQuarters = 6;
             final int numSecondsPerBucketQuarters = 5;
-            final IngestionColumnInfo columnInfoQuarters =
-                    new IngestionColumnInfo(
+            final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoQuarters =
+                    new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                             columnNameQuarters,
                             requestIdBaseQuarters,
                             providerId,
                             intervalQuarters,
                             numBucketsQuarters,
                             numSecondsPerBucketQuarters, 
-                            false, false, null, null, null, null, null, null, null);
+                            false,
+                            false,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null);
             columnInfoList.add(columnInfoQuarters);
         }
 
@@ -111,22 +134,31 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             final long intervalEighths = 125_000_000L;
             final int numBucketsEighths = 16;
             final int numSecondsPerBucketEighths = 2;
-            final IngestionColumnInfo columnInfoEighths =
-                    new IngestionColumnInfo(
+            final GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo columnInfoEighths =
+                    new GrpcIntegrationIngestionServiceWrapper.IngestionColumnInfo(
                             columnNameEighths,
                             requestIdBaseEighths,
                             providerId,
                             intervalEighths,
                             numBucketsEighths,
                             numSecondsPerBucketEighths,
-                            true, false, null, null, null, null, null, null, null); // specify that DataTimestamps in request should use explicit TimestampsList
+                            true,
+                            false,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null); // specify that DataTimestamps in request should use explicit TimestampsList
             columnInfoList.add(columnInfoEighths);
         }
 
-        Map<String, IngestionStreamInfo> validationMap = null;
+        Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap = null;
         {
             // perform ingestion for specified list of columns
-            validationMap = ingestDataBidiStreamFromColumn(columnInfoList, startSeconds, startNanos, 0);
+            validationMap = ingestionServiceWrapper.ingestDataBidiStreamFromColumn(
+                    columnInfoList, startSeconds, startNanos, 0);
         }
 
         {
@@ -137,11 +169,12 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
             final long queryStartNanos = 0;
             final long queryEndSeconds = queryStartSeconds + queryNumSeconds;
             final long queryEndNanos = 0;
-            final List<String> queryColumnNames = List.of(columnNameTenths, columnNameFifths, columnNameQuarters, columnNameEighths);
+            final List<String> queryColumnNames = List.of(
+                    columnNameTenths, columnNameFifths, columnNameQuarters, columnNameEighths);
 
             final int numRowsExpected = 16 * queryNumSeconds;
 
-            sendAndVerifyQueryTablePvNameListColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
@@ -177,8 +210,13 @@ public class QueryDataStreamStaggeredTimestampTest extends GrpcIntegrationTestBa
                     false
             );
 
-            sendAndVerifyQueryDataStream(
-                    numBucketsExpected, 0, params, validationMap, false, "");
+            queryServiceWrapper.sendAndVerifyQueryDataStream(
+                    numBucketsExpected,
+                    0,
+                    params,
+                    validationMap,
+                    false,
+                    "");
         }
     }
 

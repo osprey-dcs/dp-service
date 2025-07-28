@@ -6,7 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationResponse;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,9 +28,9 @@ public class CreateAnnotationDispatcher extends Dispatcher {
         this.request = request;
     }
 
-    public void handleValidationError(ValidationResult validationResult) {
+    public void handleValidationError(ResultStatus resultStatus) {
         AnnotationServiceImpl.sendCreateAnnotationResponseReject(
-                validationResult.msg,
+                resultStatus.msg,
                 this.responseObserver);
     }
 

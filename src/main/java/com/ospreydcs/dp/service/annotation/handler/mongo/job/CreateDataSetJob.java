@@ -8,7 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.CreateDataSetD
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,9 +46,9 @@ public class CreateDataSetJob extends HandlerJob {
     @Override
     public void execute() {
         logger.debug("executing CreateDataSetJob id: {}", this.responseObserver.hashCode());
-        final ValidationResult validationResult = this.handler.validateCreateDataSetRequest(request);
-        if (validationResult.isError) {
-            dispatcher.handleValidationError(validationResult);
+        final ResultStatus resultStatus = this.handler.validateCreateDataSetRequest(request);
+        if (resultStatus.isError) {
+            dispatcher.handleValidationError(resultStatus);
             return;
         }
         final DataSetDocument dataSetDocument = generateDataSetDocument(request);

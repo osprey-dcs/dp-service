@@ -1,30 +1,32 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void testCreateDataSetReject() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
-        AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        annotationIngestionScenario(startSeconds);
 
         {
             // createDataSet() negative test - request should be rejected because name not specified
@@ -47,7 +49,7 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
 
-            sendAndVerifyCreateDataSet(
+            annotationServiceWrapper.sendAndVerifyCreateDataSet(
                     params, true, "DataSet name must be specified");
         }
 
@@ -86,11 +88,11 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
             final AnnotationTestBase.CreateDataSetParams params =
                     new AnnotationTestBase.CreateDataSetParams(dataSet);
 
-            sendAndVerifyCreateDataSet(
+            annotationServiceWrapper.sendAndVerifyCreateDataSet(
                     params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
         }
 
         // positive test case defined in super class so it can be used to generate datasets for other tests
-        createDataSetScenario();
+        createDataSetScenario(startSeconds);
     }
 }

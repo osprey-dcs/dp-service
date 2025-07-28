@@ -4,6 +4,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoSyncIngestionClient;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.bson.conversions.Bson;
 import org.junit.*;
 
@@ -61,7 +62,7 @@ public class MongoSyncIngestionHandlerTest extends MongoIngestionHandlerTestBase
         MongoTestClient.prepareTestDatabase();
 
         TestSyncClient testClient = new TestSyncClient();
-        MongoIngestionHandler handler = new MongoIngestionHandler(testClient);
+        MongoIngestionHandler handler = new MongoIngestionHandler(testClient, new MongoSyncQueryClient());
         setUp(handler, testClient);
     }
 

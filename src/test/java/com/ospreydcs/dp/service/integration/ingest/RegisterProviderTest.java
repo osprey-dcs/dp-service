@@ -1,16 +1,11 @@
 package com.ospreydcs.dp.service.integration.ingest;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
-import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.util.List;
 import java.util.Map;
@@ -23,14 +18,14 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -52,7 +47,7 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = "RegisterProviderRequest.providerName must be specified";
             boolean expectedIsNew = true;
             final String expectedProviderId = null;
-            sendAndVerifyRegisterProvider(
+            ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     params,
                     expectExceptionalResponse,
                     expectedExceptionStatus,
@@ -79,7 +74,7 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = null;
             boolean expectedIsNew = true;
             final String expectedProviderId = null;
-            providerId = sendAndVerifyRegisterProvider(
+            providerId = ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     params,
                     expectExceptionalResponse,
                     expectedExceptionStatus,
@@ -109,7 +104,7 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = null;
             boolean expectedIsNew = false;
             final String expectedProviderId = providerId;
-            providerIdUpdate = sendAndVerifyRegisterProvider(
+            providerIdUpdate = ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     params,
                     expectExceptionalResponse,
                     expectedExceptionStatus,
@@ -134,7 +129,7 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = null;
             boolean expectedIsNew = true;
             final String expectedProviderId = null;
-            providerId = sendAndVerifyRegisterProvider(
+            providerId = ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     params,
                     expectExceptionalResponse,
                     expectedExceptionStatus,

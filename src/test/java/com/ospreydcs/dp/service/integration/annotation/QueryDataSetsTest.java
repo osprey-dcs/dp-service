@@ -1,23 +1,22 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -35,7 +34,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final String expectedRejectMessage =
                     "QueryDataSetsRequest.criteria.TextCriterion text must be specified";
 
-            sendAndVerifyQueryDataSets(
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
@@ -49,7 +48,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final String expectedRejectMessage =
                     "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
 
-            sendAndVerifyQueryDataSets(
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
@@ -62,7 +61,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = true;
             final String expectedRejectMessage ="QueryDataSetsRequest.criteria.PvNameCriterion name must be specified";
 
-            sendAndVerifyQueryDataSets(
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
@@ -71,12 +70,14 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
     @Test
     public void testQueryDataSetsPositive() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
-        AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        annotationIngestionScenario(startSeconds);
 
         // create some datasets
-        CreateDataSetScenarioResult createDataSetScenarioResult =
-                AnnotationIntegrationTestIntermediate.createDataSetScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario(startSeconds);
 
         // queryDataSets() positive test - query by OwnerCriterion and TextCriterion (on description field)
         {
@@ -99,8 +100,8 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final String expectedRejectMessage ="";
 
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
-                    List.of(createDataSetScenarioResult.firstHalfDataSetParams);
-            sendAndVerifyQueryDataSets(
+                    List.of(createDataSetScenarioResult.firstHalfDataSetParams());
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
@@ -113,22 +114,22 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            sendAndVerifyQueryDataSets(
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
         // queryDataSets() positive test - query by IdCriterion
         {
-            final String datasetId = createDataSetScenarioResult.firstHalfDataSetId;
+            final String datasetId = createDataSetScenarioResult.firstHalfDataSetId();
             final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
-            queryParams.setIdCriterion(createDataSetScenarioResult.firstHalfDataSetId);
+            queryParams.setIdCriterion(createDataSetScenarioResult.firstHalfDataSetId());
 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
-                    List.of(createDataSetScenarioResult.firstHalfDataSetParams);
-            sendAndVerifyQueryDataSets(
+                    List.of(createDataSetScenarioResult.firstHalfDataSetParams());
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
@@ -142,8 +143,8 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final String expectedRejectMessage ="";
 
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
-                    List.of(createDataSetScenarioResult.secondHalfDataSetParams);
-            sendAndVerifyQueryDataSets(
+                    List.of(createDataSetScenarioResult.secondHalfDataSetParams());
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 
@@ -157,8 +158,8 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final String expectedRejectMessage ="";
 
             List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
-                    List.of(createDataSetScenarioResult.firstHalfDataSetParams);
-            sendAndVerifyQueryDataSets(
+                    List.of(createDataSetScenarioResult.firstHalfDataSetParams());
+            annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
         }
 

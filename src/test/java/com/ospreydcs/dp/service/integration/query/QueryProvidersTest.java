@@ -4,26 +4,27 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 import java.util.List;
 import java.util.Map;
 
+import static com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper.BPM_INGESTION_PROVIDER;
+import static com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper.GCC_INGESTION_PROVIDER;
+
 @RunWith(JUnit4.class)
 public class QueryProvidersTest extends GrpcIntegrationTestBase {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -52,7 +53,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = null;
             boolean expectedIsNew = true;
             final String expectedProviderId = null;
-            gccProviderId = sendAndVerifyRegisterProvider(
+            gccProviderId = ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     gccProviderParams,
                     expectExceptionalResponse,
                     expectedExceptionStatus,
@@ -84,7 +85,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String expectedExceptionMessage = null;
             boolean expectedIsNew = true;
             final String expectedProviderId = null;
-            bpmProviderId = sendAndVerifyRegisterProvider(
+            bpmProviderId = ingestionServiceWrapper.sendAndVerifyRegisterProvider(
                     bpmProviderParams,
                     expectExceptionalResponse,
                     expectedExceptionStatus,
@@ -102,7 +103,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final int numMatchesExpected = 0;
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     numMatchesExpected,
                     expectReject,
@@ -114,7 +115,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String idCriterion = gccProviderId;
             final QueryTestBase.QueryProvidersRequestParams requestParams = new QueryTestBase.QueryProvidersRequestParams();
             requestParams.setIdCriterion(idCriterion);
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     1,
                     false,
@@ -126,7 +127,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String textCriterion = "BPM";
             final QueryTestBase.QueryProvidersRequestParams requestParams = new QueryTestBase.QueryProvidersRequestParams();
             requestParams.setTextCriterion(textCriterion);
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     1,
                     false,
@@ -138,7 +139,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String tagsCriterion = "diagnostics";
             final QueryTestBase.QueryProvidersRequestParams requestParams = new QueryTestBase.QueryProvidersRequestParams();
             requestParams.setTagsCriterion(tagsCriterion);
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     1,
                     false,
@@ -151,7 +152,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final String attributesCriterionValue = "01";
             QueryTestBase.QueryProvidersRequestParams requestParams = new QueryTestBase.QueryProvidersRequestParams();
             requestParams.setAttributesCriterion(attributesCriterionKey, attributesCriterionValue);
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     2,
                     false,
@@ -174,7 +175,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryProvidersRequest.criteria.IdCriterion id must be specified";
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     numMatchesExpected,
                     expectReject,
@@ -192,7 +193,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryProvidersRequest.criteria.TextCriterion text must be specified";
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     numMatchesExpected,
                     expectReject,
@@ -210,7 +211,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryProvidersRequest.criteria.TagsCriterion tagValue must be specified";
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     numMatchesExpected,
                     expectReject,
@@ -229,7 +230,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "QueryProvidersRequest.criteria.AttributesCriterion key must be specified";
-            sendAndVerifyQueryProviders(
+            queryServiceWrapper.sendAndVerifyQueryProviders(
                     requestParams,
                     numMatchesExpected,
                     expectReject,

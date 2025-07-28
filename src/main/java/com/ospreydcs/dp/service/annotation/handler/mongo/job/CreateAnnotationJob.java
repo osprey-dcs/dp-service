@@ -11,7 +11,7 @@ import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,9 +47,9 @@ public class CreateAnnotationJob extends HandlerJob {
         logger.debug("executing CreateAnnotationJob id: {}", this.responseObserver.hashCode());
 
         // validate request, e.g., that ids for associated datasets and annotations exist in the database
-        final ValidationResult validationResult = this.handler.validateCreateAnnotationRequest(request);
-        if (validationResult.isError) {
-            dispatcher.handleValidationError(validationResult);
+        final ResultStatus resultStatus = this.handler.validateCreateAnnotationRequest(request);
+        if (resultStatus.isError) {
+            dispatcher.handleValidationError(resultStatus);
             return;
         }
 

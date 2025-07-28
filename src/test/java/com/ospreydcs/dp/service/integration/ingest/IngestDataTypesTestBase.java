@@ -3,7 +3,6 @@ package com.ospreydcs.dp.service.integration.ingest;
 import com.google.protobuf.ByteString;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
@@ -73,7 +72,7 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
 
         // register ingestion provider
         final String providerName = INGESTION_PROVIDER_ID;
-        final String providerId = registerProvider(providerName, null);
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
 
         List<DataColumn> arrayDataColumnList = null;
@@ -212,10 +211,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             endNanos,
                             false
                     );
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryServiceWrapper.queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
 
@@ -327,10 +326,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             false
                     );
 
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryServiceWrapper.queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
 
             // write image content from query to file
@@ -622,10 +621,10 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             false
                     );
 
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets = queryDataStream(
+            final List<DataBucket> queryBuckets = queryServiceWrapper.queryDataStream(
                     queryDataRequestParams, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
             QueryTestBase.verifyDataBucket(responseBucket, requestColumn, startSeconds, startNanos, samplePeriod, numSamples);
         }
     }
