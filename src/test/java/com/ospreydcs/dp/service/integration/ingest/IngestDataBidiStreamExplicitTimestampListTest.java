@@ -6,9 +6,7 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,14 +17,14 @@ public class IngestDataBidiStreamExplicitTimestampListTest extends GrpcIntegrati
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -37,7 +35,7 @@ public class IngestDataBidiStreamExplicitTimestampListTest extends GrpcIntegrati
 
         // register ingestion provider
         final String providerName = String.valueOf(1);
-        final String providerId = registerProvider(providerName, null);
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
         {
             // ingest data with explicit timestamp list
@@ -96,11 +94,11 @@ public class IngestDataBidiStreamExplicitTimestampListTest extends GrpcIntegrati
                 final List<IngestDataRequest> requestList = Arrays.asList(request);
 
                 // send request
-                final List<IngestDataResponse> responseList = sendIngestDataBidiStream(requestList);
+                final List<IngestDataResponse> responseList = ingestionServiceWrapper.sendIngestDataBidiStream(requestList);
 
                 // verify ingestion
                 final List<IngestionTestBase.IngestionRequestParams> paramsList = Arrays.asList(params);
-                verifyIngestionHandling(paramsList, requestList, responseList, 0);
+                ingestionServiceWrapper.verifyIngestionHandling(paramsList, requestList, responseList, 0);
             }
         }
     }

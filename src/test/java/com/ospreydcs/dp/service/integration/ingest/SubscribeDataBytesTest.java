@@ -3,34 +3,42 @@ package com.ospreydcs.dp.service.integration.ingest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
-import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.integration.annotation.AnnotationIntegrationTestIntermediate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
+public class SubscribeDataBytesTest extends AnnotationIntegrationTestIntermediate {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void testSubscribeDataBytes() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
+        {
+            // Pre-populate some data in the archive for the PVs that we will be using.
+            // This is necessary because validation is performed that data exists in the archive for the
+            // PV names in subscribeData() requests.
+            annotationIngestionScenario(startSeconds-600);
+        }
 
         // Provides coverage for subscribeData() where the ingestion requests use SerializedDataColumns,
         // so that the SubscribeDataResponse messages also contain byte data.  The scenario uses
@@ -56,7 +64,7 @@ public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall1 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames1, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
@@ -67,7 +75,7 @@ public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall2 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames2, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
@@ -78,42 +86,42 @@ public class SubscribeDataBytesTest extends GrpcIntegrationTestBase {
                 final boolean expectReject = false;
                 final String expectedRejectMessage = "";
                 subscribeDataCall3 =
-                        initiateSubscribeDataRequest(
+                        ingestionServiceWrapper.initiateSubscribeDataRequest(
                                 subscriptionPvNames3, expectedResponseCount, expectReject, expectedRejectMessage);
             }
 
             // run a simple ingestion scenario that will publish to all 3 subscriptions
-            Map<String, IngestionStreamInfo> ingestionValidationMap;
+            Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> ingestionValidationMap;
             {
                 // create some data for testing query APIs
                 // create data for 10 sectors, each containing 3 gauges and 3 bpms
                 // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
                 // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-                ingestionValidationMap = AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+                ingestionValidationMap = annotationIngestionScenario(startSeconds);
             }
 
             // verify all 3 subscriptions received expected messages
-            verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver,
+            ingestionServiceWrapper.verifySubscribeDataResponse(
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall1.responseObserver(),
                     subscriptionPvNames1,
                     ingestionValidationMap,
                     30);
-            verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver,
+            ingestionServiceWrapper.verifySubscribeDataResponse(
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall2.responseObserver(),
                     subscriptionPvNames2,
                     ingestionValidationMap,
                     30);
-            verifySubscribeDataResponse(
-                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver,
+            ingestionServiceWrapper.verifySubscribeDataResponse(
+                    (IngestionTestBase.SubscribeDataResponseObserver) subscribeDataCall3.responseObserver(),
                     subscriptionPvNames3,
                     ingestionValidationMap,
                     30);
 
             // 2) cancel subscription with explicit cancel message
-            cancelSubscribeDataCall(subscribeDataCall2);
+            ingestionServiceWrapper.cancelSubscribeDataCall(subscribeDataCall2);
 
             // 3) cancel subscription by closing client request stream
-            closeSubscribeDataCall(subscribeDataCall3);
+            ingestionServiceWrapper.closeSubscribeDataCall(subscribeDataCall3);
         }
     }
 

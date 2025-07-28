@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
@@ -264,8 +265,7 @@ public class QueryTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryDataResponse.QueryData.DataBucket> dataBucketList =
-                Collections.synchronizedList(new ArrayList<>());
+        private final List<DataBucket> dataBucketList = Collections.synchronizedList(new ArrayList<>());
         private StreamObserver<QueryDataRequest> requestObserver = null;
         private final ObserverType observerType;
         private final int numBucketsExpected;
@@ -318,7 +318,7 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryDataResponse.QueryData.DataBucket> getDataBucketList() {
+        public List<DataBucket> getDataBucketList() {
             return dataBucketList;
         }
 
@@ -340,10 +340,10 @@ public class QueryTestBase {
                 }
 
                 assertTrue(response.hasQueryData());
-                final List<QueryDataResponse.QueryData.DataBucket> responseBucketList =
+                final List<DataBucket> responseBucketList =
                         response.getQueryData().getDataBucketsList();
                 final int bucketsReceived = numBucketsReceived.addAndGet(responseBucketList.size());
-                for (QueryDataResponse.QueryData.DataBucket bucket : responseBucketList) {
+                for (DataBucket bucket : responseBucketList) {
                     dataBucketList.add(bucket);
                 }
 
@@ -716,7 +716,7 @@ public class QueryTestBase {
     }
 
     public static void verifyDataBucket(
-            QueryDataResponse.QueryData.DataBucket responseBucket,
+            DataBucket responseBucket,
             DataColumn requestColumn,
             long startSeconds,
             long startNanos,

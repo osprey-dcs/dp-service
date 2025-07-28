@@ -5,9 +5,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -18,14 +16,14 @@ import static org.junit.Assert.assertTrue;
 
 public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -35,7 +33,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
         {
             // register ingestion provider
             final String providerName = String.valueOf(1);
-            providerId = registerProvider(providerName, null);
+            providerId = ingestionServiceWrapper.registerProvider(providerName, null);
         }
 
         {
@@ -65,7 +63,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
             // send request and examine response
-            final IngestDataResponse response = sendIngestData(request);
+            final IngestDataResponse response = ingestionServiceWrapper.sendIngestData(request);
             assertTrue(response.getProviderId() == providerId);
             assertTrue(response.getClientRequestId().equals(requestId));
             assertTrue(response.hasExceptionalResult());
@@ -103,7 +101,7 @@ public class IngestDataUnaryTest extends GrpcIntegrationTestBase {
             final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
             // send request and examine response
-            sendAndVerifyIngestData(params, request, 0);
+            ingestionServiceWrapper.sendAndVerifyIngestData(params, request, 0);
         }
     }
 

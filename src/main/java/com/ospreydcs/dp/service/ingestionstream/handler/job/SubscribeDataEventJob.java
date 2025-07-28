@@ -1,17 +1,13 @@
 package com.ospreydcs.dp.service.ingestionstream.handler.job;
 
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.ingestionstream.handler.DataEventSubscriptionManager;
-import com.ospreydcs.dp.service.ingestionstream.handler.monitor.ConditionMonitor;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
+import com.ospreydcs.dp.service.ingestionstream.handler.EventMonitorManager;
+import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStreamHandlerInterface;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
 import com.ospreydcs.dp.service.ingestionstream.service.IngestionStreamServiceImpl;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.Objects;
 
 public class SubscribeDataEventJob extends HandlerJob {
 
@@ -19,38 +15,36 @@ public class SubscribeDataEventJob extends HandlerJob {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final SubscribeDataEventRequest request;
-    private final StreamObserver<SubscribeDataEventResponse> responseObserver;
-    private final DataEventSubscriptionManager subscriptionManager;
+    private final IngestionStreamHandlerInterface handler;
+    private final EventMonitor eventMonitor;
+    private final EventMonitorManager eventMonitorManager;
 
     public SubscribeDataEventJob(
-            SubscribeDataEventRequest request,
-            StreamObserver<SubscribeDataEventResponse> responseObserver,
-            DataEventSubscriptionManager subscriptionManager
+            IngestionStreamHandlerInterface handler,
+            EventMonitor eventMonitor,
+            EventMonitorManager manager
     ) {
-        this.request = request;
-        this.responseObserver = responseObserver;
-        this.subscriptionManager = subscriptionManager;
+        this.handler = handler;
+        this.eventMonitor = eventMonitor;
+        this.eventMonitorManager = manager;
     }
 
     @Override
     public void execute() {
 
-        // create an event monitor for the request
-        EventMonitor eventMonitor = null;
-        switch (request.getDataEventDefCase()) {
-            case CONDITIONEVENTDEF -> {
-                eventMonitor = new ConditionMonitor(request, responseObserver, subscriptionManager);
-            }
-            case DATAEVENTDEF_NOT_SET -> {
-                final String errorMsg = "invalid request, SubscribeDataEventRequest.dataEventDef must be specified";
-                logger.debug(errorMsg + " id: " + responseObserver.hashCode());
-                IngestionStreamServiceImpl.sendSubscribeDataEventResponseError(errorMsg, responseObserver);
-            }
-        }
-        Objects.requireNonNull(eventMonitor);
+        logger.debug("executing SubscribeDataEventJob id: {}", eventMonitor.hashCode());
 
-        // add event monitor to subscription manager
-        subscriptionManager.addEventMonitor(eventMonitor);
+        // initiate EventMonitor subscription
+        ResultStatus subscriptionStatue = eventMonitor.initiateSubscription();
+
+        // send a reject if there is an error initiating subscribeData() subscription
+        if (subscriptionStatue.isError) {
+            eventMonitor.handleReject(subscriptionStatue.msg);
+            return;
+
+        } else {
+            // send ack response
+            IngestionStreamServiceImpl.sendSubscribeDataEventResponseAck(eventMonitor.responseObserver);
+        }
     }
 }

@@ -12,7 +12,7 @@ import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.stub.StreamObserver;
@@ -114,22 +114,22 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ValidationResult validateCreateDataSetRequest(CreateDataSetRequest request) {
+    public ResultStatus validateCreateDataSetRequest(CreateDataSetRequest request) {
 
         // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
         final Set<String> uniquePvNames = new TreeSet<>();
         if (request.getDataSet() == null) {
-            return new ValidationResult(true, "CreateDataSetRequest must contain a DataSet");
+            return new ResultStatus(true, "CreateDataSetRequest must contain a DataSet");
         }
         final DataSet dataSet = request.getDataSet();
         final List<DataBlock> dataBlocks = dataSet.getDataBlocksList();
         if (dataBlocks == null || dataBlocks.isEmpty()) {
-            return new ValidationResult(true, "CreateDataSetRequest.DataSet must contain DataBlocks");
+            return new ResultStatus(true, "CreateDataSetRequest.DataSet must contain DataBlocks");
         }
         for (DataBlock dataBlock : dataBlocks) {
             List<String> blockPvNames = dataBlock.getPvNamesList();
             if (blockPvNames == null || blockPvNames.isEmpty()) {
-                return new ValidationResult(
+                return new ResultStatus(
                         true, "CreateDataSetRequest.DataSet.DataBlock must contain pvNames");
             }
             uniquePvNames.addAll(blockPvNames);
@@ -138,7 +138,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         // execute metadata query for list of pv names
         final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
         if (pvMetadata == null) {
-            return new ValidationResult(true, "error executing pv metadata query to validate request");
+            return new ResultStatus(true, "error executing pv metadata query to validate request");
         }
 
         // check that metadata is returned for each pv (try to remove each metadata from the set,
@@ -153,9 +153,9 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
         // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
         if (uniquePvNames.isEmpty()) {
-            return new ValidationResult(false, "");
+            return new ResultStatus(false, "");
         } else {
-            return new ValidationResult(true, "no PV metadata found for names: " + uniquePvNames.toString());
+            return new ResultStatus(true, "no PV metadata found for names: " + uniquePvNames.toString());
         }
     }
 
@@ -180,20 +180,20 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ValidationResult validateCreateAnnotationRequest(CreateAnnotationRequest request) {
+    public ResultStatus validateCreateAnnotationRequest(CreateAnnotationRequest request) {
 
         // check that each id in dataSetIds exists in database
         for (String dataSetId : request.getDataSetIdsList()) {
 
             if (dataSetId.isBlank()) {
                 final String errorMsg = "CreateAnnotationRequest.dataSetIds contains blank id string";
-                return new ValidationResult(true, errorMsg);
+                return new ResultStatus(true, errorMsg);
             }
 
             // execute query to retrieve DataSetDocument with specified id
             final DataSetDocument dataSetDocument = mongoAnnotationClient.findDataSet(dataSetId);
             if (dataSetDocument == null) {
-                return new ValidationResult(
+                return new ResultStatus(
                         true,
                         "no DataSetDocument found with id: " + dataSetId);
             }
@@ -204,12 +204,12 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
             if (annotationId.isBlank()) {
                 final String errorMsg = "CreateAnnotationRequest.annotationIds contains blank id string";
-                return new ValidationResult(true, errorMsg);
+                return new ResultStatus(true, errorMsg);
             }
 
             final AnnotationDocument annotationDocument = mongoAnnotationClient.findAnnotation(annotationId);
             if (annotationDocument == null) {
-                return new ValidationResult(
+                return new ResultStatus(
                         true,
                         "no AnnotationDocument found with id: " + annotationId);
 
@@ -217,7 +217,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
 
 
-        return new ValidationResult(false, "");
+        return new ResultStatus(false, "");
     }
 
     @Override

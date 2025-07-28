@@ -1,12 +1,12 @@
 package com.ospreydcs.dp.service.integration.query;
 
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.List;
 
 public class QueryTableTest extends GrpcIntegrationTestBase {
@@ -14,29 +14,29 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void queryTableTest() {
 
-        final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
+        final long startSeconds = Instant.now().getEpochSecond();
 
         // use request data contained by validationMap to verify query results
-        IngestionScenarioResult ingestionScenarioResult;
+        GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
             // create some data for testing query APIs
             // create data for 10 sectors, each containing 3 gauges and 3 bpms
             // named with prefix "S%02d-" followed by "GCC%02d" or "BPM%02d"
             // with 10 measurements per bucket, 1 bucket per second, and 10 buckets per pv
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(startSeconds, false);
         }
 
         // negative test, rejected because list of PV names is empty
@@ -52,7 +52,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             final int numRowsExpected = 0;
             final boolean expectReject = true;
             final String expectedRejectMessage = "QueryTableRequest must specify either pvNameList or pvNamePattern";
-            sendAndVerifyQueryTablePvNameListColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
                     pvNames,
                     queryStartSeconds,
@@ -77,7 +77,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             final int numRowsExpected = 0;
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyQueryTablePvNameListColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
                     pvNames,
                     queryStartSeconds,
@@ -104,7 +104,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // 5 buckets each with 10 rows for each PV, timestamps are aligned
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNameListColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
@@ -133,7 +133,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // 5 buckets each with 10 rows for each PV, timestamps are aligned
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNamePatternColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNamePatternColumnResult(
                     numRowsExpected,
                     pvNamePattern,
                     expectedPvNameMatches,
@@ -159,7 +159,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // still expect table with 50 rows, one for every tenth of a second, but offset from bucket times
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNameListColumnResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListColumnResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
@@ -184,7 +184,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
 
             // 5 buckets each with 10 rows for each PV, timestamps are aligned
             final int numRowsExpected = 0;
-            sendAndVerifyQueryTablePvNameListRowResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListRowResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
@@ -211,14 +211,16 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // 5 buckets each with 10 rows for each PV, timestamps are aligned
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNameListRowResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListRowResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap(), false, "");
+                    ingestionScenarioResult.validationMap(),
+                    false,
+                    "");
         }
 
         {
@@ -238,7 +240,7 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // 5 buckets each with 10 rows for each PV, timestamps are aligned
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNamePatternRowResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNamePatternRowResult(
                     numRowsExpected,
                     pvNamePattern,
                     expectedPvNameMatches,
@@ -264,14 +266,16 @@ public class QueryTableTest extends GrpcIntegrationTestBase {
             // still expect table with 50 rows, one for every tenth of a second, but offset from bucket times
             final int numRowsExpected = 10 * 5;
 
-            sendAndVerifyQueryTablePvNameListRowResult(
+            queryServiceWrapper.sendAndVerifyQueryTablePvNameListRowResult(
                     numRowsExpected,
                     queryColumnNames,
                     queryStartSeconds,
                     queryStartNanos,
                     queryEndSeconds,
                     queryEndNanos,
-                    ingestionScenarioResult.validationMap(), false, "");
+                    ingestionScenarioResult.validationMap(),
+                    false,
+                    "");
         }
     }
 

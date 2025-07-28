@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.integration;
 
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -23,9 +24,7 @@ import com.ospreydcs.dp.service.query.benchmark.*;
 import io.grpc.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -61,9 +60,9 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
     private static final int QUERY_SINGLE_NUM_PVS_PER_REQUEST = 1;
 
 
-    private static class IntegrationTestStreamingIngestionApp extends BenchmarkIngestDataBidiStream {
+    private class IntegrationTestStreamingIngestionApp extends BenchmarkIngestDataBidiStream {
 
-        private static class IntegrationTestIngestionRequestInfo {
+        private class IntegrationTestIngestionRequestInfo {
             public final String providerId;
             public final long startSeconds;
             public boolean responseReceived = false;
@@ -73,7 +72,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             }
         }
 
-        private static class IntegrationTestIngestionTask
+        private class IntegrationTestIngestionTask
                 extends BidiStreamingIngestionTask
         {
             // instance variables
@@ -257,7 +256,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
         }
     }
 
-    protected static class IntegrationTestIngestionGrpcClient {
+    protected class IntegrationTestIngestionGrpcClient {
 
         final private Channel channel;
 
@@ -347,7 +346,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             try {
                 // verify buckets in response
                 assertTrue(queryData.getDataBucketsCount() > 0);
-                for (QueryDataResponse.QueryData.DataBucket bucket : queryData.getDataBucketsList()) {
+                for (DataBucket bucket : queryData.getDataBucketsList()) {
 
                     assertTrue(bucket.hasDataColumn());
                     final DataColumn dataColumn = bucket.getDataColumn();
@@ -619,21 +618,21 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
     }
 
-    @BeforeClass
-    public static void setUp() throws Exception {
+    @Before
+    public void setUp() throws Exception {
 
-        GrpcIntegrationTestBase.setUp();
-
-        // Create a grpcClient using the in-process channel;
-        ingestionGrpcClient = new IntegrationTestIngestionGrpcClient(ingestionChannel);
+        super.setUp();
 
         // Create a grpcClient using the in-process channel;
-        queryGrpcClient = new IntegrationTestQueryGrpcClient(queryChannel);
+        ingestionGrpcClient = new IntegrationTestIngestionGrpcClient(ingestionServiceWrapper.getIngestionChannel());
+
+        // Create a grpcClient using the in-process channel;
+        queryGrpcClient = new IntegrationTestQueryGrpcClient(queryServiceWrapper.getQueryChannel());
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
         ingestionGrpcClient = null;
         queryGrpcClient = null;
     }
@@ -675,7 +674,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             datasetParams =
                     new AnnotationTestBase.CreateDataSetParams(dataset);
             datasetId =
-                    sendAndVerifyCreateDataSet(datasetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifyCreateDataSet(datasetParams, false, "");
             System.out.println("created export dataset with id: " + datasetId);
         }
 
@@ -684,7 +683,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
             System.out.println("========== running large export to excel ==========");
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
+                    annotationServiceWrapper.sendAndVerifyExportData(
                             datasetId,
                             null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
                             60 * pvCount, // 60 buckets per pv
@@ -699,7 +698,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             System.out.println();
             System.out.println("========== running large export to csv ==========");
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
+                    annotationServiceWrapper.sendAndVerifyExportData(
                             datasetId,
                             null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
                             60 * pvCount, // 60 buckets per pv
@@ -765,7 +764,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
                             false
                     );
 
-            sendAndVerifyQueryData(
+            queryServiceWrapper.sendAndVerifyQueryData(
                     numBucketsExpected,
                     0, params,
                     null,

@@ -1,17 +1,15 @@
 package com.ospreydcs.dp.service.integration.query;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -31,14 +29,14 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -46,7 +44,7 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
 
         // register provider
         final String providerName = String.valueOf(1);
-        final String providerId = registerProvider(providerName, null);
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
 
         // create containers
         final List<IngestionTestBase.IngestionRequestParams> paramsList = new ArrayList<>();
@@ -134,7 +132,8 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
 
         // send request and examine response
         // this compares request and bucket DataColumns including DataValues and ValueStatus
-        sendAndVerifyIngestDataStream(paramsList, requestList, 0, false, "");
+        ingestionServiceWrapper.sendAndVerifyIngestDataStream(
+                paramsList, requestList, 0, false, "");
 
         // perform query for PV_01 and verify results
         {
@@ -148,10 +147,10 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             startSeconds + 1,
                             0L,
                             false);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
-                    queryDataStream(params, false, "");
+            final List<DataBucket> queryBuckets =
+                    queryServiceWrapper.queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
 
             // this compares the request and response DataColumns including each DataValue and ValueStatus
             QueryTestBase.verifyDataBucket(
@@ -170,10 +169,10 @@ public class QueryDataValueStatusTest extends GrpcIntegrationTestBase {
                             startSeconds + 1,
                             0L,
                             false);
-            final List<QueryDataResponse.QueryData.DataBucket> queryBuckets =
-                    queryDataStream(params, false, "");
+            final List<DataBucket> queryBuckets =
+                    queryServiceWrapper.queryDataStream(params, false, "");
             assertEquals(queryPvNames.size(), queryBuckets.size());
-            final QueryDataResponse.QueryData.DataBucket responseBucket = queryBuckets.get(0);
+            final DataBucket responseBucket = queryBuckets.get(0);
 
             // this compares the request and response DataColumns including each DataValue and ValueStatus
             QueryTestBase.verifyDataBucket(

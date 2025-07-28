@@ -2,12 +2,12 @@ package com.ospreydcs.dp.service.ingest.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
 
 public class IngestionValidationUtility {
 
-    public static ValidationResult validateIngestionRequest(IngestDataRequest request) {
+    public static ResultStatus validateIngestionRequest(IngestDataRequest request) {
 
         boolean isError = false;
         String statusMsg = "";
@@ -67,7 +67,7 @@ public class IngestionValidationUtility {
             }
         }
 
-        return new ValidationResult(isError, statusMsg);
+        return new ResultStatus(isError, statusMsg);
     }
 
 }

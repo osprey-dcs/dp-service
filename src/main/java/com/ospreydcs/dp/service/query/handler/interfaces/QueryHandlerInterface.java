@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.interfaces;
 
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 
 public interface QueryHandlerInterface {
@@ -11,9 +11,9 @@ public interface QueryHandlerInterface {
     boolean start();
     boolean stop();
 
-    ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec);
+    ResultStatus validateQuerySpecData(QueryDataRequest.QuerySpec querySpec);
 
-    ValidationResult validateQueryTableRequest(QueryTableRequest request);
+    ResultStatus validateQueryTableRequest(QueryTableRequest request);
 
     void handleQueryDataStream(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver);

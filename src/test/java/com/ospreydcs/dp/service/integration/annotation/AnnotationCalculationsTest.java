@@ -12,10 +12,10 @@ import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,32 +25,34 @@ import static org.junit.Assert.assertEquals;
 
 public class AnnotationCalculationsTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void testAnnotationCalculations() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
-        Map<String, IngestionStreamInfo> validationMap =
-                AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap =
+                annotationIngestionScenario(startSeconds);
 
         // create some datasets
-        CreateDataSetScenarioResult createDataSetScenarioResult =
-                AnnotationIntegrationTestIntermediate.createDataSetScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario(startSeconds);
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: list of data frames is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -72,14 +74,14 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CreateAnnotationRequest.calculations.calculationDataFrames must not be empty";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: data frame name not specified
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: SamplingClock";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -123,14 +125,14 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "CalculationDataFrame.name must be specified";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -174,14 +176,14 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: DataTimestamps doesn't include SamplingClock or TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -225,14 +227,14 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
         // request should be rejected because: DataColumns list is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -272,13 +274,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns must not be empty";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because startTime is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -325,13 +327,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because periodNanos is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -378,13 +380,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because count is invalid
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -431,13 +433,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because DataColumn name not specified
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -484,13 +486,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns name must be specified for each DataColumn";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because DataColumn is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -537,14 +539,14 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns contains a DataColumn with no values";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock.
         // Also provides positive and negative coverage for exporting calculations.
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: SamplingClock";
 
             // Create calculations for request, with 6 data frames, each with 2 columns.
@@ -593,7 +595,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation.
             // Result includes calculations id for annotation created above.
@@ -605,7 +607,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                 queryAnnotationsParams.setTextCriterion(nameText);
 
                 List<QueryAnnotationsResponse.AnnotationsResult.Annotation> queryResultAnnotations =
-                        sendAndVerifyQueryAnnotations(
+                        annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                                 queryAnnotationsParams,
                                 expectReject,
                                 expectedRejectMessage,
@@ -622,9 +624,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -643,7 +645,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -681,7 +683,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -702,9 +704,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
@@ -723,7 +725,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -761,7 +763,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -782,9 +784,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
@@ -803,7 +805,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -841,7 +843,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -862,9 +864,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 null,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -883,9 +885,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 null,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -916,7 +918,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -949,7 +951,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -987,7 +989,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -1025,7 +1027,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
+                        annotationServiceWrapper.sendAndVerifyExportData(
                                 null,
                                 null,
                                 calculationsSpec,
@@ -1044,7 +1046,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // dataset time range
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "calculations time range doesn't overlap dataset time range";
 
             // Create calculations for request, with 6 data frames, each with 2 columns.
@@ -1096,7 +1098,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation.
             // Result includes calculations id for annotation created above.
@@ -1108,7 +1110,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                 queryAnnotationsParams.setTextCriterion(nameText);
 
                 List<QueryAnnotationsResponse.AnnotationsResult.Annotation> queryResultAnnotations =
-                        sendAndVerifyQueryAnnotations(
+                        annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                                 queryAnnotationsParams,
                                 expectReject,
                                 expectedRejectMessage,
@@ -1126,9 +1128,9 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         .build();
 
                 ExportDataResponse.ExportDataResult exportResult =
-                        sendAndVerifyExportData(
-                                createDataSetScenarioResult.secondHalfDataSetId,
-                                createDataSetScenarioResult.secondHalfDataSetParams,
+                        annotationServiceWrapper.sendAndVerifyExportData(
+                                createDataSetScenarioResult.secondHalfDataSetId(),
+                                createDataSetScenarioResult.secondHalfDataSetParams(),
                                 calculationsSpec,
                                 calculations,
                                 ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -1138,7 +1140,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                                 false,
                                 "");
 
-                System.err.println("dataset id for non-overlapping time range: " + createDataSetScenarioResult.secondHalfDataSetId);
+                System.err.println("dataset id for non-overlapping time range: " + createDataSetScenarioResult.secondHalfDataSetId());
             }
 
         }
@@ -1147,7 +1149,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
         // rejected because TimestampList is empty
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "negative test";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -1192,13 +1194,13 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "CalculationDataFrame.dataTimestamps.timestampList must not be empty";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations positive test using DataTimestamps.TimestampList
         {
             final String ownerId = "craigmcc";
-            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId);
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
             final String name = "positive test: TimestampList";
 
             // create calculations for request, with 2 data frames, each with 2 columns
@@ -1249,7 +1251,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation
             // uses calculation created above
@@ -1259,7 +1261,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
                         new AnnotationTestBase.QueryAnnotationsParams();
                 queryParams.setTextCriterion(nameText);
 
-                sendAndVerifyQueryAnnotations(
+                annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                         queryParams,
                         expectReject,
                         expectedRejectMessage,

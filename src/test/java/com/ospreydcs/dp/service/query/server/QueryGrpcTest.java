@@ -2,7 +2,7 @@ package com.ospreydcs.dp.service.query.server;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.service.common.model.ValidationResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
@@ -59,12 +59,12 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
-        public ValidationResult validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
+        public ResultStatus validateQuerySpecData(QueryDataRequest.QuerySpec querySpec) {
             return QueryHandlerUtility.validateQuerySpecData(querySpec);
         }
 
         @Override
-        public ValidationResult validateQueryTableRequest(QueryTableRequest request) {
+        public ResultStatus validateQueryTableRequest(QueryTableRequest request) {
             return QueryHandlerUtility.validateQueryTableRequest(request);
         }
 

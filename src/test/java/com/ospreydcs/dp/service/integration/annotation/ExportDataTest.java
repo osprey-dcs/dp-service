@@ -2,39 +2,41 @@ package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
+import org.junit.*;
 
+import java.time.Instant;
 import java.util.Map;
 
 public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        AnnotationIntegrationTestIntermediate.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        AnnotationIntegrationTestIntermediate.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
     public void testExportData() {
 
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+
         // ingest some data
-        final Map<String, IngestionStreamInfo> validationMap =
-                AnnotationIntegrationTestIntermediate.annotationIngestionScenario();
+        final Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap =
+                annotationIngestionScenario(startSeconds);
 
         // create some datasets
-        CreateDataSetScenarioResult createDataSetScenarioResult =
-                AnnotationIntegrationTestIntermediate.createDataSetScenario();
+        CreateDataSetScenarioResult createDataSetScenarioResult = createDataSetScenario(startSeconds);
 
         {
             // export to hdf5, negative test, unspecified dataset id
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
+                    annotationServiceWrapper.sendAndVerifyExportData(
                             "",
                             null,
                             null,
@@ -50,7 +52,7 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
         {
             // export to hdf5, negative test, invalid dataset id
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
+                    annotationServiceWrapper.sendAndVerifyExportData(
                             "1234abcd1234abcd1234abcd",
                             null,
                             null,
@@ -66,8 +68,8 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
         {
             // export to hdf5, negative test, unspecified output format
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
-                            createDataSetScenarioResult.firstHalfDataSetId,
+                    annotationServiceWrapper.sendAndVerifyExportData(
+                            createDataSetScenarioResult.firstHalfDataSetId(),
                             null,
                             null,
                             null,
@@ -82,9 +84,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
         {
             // export to hdf5, positive test
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
-                            createDataSetScenarioResult.firstHalfDataSetId,
-                            createDataSetScenarioResult.firstHalfDataSetParams,
+                    annotationServiceWrapper.sendAndVerifyExportData(
+                            createDataSetScenarioResult.firstHalfDataSetId(),
+                            createDataSetScenarioResult.firstHalfDataSetParams(),
                             null,
                             null,
                             ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5,
@@ -98,9 +100,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
         {
             // export to csv, positive test
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
-                            createDataSetScenarioResult.firstHalfDataSetId,
-                            createDataSetScenarioResult.firstHalfDataSetParams,
+                    annotationServiceWrapper.sendAndVerifyExportData(
+                            createDataSetScenarioResult.firstHalfDataSetId(),
+                            createDataSetScenarioResult.firstHalfDataSetParams(),
                             null,
                             null,
                             ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
@@ -114,9 +116,9 @@ public class ExportDataTest extends AnnotationIntegrationTestIntermediate {
         {
             // export to xlsx, positive test
             ExportDataResponse.ExportDataResult exportResult =
-                    sendAndVerifyExportData(
-                            createDataSetScenarioResult.firstHalfDataSetId,
-                            createDataSetScenarioResult.firstHalfDataSetParams,
+                    annotationServiceWrapper.sendAndVerifyExportData(
+                            createDataSetScenarioResult.firstHalfDataSetId(),
+                            createDataSetScenarioResult.firstHalfDataSetParams(),
                             null,
                             null,
                             ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,

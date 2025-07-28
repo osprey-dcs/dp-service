@@ -5,9 +5,7 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataResponse;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -18,14 +16,14 @@ import static org.junit.Assert.assertTrue;
 
 public class IngestDataBidiStreamValidationTest extends GrpcIntegrationTestBase {
 
-    @BeforeClass
-    public static void setUp() throws Exception {
-        GrpcIntegrationTestBase.setUp();
+    @Before
+    public void setUp() throws Exception {
+        super.setUp();
     }
 
-    @AfterClass
-    public static void tearDown() {
-        GrpcIntegrationTestBase.tearDown();
+    @After
+    public void tearDown() {
+        super.tearDown();
     }
 
     @Test
@@ -56,7 +54,7 @@ public class IngestDataBidiStreamValidationTest extends GrpcIntegrationTestBase 
         final List<IngestDataRequest> requests = Arrays.asList(request);
 
         // send request and examine response
-        final List<IngestDataResponse> responses = sendIngestDataBidiStream(requests);
+        final List<IngestDataResponse> responses = ingestionServiceWrapper.sendIngestDataBidiStream(requests);
         assertTrue(responses.size() == requests.size());
         final IngestDataResponse response = responses.get(0);
         assertTrue(response.getProviderId() == providerId);

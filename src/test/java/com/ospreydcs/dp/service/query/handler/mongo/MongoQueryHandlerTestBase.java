@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
+import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
@@ -192,7 +193,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
     }
 
     private static void verifyDataBucket(
-            QueryDataResponse.QueryData.DataBucket bucket,
+            DataBucket bucket,
             long bucketStartSeconds,
             long bucketStartNanos,
             long bucketSampleIntervalNanos,
@@ -202,14 +203,14 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         assertTrue(bucket.hasDataTimestamps());
         assertTrue(bucket.getDataTimestamps().hasSamplingClock());
         SamplingClock samplingClock = bucket.getDataTimestamps().getSamplingClock();
-        assertTrue(samplingClock.getStartTime().getEpochSeconds() == bucketStartSeconds);
-        assertTrue(samplingClock.getStartTime().getNanoseconds() == bucketStartNanos);
-        assertTrue(samplingClock.getPeriodNanos() == bucketSampleIntervalNanos);
-        assertTrue(samplingClock.getCount() == bucketNumSamples);
+        assertEquals(samplingClock.getStartTime().getEpochSeconds(), bucketStartSeconds);
+        assertEquals(samplingClock.getStartTime().getNanoseconds(), bucketStartNanos);
+        assertEquals(samplingClock.getPeriodNanos(), bucketSampleIntervalNanos);
+        assertEquals(samplingClock.getCount(), bucketNumSamples);
         assertTrue(bucket.hasDataColumn());
         DataColumn bucketColumn = bucket.getDataColumn();
-        assertTrue(bucketColumn.getName().equals(bucketColumnName));
-        assertTrue(bucketColumn.getDataValuesCount() == bucketNumSamples);
+        assertEquals(bucketColumn.getName(), bucketColumnName);
+        assertEquals(bucketColumn.getDataValuesCount(), bucketNumSamples);
         for (int valueIndex = 0 ; valueIndex < bucketColumn.getDataValuesCount() ; valueIndex++) {
             DataValue dataValue = bucketColumn.getDataValues(valueIndex);
             assertEquals((double) valueIndex, dataValue.getDoubleValue(), 0);
@@ -220,7 +221,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
         // examine response
         final int numResponesesExpected = 1;
-        assertTrue(responseList.size() == numResponesesExpected);
+        assertEquals(numResponesesExpected, responseList.size());
 
         // check data message
         final int numSamplesPerBucket = 10;
@@ -229,7 +230,7 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         assertTrue(dataResponse.hasQueryData());
         QueryDataResponse.QueryData queryData = dataResponse.getQueryData();
         assertEquals(numSamplesPerBucket, queryData.getDataBucketsCount());
-        List<QueryDataResponse.QueryData.DataBucket> bucketList = queryData.getDataBucketsList();
+        List<DataBucket> bucketList = queryData.getDataBucketsList();
 
         // check each bucket, 5 for each column
         int secondsIncrement = 0;

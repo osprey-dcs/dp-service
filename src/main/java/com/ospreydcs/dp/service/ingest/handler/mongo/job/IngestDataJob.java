@@ -130,9 +130,6 @@ public class IngestDataJob extends HandlerJob {
             if (isError) {
                 status = IngestionRequestStatus.ERROR;
 
-            } else {
-                // publish new data to subscribers
-                handler.getSubscriptionManager().publishDataSubscriptions(request);
             }
         }
         
@@ -154,8 +151,13 @@ public class IngestDataJob extends HandlerJob {
             if (!insertRequestStatusResult.wasAcknowledged()) {
                 logger.error("insertOne not acknowledged inserting request status");
             } else {
-                logger.trace("inserted request status id:" + insertRequestStatusResult.getInsertedId());
+                logger.debug("inserted request status id:" + insertRequestStatusResult.getInsertedId());
             }
+        }
+
+        // publish request PV data to subscribeData() subscribers
+        if (! isError) {
+            handler.getSourceMonitorPublisher().publishDataSubscriptions(request);
         }
 
         return new HandlerIngestionResult(isError, errorMsg);

@@ -173,13 +173,12 @@ public class BucketDocument extends DpBsonDocumentBase {
         return bucketList;
     }
 
-    public static QueryDataResponse.QueryData.DataBucket dataBucketFromDocument(
+    public static DataBucket dataBucketFromDocument(
             BucketDocument document,
             QueryDataRequest.QuerySpec querySpec
     ) throws DpException {
 
-        final QueryDataResponse.QueryData.DataBucket.Builder bucketBuilder =
-                QueryDataResponse.QueryData.DataBucket.newBuilder();
+        final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
 
         // add data timestamps
         DataTimestamps dataTimestamps = document.getDataTimestamps().toDataTimestamps();
