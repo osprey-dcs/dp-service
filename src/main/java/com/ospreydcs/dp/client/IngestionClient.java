@@ -1,8 +1,10 @@
-package com.ospreydcs.dp.service.ingest.utility;
+package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
+import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -14,7 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class RegisterProviderUtility {
+public class IngestionClient extends ServiceApiClientBase {
 
     public static class RegisterProviderRequestParams {
 
@@ -116,6 +118,10 @@ public class RegisterProviderUtility {
         }
     }
 
+    public IngestionClient(ManagedChannel channel) {
+        super(channel);
+    }
+
     public static RegisterProviderRequest buildRegisterProviderRequest(RegisterProviderRequestParams params) {
 
         RegisterProviderRequest.Builder builder = RegisterProviderRequest.newBuilder();
@@ -139,4 +145,84 @@ public class RegisterProviderUtility {
         return builder.build();
     }
 
+    public RegisterProviderResponse sendRegsiterProvider(
+            RegisterProviderRequestParams params
+    ) {
+
+        // build request
+        final RegisterProviderRequest request = buildRegisterProviderRequest(params);
+
+//        // send API request
+//        final RegisterProviderResponse response = sendRegsiterProvider(request);
+
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(channel);
+
+        final RegisterProviderResponseObserver responseObserver =
+                new RegisterProviderResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.registerProvider(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+//        if (responseObserver.isError()) {
+//            fail("responseObserver error: " + responseObserver.getErrorMessage());
+//        }
+//
+        return responseObserver.getResponseList().get(0);
+    }
+
+//    public String registerProvider(
+//            RegisterProviderUtility.RegisterProviderRequestParams params
+//    ) {
+//        // build request
+//        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+//
+//        // send API request
+//        final RegisterProviderResponse response = sendRegsiterProvider(request);
+//
+//        // verify exceptional response
+//        if (expectExceptionalResponse) {
+//            assertTrue(response.hasExceptionalResult());
+//            final ExceptionalResult exceptionalResult = response.getExceptionalResult();
+//            assertEquals(expectedExceptionStatus, exceptionalResult.getExceptionalResultStatus());
+//            assertTrue(exceptionalResult.getMessage().contains(expectedExceptionMessage));
+//            return null;
+//        }
+//
+//        // verify registration result
+//        assertTrue(response.hasRegistrationResult());
+//        final RegisterProviderResponse.RegistrationResult registrationResult = response.getRegistrationResult();
+//        assertEquals(params.name, registrationResult.getProviderName());
+//        assertEquals(expectedIsNew, registrationResult.getIsNewProvider());
+//        final String providerId = registrationResult.getProviderId();
+//
+//        // verify ProviderDocument from database
+//        final ProviderDocument providerDocument = mongoClient.findProvider(providerId);
+//        assertEquals(params.name, providerDocument.getName());
+//        if (params.description != null) {
+//            assertEquals(params.description, providerDocument.getDescription());
+//        } else {
+//            assertEquals("", providerDocument.getDescription());
+//        }
+//        if (params.tags != null) {
+//            assertEquals(params.tags, providerDocument.getTags());
+//        } else {
+//            assertTrue(providerDocument.getTags() == null);
+//        }
+//        if (params.attributes != null) {
+//            assertEquals(params.attributes, providerDocument.getAttributes());
+//        } else {
+//            assertTrue(providerDocument.getAttributes() == null);
+//        }
+//        assertNotNull(providerDocument.getCreatedAt());
+//        assertNotNull(providerDocument.getUpdatedAt());
+//
+//        // return id of ProviderDocument
+//        return providerId;
+//    }
 }

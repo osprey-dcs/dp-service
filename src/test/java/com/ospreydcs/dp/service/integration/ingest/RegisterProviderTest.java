@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.integration.ingest;
 
+import com.ospreydcs.dp.client.IngestionClient;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
-import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,8 +37,8 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             // create params, using empty provider name
             final String providerName = "";
             final Map<String, String> attributeMap = null;
-            final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+            final IngestionClient.RegisterProviderRequestParams params
+                    = new IngestionClient.RegisterProviderRequestParams(providerName, attributeMap);
 
             // send and verify API request
             final boolean expectExceptionalResponse = true;
@@ -64,8 +64,8 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final String description = "Provides data for IOC-1 vacuum subsystem";
             final List<String> tags = List.of("gauges");
             final Map<String, String> attributeMap = Map.of("IOC", "IOC-1", "subsystem", "vacuum");
-            final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(
+            final IngestionClient.RegisterProviderRequestParams params
+                    = new IngestionClient.RegisterProviderRequestParams(
                             providerName, description, tags, attributeMap);
 
             // send and verify API request
@@ -94,8 +94,8 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
             final List<String> tags = List.of("gauges", "pumps");
             final Map<String, String> attributeMap =
                     Map.of("IOC", "IOC-1", "subsystem", "vacuum", "sector", "01");
-            final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(
+            final IngestionClient.RegisterProviderRequestParams params
+                    = new IngestionClient.RegisterProviderRequestParams(
                     providerName, description, tags, attributeMap);
 
             // send and verify API request
@@ -120,8 +120,8 @@ public class RegisterProviderTest extends GrpcIntegrationTestBase {
 
             final String providerName = "Provider-2";
             final Map<String, String> attributeMap = Map.of("IOC", "IOC-2", "subsystem", "power");
-            final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+            final IngestionClient.RegisterProviderRequestParams params
+                    = new IngestionClient.RegisterProviderRequestParams(providerName, attributeMap);
 
             // send and verify API request
             final boolean expectExceptionalResponse = false;

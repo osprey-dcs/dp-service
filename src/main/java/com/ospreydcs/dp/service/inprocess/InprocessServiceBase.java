@@ -1,20 +1,23 @@
 package com.ospreydcs.dp.service.inprocess;
 
-import com.ospreydcs.dp.client.mongo.MongoDemoClient;
+import com.ospreydcs.dp.client.MongoInterface;
 import io.grpc.BindableService;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.testing.GrpcCleanupRule;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 
-import static org.junit.Assert.fail;
-
 public abstract class InprocessServiceBase<T extends BindableService> {
 
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
+
     // common instance variables
-    protected MongoDemoClient mongoClient;
+    protected MongoInterface mongoClient;
     protected T service;
     protected T serviceMock;
     protected ManagedChannel channel;
@@ -23,11 +26,13 @@ public abstract class InprocessServiceBase<T extends BindableService> {
     protected abstract void finiService();
     protected abstract T createServiceMock(T service);
 
-    public void init(MongoDemoClient mongoClient) {
+    public boolean init(MongoInterface mongoClient) {
+
         this.mongoClient = mongoClient;
 
         if (!initService()) {
-            fail(getServiceName() + ".init failed");
+            logger.error("initService() failed for: {}", getServiceName());
+            return false;
         }
 
         serviceMock = createServiceMock(service);
@@ -40,12 +45,15 @@ public abstract class InprocessServiceBase<T extends BindableService> {
             getGrpcCleanupRule().register(InProcessServerBuilder
                     .forName(serverName).directExecutor().addService(serviceMock).build().start());
         } catch (IOException e) {
-            fail("IOException creating grpc server");
+            logger.error("IOException creating grpc server for: {}", getServiceName());
+            return false;
         }
 
         // Create a client channel and register for automatic graceful shutdown.
         channel = getGrpcCleanupRule().register(
                 InProcessChannelBuilder.forName(serverName).directExecutor().build());
+
+        return true;
     }
 
     public void fini() {

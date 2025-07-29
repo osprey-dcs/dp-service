@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.service.integration.query;
 
+import com.ospreydcs.dp.client.IngestionClient;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
-import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.*;
@@ -31,7 +31,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
     public void testQueryProviders() {
 
         // register gcc provider
-        RegisterProviderUtility.RegisterProviderRequestParams gccProviderParams;
+        IngestionClient.RegisterProviderRequestParams gccProviderParams;
         String gccProviderId;
         {
             final String providerName = GCC_INGESTION_PROVIDER;
@@ -42,7 +42,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
                     "subsystem", "vacuum"
             );
             gccProviderParams =
-                    new RegisterProviderUtility.RegisterProviderRequestParams(
+                    new IngestionClient.RegisterProviderRequestParams(
                             providerName,
                             description,
                             tags,
@@ -63,7 +63,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
         }
 
         // register bpm provider
-        RegisterProviderUtility.RegisterProviderRequestParams bpmProviderParams;
+        IngestionClient.RegisterProviderRequestParams bpmProviderParams;
         String bpmProviderId;
         {
             final String providerName = BPM_INGESTION_PROVIDER;
@@ -74,7 +74,7 @@ public class QueryProvidersTest extends GrpcIntegrationTestBase {
                     "subsystem", "diagnostics"
             );
             bpmProviderParams =
-                    new RegisterProviderUtility.RegisterProviderRequestParams(
+                    new IngestionClient.RegisterProviderRequestParams(
                             providerName,
                             description,
                             tags,

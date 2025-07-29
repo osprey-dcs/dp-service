@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo;
 
+import com.ospreydcs.dp.client.IngestionClient;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
@@ -17,7 +18,6 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClient
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.IngestDataJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.job.RegisterProviderJob;
 import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
-import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 
 import java.time.Instant;
 import java.util.*;
@@ -52,15 +52,15 @@ public class MongoIngestionHandlerTestBase extends IngestionTestBase {
         {
             // create params, using empty provider name
             final String providerName = "1";
-            final RegisterProviderUtility.RegisterProviderRequestParams params
-                    = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, null);
+            final IngestionClient.RegisterProviderRequestParams params
+                    = new IngestionClient.RegisterProviderRequestParams(providerName, null);
 
             // send and verify API request
-            final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+            final RegisterProviderRequest request = IngestionClient.buildRegisterProviderRequest(params);
 
             // create response observer
-            final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
-                    new RegisterProviderUtility.RegisterProviderResponseObserver();
+            final IngestionClient.RegisterProviderResponseObserver responseObserver =
+                    new IngestionClient.RegisterProviderResponseObserver();
 
             // create and execute register provider job
             RegisterProviderJob registerProviderJob =
