@@ -144,6 +144,7 @@ public class IngestionTestBase {
     public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
         return buildIngestionRequest(params, null);
     }
+
     /**
      * Builds an IngestionRequest gRPC API object from an IngestionRequestParams object.
      * This utility avoids having code to build API requests scattered around the test methods.

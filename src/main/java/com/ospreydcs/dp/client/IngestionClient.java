@@ -1,8 +1,7 @@
 package com.ospreydcs.dp.client;
 
-import com.ospreydcs.dp.grpc.v1.ingestion.DpIngestionServiceGrpc;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
-import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderResponse;
+import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
@@ -15,6 +14,9 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.Assert.*;
+import static org.junit.Assert.fail;
 
 public class IngestionClient extends ServiceApiClientBase {
 
@@ -118,6 +120,171 @@ public class IngestionClient extends ServiceApiClientBase {
         }
     }
 
+    public static enum IngestionDataType {
+        STRING,
+        DOUBLE,
+        INT,
+        BYTE_ARRAY,
+        BOOLEAN,
+        IMAGE,
+        STRUCTURE,
+        ARRAY_DOUBLE
+    }
+
+    public static class IngestionRequestParams {
+
+        public String providerId = null;
+        public String requestId = null;
+        public Long snapshotStartTimestampSeconds = null;
+        public Long snapshotStartTimestampNanos = null;
+        public List<Long> timestampsSecondsList = null;
+        public List<Long> timestampNanosList = null;
+        public Long samplingClockStartSeconds = null;
+        public Long samplingClockStartNanos = null;
+        public Long samplingClockPeriodNanos = null;
+        public Integer samplingClockCount = null;
+        public List<String> columnNames = null;
+        public IngestionDataType dataType = null;
+        public List<List<Object>> values = null;
+        public List<List<DataValue.ValueStatus>> valuesStatus = null;
+        public List<String> tags = null;
+        public Map<String, String> attributes = null;
+        public String eventDescription = null;
+        public Long eventStartSeconds = null;
+        public Long eventStartNanos = null;
+        public Long eventStopSeconds = null;
+        public Long eventStopNanos = null;
+        public final boolean useSerializedDataColumns;
+
+        public IngestionRequestParams(
+                String providerId,
+                String requestId,
+                Long snapshotStartTimestampSeconds,
+                Long snapshotStartTimestampNanos,
+                List<Long> timestampsSecondsList,
+                List<Long> timestampNanosList,
+                Long samplingClockStartSeconds,
+                Long samplingClockStartNanos,
+                Long samplingClockPeriodNanos,
+                Integer samplingClockCount,
+                List<String> columnNames,
+                IngestionDataType dataType,
+                List<List<Object>> values,
+                List<List<DataValue.ValueStatus>> valuesStatus,
+                boolean useSerializedDataColumns
+        ) {
+            this.providerId = providerId;
+            this.requestId = requestId;
+            this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
+            this.snapshotStartTimestampNanos = snapshotStartTimestampNanos;
+            this.timestampsSecondsList = timestampsSecondsList;
+            this.timestampNanosList = timestampNanosList;
+            this.samplingClockStartSeconds = samplingClockStartSeconds;
+            this.samplingClockStartNanos = samplingClockStartNanos;
+            this.samplingClockPeriodNanos = samplingClockPeriodNanos;
+            this.samplingClockCount = samplingClockCount;
+            this.columnNames = columnNames;
+            this.dataType = dataType;
+            this.values = values;
+            this.valuesStatus = valuesStatus;
+            this.useSerializedDataColumns = useSerializedDataColumns;
+        }
+
+        public IngestionRequestParams(
+                String providerId,
+                String requestId,
+                Long snapshotStartTimestampSeconds,
+                Long snapshotStartTimestampNanos,
+                List<Long> timestampsSecondsList,
+                List<Long> timestampNanosList,
+                Long samplingClockStartSeconds,
+                Long samplingClockStartNanos,
+                Long samplingClockPeriodNanos,
+                Integer samplingClockCount,
+                List<String> columnNames,
+                IngestionDataType dataType,
+                List<List<Object>> values,
+                List<String> tags,
+                Map<String, String> attributes,
+                String eventDescription,
+                Long eventStartSeconds,
+                Long eventStartNanos,
+                Long eventStopSeconds,
+                Long eventStopNanos,
+                boolean useSerializedDataColumns
+        ) {
+
+            this(
+                    providerId,
+                    requestId,
+                    snapshotStartTimestampSeconds,
+                    snapshotStartTimestampNanos,
+                    timestampsSecondsList,
+                    timestampNanosList,
+                    samplingClockStartSeconds,
+                    samplingClockStartNanos,
+                    samplingClockPeriodNanos,
+                    samplingClockCount,
+                    columnNames,
+                    dataType,
+                    values,
+                    null,
+                    useSerializedDataColumns);
+
+            this.tags = tags;
+            this.attributes = attributes;
+            this.eventDescription = eventDescription;
+            this.eventStartSeconds = eventStartSeconds;
+            this.eventStartNanos = eventStartNanos;
+            this.eventStopSeconds = eventStopSeconds;
+            this.eventStopNanos = eventStopNanos;
+        }
+    }
+
+    public static class IngestionResponseObserver implements StreamObserver<IngestDataResponse> {
+
+        // instance variables
+        CountDownLatch finishLatch = null;
+        private final List<IngestDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+
+        public IngestionResponseObserver(int expectedResponseCount) {
+            this.finishLatch = new CountDownLatch(expectedResponseCount);
+        }
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                System.err.println("InterruptedException waiting for finishLatch");
+                isError.set(true);
+            }
+        }
+
+        public List<IngestDataResponse> getResponseList() {
+            return responseList;
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        @Override
+        public void onNext(IngestDataResponse ingestionResponse) {
+            responseList.add(ingestionResponse);
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            Status status = Status.fromThrowable(t);
+            System.err.println("IngestionResponseObserver error: " + status);
+            isError.set(true);
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
     public IngestionClient(ManagedChannel channel) {
         super(channel);
     }
@@ -145,15 +312,12 @@ public class IngestionClient extends ServiceApiClientBase {
         return builder.build();
     }
 
-    public RegisterProviderResponse sendRegsiterProvider(
+    public RegisterProviderResponse sendRegisterProvider(
             RegisterProviderRequestParams params
     ) {
 
         // build request
         final RegisterProviderRequest request = buildRegisterProviderRequest(params);
-
-//        // send API request
-//        final RegisterProviderResponse response = sendRegsiterProvider(request);
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(channel);
@@ -169,10 +333,10 @@ public class IngestionClient extends ServiceApiClientBase {
 
         responseObserver.await();
 
-//        if (responseObserver.isError()) {
-//            fail("responseObserver error: " + responseObserver.getErrorMessage());
-//        }
-//
+        if (responseObserver.isError()) {
+            return null;
+        }
+
         return responseObserver.getResponseList().get(0);
     }
 
@@ -225,4 +389,253 @@ public class IngestionClient extends ServiceApiClientBase {
 //        // return id of ProviderDocument
 //        return providerId;
 //    }
+
+    public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
+        return buildIngestionRequest(params, null);
+    }
+
+    /**
+     * Builds an IngestionRequest gRPC API object from an IngestionRequestParams object.
+     * This utility avoids having code to build API requests scattered around the test methods.
+     *
+     * @param params
+     * @return
+     */
+    public static IngestDataRequest buildIngestionRequest(
+            IngestionRequestParams params,
+            List<DataColumn> dataColumnList
+    ) {
+        IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
+
+        if (params.providerId != null) {
+            requestBuilder.setProviderId(params.providerId);
+        }
+        if (params.requestId != null) {
+            requestBuilder.setClientRequestId(params.requestId);
+        }
+
+        IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
+                = IngestDataRequest.IngestionDataFrame.newBuilder();
+        DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+
+        // set DataTimestamps for request
+        if (params.timestampsSecondsList != null) {
+            // use explicit timestamp list in DataTimestamps if specified in params
+
+            assertTrue(params.timestampNanosList != null);
+            assertTrue(params.timestampsSecondsList.size() == params.timestampNanosList.size());
+            TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
+            for (int i = 0; i < params.timestampsSecondsList.size(); i++) {
+                long seconds = params.timestampsSecondsList.get(i);
+                long nanos = params.timestampNanosList.get(i);
+                Timestamp.Builder timestampBuilder = Timestamp.newBuilder();
+                timestampBuilder.setEpochSeconds(seconds);
+                timestampBuilder.setNanoseconds(nanos);
+                timestampBuilder.build();
+                timestampListBuilder.addTimestamps(timestampBuilder);
+            }
+            timestampListBuilder.build();
+            dataTimestampsBuilder.setTimestampList(timestampListBuilder);
+            dataTimestampsBuilder.build();
+            dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
+
+        } else if (params.samplingClockStartSeconds != null) {
+            // otherwise use Samplingclock for DataTimestamps
+
+            assertTrue(params.samplingClockStartNanos != null);
+            assertTrue(params.samplingClockPeriodNanos != null);
+            assertTrue(params.samplingClockCount != null);
+            Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
+            startTimeBuilder.setEpochSeconds(params.samplingClockStartSeconds);
+            startTimeBuilder.setNanoseconds(params.samplingClockStartNanos);
+            startTimeBuilder.build();
+            SamplingClock.Builder samplingClockBuilder = SamplingClock.newBuilder();
+            samplingClockBuilder.setStartTime(startTimeBuilder);
+            samplingClockBuilder.setPeriodNanos(params.samplingClockPeriodNanos);
+            samplingClockBuilder.setCount(params.samplingClockCount);
+            samplingClockBuilder.build();
+            dataTimestampsBuilder.setSamplingClock(samplingClockBuilder);
+            dataTimestampsBuilder.build();
+            dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
+        }
+
+        // create list of columns
+        final List<DataColumn> frameColumns = new ArrayList<>();
+
+        if (dataColumnList != null) {
+            // use list of columns if provided by caller
+            frameColumns.addAll(dataColumnList);
+
+        } else if (params.columnNames != null) {
+            // otherwise create columns from params
+
+            assertTrue(params.values != null);
+            assertEquals(params.columnNames.size(), params.values.size());
+            if (params.valuesStatus != null) {
+                assertEquals(params.columnNames.size(), params.valuesStatus.size());
+            }
+            for (int i = 0 ; i < params.columnNames.size() ; i++) {
+                DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
+                dataColumnBuilder.setName(params.columnNames.get(i));
+                DataValue.Builder dataValueBuilder = null;
+                if (params.valuesStatus != null) {
+                    assertEquals(params.values.get(i).size(), params.valuesStatus.get(i).size());
+                }
+                int valueIndex = 0;
+                for (Object value : params.values.get(i)) {
+                    switch (params.dataType) {
+                        case STRING -> {
+                            dataValueBuilder = DataValue.newBuilder().setStringValue((String) value);
+                        }
+                        case DOUBLE -> {
+                            dataValueBuilder = DataValue.newBuilder().setDoubleValue((Double) value);
+                        }
+                        case INT -> {
+                            dataValueBuilder = DataValue.newBuilder().setLongValue((Long) value);
+                        }
+                        case BYTE_ARRAY -> {
+                        }
+                        case BOOLEAN -> {
+                            dataValueBuilder = DataValue.newBuilder().setBooleanValue((Boolean) value);
+                        }
+                        case IMAGE -> {
+                        }
+                        case STRUCTURE -> {
+                        }
+                        case ARRAY_DOUBLE -> {
+                            List<?> valueList = null;
+                            if (value instanceof List) {
+                                valueList = (List<?>) value;
+                            } else {
+                                fail("unexpected value list type: " + value.getClass().getName());
+                            }
+                            Array.Builder arrayBuilder = Array.newBuilder();
+                            for (var listElement : valueList) {
+                                if (!(listElement instanceof Double)) {
+                                    fail("unexpected value list element type: " + listElement.getClass().getName());
+                                }
+                                arrayBuilder.addDataValues(
+                                        DataValue.newBuilder()
+                                                .setDoubleValue((Double) listElement)
+                                                .build());
+                            }
+                            arrayBuilder.build();
+                            dataValueBuilder = DataValue.newBuilder().setArrayValue(arrayBuilder);
+                        }
+                    }
+
+                    if (params.valuesStatus != null) {
+                        DataValue.ValueStatus valueStatus = params.valuesStatus.get(i).get(valueIndex);
+                        dataValueBuilder.setValueStatus(valueStatus);
+                    }
+
+                    dataColumnBuilder.addDataValues(dataValueBuilder.build());
+                    valueIndex++;
+                }
+
+                frameColumns.add(dataColumnBuilder.build());
+            }
+        }
+
+        // add DataColumns or SerializedDataColumns
+        if (params.useSerializedDataColumns) {
+            // add SerializedDataColumns as specified in params
+            for (DataColumn dataColumn : frameColumns) {
+                final SerializedDataColumn serializedDataColumn =
+                        SerializedDataColumn.newBuilder()
+                                .setName(dataColumn.getName())
+                                .setDataColumnBytes(dataColumn.toByteString())
+                                .build();
+                dataFrameBuilder.addSerializedDataColumns(serializedDataColumn);
+            }
+
+        } else {
+            // add regular DataColumns
+            dataFrameBuilder.addAllDataColumns(frameColumns);
+        }
+
+        // add tags if specified
+        if (params.tags != null) {
+            requestBuilder.addAllTags(params.tags);
+        }
+
+        // add attributes if specified
+        if (params.attributes != null) {
+            for (var attributeEntry : params.attributes.entrySet()) {
+                String attributeKey = attributeEntry.getKey();
+                String attributeValue = attributeEntry.getValue();
+                final Attribute.Builder attributeBuilder = Attribute.newBuilder();
+                attributeBuilder.setName(attributeKey);
+                attributeBuilder.setValue(attributeValue);
+                attributeBuilder.build();
+                requestBuilder.addAttributes(attributeBuilder);
+            }
+        }
+
+        // set event metadata if specified
+        if (params.eventDescription != null ||  params.eventStartSeconds != null || params.eventStartNanos != null) {
+
+            EventMetadata.Builder eventMetadataBuilder = EventMetadata.newBuilder();
+
+            if (params.eventDescription != null) {
+                eventMetadataBuilder.setDescription(params.eventDescription);
+            }
+
+            if (params.eventStartSeconds != null || params.eventStartNanos != null) {
+                Timestamp.Builder eventStartTimeBuilder = Timestamp.newBuilder();
+                if (params.eventStartSeconds != null) {
+                    eventStartTimeBuilder.setEpochSeconds(params.eventStartSeconds);
+                }
+                if (params.eventStartNanos != null) {
+                    eventStartTimeBuilder.setNanoseconds(params.eventStartNanos);
+                }
+                eventStartTimeBuilder.build();
+                eventMetadataBuilder.setStartTimestamp(eventStartTimeBuilder);
+            }
+
+            if (params.eventStopSeconds != null || params.eventStopNanos != null) {
+                Timestamp.Builder eventStopTimeBuilder = Timestamp.newBuilder();
+                if (params.eventStopSeconds != null) {
+                    eventStopTimeBuilder.setEpochSeconds(params.eventStopSeconds);
+                }
+                if (params.eventStopNanos != null) {
+                    eventStopTimeBuilder.setNanoseconds(params.eventStopNanos);
+                }
+                eventStopTimeBuilder.build();
+                eventMetadataBuilder.setStopTimestamp(eventStopTimeBuilder);
+            }
+
+            eventMetadataBuilder.build();
+            requestBuilder.setEventMetadata(eventMetadataBuilder);
+        }
+
+        dataFrameBuilder.build();
+        requestBuilder.setIngestionDataFrame(dataFrameBuilder);
+        return requestBuilder.build();
+    }
+
+    public IngestDataResponse sendIngestData(IngestionRequestParams params) {
+
+        final IngestDataRequest request = buildIngestionRequest(params);
+
+        final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
+                DpIngestionServiceGrpc.newStub(channel);
+
+        final IngestionResponseObserver responseObserver = new IngestionResponseObserver(1);
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.ingestData(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return null;
+        } else {
+            return responseObserver.getResponseList().get(0);
+        }
+    }
+
 }
