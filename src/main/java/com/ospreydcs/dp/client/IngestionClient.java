@@ -480,7 +480,7 @@ public class IngestionClient extends ServiceApiClientBase {
                             dataValueBuilder = DataValue.newBuilder().setDoubleValue((Double) value);
                         }
                         case INT -> {
-                            dataValueBuilder = DataValue.newBuilder().setLongValue((Long) value);
+                            dataValueBuilder = DataValue.newBuilder().setIntValue((Integer) value);
                         }
                         case BYTE_ARRAY -> {
                         }
