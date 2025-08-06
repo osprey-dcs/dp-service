@@ -6,6 +6,8 @@ import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,9 +16,6 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.junit.Assert.*;
-import static org.junit.Assert.fail;
 
 public class IngestionClient extends ServiceApiClientBase {
 
@@ -285,6 +284,9 @@ public class IngestionClient extends ServiceApiClientBase {
         }
     }
 
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
+
     public IngestionClient(ManagedChannel channel) {
         super(channel);
     }
@@ -422,8 +424,6 @@ public class IngestionClient extends ServiceApiClientBase {
         if (params.timestampsSecondsList != null) {
             // use explicit timestamp list in DataTimestamps if specified in params
 
-            assertTrue(params.timestampNanosList != null);
-            assertTrue(params.timestampsSecondsList.size() == params.timestampNanosList.size());
             TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
             for (int i = 0; i < params.timestampsSecondsList.size(); i++) {
                 long seconds = params.timestampsSecondsList.get(i);
@@ -442,9 +442,6 @@ public class IngestionClient extends ServiceApiClientBase {
         } else if (params.samplingClockStartSeconds != null) {
             // otherwise use Samplingclock for DataTimestamps
 
-            assertTrue(params.samplingClockStartNanos != null);
-            assertTrue(params.samplingClockPeriodNanos != null);
-            assertTrue(params.samplingClockCount != null);
             Timestamp.Builder startTimeBuilder = Timestamp.newBuilder();
             startTimeBuilder.setEpochSeconds(params.samplingClockStartSeconds);
             startTimeBuilder.setNanoseconds(params.samplingClockStartNanos);
@@ -469,18 +466,10 @@ public class IngestionClient extends ServiceApiClientBase {
         } else if (params.columnNames != null) {
             // otherwise create columns from params
 
-            assertTrue(params.values != null);
-            assertEquals(params.columnNames.size(), params.values.size());
-            if (params.valuesStatus != null) {
-                assertEquals(params.columnNames.size(), params.valuesStatus.size());
-            }
             for (int i = 0 ; i < params.columnNames.size() ; i++) {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
                 DataValue.Builder dataValueBuilder = null;
-                if (params.valuesStatus != null) {
-                    assertEquals(params.values.get(i).size(), params.valuesStatus.get(i).size());
-                }
                 int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
@@ -507,12 +496,12 @@ public class IngestionClient extends ServiceApiClientBase {
                             if (value instanceof List) {
                                 valueList = (List<?>) value;
                             } else {
-                                fail("unexpected value list type: " + value.getClass().getName());
+                                logger.error("unexpected value list type: " + value.getClass().getName());
                             }
                             Array.Builder arrayBuilder = Array.newBuilder();
                             for (var listElement : valueList) {
                                 if (!(listElement instanceof Double)) {
-                                    fail("unexpected value list element type: " + listElement.getClass().getName());
+                                    logger.error("unexpected value list element type: " + listElement.getClass().getName());
                                 }
                                 arrayBuilder.addDataValues(
                                         DataValue.newBuilder()
