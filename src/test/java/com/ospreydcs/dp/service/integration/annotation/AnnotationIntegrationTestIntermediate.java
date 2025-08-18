@@ -21,8 +21,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
     protected record CreateDataSetScenarioResult(
             String firstHalfDataSetId,
             String secondHalfDataSetId,
-            AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams,
-            AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams) {
+            AnnotationTestBase.SaveDataSetParams firstHalfDataSetParams,
+            AnnotationTestBase.SaveDataSetParams secondHalfDataSetParams) {
     }
 
     protected record CreateAnnotationScenarioResult(
@@ -148,8 +148,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
         String firstHalfDataSetId;
         String secondHalfDataSetId;
-        AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams;
-        AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams;
+        AnnotationTestBase.SaveDataSetParams firstHalfDataSetParams;
+        AnnotationTestBase.SaveDataSetParams secondHalfDataSetParams;
         {
             /*
              * createDataSet() positive test using pvNames that exist in archive from ingestion scenario above.
@@ -195,9 +195,9 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     new AnnotationTestBase.AnnotationDataSet(
                             firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
             firstHalfDataSetParams =
-                    new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
+                    new AnnotationTestBase.SaveDataSetParams(firstHalfDataSet);
             firstHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(firstHalfDataSetParams, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
@@ -207,9 +207,9 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     new AnnotationTestBase.AnnotationDataSet(
                             secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
             secondHalfDataSetParams =
-                    new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
+                    new AnnotationTestBase.SaveDataSetParams(secondHalfDataSet);
             secondHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(secondHalfDataSetParams, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 

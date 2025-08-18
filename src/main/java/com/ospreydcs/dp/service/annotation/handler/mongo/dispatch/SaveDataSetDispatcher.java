@@ -1,8 +1,8 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
 import com.mongodb.client.result.InsertOneResult;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.CreateDataSetResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.SaveDataSetRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.SaveDataSetResponse;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
@@ -11,25 +11,25 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class CreateDataSetDispatcher extends Dispatcher {
+public class SaveDataSetDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final CreateDataSetRequest request;
-    private final StreamObserver<CreateDataSetResponse> responseObserver;
+    private final SaveDataSetRequest request;
+    private final StreamObserver<SaveDataSetResponse> responseObserver;
 
-    public CreateDataSetDispatcher(
-            StreamObserver<CreateDataSetResponse> responseObserver,
-            CreateDataSetRequest request
+    public SaveDataSetDispatcher(
+            StreamObserver<SaveDataSetResponse> responseObserver,
+            SaveDataSetRequest request
     ) {
         this.responseObserver = responseObserver;
         this.request = request;
     }
 
     public void handleValidationError(ResultStatus resultStatus) {
-        AnnotationServiceImpl.sendCreateDataSetResponseReject(
+        AnnotationServiceImpl.sendSaveDataSetResponseReject(
                 resultStatus.msg,
                 this.responseObserver);
     }
@@ -40,7 +40,7 @@ public class CreateDataSetDispatcher extends Dispatcher {
         if (result.isError) {
             // send error response and close response stream
             final String errorMsg = "exception inserting DataSetDocument: " + result.message;
-            AnnotationServiceImpl.sendCreateDataSetResponseError(errorMsg, responseObserver);
+            AnnotationServiceImpl.sendSaveDataSetResponseError(errorMsg, responseObserver);
             return;
         }
 
@@ -48,19 +48,19 @@ public class CreateDataSetDispatcher extends Dispatcher {
         final InsertOneResult insertOneResult = result.insertOneResult;
         if (!insertOneResult.wasAcknowledged()) {
             final String errorMsg = "DataSetDocument insert failed (insertOne() not acknowledged";
-            AnnotationServiceImpl.sendCreateDataSetResponseError(errorMsg, responseObserver);
+            AnnotationServiceImpl.sendSaveDataSetResponseError(errorMsg, responseObserver);
             return;
         }
 
         // check if result contains id inserted
         if (insertOneResult.getInsertedId() == null) {
             final String errorMsg = "DataSetDocument insert failed to return document id";
-            AnnotationServiceImpl.sendCreateDataSetResponseError(errorMsg, responseObserver);
+            AnnotationServiceImpl.sendSaveDataSetResponseError(errorMsg, responseObserver);
             return;
         }
 
         // insert was successful, return a response with the id
-        AnnotationServiceImpl.sendCreateDataSetResponseSuccess(
+        AnnotationServiceImpl.sendSaveDataSetResponseSuccess(
                 insertOneResult.getInsertedId().asObjectId().getValue().toString(), responseObserver);
     }
 

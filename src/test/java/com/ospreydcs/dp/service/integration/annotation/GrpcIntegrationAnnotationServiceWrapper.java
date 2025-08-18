@@ -63,15 +63,15 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     @ClassRule public static final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
 
     // instance variables (common ones inherited from base class)
-    protected Map<String, AnnotationTestBase.CreateDataSetParams> createDataSetIdParamsMap;
-    protected Map<AnnotationTestBase.CreateDataSetParams, String> createDataSetParamsIdMap;
+    protected Map<String, AnnotationTestBase.SaveDataSetParams> saveDataSetIdParamsMap;
+    protected Map<AnnotationTestBase.SaveDataSetParams, String> saveDataSetParamsIdMap;
     protected Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap;
 
 
     public void init(MongoTestClient mongoClient) {
         // init data structures
-        createDataSetIdParamsMap = new TreeMap<>();
-        createDataSetParamsIdMap = new HashMap<>();
+        saveDataSetIdParamsMap = new TreeMap<>();
+        saveDataSetParamsIdMap = new HashMap<>();
         createAnnotationParamsIdMap = new HashMap<>();
 
         super.init(mongoClient);
@@ -108,23 +108,23 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     public void fini() {
         super.fini();
         createAnnotationParamsIdMap = null;
-        createDataSetParamsIdMap = null;
-        createDataSetIdParamsMap = null;
+        saveDataSetParamsIdMap = null;
+        saveDataSetIdParamsMap = null;
     }
     
-    protected String sendCreateDataSet(
-                CreateDataSetRequest request, boolean expectReject, String expectedRejectMessage
+    protected String sendSaveDataSet(
+                SaveDataSetRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(channel);
 
-        final AnnotationTestBase.CreateDataSetResponseObserver responseObserver =
-                new AnnotationTestBase.CreateDataSetResponseObserver();
+        final AnnotationTestBase.SaveDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.SaveDataSetResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.createDataSet(request, responseObserver);
+            asyncStub.saveDataSet(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -139,15 +139,15 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return responseObserver.getDataSetId();
     }
 
-    public String sendAndVerifyCreateDataSet(
-            AnnotationTestBase.CreateDataSetParams params,
+    public String sendAndVerifySaveDataSet(
+            AnnotationTestBase.SaveDataSetParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final CreateDataSetRequest request =
-                AnnotationTestBase.buildCreateDataSetRequest(params);
+        final SaveDataSetRequest request =
+                AnnotationTestBase.buildSaveDataSetRequest(params);
 
-        final String dataSetId = sendCreateDataSet(request, expectReject, expectedRejectMessage);
+        final String dataSetId = sendSaveDataSet(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertNull(dataSetId);
@@ -164,8 +164,8 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
-        createDataSetIdParamsMap.put(dataSetId, params);
-        createDataSetParamsIdMap.put(params, dataSetId);
+        saveDataSetIdParamsMap.put(dataSetId, params);
+        saveDataSetParamsIdMap.put(params, dataSetId);
 
         return dataSetId;
     }
@@ -203,7 +203,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             AnnotationTestBase.QueryDataSetsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
-            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResult
+            List<AnnotationTestBase.SaveDataSetParams> expectedQueryResult
     ) {
         final QueryDataSetsRequest request =
                 AnnotationTestBase.buildQueryDataSetsRequest(queryParams);
@@ -220,7 +220,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         assertEquals(expectedQueryResult.size(), resultDataSets.size());
 
         // find each expected result in actual result list and match field values against request
-        for (AnnotationTestBase.CreateDataSetParams requestParams : expectedQueryResult) {
+        for (AnnotationTestBase.SaveDataSetParams requestParams : expectedQueryResult) {
             boolean found = false;
             DataSet foundDataSet = null;
             for (DataSet resultDataSet : resultDataSets) {
@@ -232,7 +232,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             }
             assertTrue(found);
             assertNotNull(foundDataSet);
-            final String expectedDataSetId = this.createDataSetParamsIdMap.get(requestParams);
+            final String expectedDataSetId = this.saveDataSetParamsIdMap.get(requestParams);
 
             // check required dataset fields match
             assertTrue(expectedDataSetId.equals(foundDataSet.getId()));
@@ -593,7 +593,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
     public ExportDataResponse.ExportDataResult sendAndVerifyExportData(
             String dataSetId,
-            AnnotationTestBase.CreateDataSetParams createDataSetParams,
+            AnnotationTestBase.SaveDataSetParams saveDataSetParams,
             CalculationsSpec calculationsSpec,
             Calculations calculationsRequestParams,
             ExportDataRequest.ExportOutputFormat outputFormat,
@@ -672,7 +672,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
             // generate collection of unique pv names for dataset from creation request params
             // these are the columns expected in the export output file
-            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : createDataSetParams.dataSet().dataBlocks()) {
+            for (AnnotationTestBase.AnnotationDataBlock requestDataBlock : saveDataSetParams.dataSet().dataBlocks()) {
                 expectedPvColumnNames.addAll(requestDataBlock.pvNames());
             }
         }

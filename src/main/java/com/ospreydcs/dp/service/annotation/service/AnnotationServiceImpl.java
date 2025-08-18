@@ -41,7 +41,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
     }
 
-    private static CreateDataSetResponse createDataSetResponseReject(String msg) {
+    private static SaveDataSetResponse saveDataSetResponseReject(String msg) {
 
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -50,7 +50,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+        final SaveDataSetResponse response = SaveDataSetResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -58,16 +58,16 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendCreateDataSetResponseReject(
+    public static void sendSaveDataSetResponseReject(
             String errorMsg,
-            StreamObserver<CreateDataSetResponse> responseObserver
+            StreamObserver<SaveDataSetResponse> responseObserver
     ) {
-        final CreateDataSetResponse response = createDataSetResponseReject(errorMsg);
+        final SaveDataSetResponse response = saveDataSetResponseReject(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static CreateDataSetResponse createDataSetResponseError(String msg) {
+    private static SaveDataSetResponse saveDataSetResponseError(String msg) {
 
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -75,7 +75,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+        final SaveDataSetResponse response = SaveDataSetResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -83,22 +83,22 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendCreateDataSetResponseError(
-            String errorMsg, StreamObserver<CreateDataSetResponse> responseObserver
+    public static void sendSaveDataSetResponseError(
+            String errorMsg, StreamObserver<SaveDataSetResponse> responseObserver
     ) {
-        final CreateDataSetResponse response = createDataSetResponseError(errorMsg);
+        final SaveDataSetResponse response = saveDataSetResponseError(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static CreateDataSetResponse createDataSetResponseSuccess(String dataSetId) {
+    private static SaveDataSetResponse saveDataSetResponseSuccess(String dataSetId) {
 
-        final CreateDataSetResponse.CreateDataSetResult result =
-                CreateDataSetResponse.CreateDataSetResult.newBuilder()
+        final SaveDataSetResponse.SaveDataSetResult result =
+                SaveDataSetResponse.SaveDataSetResult.newBuilder()
                         .setDataSetId(dataSetId)
                         .build();
 
-        final CreateDataSetResponse response = CreateDataSetResponse.newBuilder()
+        final SaveDataSetResponse response = SaveDataSetResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setCreateDataSetResult(result)
                 .build();
@@ -106,41 +106,41 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendCreateDataSetResponseSuccess(
-            String dataSetId, StreamObserver<CreateDataSetResponse> responseObserver
+    public static void sendSaveDataSetResponseSuccess(
+            String dataSetId, StreamObserver<SaveDataSetResponse> responseObserver
     ) {
-        final CreateDataSetResponse response = createDataSetResponseSuccess(dataSetId);
+        final SaveDataSetResponse response = saveDataSetResponseSuccess(dataSetId);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
     @Override
-    public void createDataSet(
-            CreateDataSetRequest request,
-            StreamObserver<CreateDataSetResponse> responseObserver
+    public void saveDataSet(
+            SaveDataSetRequest request,
+            StreamObserver<SaveDataSetResponse> responseObserver
     ) {
-        logger.info("id: {} createDataSet request received", responseObserver.hashCode());
+        logger.info("id: {} saveDataSet request received", responseObserver.hashCode());
 
         final DataSet dataSet = request.getDataSet();
         if (dataSet == null) {
-            final String errorMsg = "CreateDataSetRequest.dataSet must be specified";
-            sendCreateDataSetResponseReject(errorMsg, responseObserver);
+            final String errorMsg = "SaveDataSetRequest.dataSet must be specified";
+            sendSaveDataSetResponseReject(errorMsg, responseObserver);
         }
 
         // validate DataSet
         ResultStatus resultStatus = AnnotationValidationUtility.validateDataSet(dataSet);
         if (resultStatus.isError) {
-            logger.debug("id: {} CreateDataSetRequest.dataSet validation failed: {}",
+            logger.debug("id: {} SaveDataSetRequest.dataSet validation failed: {}",
                     responseObserver.hashCode(),
                     resultStatus.msg);
-            sendCreateDataSetResponseReject(
+            sendSaveDataSetResponseReject(
                     resultStatus.msg,
                     responseObserver);
             return;
         }
 
         // handle request
-        handler.handleCreateDataSet(request, responseObserver);
+        handler.handleSaveDataSet(request, responseObserver);
     }
 
     private static QueryDataSetsResponse queryDataSetsResponseExceptionalResult(

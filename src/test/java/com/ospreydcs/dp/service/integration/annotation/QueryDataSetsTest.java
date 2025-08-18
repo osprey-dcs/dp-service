@@ -99,7 +99,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
+            List<AnnotationTestBase.SaveDataSetParams> expectedQueryResultDataSets =
                     List.of(createDataSetScenarioResult.firstHalfDataSetParams());
             annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
@@ -127,7 +127,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
+            List<AnnotationTestBase.SaveDataSetParams> expectedQueryResultDataSets =
                     List.of(createDataSetScenarioResult.firstHalfDataSetParams());
             annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
@@ -142,7 +142,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
+            List<AnnotationTestBase.SaveDataSetParams> expectedQueryResultDataSets =
                     List.of(createDataSetScenarioResult.secondHalfDataSetParams());
             annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
@@ -157,7 +157,7 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<AnnotationTestBase.CreateDataSetParams> expectedQueryResultDataSets =
+            List<AnnotationTestBase.SaveDataSetParams> expectedQueryResultDataSets =
                     List.of(createDataSetScenarioResult.firstHalfDataSetParams());
             annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);

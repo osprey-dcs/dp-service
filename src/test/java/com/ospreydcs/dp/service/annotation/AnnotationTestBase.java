@@ -41,10 +41,10 @@ public class AnnotationTestBase {
             List<AnnotationDataBlock> dataBlocks) {
     }
 
-    public record CreateDataSetParams(AnnotationDataSet dataSet) {
+    public record SaveDataSetParams(AnnotationDataSet dataSet) {
     }
 
-    public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
+    public static class SaveDataSetResponseObserver implements StreamObserver<SaveDataSetResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -82,7 +82,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(CreateDataSetResponse response) {
+        public void onNext(SaveDataSetResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -99,7 +99,7 @@ public class AnnotationTestBase {
                 }
 
                 assertTrue(response.hasCreateDataSetResult());
-                final CreateDataSetResponse.CreateDataSetResult result = response.getCreateDataSetResult();
+                final SaveDataSetResponse.SaveDataSetResult result = response.getCreateDataSetResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -613,7 +613,7 @@ public class AnnotationTestBase {
         }
     }
 
-    public static CreateDataSetRequest buildCreateDataSetRequest(CreateDataSetParams params) {
+    public static SaveDataSetRequest buildSaveDataSetRequest(SaveDataSetParams params) {
 
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
                 = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
@@ -644,7 +644,7 @@ public class AnnotationTestBase {
 
         dataSetBuilder.build();
 
-        CreateDataSetRequest.Builder requestBuilder = CreateDataSetRequest.newBuilder();
+        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
         requestBuilder.setDataSet(dataSetBuilder);
 
         return requestBuilder.build();

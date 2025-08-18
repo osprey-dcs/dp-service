@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
+public class SaveDataSetTest extends AnnotationIntegrationTestIntermediate {
 
     @Before
     public void setUp() throws Exception {
@@ -20,7 +20,7 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
     }
 
     @Test
-    public void testCreateDataSetReject() {
+    public void testSaveDataSetReject() {
 
         final long startSeconds = Instant.now().getEpochSecond();
         final long startNanos = 0L;
@@ -46,10 +46,10 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
             final AnnotationTestBase.AnnotationDataSet dataSet =
                     new AnnotationTestBase.AnnotationDataSet(unspecifiedName, ownerId, description, dataBlocks);
 
-            final AnnotationTestBase.CreateDataSetParams params =
-                    new AnnotationTestBase.CreateDataSetParams(dataSet);
+            final AnnotationTestBase.SaveDataSetParams params =
+                    new AnnotationTestBase.SaveDataSetParams(dataSet);
 
-            annotationServiceWrapper.sendAndVerifyCreateDataSet(
+            annotationServiceWrapper.sendAndVerifySaveDataSet(
                     params, true, "DataSet name must be specified");
         }
 
@@ -85,10 +85,10 @@ public class CreateDataSetTest extends AnnotationIntegrationTestIntermediate {
             final AnnotationTestBase.AnnotationDataSet dataSet =
                     new AnnotationTestBase.AnnotationDataSet(name, ownerId, description, dataBlocks);
 
-            final AnnotationTestBase.CreateDataSetParams params =
-                    new AnnotationTestBase.CreateDataSetParams(dataSet);
+            final AnnotationTestBase.SaveDataSetParams params =
+                    new AnnotationTestBase.SaveDataSetParams(dataSet);
 
-            annotationServiceWrapper.sendAndVerifyCreateDataSet(
+            annotationServiceWrapper.sendAndVerifySaveDataSet(
                     params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
         }
 
