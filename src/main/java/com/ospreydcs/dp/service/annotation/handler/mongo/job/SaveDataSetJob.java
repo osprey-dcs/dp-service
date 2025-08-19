@@ -7,7 +7,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.SaveDataSetDispatcher;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
-import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
+import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -52,7 +52,8 @@ public class SaveDataSetJob extends HandlerJob {
             return;
         }
         final DataSetDocument dataSetDocument = generateDataSetDocument(request);
-        final MongoInsertOneResult result = this.mongoClient.insertDataSet(dataSetDocument);
+        final String existingDocumentId = request.getDataSet().getId();
+        final MongoSaveResult result = this.mongoClient.saveDataSet(dataSetDocument, existingDocumentId);
         logger.debug("dispatching SaveDataSetJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(result);
     }
