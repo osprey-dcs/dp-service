@@ -100,7 +100,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
 
         final SaveDataSetResponse response = SaveDataSetResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setCreateDataSetResult(result)
+                .setSaveDataSetResult(result)
                 .build();
 
         return response;
@@ -279,7 +279,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         handler.handleQueryDataSets(request, responseObserver);
     }
 
-    private static CreateAnnotationResponse createAnnotationResponseReject(String msg) {
+    private static SaveAnnotationResponse saveAnnotationResponseReject(String msg) {
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
                         .setExceptionalResultStatus(
@@ -287,7 +287,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
+        final SaveAnnotationResponse response = SaveAnnotationResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -295,16 +295,16 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendCreateAnnotationResponseReject(
+    public static void sendSaveAnnotationResponseReject(
             String errorMsg,
-            StreamObserver<CreateAnnotationResponse> responseObserver
+            StreamObserver<SaveAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationResponse response = createAnnotationResponseReject(errorMsg);
+        final SaveAnnotationResponse response = saveAnnotationResponseReject(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static CreateAnnotationResponse createAnnotationResponseError(String msg) {
+    private static SaveAnnotationResponse saveAnnotationResponseError(String msg) {
 
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -312,7 +312,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                         .setMessage(msg)
                         .build();
 
-        final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
+        final SaveAnnotationResponse response = SaveAnnotationResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -320,63 +320,63 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         return response;
     }
 
-    public static void sendCreateAnnotationResponseError(
-            String errorMsg, StreamObserver<CreateAnnotationResponse> responseObserver
+    public static void sendSaveAnnotationResponseError(
+            String errorMsg, StreamObserver<SaveAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationResponse response = createAnnotationResponseError(errorMsg);
+        final SaveAnnotationResponse response = saveAnnotationResponseError(errorMsg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    private static CreateAnnotationResponse createAnnotationResponseSuccess(String annotationId) {
+    private static SaveAnnotationResponse saveAnnotationResponseSuccess(String annotationId) {
 
-        final CreateAnnotationResponse.CreateAnnotationResult result =
-                CreateAnnotationResponse.CreateAnnotationResult.newBuilder()
+        final SaveAnnotationResponse.SaveAnnotationResult result =
+                SaveAnnotationResponse.SaveAnnotationResult.newBuilder()
                         .setAnnotationId(annotationId)
                         .build();
 
-        final CreateAnnotationResponse response = CreateAnnotationResponse.newBuilder()
+        final SaveAnnotationResponse response = SaveAnnotationResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setCreateAnnotationResult(result)
+                .setSaveAnnotationResult(result)
                 .build();
 
         return response;
     }
 
-    public static void sendCreateAnnotationResponseSuccess(
-            String annotationId, StreamObserver<CreateAnnotationResponse> responseObserver) {
-        final CreateAnnotationResponse response = createAnnotationResponseSuccess(annotationId);
+    public static void sendSaveAnnotationResponseSuccess(
+            String annotationId, StreamObserver<SaveAnnotationResponse> responseObserver) {
+        final SaveAnnotationResponse response = saveAnnotationResponseSuccess(annotationId);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
     @Override
-    public void createAnnotation(
-            CreateAnnotationRequest request,
-            StreamObserver<CreateAnnotationResponse> responseObserver
+    public void saveAnnotation(
+            SaveAnnotationRequest request,
+            StreamObserver<SaveAnnotationResponse> responseObserver
     ) {
         logger.info(
-                "id: {} createAnnotation request received with name: {}",
+                "id: {} saveAnnotation request received with name: {}",
                 responseObserver.hashCode(),
                 request.getName());
 
         // perform validation of base annotation details
         // validate common annotation details
         final ResultStatus resultStatus =
-                AnnotationValidationUtility.validateCreateAnnotationRequest(request);
+                AnnotationValidationUtility.validateSaveAnnotationRequest(request);
         if (resultStatus.isError) {
             logger.debug(
-                    "id: {} createAnnotation validation failed: ",
+                    "id: {} saveAnnotation validation failed: ",
                     responseObserver.hashCode(),
                     resultStatus.msg);
-            sendCreateAnnotationResponseReject(
+            sendSaveAnnotationResponseReject(
                     resultStatus.msg,
                     responseObserver);
             return;
         }
 
         // handle request
-        handler.handleCreateAnnotation(request, responseObserver);
+        handler.handleSaveAnnotation(request, responseObserver);
     }
 
     private static QueryAnnotationsResponse queryAnnotationsResponseExceptionalResult(

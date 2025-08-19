@@ -59,8 +59,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -73,8 +73,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = true;
             final String expectedRejectMessage =
-                    "CreateAnnotationRequest.calculations.calculationDataFrames must not be empty";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+                    "SaveAnnotationRequest.calculations.calculationDataFrames must not be empty";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
@@ -111,8 +111,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -125,7 +125,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "CalculationDataFrame.name must be specified";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
@@ -161,8 +161,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -176,7 +176,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
@@ -212,8 +212,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -227,7 +227,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test -
@@ -259,8 +259,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -274,7 +274,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns must not be empty";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because startTime is invalid
@@ -312,8 +312,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -327,7 +327,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because periodNanos is invalid
@@ -365,8 +365,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -380,7 +380,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because count is invalid
@@ -418,8 +418,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -433,7 +433,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataTimestamps.samplingClock must specify startTime, periodNanos, and count";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because DataColumn name not specified
@@ -471,8 +471,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -486,7 +486,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns name must be specified for each DataColumn";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations negative test: rejected because DataColumn is empty
@@ -524,8 +524,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -539,7 +539,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns contains a DataColumn with no values";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations positive test using DataTimestamps.SamplingClock.
@@ -581,8 +581,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams createAnnotationRequestParams =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams createAnnotationRequestParams =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -595,7 +595,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation.
             // Result includes calculations id for annotation created above.
@@ -1084,8 +1084,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams createAnnotationRequestParams =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams createAnnotationRequestParams =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -1098,7 +1098,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(createAnnotationRequestParams, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation.
             // Result includes calculations id for annotation created above.
@@ -1180,8 +1180,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -1194,7 +1194,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "CalculationDataFrame.dataTimestamps.timestampList must not be empty";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
         }
 
         // createAnnotation() with calculations positive test using DataTimestamps.TimestampList
@@ -1237,8 +1237,8 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
             }
             final Calculations calculations = calculationsBuilder.build();
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -1251,7 +1251,7 @@ public class AnnotationCalculationsTest extends AnnotationIntegrationTestInterme
 
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, expectReject, expectedRejectMessage);
 
             // queryAnnotations() positive test to verify calculations in query result annotation
             // uses calculation created above

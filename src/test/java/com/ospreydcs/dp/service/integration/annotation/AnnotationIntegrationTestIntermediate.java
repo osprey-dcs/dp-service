@@ -26,11 +26,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
     }
 
     protected record CreateAnnotationScenarioResult(
-            List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
-            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations,
-            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByIdResultAnnotations,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByNameAnnotations,
             List<String> secondHalfAnnotationIds, String annotationIdOwnerCraigmccComment1,
-            AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams) {
+            AnnotationTestBase.SaveAnnotationRequestParams annotationWithAllFieldsParams) {
     }
 
     @Before
@@ -231,12 +231,12 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
         final long startNanos = 0L;
         
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();
         final List<String> secondHalfAnnotationIds = new ArrayList<>();
         String annotationIdOwnerCraigmccComment1 = "";
-        AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams = null;
+        AnnotationTestBase.SaveAnnotationRequestParams annotationWithAllFieldsParams = null;
         {
             /*
              * createAnnotation() positive test
@@ -267,8 +267,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     // create annotation for first half data set
                     final String firstHalfComment = firstHalfBase + commentNumber;
                     final String firstHalfName = firstHalfComment;
-                    AnnotationTestBase.CreateAnnotationRequestParams firstHalfParams =
-                            new AnnotationTestBase.CreateAnnotationRequestParams(
+                    AnnotationTestBase.SaveAnnotationRequestParams firstHalfParams =
+                            new AnnotationTestBase.SaveAnnotationRequestParams(
                                     owner,
                                     firstHalfName,
                                     List.of(firstHalfDataSetId),
@@ -278,7 +278,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     attributeMap,
                                     eventMetadataParams,
                                     null);
-                    final String createdAnnotationId = annotationServiceWrapper.sendAndVerifyCreateAnnotation(
+                    final String createdAnnotationId = annotationServiceWrapper.sendAndVerifySaveAnnotation(
                             firstHalfParams, false, "");
                     expectedQueryByNameAnnotations.add(firstHalfParams);
                     if (owner.equals("craigmcc")) {
@@ -292,8 +292,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     // create annotation for second half data set
                     final String secondHalfComment = secondHalfBase + commentNumber;
                     final String secondHalfName = secondHalfComment;
-                    AnnotationTestBase.CreateAnnotationRequestParams secondHalfParams =
-                            new AnnotationTestBase.CreateAnnotationRequestParams(
+                    AnnotationTestBase.SaveAnnotationRequestParams secondHalfParams =
+                            new AnnotationTestBase.SaveAnnotationRequestParams(
                                     owner,
                                     secondHalfName,
                                     List.of(secondHalfDataSetId),
@@ -304,7 +304,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     null,
                                     null);
                     secondHalfAnnotationIds.add(
-                            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
+                            annotationServiceWrapper.sendAndVerifySaveAnnotation(
                                     secondHalfParams, false, ""));
                 }
             }
@@ -328,8 +328,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                             startSeconds+60,
                             999_000_000L);
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
                             ownerId,
                             name,
                             dataSetIds,
@@ -341,7 +341,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             annotationWithAllFieldsParams = params;
 
             final String expectedRejectMessage = null;
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, false, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectedRejectMessage);
         }
 
         return new CreateAnnotationScenarioResult(

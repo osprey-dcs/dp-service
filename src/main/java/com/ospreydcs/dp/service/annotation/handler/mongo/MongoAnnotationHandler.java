@@ -160,17 +160,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateAnnotation(
-            CreateAnnotationRequest request,
-            StreamObserver<CreateAnnotationResponse> responseObserver
+    public void handleSaveAnnotation(
+            SaveAnnotationRequest request,
+            StreamObserver<SaveAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationJob job = new CreateAnnotationJob(
+        final SaveAnnotationJob job = new SaveAnnotationJob(
                 request,
                 responseObserver,
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding CreateAnnotationJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding SaveAnnotationJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
@@ -180,7 +180,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ResultStatus validateCreateAnnotationRequest(CreateAnnotationRequest request) {
+    public ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) {
 
         // check that each id in dataSetIds exists in database
         for (String dataSetId : request.getDataSetIdsList()) {

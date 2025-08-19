@@ -65,14 +65,14 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     // instance variables (common ones inherited from base class)
     protected Map<String, AnnotationTestBase.SaveDataSetParams> saveDataSetIdParamsMap;
     protected Map<AnnotationTestBase.SaveDataSetParams, String> saveDataSetParamsIdMap;
-    protected Map<AnnotationTestBase.CreateAnnotationRequestParams, String> createAnnotationParamsIdMap;
+    protected Map<AnnotationTestBase.SaveAnnotationRequestParams, String> saveAnnotationParamsIdMap;
 
 
     public void init(MongoTestClient mongoClient) {
         // init data structures
         saveDataSetIdParamsMap = new TreeMap<>();
         saveDataSetParamsIdMap = new HashMap<>();
-        createAnnotationParamsIdMap = new HashMap<>();
+        saveAnnotationParamsIdMap = new HashMap<>();
 
         super.init(mongoClient);
     }
@@ -107,7 +107,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     @Override
     public void fini() {
         super.fini();
-        createAnnotationParamsIdMap = null;
+        saveAnnotationParamsIdMap = null;
         saveDataSetParamsIdMap = null;
         saveDataSetIdParamsMap = null;
     }
@@ -286,19 +286,19 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return resultDataSets;
     }
 
-    protected String sendCreateAnnotation(
-            CreateAnnotationRequest request, boolean expectReject, String expectedRejectMessage
+    protected String sendSaveAnnotation(
+            SaveAnnotationRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(channel);
 
-        final AnnotationTestBase.CreateAnnotationResponseObserver responseObserver =
-                new AnnotationTestBase.CreateAnnotationResponseObserver();
+        final AnnotationTestBase.SaveAnnotationResponseObserver responseObserver =
+                new AnnotationTestBase.SaveAnnotationResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.createAnnotation(request, responseObserver);
+            asyncStub.saveAnnotation(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -314,15 +314,15 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return responseObserver.getAnnotationId();
     }
 
-    protected String sendAndVerifyCreateAnnotation(
-            AnnotationTestBase.CreateAnnotationRequestParams params,
+    protected String sendAndVerifySaveAnnotation(
+            AnnotationTestBase.SaveAnnotationRequestParams params,
             boolean expectReject,
             String expectedRejectMessage
     ) {
-        final CreateAnnotationRequest request =
-                AnnotationTestBase.buildCreateAnnotationRequest(params);
+        final SaveAnnotationRequest request =
+                AnnotationTestBase.buildSaveAnnotationRequest(params);
 
-        final String annotationId = sendCreateAnnotation(request, expectReject, expectedRejectMessage);
+        final String annotationId = sendSaveAnnotation(request, expectReject, expectedRejectMessage);
 
         if (expectReject) {
             assertNull(annotationId);
@@ -335,7 +335,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         final AnnotationDocument annotationDocument = mongoClient.findAnnotation(annotationId);
         assertNotNull(annotationDocument);
         assertNotNull(annotationDocument.getCreatedAt());
-        final List<String> requestDiffs = annotationDocument.diffCreateAnnotationRequest(request);
+        final List<String> requestDiffs = annotationDocument.diffSaveAnnotationRequest(request);
         assertNotNull(requestDiffs);
         assertTrue(requestDiffs.toString(), requestDiffs.isEmpty());
 
@@ -355,7 +355,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         }
 
         // save annotationId to map for use in validating queryAnnotations() result
-        createAnnotationParamsIdMap.put(params, annotationId);
+        saveAnnotationParamsIdMap.put(params, annotationId);
 
         return annotationId;
     }
@@ -393,7 +393,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             AnnotationTestBase.QueryAnnotationsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
-            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryResult
+            List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryResult
     ) {
         final QueryAnnotationsRequest request =
                 AnnotationTestBase.buildQueryAnnotationsRequest(queryParams);
@@ -409,7 +409,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         // validate response
         assertEquals(expectedQueryResult.size(), resultAnnotations.size());
         // find each expected result in actual result list and match field values against request
-        for (AnnotationTestBase.CreateAnnotationRequestParams requestParams : expectedQueryResult) {
+        for (AnnotationTestBase.SaveAnnotationRequestParams requestParams : expectedQueryResult) {
             boolean found = false;
             QueryAnnotationsResponse.AnnotationsResult.Annotation foundAnnotation = null;
             for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : resultAnnotations) {
@@ -425,7 +425,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             }
             assertTrue(found);
             assertNotNull(foundAnnotation);
-            final String expectedAnnotationId = createAnnotationParamsIdMap.get(requestParams);
+            final String expectedAnnotationId = saveAnnotationParamsIdMap.get(requestParams);
             assertTrue(expectedAnnotationId.equals(foundAnnotation.getId()));
 
             // compare required fields from request against found annotation

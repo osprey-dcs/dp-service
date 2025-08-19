@@ -98,8 +98,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasCreateDataSetResult());
-                final SaveDataSetResponse.SaveDataSetResult result = response.getCreateDataSetResult();
+                assertTrue(response.hasSaveDataSetResult());
+                final SaveDataSetResponse.SaveDataSetResult result = response.getSaveDataSetResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -249,7 +249,7 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class CreateAnnotationRequestParams {
+    public static class SaveAnnotationRequestParams {
 
         public final String ownerId;
         public final List<String> dataSetIds;
@@ -261,7 +261,7 @@ public class AnnotationTestBase {
         public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
         public final Calculations calculations;
 
-        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
+        public SaveAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
             this.name = name;
@@ -273,7 +273,7 @@ public class AnnotationTestBase {
             this.calculations = null;
         }
 
-        public CreateAnnotationRequestParams(
+        public SaveAnnotationRequestParams(
                 String ownerId,
                 String name,
                 List<String> dataSetIds,
@@ -296,7 +296,7 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class CreateAnnotationResponseObserver implements StreamObserver<CreateAnnotationResponse> {
+    public static class SaveAnnotationResponseObserver implements StreamObserver<SaveAnnotationResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -334,7 +334,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(CreateAnnotationResponse response) {
+        public void onNext(SaveAnnotationResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -350,8 +350,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasCreateAnnotationResult());
-                final CreateAnnotationResponse.CreateAnnotationResult result = response.getCreateAnnotationResult();
+                assertTrue(response.hasSaveAnnotationResult());
+                final SaveAnnotationResponse.SaveAnnotationResult result = response.getSaveAnnotationResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -710,9 +710,9 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    public static CreateAnnotationRequest buildCreateAnnotationRequest(CreateAnnotationRequestParams params) {
+    public static SaveAnnotationRequest buildSaveAnnotationRequest(SaveAnnotationRequestParams params) {
 
-        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+        SaveAnnotationRequest.Builder requestBuilder = SaveAnnotationRequest.newBuilder();
 
         // handle required annotation fields
         requestBuilder.setOwnerId(params.ownerId);
