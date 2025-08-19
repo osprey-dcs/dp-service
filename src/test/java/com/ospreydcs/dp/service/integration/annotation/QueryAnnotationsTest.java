@@ -332,11 +332,32 @@ public class QueryAnnotationsTest extends AnnotationIntegrationTestIntermediate 
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
+            List<QueryAnnotationsResponse.AnnotationsResult.Annotation> matchingAnnotations =
+                    annotationServiceWrapper.sendAndVerifyQueryAnnotations(
+                            queryParams,
+                            expectReject,
+                            expectedRejectMessage,
+                            List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
+
+            // positive test for updating an annotation received in the query result
+            final QueryAnnotationsResponse.AnnotationsResult.Annotation annotation = matchingAnnotations.get(0);
+            final AnnotationTestBase.SaveAnnotationRequestParams createParams =
+                    createAnnotationScenarioResult.annotationWithAllFieldsParams();
+            final AnnotationTestBase.SaveAnnotationRequestParams updateParams =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            annotation.getId(),
+                            createParams.ownerId,
+                            createParams.name,
+                            createParams.dataSetIds,
+                            createParams.annotationIds,
+                            "updated annotation",
+                            createParams.tags,
+                            createParams.attributeMap,
+                            createParams.eventMetadataParams,
+                            createParams.calculations
+                    );
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    updateParams, true, false, "");
         }
 
     }

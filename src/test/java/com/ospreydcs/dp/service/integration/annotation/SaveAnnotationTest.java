@@ -34,7 +34,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
                     new AnnotationTestBase.SaveAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
             final String expectedRejectMessage = "SaveAnnotationRequest.ownerId must be specified";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                    params, true, expectedRejectMessage);
+                    params, false, true, expectedRejectMessage);
         }
 
         {
@@ -47,7 +47,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
                     new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
             final String expectedRejectMessage = "SaveAnnotationRequest.name must be specified";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                    params, true, expectedRejectMessage);
+                    params, false, true, expectedRejectMessage);
         }
 
         {
@@ -60,7 +60,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
                     new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, name, new ArrayList<>());
             final String expectedRejectMessage = "SaveAnnotationRequest.dataSetIds must not be empty";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                    params, true, expectedRejectMessage);
+                    params, false, true, expectedRejectMessage);
         }
 
         {
@@ -73,7 +73,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
                     new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, name, List.of(invalidDataSetId));
             final String expectedRejectMessage = "no DataSetDocument found with id";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                    params, true, expectedRejectMessage);
+                    params, false, true, expectedRejectMessage);
         }
 
     }
@@ -116,7 +116,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
 
             AnnotationTestBase.SaveAnnotationRequestParams params =
                     new AnnotationTestBase.SaveAnnotationRequestParams(
-                            ownerId,
+                            null, ownerId,
                             name,
                             dataSetIds,
                             annotationIds,
@@ -128,7 +128,7 @@ public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = true;
             final String expectedRejectMessage = "no AnnotationDocument found with id: junk12345";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                    params, expectReject, expectedRejectMessage);
+                    params, false, expectReject, expectedRejectMessage);
         }
 
     }

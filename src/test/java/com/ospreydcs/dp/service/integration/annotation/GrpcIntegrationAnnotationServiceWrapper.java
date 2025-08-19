@@ -317,6 +317,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
     protected String sendAndVerifySaveAnnotation(
             AnnotationTestBase.SaveAnnotationRequestParams params,
+            boolean isUpdate,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -333,6 +334,9 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         // validate response and database contents
         assertNotNull(annotationId);
         assertFalse(annotationId.isBlank());
+        if (isUpdate) {
+            assertEquals(params.id, annotationId);
+        }
         final AnnotationDocument annotationDocument = mongoClient.findAnnotation(annotationId);
         assertNotNull(annotationDocument);
         assertNotNull(annotationDocument.getCreatedAt());

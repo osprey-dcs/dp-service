@@ -269,7 +269,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     final String firstHalfName = firstHalfComment;
                     AnnotationTestBase.SaveAnnotationRequestParams firstHalfParams =
                             new AnnotationTestBase.SaveAnnotationRequestParams(
-                                    owner,
+                                    null, owner,
                                     firstHalfName,
                                     List.of(firstHalfDataSetId),
                                     null,
@@ -279,7 +279,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     eventMetadataParams,
                                     null);
                     final String createdAnnotationId = annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                            firstHalfParams, false, "");
+                            firstHalfParams, false, false, "");
                     expectedQueryByNameAnnotations.add(firstHalfParams);
                     if (owner.equals("craigmcc")) {
                         firstHalfAnnotationsOwnerCraigmcc.add(firstHalfParams);
@@ -294,7 +294,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     final String secondHalfName = secondHalfComment;
                     AnnotationTestBase.SaveAnnotationRequestParams secondHalfParams =
                             new AnnotationTestBase.SaveAnnotationRequestParams(
-                                    owner,
+                                    null, owner,
                                     secondHalfName,
                                     List.of(secondHalfDataSetId),
                                     null,
@@ -305,7 +305,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     null);
                     secondHalfAnnotationIds.add(
                             annotationServiceWrapper.sendAndVerifySaveAnnotation(
-                                    secondHalfParams, false, ""));
+                                    secondHalfParams, false, false, ""));
                 }
             }
         }
@@ -330,7 +330,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
             final AnnotationTestBase.SaveAnnotationRequestParams params =
                     new AnnotationTestBase.SaveAnnotationRequestParams(
-                            ownerId,
+                            null, ownerId,
                             name,
                             dataSetIds,
                             annotationIds,
@@ -341,7 +341,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             annotationWithAllFieldsParams = params;
 
             final String expectedRejectMessage = null;
-            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, expectedRejectMessage);
         }
 
         return new CreateAnnotationScenarioResult(

@@ -252,6 +252,7 @@ public class AnnotationTestBase {
 
     public static class SaveAnnotationRequestParams {
 
+        public final String id;
         public final String ownerId;
         public final List<String> dataSetIds;
         public final String name;
@@ -263,6 +264,7 @@ public class AnnotationTestBase {
         public final Calculations calculations;
 
         public SaveAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
+            this.id = null;
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
             this.name = name;
@@ -275,6 +277,7 @@ public class AnnotationTestBase {
         }
 
         public SaveAnnotationRequestParams(
+                String id,
                 String ownerId,
                 String name,
                 List<String> dataSetIds,
@@ -285,6 +288,7 @@ public class AnnotationTestBase {
                 EventMetadataUtility.EventMetadataParams eventMetadataParams,
                 Calculations calculations
         ) {
+            this.id = id;
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
             this.name = name;
@@ -718,6 +722,10 @@ public class AnnotationTestBase {
     public static SaveAnnotationRequest buildSaveAnnotationRequest(SaveAnnotationRequestParams params) {
 
         SaveAnnotationRequest.Builder requestBuilder = SaveAnnotationRequest.newBuilder();
+
+        if (params.id != null) {
+            requestBuilder.setId(params.id);
+        }
 
         // handle required annotation fields
         requestBuilder.setOwnerId(params.ownerId);
