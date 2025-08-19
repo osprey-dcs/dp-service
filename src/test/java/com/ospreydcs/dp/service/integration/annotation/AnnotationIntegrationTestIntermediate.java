@@ -193,11 +193,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             final String firstHalfDescription = "first half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet firstHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(
-                            firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
+                            null, firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
             firstHalfDataSetParams =
                     new AnnotationTestBase.SaveDataSetParams(firstHalfDataSet);
             firstHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifySaveDataSet(firstHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(firstHalfDataSetParams, false, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
@@ -205,11 +205,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             final String secondHalfDescription = "second half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(
-                            secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
+                            null, secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
             secondHalfDataSetParams =
                     new AnnotationTestBase.SaveDataSetParams(secondHalfDataSet);
             secondHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifySaveDataSet(secondHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(secondHalfDataSetParams, false, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 

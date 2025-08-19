@@ -35,6 +35,7 @@ public class AnnotationTestBase {
     }
 
     public record AnnotationDataSet(
+            String id,
             String name,
             String ownerId,
             String description,
@@ -636,6 +637,10 @@ public class AnnotationTestBase {
             dataBlockBuilder.build();
 
             dataSetBuilder.addDataBlocks(dataBlockBuilder);
+        }
+
+        if (params.dataSet.id != null) {
+            dataSetBuilder.setId(params.dataSet.id);
         }
 
         dataSetBuilder.setName(params.dataSet.name);

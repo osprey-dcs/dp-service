@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
+import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import org.junit.*;
 
@@ -159,10 +160,26 @@ public class QueryDataSetsTest extends AnnotationIntegrationTestIntermediate {
 
             List<AnnotationTestBase.SaveDataSetParams> expectedQueryResultDataSets =
                     List.of(createDataSetScenarioResult.firstHalfDataSetParams());
-            annotationServiceWrapper.sendAndVerifyQueryDataSets(
+            final List<DataSet> matchingDatasets = annotationServiceWrapper.sendAndVerifyQueryDataSets(
                     queryParams, expectReject, expectedRejectMessage, expectedQueryResultDataSets);
-        }
 
+            // positive test for updating dataset returned by query
+            final DataSet dataset = matchingDatasets.get(0);
+            final AnnotationTestBase.SaveDataSetParams createParams =
+                    createDataSetScenarioResult.firstHalfDataSetParams();
+            final AnnotationTestBase.AnnotationDataSet createDataset = createParams.dataSet();
+            final AnnotationTestBase.AnnotationDataSet updateDataset =
+                    new AnnotationTestBase.AnnotationDataSet(
+                            dataset.getId(),
+                            createDataset.name(),
+                            createDataset.ownerId(),
+                            "updated description",
+                            createDataset.dataBlocks());
+            final AnnotationTestBase.SaveDataSetParams updateParams =
+                    new AnnotationTestBase.SaveDataSetParams(updateDataset);
+            annotationServiceWrapper.sendAndVerifySaveDataSet(
+                    updateParams, true, false, "");
+        }
     }
 
 }

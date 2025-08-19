@@ -44,13 +44,13 @@ public class SaveDataSetTest extends AnnotationIntegrationTestIntermediate {
             final String unspecifiedName = "";
             final String description = "reject test";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(unspecifiedName, ownerId, description, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(null, unspecifiedName, ownerId, description, dataBlocks);
 
             final AnnotationTestBase.SaveDataSetParams params =
                     new AnnotationTestBase.SaveDataSetParams(dataSet);
 
             annotationServiceWrapper.sendAndVerifySaveDataSet(
-                    params, true, "DataSet name must be specified");
+                    params, false, true, "DataSet name must be specified");
         }
 
         {
@@ -83,13 +83,13 @@ public class SaveDataSetTest extends AnnotationIntegrationTestIntermediate {
             final String name = "missing PV test";
             final String description = "negative test, PVs don't exist in archive";
             final AnnotationTestBase.AnnotationDataSet dataSet =
-                    new AnnotationTestBase.AnnotationDataSet(name, ownerId, description, dataBlocks);
+                    new AnnotationTestBase.AnnotationDataSet(null, name, ownerId, description, dataBlocks);
 
             final AnnotationTestBase.SaveDataSetParams params =
                     new AnnotationTestBase.SaveDataSetParams(dataSet);
 
             annotationServiceWrapper.sendAndVerifySaveDataSet(
-                    params, true, "no PV metadata found for names: [pv1, pv2, pv3]");
+                    params, false, true, "no PV metadata found for names: [pv1, pv2, pv3]");
         }
 
         // positive test case defined in super class so it can be used to generate datasets for other tests

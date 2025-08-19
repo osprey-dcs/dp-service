@@ -27,9 +27,6 @@ import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
-import io.grpc.ManagedChannel;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -141,6 +138,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
     public String sendAndVerifySaveDataSet(
             AnnotationTestBase.SaveDataSetParams params,
+            boolean isUpdate,
             boolean expectReject,
             String expectedRejectMessage
     ) {
@@ -157,6 +155,9 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         // validate response and database contents
         assertNotNull(dataSetId);
         assertFalse(dataSetId.isBlank());
+        if (isUpdate) {
+            assertEquals(params.dataSet().id(), dataSetId);
+        }
         final DataSetDocument dataSetDocument = mongoClient.findDataSet(dataSetId);
         assertNotNull(dataSetDocument);
         assertNotNull(dataSetDocument.getCreatedAt());
