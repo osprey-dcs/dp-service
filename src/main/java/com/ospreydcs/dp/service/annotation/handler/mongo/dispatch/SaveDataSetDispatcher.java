@@ -36,7 +36,7 @@ public class SaveDataSetDispatcher extends Dispatcher {
 
     public void handleResult(MongoSaveResult result) {
 
-        // Check to see if error flag is set in our result wrapper, this indicates that insertOne threw an exception.
+        // Check to see if error flag is set in our result wrapper, this indicates that insertOne failed.
         if (result.isError) {
             // send error response and close response stream
             final String errorMsg = result.message;

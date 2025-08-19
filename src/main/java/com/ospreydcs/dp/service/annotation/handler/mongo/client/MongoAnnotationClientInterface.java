@@ -22,12 +22,11 @@ public interface MongoAnnotationClientInterface {
 
     AnnotationDocument findAnnotation(String annotationId);
 
-    MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
+    MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String id);
 
     MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
 
     MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument);
 
     CalculationsDocument findCalculations(String calculationsId);
-
 }

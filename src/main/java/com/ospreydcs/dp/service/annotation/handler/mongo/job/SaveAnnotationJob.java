@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
+import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -94,7 +95,7 @@ public class SaveAnnotationJob extends HandlerJob {
         // save annotation document to mongodb
         final AnnotationDocument annotationDocument =
                 AnnotationDocument.fromSaveAnnotationRequest(request, calculationsDocumentId);
-        final MongoInsertOneResult result = this.mongoClient.insertAnnotation(annotationDocument);
+        final MongoSaveResult result = this.mongoClient.saveAnnotation(annotationDocument, request.getId());
 
         // dispatch result in API response stream
         logger.debug("dispatching SaveAnnotationJob id: {}", this.responseObserver.hashCode());

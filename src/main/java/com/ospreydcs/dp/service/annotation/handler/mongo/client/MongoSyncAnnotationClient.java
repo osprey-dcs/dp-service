@@ -57,7 +57,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId) {
 
-        logger.debug("saving DataSetDocument id: {}", existingDocumentId);
+        logger.debug("saving DataSetDocument existingDocumentId: {}", existingDocumentId);
 
         // try to fetch existing document
         DataSetDocument existingDocument = null;
@@ -240,26 +240,80 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
      }
 
     @Override
-    public MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument) {
+    public MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String existingDocumentId) {
 
-        logger.debug("inserting AnnotationDocument id: {}", annotationDocument.getId());
+        logger.debug("saving AnnotationDocument existingDocumentId: {}", existingDocumentId);
 
-        // set createdAt field for document
-        annotationDocument.addCreationTime();
-
-        // insert AnnotationDocument to mongodb
-        InsertOneResult result = null;
-        boolean isError = false;
-        String errorMsg = "";
-        try {
-            result = mongoCollectionAnnotations.insertOne(annotationDocument);
-        } catch (MongoException ex) {
-            isError = true;
-            errorMsg = "MongoException inserting AnnotationDocument: " + ex.getMessage();
-            logger.error(errorMsg);
+        // try to fetch existing document
+        AnnotationDocument existingDocument = null;
+        if (!existingDocumentId.isBlank()) {
+            existingDocument = findAnnotation(existingDocumentId);
+            if (existingDocument == null) {
+                final String errorMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
         }
 
-        return new MongoInsertOneResult(isError, errorMsg, result);
+        if (existingDocument == null) {
+            // create a new document
+            annotationDocument.addCreationTime(); // set creation time
+            InsertOneResult insertOneResult = mongoCollectionAnnotations.insertOne(annotationDocument);
+
+            if (!insertOneResult.wasAcknowledged()) {
+                final String errorMsg = "insertOne failed for new AnnotationDocument, result not acknowledged";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // check if result contains id inserted
+            if (insertOneResult.getInsertedId() == null) {
+                final String errorMsg = "AnnotationDocument insert failed to return document id";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // insert was successful
+            return new MongoSaveResult(
+                    false,
+                    "",
+                    insertOneResult.getInsertedId().asObjectId().getValue().toString(),
+                    true);
+
+        } else {
+            // update existing document
+
+            // use original creation time and add update time
+            annotationDocument.setCreatedAt(existingDocument.getCreatedAt());
+            annotationDocument.addUpdatedTime();
+
+            UpdateResult result = null;
+            try {
+                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
+                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument, replaceOptions);
+            } catch (MongoException ex) {
+                final String errorMsg = "MongoException replacing AnnotationDocument: " + ex.getMessage();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "replaceOne not acknowledged for existing AnnotationDocument id: "
+                        + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (result.getModifiedCount() != 1) {
+                final String errorMsg =
+                        "replaceOne AnnotationDocument unexpected modified count: " + result.getModifiedCount();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            return new MongoSaveResult(false, "", existingDocumentId, false);
+        }
     }
 
     @Override

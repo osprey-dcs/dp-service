@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationResponse;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
-import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
+import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -40,34 +40,18 @@ public class SaveAnnotationDispatcher extends Dispatcher {
                 this.responseObserver);
     }
 
-    public void handleResult(MongoInsertOneResult result) {
+    public void handleResult(MongoSaveResult result) {
 
-        // Check to see if error flag is set in our result wrapper, this indicates that insertOne threw an exception.
+        // Check to see if error flag is set in our result wrapper, this indicates that insertOne failed.
         if (result.isError) {
             // send error response and close response stream
-            final String errorMsg = "exception inserting AnnotationDocument: " + result.message;
-            AnnotationServiceImpl.sendSaveAnnotationResponseError(errorMsg, responseObserver);
-            return;
-        }
-
-        // Otherwise check to see if the wrapped InsertOneResult indicates an error
-        final InsertOneResult insertOneResult = result.insertOneResult;
-        if (!insertOneResult.wasAcknowledged()) {
-            final String errorMsg = "AnnotationDocument insert failed (insertOne() not acknowledged)";
-            AnnotationServiceImpl.sendSaveAnnotationResponseError(errorMsg, responseObserver);
-            return;
-        }
-
-        // check if result contains id inserted
-        if (insertOneResult.getInsertedId() == null) {
-            final String errorMsg = "AnnotationDocument insert failed to return document id";
+            final String errorMsg = result.message;
             AnnotationServiceImpl.sendSaveAnnotationResponseError(errorMsg, responseObserver);
             return;
         }
 
         // insert was successful, return a response with the id
-        AnnotationServiceImpl.sendSaveAnnotationResponseSuccess(
-                insertOneResult.getInsertedId().asObjectId().getValue().toString(), responseObserver);
+        AnnotationServiceImpl.sendSaveAnnotationResponseSuccess(result.documentId, responseObserver);
     }
 
 }
