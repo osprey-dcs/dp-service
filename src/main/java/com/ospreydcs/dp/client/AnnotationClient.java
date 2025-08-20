@@ -18,9 +18,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 public class AnnotationClient extends ServiceApiClientBase {
 
     public record AnnotationDataBlock(
@@ -366,7 +363,7 @@ public class AnnotationClient extends ServiceApiClientBase {
         return responseObserver.getAnnotationId();
     }
 
-    protected String saveAnnotation(
+    public String saveAnnotation(
             SaveAnnotationRequestParams params
     ) {
         final SaveAnnotationRequest request = buildSaveAnnotationRequest(params);
