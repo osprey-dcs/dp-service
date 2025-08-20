@@ -7,13 +7,16 @@ public class ApiClient {
     // instance variables
     public final IngestionClient ingestionClient;
     public final QueryClient queryClient;
+    public final AnnotationClient annotationClient;
 
     public ApiClient(
             ManagedChannel ingestionChannel,
-            ManagedChannel queryChannel
+            ManagedChannel queryChannel,
+            ManagedChannel annotationChannel
     ) {
         this.ingestionClient = new IngestionClient(ingestionChannel);
         this.queryClient = new QueryClient(queryChannel);
+        this.annotationClient = new AnnotationClient(annotationChannel);
     }
 
     public boolean init() {
