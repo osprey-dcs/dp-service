@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.QueryPvMetadataApiResult;
+import com.ospreydcs.dp.client.result.QueryTableApiResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
 import io.grpc.ManagedChannel;
@@ -237,7 +239,7 @@ public class QueryClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    protected QueryTableResponse sendQueryTable(QueryTableRequest request) {
+    public QueryTableApiResult sendQueryTable(QueryTableRequest request) {
 
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
@@ -251,10 +253,14 @@ public class QueryClient extends ServiceApiClientBase {
 
         responseObserver.await();
 
-        return responseObserver.getQueryResponse();
+        if (responseObserver.isError()) {
+            return new QueryTableApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new QueryTableApiResult(responseObserver.getQueryResponse());
+        }
     }
 
-    public QueryTableResponse queryTable(
+    public QueryTableApiResult queryTable(
             QueryTableRequestParams params
     ) {
         final QueryTableRequest request = buildQueryTableRequest(params);
@@ -285,7 +291,7 @@ public class QueryClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    protected QueryPvMetadataResponse sendQueryPvMetadata(
+    public QueryPvMetadataApiResult sendQueryPvMetadata(
             QueryPvMetadataRequest request
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
@@ -300,17 +306,21 @@ public class QueryClient extends ServiceApiClientBase {
 
         responseObserver.await();
 
-        return responseObserver.getResponse();
+        if (responseObserver.isError()) {
+            return new QueryPvMetadataApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new QueryPvMetadataApiResult(responseObserver.getResponse());
+        }
     }
     
-    public QueryPvMetadataResponse queryPvMetadata(
+    public QueryPvMetadataApiResult queryPvMetadata(
             List<String> columnNames
     ) {
         final QueryPvMetadataRequest request = buildQueryPvMetadataRequest(columnNames);
         return sendQueryPvMetadata(request);
     }
 
-    public QueryPvMetadataResponse queryPvMetadata(
+    public QueryPvMetadataApiResult queryPvMetadata(
             String columnNamePattern
     ) {
         final QueryPvMetadataRequest request = buildQueryPvMetadataRequest(columnNamePattern);

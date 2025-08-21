@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.SaveAnnotationApiResult;
+import com.ospreydcs.dp.client.result.SaveDataSetApiResult;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
@@ -281,7 +283,7 @@ public class AnnotationClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    protected String sendSaveDataSet(
+    public SaveDataSetApiResult sendSaveDataSet(
             SaveDataSetRequest request
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
@@ -298,10 +300,14 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         responseObserver.await();
 
-        return responseObserver.getDataSetId();
+        if (responseObserver.isError()) {
+            return new SaveDataSetApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SaveDataSetApiResult(responseObserver.getDataSetId());
+        }
     }
 
-    public String saveDataSet(
+    public SaveDataSetApiResult saveDataSet(
             SaveDataSetParams params
     ) {
         final SaveDataSetRequest request = buildSaveDataSetRequest(params);
@@ -344,7 +350,7 @@ public class AnnotationClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    protected String sendSaveAnnotation(
+    public SaveAnnotationApiResult sendSaveAnnotation(
             SaveAnnotationRequest request
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
@@ -360,10 +366,14 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         responseObserver.await();
 
-        return responseObserver.getAnnotationId();
+        if (responseObserver.isError()) {
+            return new SaveAnnotationApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SaveAnnotationApiResult(responseObserver.getAnnotationId());
+        }
     }
 
-    public String saveAnnotation(
+    public SaveAnnotationApiResult saveAnnotation(
             SaveAnnotationRequestParams params
     ) {
         final SaveAnnotationRequest request = buildSaveAnnotationRequest(params);

@@ -407,7 +407,7 @@ public class IngestionTestBase {
         @Override
         public void onError(Throwable t) {
             Status status = Status.fromThrowable(t);
-            System.err.println("IngestionResponseObserver error: " + status);
+            System.err.println("IngestDataResponseObserver error: " + status);
             isError.set(true);
         }
 

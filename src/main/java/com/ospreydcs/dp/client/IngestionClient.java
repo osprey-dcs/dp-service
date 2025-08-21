@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.IngestDataApiResult;
+import com.ospreydcs.dp.client.result.RegisterProviderApiResult;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
@@ -84,6 +86,16 @@ public class IngestionClient extends ServiceApiClientBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
 
                 // flag error if already received a response
                 if (!responseList.isEmpty()) {
@@ -240,14 +252,15 @@ public class IngestionClient extends ServiceApiClientBase {
         }
     }
 
-    public static class IngestionResponseObserver implements StreamObserver<IngestDataResponse> {
+    public static class IngestDataResponseObserver implements StreamObserver<IngestDataResponse> {
 
         // instance variables
         CountDownLatch finishLatch = null;
         private final List<IngestDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
 
-        public IngestionResponseObserver(int expectedResponseCount) {
+        public IngestDataResponseObserver(int expectedResponseCount) {
             this.finishLatch = new CountDownLatch(expectedResponseCount);
         }
 
@@ -266,16 +279,35 @@ public class IngestionClient extends ServiceApiClientBase {
 
         public boolean isError() { return isError.get(); }
 
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
         @Override
-        public void onNext(IngestDataResponse ingestionResponse) {
-            responseList.add(ingestionResponse);
+        public void onNext(IngestDataResponse response) {
+
+            if (response.hasExceptionalResult()) {
+                final String errorMsg = "onNext received exceptional response: "
+                        + response.getExceptionalResult().getMessage();
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+                return;
+            }
+
+            responseList.add(response);
             finishLatch.countDown();
         }
 
         @Override
         public void onError(Throwable t) {
             Status status = Status.fromThrowable(t);
-            System.err.println("IngestionResponseObserver error: " + status);
+            System.err.println("IngestDataResponseObserver error: " + status);
             isError.set(true);
         }
 
@@ -314,13 +346,9 @@ public class IngestionClient extends ServiceApiClientBase {
         return builder.build();
     }
 
-    public RegisterProviderResponse sendRegisterProvider(
-            RegisterProviderRequestParams params
+    public RegisterProviderApiResult sendRegisterProvider(
+            RegisterProviderRequest request
     ) {
-
-        // build request
-        final RegisterProviderRequest request = buildRegisterProviderRequest(params);
-
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(channel);
 
@@ -336,61 +364,17 @@ public class IngestionClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return null;
+            return new RegisterProviderApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new RegisterProviderApiResult(responseObserver.getResponseList().get(0));
         }
-
-        return responseObserver.getResponseList().get(0);
     }
 
-//    public String registerProvider(
-//            RegisterProviderUtility.RegisterProviderRequestParams params
-//    ) {
-//        // build request
-//        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
-//
-//        // send API request
-//        final RegisterProviderResponse response = sendRegsiterProvider(request);
-//
-//        // verify exceptional response
-//        if (expectExceptionalResponse) {
-//            assertTrue(response.hasExceptionalResult());
-//            final ExceptionalResult exceptionalResult = response.getExceptionalResult();
-//            assertEquals(expectedExceptionStatus, exceptionalResult.getExceptionalResultStatus());
-//            assertTrue(exceptionalResult.getMessage().contains(expectedExceptionMessage));
-//            return null;
-//        }
-//
-//        // verify registration result
-//        assertTrue(response.hasRegistrationResult());
-//        final RegisterProviderResponse.RegistrationResult registrationResult = response.getRegistrationResult();
-//        assertEquals(params.name, registrationResult.getProviderName());
-//        assertEquals(expectedIsNew, registrationResult.getIsNewProvider());
-//        final String providerId = registrationResult.getProviderId();
-//
-//        // verify ProviderDocument from database
-//        final ProviderDocument providerDocument = mongoClient.findProvider(providerId);
-//        assertEquals(params.name, providerDocument.getName());
-//        if (params.description != null) {
-//            assertEquals(params.description, providerDocument.getDescription());
-//        } else {
-//            assertEquals("", providerDocument.getDescription());
-//        }
-//        if (params.tags != null) {
-//            assertEquals(params.tags, providerDocument.getTags());
-//        } else {
-//            assertTrue(providerDocument.getTags() == null);
-//        }
-//        if (params.attributes != null) {
-//            assertEquals(params.attributes, providerDocument.getAttributes());
-//        } else {
-//            assertTrue(providerDocument.getAttributes() == null);
-//        }
-//        assertNotNull(providerDocument.getCreatedAt());
-//        assertNotNull(providerDocument.getUpdatedAt());
-//
-//        // return id of ProviderDocument
-//        return providerId;
-//    }
+    public RegisterProviderApiResult registerProvider(RegisterProviderRequestParams params) {
+        // build request
+        final RegisterProviderRequest request = buildRegisterProviderRequest(params);
+        return sendRegisterProvider(request);
+    }
 
     public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
         return buildIngestionRequest(params, null);
@@ -603,14 +587,13 @@ public class IngestionClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    public IngestDataResponse sendIngestData(IngestionRequestParams params) {
+    public IngestDataApiResult sendIngestData(IngestDataRequest request) {
 
-        final IngestDataRequest request = buildIngestionRequest(params);
 
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(channel);
 
-        final IngestionResponseObserver responseObserver = new IngestionResponseObserver(1);
+        final IngestDataResponseObserver responseObserver = new IngestDataResponseObserver(1);
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
@@ -621,10 +604,15 @@ public class IngestionClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return null;
+            return new IngestDataApiResult(true, responseObserver.getErrorMessage());
         } else {
-            return responseObserver.getResponseList().get(0);
+            return new IngestDataApiResult(responseObserver.getResponseList().get(0));
         }
+    }
+
+    public IngestDataApiResult ingestData(IngestionRequestParams params) {
+        final IngestDataRequest request = buildIngestionRequest(params);
+        return sendIngestData(request);
     }
 
 }
