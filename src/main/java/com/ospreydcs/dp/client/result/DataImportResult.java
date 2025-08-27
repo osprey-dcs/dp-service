@@ -9,18 +9,30 @@ import java.util.List;
 public class DataImportResult {
 
     public final ResultStatus resultStatus;
-    public final List<Timestamp> timestamps;
-    public final List<DataColumn> columns;
+    public final List<DataFrameResult> dataFrames;
 
     public DataImportResult(
             boolean isError,
             String errorMsg,
-            List<Timestamp> timestamps,
-            List<DataColumn> columns
+            List<DataFrameResult> dataFrames
     ) {
         final ResultStatus status = new ResultStatus(isError, errorMsg);
         this.resultStatus = status;
-        this.timestamps = timestamps;
-        this.columns = columns;
+        this.dataFrames = dataFrames;
+    }
+    
+    /**
+     * Represents data from a single sheet/frame.
+     */
+    public static class DataFrameResult {
+        public final String sheetName;
+        public final List<Timestamp> timestamps;
+        public final List<DataColumn> columns;
+        
+        public DataFrameResult(String sheetName, List<Timestamp> timestamps, List<DataColumn> columns) {
+            this.sheetName = sheetName;
+            this.timestamps = timestamps;
+            this.columns = columns;
+        }
     }
 }

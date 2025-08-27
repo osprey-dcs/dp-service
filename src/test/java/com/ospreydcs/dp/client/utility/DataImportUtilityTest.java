@@ -33,30 +33,36 @@ public class DataImportUtilityTest {
         assertNotNull(result);
         assertFalse(result.resultStatus.isError);
         assertTrue(result.resultStatus.msg.isEmpty());
-        assertNotNull(result.timestamps);
-        assertNotNull(result.columns);
+        assertNotNull(result.dataFrames);
+        assertEquals(1, result.dataFrames.size());
+
+        // Get the first (and only) data frame
+        DataImportResult.DataFrameResult frame = result.dataFrames.get(0);
+        assertEquals("TestData", frame.sheetName);
+        assertNotNull(frame.timestamps);
+        assertNotNull(frame.columns);
 
         // Verify data structure
-        assertEquals(2, result.timestamps.size());
-        assertEquals(2, result.columns.size());
+        assertEquals(2, frame.timestamps.size());
+        assertEquals(2, frame.columns.size());
 
         // Verify timestamps
-        Timestamp timestamp1 = result.timestamps.get(0);
+        Timestamp timestamp1 = frame.timestamps.get(0);
         assertEquals(1000000000L, timestamp1.getEpochSeconds());
         assertEquals(123456789L, timestamp1.getNanoseconds());
 
-        Timestamp timestamp2 = result.timestamps.get(1);
+        Timestamp timestamp2 = frame.timestamps.get(1);
         assertEquals(1000000001L, timestamp2.getEpochSeconds());
         assertEquals(987654321L, timestamp2.getNanoseconds());
 
         // Verify data columns
-        DataColumn column1 = result.columns.get(0);
+        DataColumn column1 = frame.columns.get(0);
         assertEquals("PV1", column1.getName());
         assertEquals(2, column1.getDataValuesCount());
         assertEquals(3.14, column1.getDataValues(0).getDoubleValue(), 0.001);
         assertEquals(2.71, column1.getDataValues(1).getDoubleValue(), 0.001);
 
-        DataColumn column2 = result.columns.get(1);
+        DataColumn column2 = frame.columns.get(1);
         assertEquals("PV2", column2.getName());
         assertEquals(2, column2.getDataValuesCount());
         assertEquals("test1", column2.getDataValues(0).getStringValue());
@@ -71,8 +77,7 @@ public class DataImportUtilityTest {
         assertNotNull(result);
         assertTrue(result.resultStatus.isError);
         assertTrue(result.resultStatus.msg.contains("does not exist"));
-        assertNull(result.timestamps);
-        assertNull(result.columns);
+        assertNull(result.dataFrames);
     }
 
     @Test
@@ -82,8 +87,7 @@ public class DataImportUtilityTest {
         assertNotNull(result);
         assertTrue(result.resultStatus.isError);
         assertTrue(result.resultStatus.msg.contains("null or empty"));
-        assertNull(result.timestamps);
-        assertNull(result.columns);
+        assertNull(result.dataFrames);
     }
 
     @Test
@@ -93,8 +97,7 @@ public class DataImportUtilityTest {
         assertNotNull(result);
         assertTrue(result.resultStatus.isError);
         assertTrue(result.resultStatus.msg.contains("null or empty"));
-        assertNull(result.timestamps);
-        assertNull(result.columns);
+        assertNull(result.dataFrames);
     }
 
     @Test
@@ -107,9 +110,8 @@ public class DataImportUtilityTest {
 
         assertNotNull(result);
         assertTrue(result.resultStatus.isError);
-        assertTrue(result.resultStatus.msg.contains("at least 3 columns"));
-        assertNull(result.timestamps);
-        assertNull(result.columns);
+        assertTrue(result.resultStatus.msg.contains("No valid data sheets found"));
+        assertNull(result.dataFrames);
     }
 
     private void createTestXlsxFile(File file) throws IOException {
