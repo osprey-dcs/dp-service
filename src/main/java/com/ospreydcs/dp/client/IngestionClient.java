@@ -165,40 +165,20 @@ public class IngestionClient extends ServiceApiClientBase {
         public Long eventStartNanos = null;
         public Long eventStopSeconds = null;
         public Long eventStopNanos = null;
-        public final boolean useSerializedDataColumns;
+        public Boolean useSerializedDataColumns = false;
 
         public IngestionRequestParams(
                 String providerId,
                 String requestId,
-                Long snapshotStartTimestampSeconds,
-                Long snapshotStartTimestampNanos,
-                List<Long> timestampsSecondsList,
-                List<Long> timestampNanosList,
-                Long samplingClockStartSeconds,
-                Long samplingClockStartNanos,
-                Long samplingClockPeriodNanos,
-                Integer samplingClockCount,
-                List<String> columnNames,
-                IngestionDataType dataType,
-                List<List<Object>> values,
-                List<List<DataValue.ValueStatus>> valuesStatus,
-                boolean useSerializedDataColumns
+                List<String> tags,
+                Map<String, String> attributes,
+                String eventDescription
         ) {
             this.providerId = providerId;
             this.requestId = requestId;
-            this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
-            this.snapshotStartTimestampNanos = snapshotStartTimestampNanos;
-            this.timestampsSecondsList = timestampsSecondsList;
-            this.timestampNanosList = timestampNanosList;
-            this.samplingClockStartSeconds = samplingClockStartSeconds;
-            this.samplingClockStartNanos = samplingClockStartNanos;
-            this.samplingClockPeriodNanos = samplingClockPeriodNanos;
-            this.samplingClockCount = samplingClockCount;
-            this.columnNames = columnNames;
-            this.dataType = dataType;
-            this.values = values;
-            this.valuesStatus = valuesStatus;
-            this.useSerializedDataColumns = useSerializedDataColumns;
+            this.tags = tags;
+            this.attributes = attributes;
+            this.eventDescription = eventDescription;
         }
 
         public IngestionRequestParams(
@@ -224,27 +204,21 @@ public class IngestionClient extends ServiceApiClientBase {
                 Long eventStopNanos,
                 boolean useSerializedDataColumns
         ) {
+            this(providerId, requestId, tags, attributes, eventDescription);
 
-            this(
-                    providerId,
-                    requestId,
-                    snapshotStartTimestampSeconds,
-                    snapshotStartTimestampNanos,
-                    timestampsSecondsList,
-                    timestampNanosList,
-                    samplingClockStartSeconds,
-                    samplingClockStartNanos,
-                    samplingClockPeriodNanos,
-                    samplingClockCount,
-                    columnNames,
-                    dataType,
-                    values,
-                    null,
-                    useSerializedDataColumns);
-
-            this.tags = tags;
-            this.attributes = attributes;
-            this.eventDescription = eventDescription;
+            this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
+            this.snapshotStartTimestampNanos = snapshotStartTimestampNanos;
+            this.timestampsSecondsList = timestampsSecondsList;
+            this.timestampNanosList = timestampNanosList;
+            this.samplingClockStartSeconds = samplingClockStartSeconds;
+            this.samplingClockStartNanos = samplingClockStartNanos;
+            this.samplingClockPeriodNanos = samplingClockPeriodNanos;
+            this.samplingClockCount = samplingClockCount;
+            this.columnNames = columnNames;
+            this.dataType = dataType;
+            this.values = values;
+            this.valuesStatus = valuesStatus;
+            this.useSerializedDataColumns = useSerializedDataColumns;
             this.eventStartSeconds = eventStartSeconds;
             this.eventStartNanos = eventStartNanos;
             this.eventStopSeconds = eventStopSeconds;
@@ -376,10 +350,6 @@ public class IngestionClient extends ServiceApiClientBase {
         return sendRegisterProvider(request);
     }
 
-    public static IngestDataRequest buildIngestionRequest(IngestionRequestParams params) {
-        return buildIngestionRequest(params, null);
-    }
-
     /**
      * Builds an IngestionRequest gRPC API object from an IngestionRequestParams object.
      * This utility avoids having code to build API requests scattered around the test methods.
@@ -389,7 +359,8 @@ public class IngestionClient extends ServiceApiClientBase {
      */
     public static IngestDataRequest buildIngestionRequest(
             IngestionRequestParams params,
-            List<DataColumn> dataColumnList
+            List<Timestamp> timestamps,
+            List<DataColumn> dataColumns
     ) {
         IngestDataRequest.Builder requestBuilder = IngestDataRequest.newBuilder();
 
@@ -400,12 +371,18 @@ public class IngestionClient extends ServiceApiClientBase {
             requestBuilder.setClientRequestId(params.requestId);
         }
 
-        IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
+        final IngestDataRequest.IngestionDataFrame.Builder dataFrameBuilder
                 = IngestDataRequest.IngestionDataFrame.newBuilder();
-        DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
+        final DataTimestamps.Builder dataTimestampsBuilder = DataTimestamps.newBuilder();
 
         // set DataTimestamps for request
-        if (params.timestampsSecondsList != null) {
+        if (timestamps != null) {
+            final TimestampList timestampList = TimestampList.newBuilder().addAllTimestamps(timestamps).build();
+            dataTimestampsBuilder.setTimestampList(timestampList);
+            dataTimestampsBuilder.build();
+            dataFrameBuilder.setDataTimestamps(dataTimestampsBuilder);
+
+        } else if (params.timestampsSecondsList != null) {
             // use explicit timestamp list in DataTimestamps if specified in params
 
             TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
@@ -443,9 +420,9 @@ public class IngestionClient extends ServiceApiClientBase {
         // create list of columns
         final List<DataColumn> frameColumns = new ArrayList<>();
 
-        if (dataColumnList != null) {
+        if (dataColumns != null) {
             // use list of columns if provided by caller
-            frameColumns.addAll(dataColumnList);
+            frameColumns.addAll(dataColumns);
 
         } else if (params.columnNames != null) {
             // otherwise create columns from params
@@ -610,8 +587,12 @@ public class IngestionClient extends ServiceApiClientBase {
         }
     }
 
-    public IngestDataApiResult ingestData(IngestionRequestParams params) {
-        final IngestDataRequest request = buildIngestionRequest(params);
+    public IngestDataApiResult ingestData(
+            IngestionRequestParams params,
+            List<Timestamp> timestamps,
+            List<DataColumn> dataColumns
+    ) {
+        final IngestDataRequest request = buildIngestionRequest(params, timestamps, dataColumns);
         return sendIngestData(request);
     }
 
