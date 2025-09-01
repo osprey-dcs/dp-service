@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataResponse;
+import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -48,8 +49,8 @@ public class QueryProviderMetadataDispatcher extends Dispatcher {
 
             final ProviderMetadataQueryResultDocument providerMetadataDocument = cursor.next();
 
-            final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.Builder providerMetadataBuilder =
-                    QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.newBuilder();
+            final ProviderMetadata.Builder providerMetadataBuilder =
+                    ProviderMetadata.newBuilder();
 
             providerMetadataBuilder.setId(providerMetadataDocument.getId());
             
