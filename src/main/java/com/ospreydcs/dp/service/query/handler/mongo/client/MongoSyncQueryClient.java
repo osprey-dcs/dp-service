@@ -330,8 +330,14 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
+        return executeQueryProviderMetadata(request.getProviderId());
+    }
+
+    @Override
+    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(String providerid) {
+
         // generate filter for buckets query by providerId
-        final Bson providerIdFilter = eq(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID, request.getProviderId());
+        final Bson providerIdFilter = eq(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID, providerid);
 
         // NOTE: PROJECTION MUST INCLUDE KEYS FOR ALL FIELDS USED IN SORTING and GROUPING!!!
         // If not the values will silently be null and lead to unexpected results!!

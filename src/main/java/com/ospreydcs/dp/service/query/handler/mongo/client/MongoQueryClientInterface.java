@@ -31,4 +31,5 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(QueryProviderMetadataRequest request);
 
+    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(String id);
 }
