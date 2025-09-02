@@ -3,7 +3,6 @@ package com.ospreydcs.dp.service.common.bson.bucket;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
@@ -23,11 +22,13 @@ import java.util.Map;
  */
 public class BucketDocument extends DpBsonDocumentBase {
 
+    // instance variables
     private String id;
     private String pvName;
     private DataColumnDocument dataColumn;
     private DataTimestampsDocument dataTimestamps;
     private String providerId;
+    private String providerName;
     private String clientRequestId;
 
     public String getId() {
@@ -70,6 +71,14 @@ public class BucketDocument extends DpBsonDocumentBase {
         this.providerId = providerId;
     }
 
+    public String getProviderName() {
+        return providerName;
+    }
+
+    public void setProviderName(String providerName) {
+        this.providerName = providerName;
+    }
+
     public String getClientRequestId() {
         return clientRequestId;
     }
@@ -81,7 +90,8 @@ public class BucketDocument extends DpBsonDocumentBase {
     private static BucketDocument columnBucketDocument(
             String pvName,
             IngestDataRequest request,
-            DataColumnDocument dataColumnDocument
+            DataColumnDocument dataColumnDocument,
+            String providerName
     ) {
         final BucketDocument bucket = new BucketDocument();
 
@@ -96,6 +106,7 @@ public class BucketDocument extends DpBsonDocumentBase {
         bucket.setId(documentId);
         bucket.setPvName(pvName);
         bucket.setProviderId(request.getProviderId());
+        bucket.setProviderName(providerName);
         bucket.setClientRequestId(request.getClientRequestId());
 
         bucket.setDataColumn(dataColumnDocument);
@@ -127,47 +138,50 @@ public class BucketDocument extends DpBsonDocumentBase {
 
     private static BucketDocument dataColumnBucketDocument(
             IngestDataRequest request,
-            DataColumn column
+            DataColumn column,
+            String providerName
     ) {
         // create DataColumnDocument for request DataColumn
         DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(column);
         final String pvName = column.getName();
-        return columnBucketDocument(pvName, request, dataColumnDocument);
+        return columnBucketDocument(pvName, request, dataColumnDocument, providerName);
     }
 
     private static BucketDocument serializedDataColumnBucketDocument(
             IngestDataRequest request,
-            SerializedDataColumn column
+            SerializedDataColumn column,
+            String providerName
     ) {
         // create DataColumnDocument for request DataColumn
         DataColumnDocument dataColumnDocument = DataColumnDocument.fromSerializedDataColumn(column);
         final String pvName = column.getName();
-        return columnBucketDocument(pvName, request, dataColumnDocument);
+        return columnBucketDocument(pvName, request, dataColumnDocument, providerName);
     }
 
     /**
      * Generates a list of POJO objects, which are written as a batch to mongodb by customizing the codec registry.
-     *
+     * <p>
      * NOTE: DATABASE CODE LIKE insertMany SILENTLY FAILS IF AN INSTANCE VARIABLE IS ADDED TO TsDataBucket
      * WITHOUT ACCESSOR METHODS!!!  Very hard to troubleshoot.
      *
      * @param request
+     * @param providerName
      * @return
      */
-    public static List<BucketDocument> generateBucketsFromRequest(IngestDataRequest request)
+    public static List<BucketDocument> generateBucketsFromRequest(IngestDataRequest request, String providerName)
             throws DpIngestionException {
 
         final List<BucketDocument> bucketList = new ArrayList<>();
 
         // create BucketDocument for each DataColumn
         for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
-            bucketList.add(dataColumnBucketDocument(request, column));
+            bucketList.add(dataColumnBucketDocument(request, column, providerName));
         }
 
         // create BucketDocument for each SerializedDataColumn
         for (SerializedDataColumn column :
                 request.getIngestionDataFrame().getSerializedDataColumnsList()) {
-            bucketList.add(serializedDataColumnBucketDocument(request, column));
+            bucketList.add(serializedDataColumnBucketDocument(request, column, providerName));
         }
 
         return bucketList;
@@ -215,6 +229,14 @@ public class BucketDocument extends DpBsonDocumentBase {
         if (document.getEvent() != null) {
             final EventMetadataDocument eventMetadataDocument = document.getEvent();
             bucketBuilder.setEventMetadata(eventMetadataDocument.toEventMetadata());
+        }
+
+        // add provider details
+        if (document.getProviderId() != null) {
+            bucketBuilder.setProviderId(document.getProviderId());
+        }
+        if (document.getProviderName() != null) {
+            bucketBuilder.setProviderName(document.getProviderName());
         }
 
         return bucketBuilder.build();

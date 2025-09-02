@@ -76,7 +76,7 @@ public class IngestDataJob extends HandlerJob {
                 // generate batch of bucket documents for request
                 List<BucketDocument> dataDocumentBatch = null;
                 try {
-                    dataDocumentBatch = BucketDocument.generateBucketsFromRequest(request);
+                    dataDocumentBatch = BucketDocument.generateBucketsFromRequest(request, providerName);
                 } catch (DpIngestionException e) {
                     isError = true;
                     errorMsg = e.getMessage();

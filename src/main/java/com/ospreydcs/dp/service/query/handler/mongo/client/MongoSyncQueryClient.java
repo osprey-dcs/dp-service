@@ -139,7 +139,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
                 BsonConstants.BSON_KEY_BUCKET_LAST_TIME,
                 BsonConstants.BSON_KEY_BUCKET_SAMPLE_COUNT,
-                BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD
+                BsonConstants.BSON_KEY_BUCKET_SAMPLE_PERIOD,
+                BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID,
+                BsonConstants.BSON_KEY_BUCKET_PROVIDER_NAME
         ));
 
         // Sort fields must appear in projection.
@@ -197,7 +199,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                         Accumulators.sum(
                                                 // count number of bucket documents in group for this pv
                                                 BsonConstants.BSON_KEY_PV_METADATA_NUM_BUCKETS,
-                                                1)
+                                                1),
+                                        Accumulators.last(
+                                                // save the providerId of the last document to the providerid field
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_PROVIDER_ID,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID),
+                                        Accumulators.last(
+                                                // save the providerName of the last document to the providerName field
+                                                BsonConstants.BSON_KEY_PV_METADATA_LAST_PROVIDER_NAME,
+                                                "$" + BsonConstants.BSON_KEY_BUCKET_PROVIDER_NAME)
                                 ),
                                 Aggregates.sort(metadataSort) // sort metadata documents so result is sorted
                                 ));

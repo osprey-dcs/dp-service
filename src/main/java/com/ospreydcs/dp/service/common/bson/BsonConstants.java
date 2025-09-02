@@ -29,6 +29,7 @@ public class BsonConstants {
     public static final String BSON_KEY_BUCKET_DATA_TYPE_CASE = "dataColumn.valueCase";
     public static final String BSON_KEY_BUCKET_DATA_TYPE = "dataColumn.valueType";
     public static final String BSON_KEY_BUCKET_PROVIDER_ID = "providerId";
+    public static final String BSON_KEY_BUCKET_PROVIDER_NAME = "providerName";
 
     public static final String BSON_KEY_REQ_STATUS_ID = "_id";
     public static final String BSON_KEY_REQ_STATUS_PROVIDER_ID = "providerId";
@@ -62,6 +63,8 @@ public class BsonConstants {
     public static final String BSON_KEY_PV_METADATA_FIRST_DATA_TIMESTAMP = "firstDataTimestamp";
     public static final String BSON_KEY_PV_METADATA_LAST_DATA_TIMESTAMP = "lastDataTimestamp";
     public static final String BSON_KEY_PV_METADATA_NUM_BUCKETS = "numBuckets";
+    public static final String BSON_KEY_PV_METADATA_LAST_PROVIDER_ID = "lastProviderId";
+    public static final String BSON_KEY_PV_METADATA_LAST_PROVIDER_NAME = "lastProviderName";
 
     public static final String BSON_KEY_PROVIDER_METADATA_PV_NAMES = "pvNames";
     public static final String BSON_KEY_PROVIDER_METADATA_FIRST_BUCKET_TIMESTAMP = "firstBucketTimestamp";
