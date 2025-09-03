@@ -503,7 +503,7 @@ public class QueryClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    private QueryProvidersApiResult sendQueryProviders(
+    public QueryProvidersApiResult sendQueryProviders(
             QueryProvidersRequest request
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
@@ -525,7 +525,7 @@ public class QueryClient extends ServiceApiClientBase {
         }
     }
 
-    protected QueryProvidersApiResult queryProviders(
+    public QueryProvidersApiResult queryProviders(
             QueryProvidersRequestParams queryParams
     ) {
         final QueryProvidersRequest request = buildQueryProvidersRequest(queryParams);

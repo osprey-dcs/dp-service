@@ -44,11 +44,25 @@ public class ProviderDocument extends DpBsonDocumentBase {
         QueryProvidersResponse.ProvidersResult.ProviderInfo.Builder providerInfoBuilder =
                 QueryProvidersResponse.ProvidersResult.ProviderInfo.newBuilder();
 
-        providerInfoBuilder.setId(this.getId().toString());
-        providerInfoBuilder.setName(this.getName());
-        providerInfoBuilder.setDescription(this.getDescription());
-        providerInfoBuilder.addAllTags(this.getTags());
-        providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        if (this.getId() != null) {
+            providerInfoBuilder.setId(this.getId().toString());
+        }
+
+        if (this.getName() != null) {
+            providerInfoBuilder.setName(this.getName());
+        }
+
+        if (this.getDescription() != null) {
+            providerInfoBuilder.setDescription(this.getDescription());
+        }
+
+        if (this.getTags() != null) {
+            providerInfoBuilder.addAllTags(this.getTags());
+        }
+
+        if (this.getAttributes() != null) {
+            providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        }
 
         if (providerMetadata != null) {
             providerInfoBuilder.setProviderMetadata(providerMetadata);

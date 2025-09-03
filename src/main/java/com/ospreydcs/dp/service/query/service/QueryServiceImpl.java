@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 
@@ -443,6 +444,15 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                     if (idCriterion.getId().isBlank()) {
                         final String errorMsg =
                                 "QueryProvidersRequest.criteria.IdCriterion id must be specified";
+                        sendQueryProvidersResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+
+                    try {
+                        final ObjectId objectId = new ObjectId(idCriterion.getId());
+                    } catch (IllegalArgumentException e) {
+                        final String errorMsg = "QueryProvidersRequest.criteria.IdCriterion invalid mongo id: "
+                                + e.getMessage();
                         sendQueryProvidersResponseReject(errorMsg, responseObserver);
                         return;
                     }
