@@ -24,6 +24,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AnnotationClient extends ServiceApiClientBase {
 
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
+
+    public AnnotationClient(ManagedChannel channel) {
+        super(channel);
+    }
+
     public record AnnotationDataBlock(
             long beginSeconds,
             long beginNanos,
@@ -604,13 +611,6 @@ public class AnnotationClient extends ServiceApiClientBase {
         @Override
         public void onCompleted() {
         }
-    }
-
-    // static variables
-    private static final Logger logger = LogManager.getLogger();
-
-    public AnnotationClient(ManagedChannel channel) {
-        super(channel);
     }
 
     public static SaveDataSetRequest buildSaveDataSetRequest(SaveDataSetParams params) {

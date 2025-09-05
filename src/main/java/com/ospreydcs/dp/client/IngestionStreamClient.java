@@ -1,23 +1,26 @@
-package com.ospreydcs.dp.service.ingestionstream;
+package com.ospreydcs.dp.client;
 
-import com.ospreydcs.dp.grpc.v1.ingestionstream.DataEventOperation;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.PvConditionTrigger;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventRequest;
-import com.ospreydcs.dp.grpc.v1.ingestionstream.SubscribeDataEventResponse;
+import com.ospreydcs.dp.client.result.SubscribeDataEventApiResult;
+import com.ospreydcs.dp.grpc.v1.ingestionstream.*;
+import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.fail;
+public class IngestionStreamClient extends ServiceApiClientBase {
 
-public class IngestionStreamTestBase {
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
+
+    public IngestionStreamClient(ManagedChannel channel) {
+        super(channel);
+    }
 
     public static final class SubscribeDataEventRequestParams {
         private final List<PvConditionTrigger> triggers;
@@ -91,23 +94,27 @@ public class IngestionStreamTestBase {
 
         // instance variables
         CountDownLatch ackLatch = null;
-        CountDownLatch responseLatch = null;
         CountDownLatch closeLatch = null;
+        private final int eventListSizeLimit;
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<SubscribeDataEventResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+        private final List<SubscribeDataEventResponse.Event> eventList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
 
-        public SubscribeDataEventResponseObserver(int expectedResponseCount) {
+        public SubscribeDataEventResponseObserver(int eventListSizeLimit) {
             this.ackLatch = new CountDownLatch(1);
-            this.responseLatch = new CountDownLatch(expectedResponseCount);
             this.closeLatch = new CountDownLatch(1);
+            this.eventListSizeLimit = eventListSizeLimit;
         }
 
         public void awaitAckLatch() {
             try {
                 final boolean await = ackLatch.await(1, TimeUnit.MINUTES);
                 if ( ! await) {
-                    fail("timed out waiting for ack latch");
+                    final String errorMsg = "timed out waiting for ackLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
                 }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for ackLatch";
@@ -117,23 +124,15 @@ public class IngestionStreamTestBase {
             }
         }
 
-        public void awaitResponseLatch() {
-            try {
-                final boolean await = responseLatch.await(10, TimeUnit.SECONDS);
-                if ( ! await) {
-                    fail("timed out waiting for response latch count: " + responseLatch.getCount());
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for responseLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-            }
-        }
-        
         public void awaitCloseLatch() {
             try {
-                closeLatch.await(1, TimeUnit.MINUTES);
+                final boolean await = closeLatch.await(1, TimeUnit.MINUTES);
+                if ( ! await) {
+                    final String errorMsg = "timed out waiting for closeLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for closeLatch";
                 System.err.println(errorMsg);
@@ -142,10 +141,8 @@ public class IngestionStreamTestBase {
             }
         }
 
-
-
-        public List<SubscribeDataEventResponse> getResponseList() {
-            return responseList;
+        public List<SubscribeDataEventResponse.Event> getEventList() {
+            return eventList;
         }
 
         public boolean isError() {
@@ -157,6 +154,13 @@ public class IngestionStreamTestBase {
                 return errorMessageList.get(0);
             } else {
                 return "";
+            }
+        }
+
+        private void addEvent(SubscribeDataEventResponse.Event event) {
+            eventList.add(event);
+            while (eventList.size() > eventListSizeLimit) {
+                eventList.remove(0);
             }
         }
 
@@ -180,22 +184,18 @@ public class IngestionStreamTestBase {
                 }
 
                 case EVENT -> {
-                    // decrement responseLatch for TriggeredEvent response
-                    responseList.add(response);
-                    responseLatch.countDown();
+                    addEvent(response.getEvent());
                 }
 
                 case EVENTDATA -> {
-                    // decrement responseLatch by number of buckets in EventData response
-                    responseList.add(response);
-                    final SubscribeDataEventResponse.EventData eventData = response.getEventData();
-                    for (int i = 0 ; i < eventData.getDataBucketsCount() ; ++i) {
-                        responseLatch.countDown();
-                    }
+                    // ignore EVENTDATA messages
                 }
 
                 case RESULT_NOT_SET -> {
-                    fail("result case not set");
+                    final String errorMsg = "SubscribeDataEventResponse result not set";
+                    logger.error(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
                 }
             }
         }
@@ -217,8 +217,8 @@ public class IngestionStreamTestBase {
 
     }
 
-    public static SubscribeDataEventRequest buildSubscribeDataEventRequest(
-            IngestionStreamTestBase.SubscribeDataEventRequestParams requestParams
+    private static SubscribeDataEventRequest buildSubscribeDataEventRequest(
+            SubscribeDataEventRequestParams requestParams
     ) {
         SubscribeDataEventRequest.NewSubscription.Builder newSubscriptionBuilder =
                 SubscribeDataEventRequest.NewSubscription.newBuilder();
@@ -262,7 +262,7 @@ public class IngestionStreamTestBase {
         return SubscribeDataEventRequest.newBuilder().setNewSubscription(newSubscriptionBuilder).build();
     }
     
-    public static SubscribeDataEventRequest buildSubscribeDataEventCancelRequest() {
+    private static SubscribeDataEventRequest buildSubscribeDataEventCancelRequest() {
 
         final SubscribeDataEventRequest.CancelSubscription cancelSubscription =
                 SubscribeDataEventRequest.CancelSubscription.newBuilder()
@@ -271,6 +271,69 @@ public class IngestionStreamTestBase {
         return SubscribeDataEventRequest.newBuilder()
                 .setCancelSubscription(cancelSubscription)
                 .build();
+    }
+
+    public SubscribeDataEventApiResult sendSubscribeDataEvent(
+            SubscribeDataEventRequest request,
+            int eventListSizeLimit
+    ) {
+        final DpIngestionStreamServiceGrpc.DpIngestionStreamServiceStub asyncStub =
+                DpIngestionStreamServiceGrpc.newStub(channel);
+
+        final SubscribeDataEventResponseObserver responseObserver =
+                new SubscribeDataEventResponseObserver(eventListSizeLimit);
+
+        // invoke subscribeDataEvent() API method, get handle to request stream
+        StreamObserver<SubscribeDataEventRequest> requestObserver = asyncStub.subscribeDataEvent(responseObserver);
+
+        // send request message in request stream
+        new Thread(() -> {
+            requestObserver.onNext(request);
+        }).start();
+
+        // wait for ack response
+        responseObserver.awaitAckLatch();
+
+        if (responseObserver.isError()) {
+            return new SubscribeDataEventApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SubscribeDataEventApiResult(new SubscribeDataEventCall(requestObserver, responseObserver));
+        }
+    }
+
+    public SubscribeDataEventApiResult subscribeDataEvent(
+            SubscribeDataEventRequestParams requestParams,
+            int eventListSizeLimit
+    ) {
+        final SubscribeDataEventRequest request = buildSubscribeDataEventRequest(requestParams);
+        return sendSubscribeDataEvent(request, eventListSizeLimit);
+    }
+
+    public void cancelSubscribeDataEventCall(SubscribeDataEventCall subscribeDataEventCall) {
+
+        final SubscribeDataEventRequest request = buildSubscribeDataEventCancelRequest();
+
+        // send NewSubscription message in request stream
+        new Thread(() -> {
+            subscribeDataEventCall.requestObserver().onNext(request);
+        }).start();
+
+        // wait for response stream to close
+        final SubscribeDataEventResponseObserver responseObserver =
+                (SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        responseObserver.awaitCloseLatch();
+
+    }
+
+    public void closeSubscribeDataEventCall(SubscribeDataEventCall subscribeDataEventCall) {
+
+        // close the request stream
+        new Thread(subscribeDataEventCall.requestObserver()::onCompleted).start();
+
+        // wait for response stream to close
+        final SubscribeDataEventResponseObserver responseObserver =
+                (SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        responseObserver.awaitCloseLatch();
     }
 
 }
