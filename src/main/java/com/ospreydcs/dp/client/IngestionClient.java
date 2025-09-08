@@ -133,13 +133,19 @@ public class IngestionClient extends ServiceApiClientBase {
 
     public static enum IngestionDataType {
         STRING,
-        DOUBLE,
-        INT,
-        BYTE_ARRAY,
         BOOLEAN,
+        UINT,
+        ULONG,
+        INT,
+        LONG,
+        FLOAT,
+        DOUBLE,
+        BYTE_ARRAY,
+        ARRAY,
+        ARRAY_DOUBLE,
         IMAGE,
         STRUCTURE,
-        ARRAY_DOUBLE
+        TIMESTAMP
     }
 
     public static class IngestionRequestParams {
