@@ -86,7 +86,7 @@ public class IngestionStreamClient extends ServiceApiClientBase {
 
     public record SubscribeDataEventCall(
             StreamObserver<SubscribeDataEventRequest> requestObserver,
-            StreamObserver<SubscribeDataEventResponse> responseObserver
+            SubscribeDataEventResponseObserver responseObserver
     ) {
     }
     
@@ -319,8 +319,7 @@ public class IngestionStreamClient extends ServiceApiClientBase {
         }).start();
 
         // wait for response stream to close
-        final SubscribeDataEventResponseObserver responseObserver =
-                (SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        final SubscribeDataEventResponseObserver responseObserver = subscribeDataEventCall.responseObserver();
         responseObserver.awaitCloseLatch();
 
     }
@@ -331,8 +330,7 @@ public class IngestionStreamClient extends ServiceApiClientBase {
         new Thread(subscribeDataEventCall.requestObserver()::onCompleted).start();
 
         // wait for response stream to close
-        final SubscribeDataEventResponseObserver responseObserver =
-                (SubscribeDataEventResponseObserver) subscribeDataEventCall.responseObserver();
+        final SubscribeDataEventResponseObserver responseObserver = subscribeDataEventCall.responseObserver();
         responseObserver.awaitCloseLatch();
     }
 
