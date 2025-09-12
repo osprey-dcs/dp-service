@@ -369,17 +369,29 @@ SourceMonitor.requestCancel() uses a concurrency mechanism to ensure that only a
 
 ### data event monitoring framework
 
-In v1.7, A new Ingestion Stream Service is added to the dp-service repo implementing a data event monitoring prototype with handling for the subscribeDataEvent() API method.  Because the prototype implementation is not complete and will be refactored, only a brief description of the key components of the handling framework is given below.
+In v1.11, A new Ingestion Stream Service is added to the dp-service repo providing a mechanism for data event monitoring via the subscribeDataEvent() API method.  A prototype of this service was built in v1.7 and completed in v1.11.
 
-- ingestionstream package: This new package contains the classes implementing the new Ingestion Stream Service.
-- IngestionStreamGrpcServer: Implements a gRPC server for the Ingestion Stream Service.
-- IngestionStreamServiceImpl: Implements the Ingestion Stream Service API methods, at this point only subscribeDataEvent(), and provides supporting utility methods for building and sending SubscribeDataEventResponse messages in the response stream.
-- IngestionStreamHandlerInterface: Defines the interface required of a handler for use by IngestionStreamServiceImpl to dispatch incoming requests to the handler.
-- IngestionStreamHandler: Concrete implementation of the handler interface using a task queue to service incoming subscription requests and worker threads to process those requests.
-- IngestionStreamHandler: Encapsulates the processing of each SubscribeDataEventRequest, for use in the handler's task queue.  Creates an EventMonitor for the request and adds it to the DataEventSubscriptionManager.
-- EventMonitor: Base class for different types of data event monitors, corresponding to the different data event definition types supported in the SubscribeDataEventRequest. Defines abstract method for handling new data from the subscribeData() API method's response stream.
-- ConditionMonitor: Concrete data event monitor implementation corresponding to the ConditionEventDef message payload in SubscribeDataEventRequest.  Implements the abstract method for handling data from the subscribeData() API method by checking to see if data values satisfy the condition for the monitor by comparing the data value and operand using specified operator.
-- DataEventSubscriptionManager: Manages data event subscriptions and uses the Ingestion Service's subscribeData() API method to receive data from the ingestion stream for PVs used by EventMonitors.  Provides methods for adding and removing EventMonitors, and dispatching incoming data from the subscribeData() API method response stream to the appropriate EventMonitor(s) for handling.
+The classes implementing this service are contained in the new ingestionstream package.  The core set of classes for handling incoming requests follows the familiar patterns used for the majority of API methods. Because a data event subscription is long-lived, in addition to the core classes for handling incoming subscription requests, the handling framework includes an EventMonitor for each subscription and an EventMonitorManager that manages the collection of monitors. The key classes and methods are described below.
+
+**_IngestionStreamGrpcServer_**: Implements a gRPC server for the Ingestion Stream Service by extedning GrpcServerBase.
+
+**_IngestionStreamServiceImpl_**: Implements the Ingestion Stream Service API methods and provides supporting utility methods for building and sending SubscribeDataEventResponse messages in the response stream.  The subscribeDataEvent() method handles an incoming API method request and dispatches the request to the handler for processing.
+
+**_IngestionStreamHandlerInterface_**: Defines the interface for handling incoming Ingestion Stream Service requests.  The interface includes the methods handleSubscribeDataEvent() and terminateEventMonitor().
+
+**_SubscribeDataEventJob_**: Encapsulates the processing of each SubscribeDataEventRequest, for use in the handler's task queue.  The job's execute() method initiates EventMonitor processing for the subscription request.
+
+**_IngestionStreamHandler_**: Provides a concrete implementation of the handler interface using a task queue to service incoming subscription requests and worker threads to process those requests. The handleSubscribeDataEvent() method handles incoming subscription requests by creating an EventMonitor for the subscription, adding it to the EventMonitorManager, creating a SubscribeDataEventJob, and adding it to the handler's task queue.
+
+**_EventMonitor_**: Manages an individual subscription throughout its lifecycle.  
+* Uses a SubscribeDataCallManager to invoke the Ingestion Service subscribeData() method to receive data from the ingestion stream for the subscription's trigger and target PVs. Provides methods to initate and cancel the subscription.
+* Uses a DataBufferManager to buffer data for subscribed target PVs for use in subscriptions specifying a data window time interval with a negative offset from the event trigger time (meaning that we need to send data in the response stream for target PVs from before the event trigger time). Maintains a DataBuffer for each target PV.  Uses a scheduled thread to flush data buffers at a scheduled interval.
+* Uses a TriggeredEventManager to manage data events after they are triggered.  Maintains a queue of active events.  Uses a scheduled thread to expire and clean up events whose time interval duration has passed.
+* Data flows in from the subscribeData() response stream for the subscription's trigger and target PVs.  
+  * If the data is for a trigger PV, the handler checks each incoming data value against the trigger condition to determine if a new event is triggered and if so, adds a new TriggeredEvent to the TriggeredEventManager.
+  * If the data is for a target PV, the incoming data is buffered via the DataBufferManager.  Before flushing buffered data that has reached the maximum buffer age, the DataBufferManager calls EventMonitor.processBufferedData() which iterates through the list of active TriggeredEvents and dispatches the buffered data in the subscription's response stream if the timestamp for the buffered data falls within the TriggeredEvent's time interval.
+
+EventMonitorManager: Manages collection of EventMonitors, including ensuring that each EventMonitor is cleaned up and shutdown when the system is terminated.
 
 ### exporting data
 
