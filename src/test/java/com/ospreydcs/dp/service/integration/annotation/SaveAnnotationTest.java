@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate {
+public class SaveAnnotationTest extends AnnotationIntegrationTestIntermediate {
 
     @Before
     public void setUp() throws Exception {
@@ -22,64 +22,64 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
     }
 
     @Test
-    public void testCreateAnnotationReject() {
+    public void testSaveAnnotationReject() {
 
         {
-            // createAnnotation() negative test - request should be rejected because ownerId is not specified.
+            // saveAnnotatio() negative test - request should be rejected because ownerId is not specified.
 
             final String unspecifiedOwnerId = "";
             final String dataSetId = "abcd1234";
             final String name = "negative test";
-            AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
-            final String expectedRejectMessage = "CreateAnnotationRequest.ownerId must be specified";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                    params, true, expectedRejectMessage);
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(unspecifiedOwnerId, name, List.of(dataSetId));
+            final String expectedRejectMessage = "SaveAnnotationRequest.ownerId must be specified";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, true, expectedRejectMessage);
         }
 
         {
-            // createAnnotation() negative test - request should be rejected because name is not specified.
+            // saveAnnotatio() negative test - request should be rejected because name is not specified.
 
             final String ownerId = "craigmcc";
             final String dataSetId = "abcd1234";
             final String unspecifiedName = "";
-            AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
-            final String expectedRejectMessage = "CreateAnnotationRequest.name must be specified";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                    params, true, expectedRejectMessage);
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, unspecifiedName, List.of(dataSetId));
+            final String expectedRejectMessage = "SaveAnnotationRequest.name must be specified";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, true, expectedRejectMessage);
         }
 
         {
-            // createAnnotation() negative test - request should be rejected because list of dataset ids is empty.
+            // saveAnnotatio() negative test - request should be rejected because list of dataset ids is empty.
 
             final String ownerId = "craigmcc";
             final String emptyDataSetId = "";
             final String name = "negative test";
-            AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, new ArrayList<>());
-            final String expectedRejectMessage = "CreateAnnotationRequest.dataSetIds must not be empty";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                    params, true, expectedRejectMessage);
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, name, new ArrayList<>());
+            final String expectedRejectMessage = "SaveAnnotationRequest.dataSetIds must not be empty";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, true, expectedRejectMessage);
         }
 
         {
-            // createAnnotation() negative test - request should be rejected because specified dataset doesn't exist
+            // saveAnnotatio() negative test - request should be rejected because specified dataset doesn't exist
 
             final String ownerId = "craigmcc";
             final String invalidDataSetId = "junk12345";
             final String name = "negative test";
-            AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(ownerId, name, List.of(invalidDataSetId));
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(ownerId, name, List.of(invalidDataSetId));
             final String expectedRejectMessage = "no DataSetDocument found with id";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                    params, true, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, true, expectedRejectMessage);
         }
 
     }
 
     @Test
-    public void testCreateAnnotationPositive() {
+    public void testSaveAnnotatioPositive() {
 
         final long startSeconds = Instant.now().getEpochSecond();
         final long startNanos = 0L;
@@ -97,7 +97,7 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
                 createDataSetScenarioResult.secondHalfDataSetId());
 
         {
-            // createAnnotation() negative test - request includes an invalid associated annotation id
+            // saveAnnotatio() negative test - request includes an invalid associated annotation id
 
             final String ownerId = "craigmcc";
             final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
@@ -114,9 +114,9 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
                             startSeconds+60,
                             999_000_000L);
 
-            AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            ownerId,
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
                             name,
                             dataSetIds,
                             annotationIds,
@@ -127,8 +127,8 @@ public class CreateAnnotationTest extends AnnotationIntegrationTestIntermediate 
 
             final boolean expectReject = true;
             final String expectedRejectMessage = "no AnnotationDocument found with id: junk12345";
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                    params, expectReject, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, expectReject, expectedRejectMessage);
         }
 
     }

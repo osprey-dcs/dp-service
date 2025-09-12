@@ -3,7 +3,9 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.result.InsertOneResult;
+import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
@@ -11,6 +13,7 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
+import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,27 +55,79 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public MongoInsertOneResult insertDataSet(DataSetDocument dataSetDocument) {
+    public MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId) {
 
-        logger.debug("inserting DataSetDocument to mongo");
+        logger.debug("saving DataSetDocument existingDocumentId: {}", existingDocumentId);
 
-        // set createdAt field for document
-        dataSetDocument.addCreationTime();
-
-        // insert document to mongodb
-        InsertOneResult result = null;
-        boolean isError = false;
-        String errorMsg = "";
-        try {
-            result = mongoCollectionDataSets.insertOne(dataSetDocument);
-        } catch (MongoException ex) {
-            isError = true;
-            errorMsg = "MongoException inserting DataSet: " + ex.getMessage();
-            logger.error(errorMsg);
+        // try to fetch existing document
+        DataSetDocument existingDocument = null;
+        if (!existingDocumentId.isBlank()) {
+            existingDocument = findDataSet(existingDocumentId);
+            if (existingDocument == null) {
+                final String errorMsg = "saveDataSet no DataSetDocument found with id: " + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
         }
 
-        return new MongoInsertOneResult(isError, errorMsg, result);
+        if (existingDocument == null) {
+            // create a new document
+            dataSetDocument.addCreationTime(); // set creation time
+            InsertOneResult insertOneResult = mongoCollectionDataSets.insertOne(dataSetDocument);
 
+            if (!insertOneResult.wasAcknowledged()) {
+                final String errorMsg = "insertOne failed for new DataSetDocument, result not acknowledged";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // check if result contains id inserted
+            if (insertOneResult.getInsertedId() == null) {
+                final String errorMsg = "DataSetDocument insert failed to return document id";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // insert was successful
+            return new MongoSaveResult(
+                    false,
+                    "",
+                    insertOneResult.getInsertedId().asObjectId().getValue().toString(),
+                    true);
+
+        } else {
+            // update existing document
+
+            // use original creation time and add update time
+            dataSetDocument.setCreatedAt(existingDocument.getCreatedAt());
+            dataSetDocument.addUpdatedTime();
+
+            UpdateResult result = null;
+            try {
+                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
+                result = mongoCollectionDataSets.replaceOne(idFilter, dataSetDocument, replaceOptions);
+            } catch (MongoException ex) {
+                final String errorMsg = "MongoException replacing DataSetDocument: " + ex.getMessage();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "replaceOne not acknowledged for existing DataSetDocument id: "
+                        + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (result.getModifiedCount() != 1) {
+                final String errorMsg = "replaceOne DataSetDocument unexpected modified count: " + result.getModifiedCount();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            return new MongoSaveResult(false, "", existingDocumentId, false);
+        }
     }
 
     @Override
@@ -185,26 +240,80 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
      }
 
     @Override
-    public MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument) {
+    public MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String existingDocumentId) {
 
-        logger.debug("inserting AnnotationDocument id: {}", annotationDocument.getId());
+        logger.debug("saving AnnotationDocument existingDocumentId: {}", existingDocumentId);
 
-        // set createdAt field for document
-        annotationDocument.addCreationTime();
-
-        // insert AnnotationDocument to mongodb
-        InsertOneResult result = null;
-        boolean isError = false;
-        String errorMsg = "";
-        try {
-            result = mongoCollectionAnnotations.insertOne(annotationDocument);
-        } catch (MongoException ex) {
-            isError = true;
-            errorMsg = "MongoException inserting AnnotationDocument: " + ex.getMessage();
-            logger.error(errorMsg);
+        // try to fetch existing document
+        AnnotationDocument existingDocument = null;
+        if (!existingDocumentId.isBlank()) {
+            existingDocument = findAnnotation(existingDocumentId);
+            if (existingDocument == null) {
+                final String errorMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
         }
 
-        return new MongoInsertOneResult(isError, errorMsg, result);
+        if (existingDocument == null) {
+            // create a new document
+            annotationDocument.addCreationTime(); // set creation time
+            InsertOneResult insertOneResult = mongoCollectionAnnotations.insertOne(annotationDocument);
+
+            if (!insertOneResult.wasAcknowledged()) {
+                final String errorMsg = "insertOne failed for new AnnotationDocument, result not acknowledged";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // check if result contains id inserted
+            if (insertOneResult.getInsertedId() == null) {
+                final String errorMsg = "AnnotationDocument insert failed to return document id";
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, null, true);
+            }
+
+            // insert was successful
+            return new MongoSaveResult(
+                    false,
+                    "",
+                    insertOneResult.getInsertedId().asObjectId().getValue().toString(),
+                    true);
+
+        } else {
+            // update existing document
+
+            // use original creation time and add update time
+            annotationDocument.setCreatedAt(existingDocument.getCreatedAt());
+            annotationDocument.addUpdatedTime();
+
+            UpdateResult result = null;
+            try {
+                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
+                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument, replaceOptions);
+            } catch (MongoException ex) {
+                final String errorMsg = "MongoException replacing AnnotationDocument: " + ex.getMessage();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "replaceOne not acknowledged for existing AnnotationDocument id: "
+                        + existingDocumentId;
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            if (result.getModifiedCount() != 1) {
+                final String errorMsg =
+                        "replaceOne AnnotationDocument unexpected modified count: " + result.getModifiedCount();
+                logger.error(errorMsg);
+                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            }
+
+            return new MongoSaveResult(false, "", existingDocumentId, false);
+        }
     }
 
     @Override

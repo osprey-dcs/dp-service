@@ -56,7 +56,7 @@ public class DataSetDocument extends DpBsonDocumentBase {
         this.dataBlocks = dataBlocks;
     }
 
-    public static DataSetDocument fromCreateRequest(CreateDataSetRequest request) {
+    public static DataSetDocument fromSaveRequest(SaveDataSetRequest request) {
 
         DataSetDocument document = new DataSetDocument();
 
@@ -92,7 +92,7 @@ public class DataSetDocument extends DpBsonDocumentBase {
         return dataSetBuilder.build();
     }
 
-    public List<String> diffRequest(CreateDataSetRequest request) {
+    public List<String> diffRequest(SaveDataSetRequest request) {
 
         final List<String> diffs = new ArrayList<>();
         

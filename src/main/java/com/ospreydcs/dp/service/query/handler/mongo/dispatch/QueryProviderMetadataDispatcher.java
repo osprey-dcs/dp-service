@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataResponse;
+import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -29,6 +30,31 @@ public class QueryProviderMetadataDispatcher extends Dispatcher {
         this.responseObserver = responseObserver;
     }
 
+    public static ProviderMetadata providerMetadataFromDocument(
+            ProviderMetadataQueryResultDocument providerMetadataDocument
+    ) {
+        final ProviderMetadata.Builder providerMetadataBuilder =
+                ProviderMetadata.newBuilder();
+
+        providerMetadataBuilder.setId(providerMetadataDocument.getId());
+
+        providerMetadataBuilder.addAllPvNames(providerMetadataDocument.getPvNames());
+
+        final Instant firstTimeInstant = providerMetadataDocument.getFirstBucketTimestamp().toInstant();
+        providerMetadataBuilder.setFirstBucketTime(
+                TimestampUtility.timestampFromSeconds(
+                        firstTimeInstant.getEpochSecond(), firstTimeInstant.getNano()));
+
+        final Instant lastTimeInstant = providerMetadataDocument.getLastBucketTimestamp().toInstant();
+        providerMetadataBuilder.setLastBucketTime(
+                TimestampUtility.timestampFromSeconds(
+                        lastTimeInstant.getEpochSecond(), lastTimeInstant.getNano()));
+
+        providerMetadataBuilder.setNumBuckets(providerMetadataDocument.getNumBuckets());
+
+        return providerMetadataBuilder.build();
+    }
+
     public void handleResult(MongoCursor<ProviderMetadataQueryResultDocument> cursor) {
 
         // validate cursor
@@ -44,29 +70,9 @@ public class QueryProviderMetadataDispatcher extends Dispatcher {
                 QueryProviderMetadataResponse.MetadataResult.newBuilder();
 
         while (cursor.hasNext()) {
-            // add grpc object for each document in cursor
-
+            // add protobuf object for each document in result cursor
             final ProviderMetadataQueryResultDocument providerMetadataDocument = cursor.next();
-
-            final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.Builder providerMetadataBuilder =
-                    QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.newBuilder();
-
-            providerMetadataBuilder.setId(providerMetadataDocument.getId());
-            
-            providerMetadataBuilder.addAllPvNames(providerMetadataDocument.getPvNames());
-            
-            final Instant firstTimeInstant = providerMetadataDocument.getFirstBucketTimestamp().toInstant();
-            providerMetadataBuilder.setFirstBucketTime(
-                    TimestampUtility.timestampFromSeconds(
-                            firstTimeInstant.getEpochSecond(), firstTimeInstant.getNano()));
-            
-            final Instant lastTimeInstant = providerMetadataDocument.getLastBucketTimestamp().toInstant();
-            providerMetadataBuilder.setLastBucketTime(
-                    TimestampUtility.timestampFromSeconds(
-                            lastTimeInstant.getEpochSecond(), lastTimeInstant.getNano()));
-            
-            providerMetadataBuilder.setNumBuckets(providerMetadataDocument.getNumBuckets());
-            providerMetadataResultBuilder.addProviderMetadatas(providerMetadataBuilder.build());
+            providerMetadataResultBuilder.addProviderMetadatas(providerMetadataFromDocument(providerMetadataDocument));
         }
         
         // send response and close response stream

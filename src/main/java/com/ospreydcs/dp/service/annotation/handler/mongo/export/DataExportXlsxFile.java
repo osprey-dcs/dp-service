@@ -7,7 +7,7 @@ import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
 import java.util.List;
@@ -22,41 +22,51 @@ public class DataExportXlsxFile implements TabularDataExportFileInterface {
 
     // instance variables
     private final String filePathString;
-    private final SXSSFWorkbook workbook;
+    private final XSSFWorkbook workbook;
     private final Sheet dataSheet;
     private final CreationHelper creationHelper;
     private int currentDataRowIndex = 1;
 
     public DataExportXlsxFile(DataSetDocument dataSet, String filePathString) throws DpException {
         this.filePathString = filePathString;
-        this.workbook = new SXSSFWorkbook(1);
+        this.workbook = new XSSFWorkbook(); // Use non-streaming workbook for better reliability
         this.dataSheet = workbook.createSheet(SHEET_NAME_DATA);
         this.creationHelper = workbook.getCreationHelper();
     }
 
     @Override
     public void writeHeaderRow(List<String> headers) throws DpException {
-        final Row headerRot = dataSheet.createRow(0);
+        if (headers == null || headers.isEmpty()) {
+            throw new DpException("Headers list cannot be null or empty");
+        }
+        final Row headerRow = dataSheet.createRow(0);
         for (int i = 0; i < headers.size(); i++) {
-            final Cell cell = headerRot.createCell(i);
-            cell.setCellValue(headers.get(i));
+            final Cell cell = headerRow.createCell(i);
+            String headerValue = headers.get(i);
+            cell.setCellValue(headerValue != null ? headerValue : "");
         }
     }
 
     private void setCellValue(Cell fileDataCell, DataValue dataValue) {
+        if (fileDataCell == null || dataValue == null) {
+            return; // Skip null cells or values
+        }
 
         switch (dataValue.getValueCase()) {
             case STRINGVALUE -> {
-                fileDataCell.setCellValue(dataValue.getStringValue());
+                String strValue = dataValue.getStringValue();
+                fileDataCell.setCellValue(strValue != null ? strValue : "");
             }
             case BOOLEANVALUE -> {
                 fileDataCell.setCellValue(dataValue.getBooleanValue());
             }
             case UINTVALUE -> {
-                fileDataCell.setCellValue(dataValue.getUintValue());
+                // Convert unsigned int to double to avoid Excel issues with large unsigned values
+                fileDataCell.setCellValue((double) dataValue.getUintValue());
             }
             case ULONGVALUE -> {
-                fileDataCell.setCellValue(dataValue.getLongValue());
+                // Convert unsigned long to double to avoid Excel issues with large unsigned values
+                fileDataCell.setCellValue((double) dataValue.getUlongValue());
             }
             case INTVALUE -> {
                 fileDataCell.setCellValue(dataValue.getIntValue());
@@ -90,6 +100,10 @@ public class DataExportXlsxFile implements TabularDataExportFileInterface {
 
     @Override
     public void writeData(TimestampDataMap timestampDataMap) throws DpException {
+        if (timestampDataMap == null) {
+            logger.warn("TimestampDataMap is null, skipping data write");
+            return;
+        }
         final TimestampDataMap.DataRowIterator dataRowIterator = timestampDataMap.dataRowIterator();
         while (dataRowIterator.hasNext()) {
             final TimestampDataMap.DataRow sourceDataRow = dataRowIterator.next();
@@ -109,15 +123,22 @@ public class DataExportXlsxFile implements TabularDataExportFileInterface {
 
     @Override
     public void close() throws DpException {
-        try {
-            final FileOutputStream fileOutputStream = new FileOutputStream(new File(filePathString));
+        try (FileOutputStream fileOutputStream = new FileOutputStream(new File(filePathString))) {
             this.workbook.write(fileOutputStream);
             fileOutputStream.flush();
-            fileOutputStream.close();
-            this.workbook.dispose();
+            logger.debug("wrote excel workbook to: " + filePathString);
         } catch (IOException e) {
-            logger.error("IOException writing and closing excel file: " + e.getMessage());
+            logger.error("IOException writing excel file: " + e.getMessage());
             throw new DpException(e);
+        } finally {
+            // Close the workbook (XSSFWorkbook doesn't need dispose())
+            try {
+                this.workbook.close();
+                logger.debug("closed excel workbook for: " + filePathString);
+            } catch (IOException e) {
+                logger.error("IOException closing workbook: " + e.getMessage());
+                throw new DpException(e);
+            }
         }
     }
 }

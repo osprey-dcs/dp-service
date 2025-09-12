@@ -37,8 +37,6 @@ public class IngestionStreamValidationUtility {
                         "SubscribeDataEventRequest PvConditionTrigger.condition must be specified");
             }
 
-            // TODO: how to validate that specified pvName is valid
-
             // TODO: how to validate that PvConditionTrigger value is appropriate for specified pvName and condition,
             // given that we don't know type of pvName
         }

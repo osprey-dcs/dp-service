@@ -1,11 +1,11 @@
 package com.ospreydcs.dp.service.ingest.benchmark;
 
+import com.ospreydcs.dp.client.IngestionClient;
 import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
-import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -433,15 +433,15 @@ public abstract class IngestionBenchmarkBase {
     private String registerProvider(String providerName, Channel channel) {
 
         // build register provider params
-        final RegisterProviderUtility.RegisterProviderRequestParams params
-                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, null);
+        final IngestionClient.RegisterProviderRequestParams params
+                = new IngestionClient.RegisterProviderRequestParams(providerName, null);
 
         // build register provider request
-        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+        final RegisterProviderRequest request = IngestionClient.buildRegisterProviderRequest(params);
 
         // create response observer
-        final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
-                new RegisterProviderUtility.RegisterProviderResponseObserver();
+        final IngestionClient.RegisterProviderResponseObserver responseObserver =
+                new IngestionClient.RegisterProviderResponseObserver();
 
         // send api request
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =

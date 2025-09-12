@@ -273,6 +273,4 @@ public class IngestionStreamTestBase {
                 .build();
     }
 
-
-
 }

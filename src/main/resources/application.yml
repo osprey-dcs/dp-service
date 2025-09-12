@@ -62,6 +62,12 @@ IngestionHandler:
   # This parameter might take some tuning on deployments to get the best performance.
   numWorkers: 7
 
+  SourceMonitor:
+
+    # IngestionHandler.SourceMonitor.validatePvs: True if the handler should check that subscribed PVs exist in the
+    # archive, false otherwise.
+    validatePvs: true
+
 # IngestionBenchmark: Settings for the Ingestion Service performance benchmark application.
 IngestionBenchmark:
 

@@ -21,16 +21,16 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
     protected record CreateDataSetScenarioResult(
             String firstHalfDataSetId,
             String secondHalfDataSetId,
-            AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams,
-            AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams) {
+            AnnotationTestBase.SaveDataSetParams firstHalfDataSetParams,
+            AnnotationTestBase.SaveDataSetParams secondHalfDataSetParams) {
     }
 
     protected record CreateAnnotationScenarioResult(
-            List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
-            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations,
-            List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByIdResultAnnotations,
+            List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByNameAnnotations,
             List<String> secondHalfAnnotationIds, String annotationIdOwnerCraigmccComment1,
-            AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams) {
+            AnnotationTestBase.SaveAnnotationRequestParams annotationWithAllFieldsParams) {
     }
 
     @Before
@@ -148,8 +148,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
 
         String firstHalfDataSetId;
         String secondHalfDataSetId;
-        AnnotationTestBase.CreateDataSetParams firstHalfDataSetParams;
-        AnnotationTestBase.CreateDataSetParams secondHalfDataSetParams;
+        AnnotationTestBase.SaveDataSetParams firstHalfDataSetParams;
+        AnnotationTestBase.SaveDataSetParams secondHalfDataSetParams;
         {
             /*
              * createDataSet() positive test using pvNames that exist in archive from ingestion scenario above.
@@ -193,11 +193,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             final String firstHalfDescription = "first half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet firstHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(
-                            firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
+                            null, firstHalfName, ownerId, firstHalfDescription, firstHalfDataBlocks);
             firstHalfDataSetParams =
-                    new AnnotationTestBase.CreateDataSetParams(firstHalfDataSet);
+                    new AnnotationTestBase.SaveDataSetParams(firstHalfDataSet);
             firstHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifyCreateDataSet(firstHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(firstHalfDataSetParams, false, false, "");
             System.out.println("created first half dataset with id: " + firstHalfDataSetId);
 
             // create data set with second half-second blocks
@@ -205,11 +205,11 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             final String secondHalfDescription = "second half-second data blocks";
             final AnnotationTestBase.AnnotationDataSet secondHalfDataSet =
                     new AnnotationTestBase.AnnotationDataSet(
-                            secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
+                            null, secondHalfName, ownerId, secondHalfDescription, secondHalfDataBlocks);
             secondHalfDataSetParams =
-                    new AnnotationTestBase.CreateDataSetParams(secondHalfDataSet);
+                    new AnnotationTestBase.SaveDataSetParams(secondHalfDataSet);
             secondHalfDataSetId =
-                    annotationServiceWrapper.sendAndVerifyCreateDataSet(secondHalfDataSetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(secondHalfDataSetParams, false, false, "");
             System.out.println("created second half dataset with id: " + secondHalfDataSetId);
         }
 
@@ -231,12 +231,12 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
         }
         final long startNanos = 0L;
         
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
-        final List<AnnotationTestBase.CreateAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> firstHalfAnnotationsOwnerCraigmcc = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByIdResultAnnotations = new ArrayList<>();
+        final List<AnnotationTestBase.SaveAnnotationRequestParams> expectedQueryByNameAnnotations = new ArrayList<>();
         final List<String> secondHalfAnnotationIds = new ArrayList<>();
         String annotationIdOwnerCraigmccComment1 = "";
-        AnnotationTestBase.CreateAnnotationRequestParams annotationWithAllFieldsParams = null;
+        AnnotationTestBase.SaveAnnotationRequestParams annotationWithAllFieldsParams = null;
         {
             /*
              * createAnnotation() positive test
@@ -267,9 +267,9 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     // create annotation for first half data set
                     final String firstHalfComment = firstHalfBase + commentNumber;
                     final String firstHalfName = firstHalfComment;
-                    AnnotationTestBase.CreateAnnotationRequestParams firstHalfParams =
-                            new AnnotationTestBase.CreateAnnotationRequestParams(
-                                    owner,
+                    AnnotationTestBase.SaveAnnotationRequestParams firstHalfParams =
+                            new AnnotationTestBase.SaveAnnotationRequestParams(
+                                    null, owner,
                                     firstHalfName,
                                     List.of(firstHalfDataSetId),
                                     null,
@@ -278,8 +278,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     attributeMap,
                                     eventMetadataParams,
                                     null);
-                    final String createdAnnotationId = annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                            firstHalfParams, false, "");
+                    final String createdAnnotationId = annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                            firstHalfParams, false, false, "");
                     expectedQueryByNameAnnotations.add(firstHalfParams);
                     if (owner.equals("craigmcc")) {
                         firstHalfAnnotationsOwnerCraigmcc.add(firstHalfParams);
@@ -292,9 +292,9 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                     // create annotation for second half data set
                     final String secondHalfComment = secondHalfBase + commentNumber;
                     final String secondHalfName = secondHalfComment;
-                    AnnotationTestBase.CreateAnnotationRequestParams secondHalfParams =
-                            new AnnotationTestBase.CreateAnnotationRequestParams(
-                                    owner,
+                    AnnotationTestBase.SaveAnnotationRequestParams secondHalfParams =
+                            new AnnotationTestBase.SaveAnnotationRequestParams(
+                                    null, owner,
                                     secondHalfName,
                                     List.of(secondHalfDataSetId),
                                     null,
@@ -304,8 +304,8 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                                     null,
                                     null);
                     secondHalfAnnotationIds.add(
-                            annotationServiceWrapper.sendAndVerifyCreateAnnotation(
-                                    secondHalfParams, false, ""));
+                            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                                    secondHalfParams, false, false, ""));
                 }
             }
         }
@@ -328,9 +328,9 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
                             startSeconds+60,
                             999_000_000L);
 
-            final AnnotationTestBase.CreateAnnotationRequestParams params =
-                    new AnnotationTestBase.CreateAnnotationRequestParams(
-                            ownerId,
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
                             name,
                             dataSetIds,
                             annotationIds,
@@ -341,7 +341,7 @@ public class AnnotationIntegrationTestIntermediate extends GrpcIntegrationTestBa
             annotationWithAllFieldsParams = params;
 
             final String expectedRejectMessage = null;
-            annotationServiceWrapper.sendAndVerifyCreateAnnotation(params, false, expectedRejectMessage);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, expectedRejectMessage);
         }
 
         return new CreateAnnotationScenarioResult(

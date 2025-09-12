@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.ingest;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.ospreydcs.dp.client.IngestionClient;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
@@ -14,7 +15,6 @@ import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
-import com.ospreydcs.dp.service.ingest.utility.RegisterProviderUtility;
 import com.ospreydcs.dp.service.ingest.utility.SubscribeDataUtility;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import io.grpc.ManagedChannel;
@@ -183,13 +183,15 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
     }
 
     protected RegisterProviderResponse sendRegsiterProvider(
-            RegisterProviderRequest request
+            RegisterProviderRequest request,
+            boolean expectReject,
+            String expectedErrorMessage
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(channel);
 
-        final RegisterProviderUtility.RegisterProviderResponseObserver responseObserver =
-                new RegisterProviderUtility.RegisterProviderResponseObserver();
+        final IngestionClient.RegisterProviderResponseObserver responseObserver =
+                new IngestionClient.RegisterProviderResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
@@ -200,14 +202,16 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            fail("responseObserver error: " + responseObserver.getErrorMessage());
+            assertTrue(expectReject);
+            assertTrue(responseObserver.getErrorMessage().contains(expectedErrorMessage));
+            return null;
         }
 
         return responseObserver.getResponseList().get(0);
     }
 
     public String sendAndVerifyRegisterProvider(
-            RegisterProviderUtility.RegisterProviderRequestParams params,
+            IngestionClient.RegisterProviderRequestParams params,
             boolean expectExceptionalResponse,
             ExceptionalResult.ExceptionalResultStatus expectedExceptionStatus,
             String expectedExceptionMessage,
@@ -215,17 +219,13 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
             String expectedProviderId
     ) {
         // build request
-        final RegisterProviderRequest request = RegisterProviderUtility.buildRegisterProviderRequest(params);
+        final RegisterProviderRequest request = IngestionClient.buildRegisterProviderRequest(params);
 
         // send API request
-        final RegisterProviderResponse response = sendRegsiterProvider(request);
+        final RegisterProviderResponse response = sendRegsiterProvider(request, expectExceptionalResponse, expectedExceptionMessage);
 
         // verify exceptional response
         if (expectExceptionalResponse) {
-            assertTrue(response.hasExceptionalResult());
-            final ExceptionalResult exceptionalResult = response.getExceptionalResult();
-            assertEquals(expectedExceptionStatus, exceptionalResult.getExceptionalResultStatus());
-            assertTrue(exceptionalResult.getMessage().contains(expectedExceptionMessage));
             return null;
         }
 
@@ -261,7 +261,7 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         return providerId;
     }
 
-    protected String registerProvider(RegisterProviderUtility.RegisterProviderRequestParams params) {
+    protected String registerProvider(IngestionClient.RegisterProviderRequestParams params) {
 
         // send and verify register provider API request
         final boolean expectExceptionalResponse = false;
@@ -284,8 +284,8 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
     public String registerProvider(String providerName, Map<String, String> attributeMap) {
 
         // create register provider params
-        final RegisterProviderUtility.RegisterProviderRequestParams params
-                = new RegisterProviderUtility.RegisterProviderRequestParams(providerName, attributeMap);
+        final IngestionClient.RegisterProviderRequestParams params
+                = new IngestionClient.RegisterProviderRequestParams(providerName, attributeMap);
 
         return registerProvider(params);
     }

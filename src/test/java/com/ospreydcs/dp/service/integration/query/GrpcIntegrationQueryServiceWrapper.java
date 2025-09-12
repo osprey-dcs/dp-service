@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
@@ -897,7 +898,7 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
         }
     }
 
-    private List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> sendQueryProviderMetadata(
+    private List<ProviderMetadata> sendQueryProviderMetadata(
             QueryProviderMetadataRequest request,
             boolean expectReject,
             String expectedRejectMessage
@@ -935,7 +936,7 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
 
         final QueryProviderMetadataRequest request = QueryTestBase.buildQueryProviderMetadataRequest(providerId);
 
-        final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
+        final List<ProviderMetadata> providerMetadataList =
                 sendQueryProviderMetadata(request, expectReject, expectedRejectMessage);
 
         if (expectReject || numMatchesExpected == 0) {
@@ -945,7 +946,7 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
 
         // verify results, check that there is a ColumnInfo for each column in the query
         assertEquals(numMatchesExpected, providerMetadataList.size());
-        final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata responseProviderMetadata =
+        final ProviderMetadata responseProviderMetadata =
                 providerMetadataList.get(0);
         assertEquals(providerId, responseProviderMetadata.getId());
         assertEquals(providerInfo.numBuckets(), responseProviderMetadata.getNumBuckets());
