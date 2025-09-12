@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
+import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 
 public interface MongoAnnotationClientInterface {
 
@@ -15,13 +16,13 @@ public interface MongoAnnotationClientInterface {
 
     DataSetDocument findDataSet(String dataSetId);
 
-    MongoInsertOneResult insertDataSet(DataSetDocument dataSetDocument);
+    MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId);
 
     MongoCursor<DataSetDocument> executeQueryDataSets(QueryDataSetsRequest request);
 
     AnnotationDocument findAnnotation(String annotationId);
 
-    MongoInsertOneResult insertAnnotation(AnnotationDocument annotationDocument);
+    MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String id);
 
     MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
 

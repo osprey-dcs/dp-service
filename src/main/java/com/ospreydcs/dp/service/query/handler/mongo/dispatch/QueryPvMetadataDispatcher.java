@@ -101,6 +101,10 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
             lastTimeBuilder.build();
             pvInfoBuilder.setLastDataTimestamp(lastTimeBuilder);
 
+            // set provider details
+            pvInfoBuilder.setLastProviderId(metadataDocument.getLastProviderId());
+            pvInfoBuilder.setLastProviderName(metadataDocument.getLastProviderName());
+
             pvInfoBuilder.build();
             metadataResultBuilder.addPvInfos(pvInfoBuilder);
         }

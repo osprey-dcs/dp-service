@@ -16,6 +16,8 @@ public class PvMetadataQueryResultDocument {
     private Date firstDataTimestamp;
     private Date lastDataTimestamp;
     private int numBuckets;
+    private String lastProviderId;
+    private String lastProviderName;
 
     public String getPvName() {
         return pvName;
@@ -105,4 +107,19 @@ public class PvMetadataQueryResultDocument {
         this.numBuckets = numBuckets;
     }
 
+    public String getLastProviderId() {
+        return lastProviderId;
+    }
+
+    public void setLastProviderId(String lastProviderId) {
+        this.lastProviderId = lastProviderId;
+    }
+
+    public String getLastProviderName() {
+        return lastProviderName;
+    }
+
+    public void setLastProviderName(String lastProviderName) {
+        this.lastProviderName = lastProviderName;
+    }
 }

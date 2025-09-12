@@ -648,7 +648,7 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
 
         // create dataset for large export test
         String datasetId = null;
-        AnnotationTestBase.CreateDataSetParams datasetParams = null;
+        AnnotationTestBase.SaveDataSetParams datasetParams = null;
         int pvCount = 0;
         {
             // create list with single data block specifying data to be exported
@@ -670,11 +670,11 @@ public class BenchmarkIntegrationTest extends GrpcIntegrationTestBase {
             final String datasetDescription = "large dataset export test";
             final AnnotationTestBase.AnnotationDataSet dataset =
                     new AnnotationTestBase.AnnotationDataSet(
-                            datasetName, ownerId, datasetDescription, dataBlocks);
+                            null, datasetName, ownerId, datasetDescription, dataBlocks);
             datasetParams =
-                    new AnnotationTestBase.CreateDataSetParams(dataset);
+                    new AnnotationTestBase.SaveDataSetParams(dataset);
             datasetId =
-                    annotationServiceWrapper.sendAndVerifyCreateDataSet(datasetParams, false, "");
+                    annotationServiceWrapper.sendAndVerifySaveDataSet(datasetParams, false, false, "");
             System.out.println("created export dataset with id: " + datasetId);
         }
 

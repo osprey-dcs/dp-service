@@ -61,26 +61,26 @@ public class AnnotationValidationUtility {
         return new ResultStatus(false, "");
     }
 
-    public static ResultStatus validateCreateAnnotationRequest(CreateAnnotationRequest request) {
+    public static ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) {
 
         // owner must be specified
         final String requestOwnerId = request.getOwnerId();
         if (requestOwnerId.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest.ownerId must be specified";
+            final String errorMsg = "SaveAnnotationRequest.ownerId must be specified";
             return new ResultStatus(true, errorMsg);
         }
 
         // check that list of datasetIds is not empty but don't validate corresponding datasets exist,
         // that will be done by the handler job
         if (request.getDataSetIdsList().isEmpty()) {
-            final String errorMsg = "CreateAnnotationRequest.dataSetIds must not be empty";
+            final String errorMsg = "SaveAnnotationRequest.dataSetIds must not be empty";
             return new ResultStatus(true, errorMsg);
         }
 
         // name must be specified
         final String name = request.getName();
         if (name.isBlank()) {
-            final String errorMsg = "CreateAnnotationRequest.name must be specified";
+            final String errorMsg = "SaveAnnotationRequest.name must be specified";
             return new ResultStatus(true, errorMsg);
         }
 
@@ -89,7 +89,7 @@ public class AnnotationValidationUtility {
 
             // check that list of frames is non-empty
             if (request.getCalculations().getCalculationDataFramesList().isEmpty()) {
-                final String errorMsg = "CreateAnnotationRequest.calculations.calculationDataFrames must not be empty";
+                final String errorMsg = "SaveAnnotationRequest.calculations.calculationDataFrames must not be empty";
                 return new ResultStatus(true, errorMsg);
             }
 

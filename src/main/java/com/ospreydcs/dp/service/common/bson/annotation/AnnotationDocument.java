@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
-import com.ospreydcs.dp.grpc.v1.annotation.CreateAnnotationRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.EventMetadata;
@@ -82,8 +82,8 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         this.calculationsId = calculationsId;
     }
 
-    public static AnnotationDocument fromCreateAnnotationRequest(
-            final CreateAnnotationRequest request,
+    public static AnnotationDocument fromSaveAnnotationRequest(
+            final SaveAnnotationRequest request,
             String calculationsDocumentId
     ) {
         final AnnotationDocument document = new AnnotationDocument();
@@ -162,7 +162,7 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         return annotationBuilder.build();
     }
 
-    public List<String> diffCreateAnnotationRequest(final CreateAnnotationRequest request) {
+    public List<String> diffSaveAnnotationRequest(final SaveAnnotationRequest request) {
 
         final List<String> diffs = new ArrayList<>();
 

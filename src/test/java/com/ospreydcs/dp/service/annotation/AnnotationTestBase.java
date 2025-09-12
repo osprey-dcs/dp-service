@@ -35,16 +35,17 @@ public class AnnotationTestBase {
     }
 
     public record AnnotationDataSet(
+            String id,
             String name,
             String ownerId,
             String description,
             List<AnnotationDataBlock> dataBlocks) {
     }
 
-    public record CreateDataSetParams(AnnotationDataSet dataSet) {
+    public record SaveDataSetParams(AnnotationDataSet dataSet) {
     }
 
-    public static class CreateDataSetResponseObserver implements StreamObserver<CreateDataSetResponse> {
+    public static class SaveDataSetResponseObserver implements StreamObserver<SaveDataSetResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -82,7 +83,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(CreateDataSetResponse response) {
+        public void onNext(SaveDataSetResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -98,8 +99,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasCreateDataSetResult());
-                final CreateDataSetResponse.CreateDataSetResult result = response.getCreateDataSetResult();
+                assertTrue(response.hasSaveDataSetResult());
+                final SaveDataSetResponse.SaveDataSetResult result = response.getSaveDataSetResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -249,8 +250,9 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class CreateAnnotationRequestParams {
+    public static class SaveAnnotationRequestParams {
 
+        public final String id;
         public final String ownerId;
         public final List<String> dataSetIds;
         public final String name;
@@ -261,7 +263,8 @@ public class AnnotationTestBase {
         public final EventMetadataUtility.EventMetadataParams eventMetadataParams;
         public final Calculations calculations;
 
-        public CreateAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
+        public SaveAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
+            this.id = null;
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
             this.name = name;
@@ -273,7 +276,8 @@ public class AnnotationTestBase {
             this.calculations = null;
         }
 
-        public CreateAnnotationRequestParams(
+        public SaveAnnotationRequestParams(
+                String id,
                 String ownerId,
                 String name,
                 List<String> dataSetIds,
@@ -284,6 +288,7 @@ public class AnnotationTestBase {
                 EventMetadataUtility.EventMetadataParams eventMetadataParams,
                 Calculations calculations
         ) {
+            this.id = id;
             this.ownerId = ownerId;
             this.dataSetIds = dataSetIds;
             this.name = name;
@@ -296,7 +301,7 @@ public class AnnotationTestBase {
         }
     }
 
-    public static class CreateAnnotationResponseObserver implements StreamObserver<CreateAnnotationResponse> {
+    public static class SaveAnnotationResponseObserver implements StreamObserver<SaveAnnotationResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -334,7 +339,7 @@ public class AnnotationTestBase {
         }
 
         @Override
-        public void onNext(CreateAnnotationResponse response) {
+        public void onNext(SaveAnnotationResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -350,8 +355,8 @@ public class AnnotationTestBase {
                     return;
                 }
 
-                assertTrue(response.hasCreateAnnotationResult());
-                final CreateAnnotationResponse.CreateAnnotationResult result = response.getCreateAnnotationResult();
+                assertTrue(response.hasSaveAnnotationResult());
+                final SaveAnnotationResponse.SaveAnnotationResult result = response.getSaveAnnotationResult();
                 assertNotNull(result);
 
                 // flag error if already received a response
@@ -613,7 +618,7 @@ public class AnnotationTestBase {
         }
     }
 
-    public static CreateDataSetRequest buildCreateDataSetRequest(CreateDataSetParams params) {
+    public static SaveDataSetRequest buildSaveDataSetRequest(SaveDataSetParams params) {
 
         com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
                 = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
@@ -638,13 +643,17 @@ public class AnnotationTestBase {
             dataSetBuilder.addDataBlocks(dataBlockBuilder);
         }
 
+        if (params.dataSet.id != null) {
+            dataSetBuilder.setId(params.dataSet.id);
+        }
+
         dataSetBuilder.setName(params.dataSet.name);
         dataSetBuilder.setDescription(params.dataSet.description);
         dataSetBuilder.setOwnerId(params.dataSet.ownerId);
 
         dataSetBuilder.build();
 
-        CreateDataSetRequest.Builder requestBuilder = CreateDataSetRequest.newBuilder();
+        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
         requestBuilder.setDataSet(dataSetBuilder);
 
         return requestBuilder.build();
@@ -710,9 +719,13 @@ public class AnnotationTestBase {
         return requestBuilder.build();
     }
 
-    public static CreateAnnotationRequest buildCreateAnnotationRequest(CreateAnnotationRequestParams params) {
+    public static SaveAnnotationRequest buildSaveAnnotationRequest(SaveAnnotationRequestParams params) {
 
-        CreateAnnotationRequest.Builder requestBuilder = CreateAnnotationRequest.newBuilder();
+        SaveAnnotationRequest.Builder requestBuilder = SaveAnnotationRequest.newBuilder();
+
+        if (params.id != null) {
+            requestBuilder.setId(params.id);
+        }
 
         // handle required annotation fields
         requestBuilder.setOwnerId(params.ownerId);

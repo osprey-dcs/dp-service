@@ -183,7 +183,9 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
     }
 
     protected RegisterProviderResponse sendRegsiterProvider(
-            RegisterProviderRequest request
+            RegisterProviderRequest request,
+            boolean expectReject,
+            String expectedErrorMessage
     ) {
         final DpIngestionServiceGrpc.DpIngestionServiceStub asyncStub =
                 DpIngestionServiceGrpc.newStub(channel);
@@ -200,7 +202,9 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            fail("responseObserver error: " + responseObserver.getErrorMessage());
+            assertTrue(expectReject);
+            assertTrue(responseObserver.getErrorMessage().contains(expectedErrorMessage));
+            return null;
         }
 
         return responseObserver.getResponseList().get(0);
@@ -218,14 +222,10 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         final RegisterProviderRequest request = IngestionClient.buildRegisterProviderRequest(params);
 
         // send API request
-        final RegisterProviderResponse response = sendRegsiterProvider(request);
+        final RegisterProviderResponse response = sendRegsiterProvider(request, expectExceptionalResponse, expectedExceptionMessage);
 
         // verify exceptional response
         if (expectExceptionalResponse) {
-            assertTrue(response.hasExceptionalResult());
-            final ExceptionalResult exceptionalResult = response.getExceptionalResult();
-            assertEquals(expectedExceptionStatus, exceptionalResult.getExceptionalResultStatus());
-            assertTrue(exceptionalResult.getMessage().contains(expectedExceptionMessage));
             return null;
         }
 

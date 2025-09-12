@@ -1,12 +1,9 @@
 package com.ospreydcs.dp.service.common.bson;
 
+import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
 import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import org.bson.types.ObjectId;
-
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
 
 public class ProviderDocument extends DpBsonDocumentBase {
 
@@ -42,16 +39,34 @@ public class ProviderDocument extends DpBsonDocumentBase {
         this.description = description;
     }
 
-    public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo() {
+    public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo(ProviderMetadata providerMetadata) {
 
         QueryProvidersResponse.ProvidersResult.ProviderInfo.Builder providerInfoBuilder =
                 QueryProvidersResponse.ProvidersResult.ProviderInfo.newBuilder();
 
-        providerInfoBuilder.setId(this.getId().toString());
-        providerInfoBuilder.setName(this.getName());
-        providerInfoBuilder.setDescription(this.getDescription());
-        providerInfoBuilder.addAllTags(this.getTags());
-        providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        if (this.getId() != null) {
+            providerInfoBuilder.setId(this.getId().toString());
+        }
+
+        if (this.getName() != null) {
+            providerInfoBuilder.setName(this.getName());
+        }
+
+        if (this.getDescription() != null) {
+            providerInfoBuilder.setDescription(this.getDescription());
+        }
+
+        if (this.getTags() != null) {
+            providerInfoBuilder.addAllTags(this.getTags());
+        }
+
+        if (this.getAttributes() != null) {
+            providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
+        }
+
+        if (providerMetadata != null) {
+            providerInfoBuilder.setProviderMetadata(providerMetadata);
+        }
 
         return providerInfoBuilder.build();
     }

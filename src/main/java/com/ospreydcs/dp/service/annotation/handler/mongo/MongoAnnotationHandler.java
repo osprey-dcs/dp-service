@@ -76,17 +76,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateDataSet(
-            CreateDataSetRequest request, 
-            StreamObserver<CreateDataSetResponse> responseObserver
+    public void handleSaveDataSet(
+            SaveDataSetRequest request, 
+            StreamObserver<SaveDataSetResponse> responseObserver
     ) {
-        final CreateDataSetJob job = new CreateDataSetJob(
+        final SaveDataSetJob job = new SaveDataSetJob(
                 request,
                 responseObserver,
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding CreateDataSetJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding SaveDataSetJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
@@ -114,23 +114,23 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ResultStatus validateCreateDataSetRequest(CreateDataSetRequest request) {
+    public ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
 
         // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
         final Set<String> uniquePvNames = new TreeSet<>();
         if (request.getDataSet() == null) {
-            return new ResultStatus(true, "CreateDataSetRequest must contain a DataSet");
+            return new ResultStatus(true, "SaveDataSetRequest must contain a DataSet");
         }
         final DataSet dataSet = request.getDataSet();
         final List<DataBlock> dataBlocks = dataSet.getDataBlocksList();
         if (dataBlocks == null || dataBlocks.isEmpty()) {
-            return new ResultStatus(true, "CreateDataSetRequest.DataSet must contain DataBlocks");
+            return new ResultStatus(true, "SaveDataSetRequest.DataSet must contain DataBlocks");
         }
         for (DataBlock dataBlock : dataBlocks) {
             List<String> blockPvNames = dataBlock.getPvNamesList();
             if (blockPvNames == null || blockPvNames.isEmpty()) {
                 return new ResultStatus(
-                        true, "CreateDataSetRequest.DataSet.DataBlock must contain pvNames");
+                        true, "SaveDataSetRequest.DataSet.DataBlock must contain pvNames");
             }
             uniquePvNames.addAll(blockPvNames);
         }
@@ -160,17 +160,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     }
 
     @Override
-    public void handleCreateAnnotation(
-            CreateAnnotationRequest request,
-            StreamObserver<CreateAnnotationResponse> responseObserver
+    public void handleSaveAnnotation(
+            SaveAnnotationRequest request,
+            StreamObserver<SaveAnnotationResponse> responseObserver
     ) {
-        final CreateAnnotationJob job = new CreateAnnotationJob(
+        final SaveAnnotationJob job = new SaveAnnotationJob(
                 request,
                 responseObserver,
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding CreateAnnotationJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding SaveAnnotationJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
@@ -180,7 +180,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
-    public ResultStatus validateCreateAnnotationRequest(CreateAnnotationRequest request) {
+    public ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) {
 
         // check that each id in dataSetIds exists in database
         for (String dataSetId : request.getDataSetIdsList()) {

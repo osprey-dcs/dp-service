@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
+import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
 import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -581,7 +582,7 @@ public class QueryTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> providerMetadataList =
+        private final List<ProviderMetadata> providerMetadataList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -604,7 +605,7 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryProviderMetadataResponse.MetadataResult.ProviderMetadata> getProviderMetadataList() {
+        public List<ProviderMetadata> getProviderMetadataList() {
             return providerMetadataList;
         }
 
