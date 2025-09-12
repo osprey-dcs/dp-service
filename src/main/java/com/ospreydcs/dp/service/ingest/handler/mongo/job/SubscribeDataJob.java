@@ -34,7 +34,7 @@ public class SubscribeDataJob extends HandlerJob {
 
     // configuration constants
     public static final String CFG_KEY_VALIDATE_PVS = "IngestionHandler.SourceMonitor.validatePvs";
-    public static final boolean DEFAULT_VALIDATE_PVS = false;
+    public static final boolean DEFAULT_VALIDATE_PVS = true;
 
     public SubscribeDataJob(
             SubscribeDataRequest request,
