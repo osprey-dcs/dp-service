@@ -83,6 +83,10 @@ public class ConfigurationManager {
         // Note that overrides passed on the command line must be set using "-D" as VM arguments so that they
         // appear on the command line before the main class.  Otherwise, they are passed as arguments in argv to main.
         // Example: "java -Ddp.GrpcServer.port=50052 com.ospreydcs.dp.ingest.server.IngestionGrpcServer".
+        // To override in Intelli-J, edit the run configuration, click "Modify Options" and make sure "Add VM Options"
+        // is selected.  Then enter the override e.g., "-Ddp.GrpcServer.port=50052" in the VM options box that appears
+        // BEFORE the java main class name.  The box after is for program args and will not override the config
+        // resource.
         LOGGER.debug("initialize property overrides: {}", systemProperties);
         for (var entry : systemProperties.entrySet()) {
             final String propertyKey = (String) entry.getKey();
