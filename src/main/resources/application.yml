@@ -17,8 +17,17 @@ MongoClient:
 # GrpcClient: General settings for gRPC clients.
 GrpcClient:
 
-  # GrpcClient.hostname: Name of host running Data Platform services.
-  hostname: localhost
+  # GrpcClient.ingestionConnectString: Client connect string for Ingestion Service.
+  ingestionConnectString: "localhost:50051"
+
+  # GrpcClient.queryConnectString: Client connect string for Query Service.
+  queryConnectString: "localhost:50052"
+
+  # GrpcClient.annotationConnectString: Client connect string for Annotation Service.
+  annotationConnectString: "localhost:50053"
+
+  # GrpcClient.ingestionStreamConnectString: Client connect string for Ingestion Stream Service.
+  ingestionStreamConnectString: "localhost:50054"
 
   # GrpcClient.keepAliveTimeSeconds: Sets the time (in seconds) since the last receipt before sending a keepalive ping.
   keepAliveTimeSeconds: 45
