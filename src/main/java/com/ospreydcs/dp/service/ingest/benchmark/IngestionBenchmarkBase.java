@@ -22,7 +22,7 @@ public abstract class IngestionBenchmarkBase {
     private static final Logger logger = LogManager.getLogger();
 
     // constants
-    protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
+    protected static final Integer AWAIT_TIMEOUT_MINUTES = 10;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
     public static final String NAME_COLUMN_BASE = "dpTest_";
 
@@ -496,6 +496,10 @@ public abstract class IngestionBenchmarkBase {
         logger.trace("creating thread pool of size: {}", numThreads);
         var executorService = Executors.newFixedThreadPool(numThreads);
 
+        // register benchmark provider
+        final String providerId = registerProvider("Benchmark-Provider", channel);
+        logger.info("registered provider: {}", providerId);
+
         // create list of thread pool tasks, each to submit a stream of IngestionRequests
         // final long startSeconds = Instant.now().getEpochSecond();
         final long startSeconds = configMgr().getConfigLong(CFG_KEY_START_SECONDS, DEFAULT_START_SECONDS);
@@ -503,9 +507,6 @@ public abstract class IngestionBenchmarkBase {
         List<IngestionTask> taskList = new ArrayList<>();
         int lastColumnIndex = 0;
         for (int i = 1 ; i <= numStreams ; i++) {
-
-            // register provider for stream number
-            final String providerId = registerProvider(String.valueOf(i), channel);
 
             final int firstColumnIndex = lastColumnIndex + 1;
             lastColumnIndex = lastColumnIndex + numColumns;
