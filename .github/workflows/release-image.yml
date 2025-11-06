@@ -95,8 +95,8 @@ jobs:
           # Align with src/main/resources/application.yml
           DP_MONGO_DB_HOST: localhost
           DP_MONGO_DB_PORT: "27017"
-          DP_MONGO_DB_USER: dpadmin
-          DP_MONGO_DB_PASSWORD: dppassword
+          DP_MONGO_DB_USER: admin
+          DP_MONGO_DB_PASSWORD: admin
 
       - name: Log in to GitHub Container Registry
         if: success()

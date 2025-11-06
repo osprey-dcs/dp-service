@@ -7,9 +7,9 @@ services:
     restart: unless-stopped
     environment:
       # Use environment variable or fallback default
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-dpadmin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-dppassword}
-      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-dpdb}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-admin}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-dp}
     ports:
       # Expose host port (default 27017) -> container 27017
       - "${MONGODB_PORT:-27017}:27017"
