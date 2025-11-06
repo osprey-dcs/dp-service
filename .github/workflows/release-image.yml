@@ -7,14 +7,20 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Git tag to build from (e.g., v1.2.3)'
-        required: true
+        description: 'Git tag to build from (e.g., v1.2.3). If omitted the workflow will use the current ref/commit.'
+        required: false
+        default: ''
+      # Optional ref (branch or tag or commit) to checkout instead of treating the input as a tag
+      ref:
+        description: 'Optional git ref (branch, tag, or commit) to checkout for the build — useful for testing'
+        required: false
+        default: ''
       dp_grpc_ref:
         description: 'dp-grpc git ref (branch, tag, or commit) used during build'
         required: false
         default: 'main'
       image_tag:
-        description: 'Image tag to push (defaults to the git tag)'
+        description: 'Image tag to push (defaults to the git tag or commit SHA if no tag provided)'
         required: false
         default: ''
 
@@ -30,15 +36,21 @@ jobs:
       DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
       # Use provided dp_grpc_ref when set, otherwise default to 'main'
       DP_GRPC_REF: ${{ inputs.dp_grpc_ref != '' && inputs.dp_grpc_ref || 'main' }}
-      # Resolve the image tag: prefer the actual tag on push; on manual runs, use input.image_tag or fallback to input.tag
-      IMAGE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.image_tag != '' && inputs.image_tag || inputs.tag) }}
+      # IMAGE_TAG resolution priority:
+      # 1) explicit inputs.image_tag (manual override)
+      # 2) if workflow is triggered on a tag, use the tag name
+      # 3) if inputs.tag was provided (manual dispatch), use that
+      # 4) fallback to commit SHA
+      IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || (github.ref_type == 'tag' && github.ref_name) || (inputs.tag != '' && inputs.tag) || github.sha }}
     steps:
       - name: Checkout repository at tag
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           # On push: github.ref already points to the tag; on manual: checkout refs/tags/<input>
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          # If workflow_dispatch and a ref input is provided, use it directly (branch or tag or commit); otherwise
+          # for a manual run treat inputs.ref (branch/commit) first, then inputs.tag as a tag ref; for push events use github.ref
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref != '' && inputs.ref || (inputs.tag != '' && format('refs/tags/{0}', inputs.tag))) || github.ref }}
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -69,9 +81,33 @@ jobs:
         run: |
           mvn -B -DskipTests install
 
-      - name: Start MongoDB with Docker Compose
+      - name: Diagnostic - show workspace and repo state
         run: |
-          docker compose -f docker-compose.yaml up -d
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "GITHUB_REF=${GITHUB_REF}"
+          echo "GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME}"
+          echo "github.ref_type=${{ github.ref_type }}"
+          echo "github.ref_name=${{ github.ref_name }}"
+          echo "Listing workspace root:"
+          pwd
+          ls -la
+          echo "Git status/branch/tag info:"
+          git rev-parse --abbrev-ref HEAD || true
+          git describe --tags --exact-match || echo "(not a tag)"
+          echo "Files changed in HEAD (first 200 lines):"
+          git show --name-only --pretty="" HEAD | sed -n '1,200p' || true
+          if [ ! -f "$GITHUB_WORKSPACE/docker-compose.yaml" ]; then
+            echo "ERROR: docker-compose.yaml not found at $GITHUB_WORKSPACE/docker-compose.yaml"
+            echo "This usually means the checked-out ref does not contain the compose file."
+            echo "If you triggered a manual run, set the 'ref' input to a branch or tag that contains the repository files, e.g.:"
+            echo "  gh workflow run release-image.yml --ref feature/your-branch --field tag=v1.11 --field ref=feature/your-branch"
+            echo "Or push a temporary branch based on main that contains .github/workflows/release-image.yml and docker-compose.yaml."
+            exit 1
+          fi
+
+      - name: Start Docker Compose
+        run: |
+          docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" up -d
 
       - name: Wait for mongodb to be healthy
         run: |
@@ -119,10 +155,8 @@ jobs:
           build-args: |
             DP_GRPC_REPO=${{ env.DP_GRPC_REPO }}
             DP_GRPC_REF=${{ env.DP_GRPC_REF }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
 
       - name: Tear down services
         if: always()
         run: |
-          docker compose -f docker-compose.yaml down -v || true
+          docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" down -v || true
