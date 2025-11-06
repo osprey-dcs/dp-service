@@ -86,7 +86,7 @@ jobs:
       - name: Collect logs (always)
         if: always()
         run: |
-          docker compose -f docker-compose.yaml -f docker-compose.ci.yml logs --no-color > compose-logs.txt || true
+          docker compose -f docker-compose.yaml logs --no-color > compose-logs.txt || true
           echo "---- docker ps ----"
           docker ps --no-trunc > docker-ps.txt || true
           tar -czf logs.tar.gz compose-logs.txt docker-ps.txt || true
@@ -105,4 +105,4 @@ jobs:
       - name: Tear down services
         if: always()
         run: |
-          docker compose -f docker-compose.yaml -f docker-compose.ci.yml down -v
+          docker compose -f docker-compose.yaml down -v
