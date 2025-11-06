@@ -77,7 +77,11 @@ jobs:
         run: |
           mvn -B test
         env:
-          MONGO_URI: mongodb://dpadmin:dppassword@localhost:${MONGODB_PORT:-27017}/dpdb
+          # Align with src/main/resources/application.yml
+          DP_MONGO_DB_HOST: localhost
+          DP_MONGO_DB_PORT: "27017"
+          DP_MONGO_DB_USER: dpadmin
+          DP_MONGO_DB_PASSWORD: dppassword
 
       - name: Collect logs (always)
         if: always()
