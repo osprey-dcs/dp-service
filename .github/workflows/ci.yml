@@ -1,21 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
-  # Allow manual runs from the Actions UI and specify the dp-grpc ref and image tag to use
-  workflow_dispatch:
-    inputs:
-      dp_grpc_ref:
-        description: 'dp-grpc git ref (branch, tag, or commit) to build inside the image'
-        required: false
-        default: 'main'
-      image_tag:
-        description: 'Image tag to publish (if empty the run will use the commit SHA)'
-        required: false
-        default: ''
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -28,10 +16,8 @@ jobs:
       JAVA_VERSION: '21'
       DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
       IMAGE_NAME: 'dp-service-ci'
-      # DP_GRPC_REF comes from the manual input if provided; fall back to 'main'
-      DP_GRPC_REF: ${{ github.event.inputs.dp_grpc_ref != '' && github.event.inputs.dp_grpc_ref || 'main' }}
-      # IMAGE_TAG uses input.image_tag when provided, otherwise the commit SHA
-      IMAGE_TAG: ${{ github.event.inputs.image_tag != '' && github.event.inputs.image_tag || github.sha }}
+      # Use a fixed dp-grpc ref for CI PR runs
+      DP_GRPC_REF: 'main'
     steps:
       - name: Checkout this repository
         uses: actions/checkout@v4
@@ -92,30 +78,6 @@ jobs:
           mvn -B test
         env:
           MONGO_URI: mongodb://dpadmin:dppassword@localhost:${MONGODB_PORT:-27017}/dpdb
-
-      - name: Log in to GitHub Container Registry
-        if: success()
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image (only on success)
-        if: success()
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/dp-service:${{ env.IMAGE_TAG }}
-            ghcr.io/${{ github.repository_owner }}/dp-service:latest
-          build-args: |
-            DP_GRPC_REPO=${{ env.DP_GRPC_REPO }}
-            DP_GRPC_REF=${{ env.DP_GRPC_REF }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
 
       - name: Collect logs (always)
         if: always()
