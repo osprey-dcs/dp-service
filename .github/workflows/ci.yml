@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Allow manual runs from the Actions UI and specify the dp-grpc ref and image tag to use
+  workflow_dispatch:
+    inputs:
+      dp_grpc_ref:
+        description: 'dp-grpc git ref (branch, tag, or commit) to build inside the image'
+        required: false
+        default: 'main'
+      image_tag:
+        description: 'Image tag to publish (if empty the run will use the commit SHA)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_VERSION: '21'
+      DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
+      IMAGE_NAME: 'dp-service-ci'
+      # DP_GRPC_REF comes from the manual input if provided; fall back to 'main'
+      DP_GRPC_REF: ${{ github.event.inputs.dp_grpc_ref != '' && github.event.inputs.dp_grpc_ref || 'main' }}
+      # IMAGE_TAG uses input.image_tag when provided, otherwise the commit SHA
+      IMAGE_TAG: ${{ github.event.inputs.image_tag != '' && github.event.inputs.image_tag || github.sha }}
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'maven'
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        id: docker-cache
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Checkout dp-grpc dependency
+        uses: actions/checkout@v4
+        with:
+          repository: 'osprey-dcs/dp-grpc'
+          path: dp-grpc
+          ref: ${{ env.DP_GRPC_REF }}
+          fetch-depth: 0
+
+      - name: Build and install dp-grpc to local Maven repo
+        working-directory: dp-grpc
+        run: |
+          mvn -B -DskipTests install
+
+      - name: Start MongoDB with Docker Compose
+        run: |
+          # start the needed backends to execute the tests
+          docker compose -f docker-compose.yaml up -d
+
+      - name: Wait for mongodb to be healthy
+        run: |
+          for i in {1..30}; do
+            STATUS=$(docker inspect dp-mongodb --format '{{json .State.Health.Status}}' 2>/dev/null || echo null)
+            echo "mongodb status: $STATUS"
+            if echo "$STATUS" | grep -iq healthy; then
+              echo "mongodb healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "mongodb did not become healthy" >&2
+          docker compose logs mongodb || true
+          exit 1
+
+      - name: Run Maven tests (integration/unit)
+        run: |
+          mvn -B test
+        env:
+          MONGO_URI: mongodb://dpadmin:dppassword@localhost:${MONGODB_PORT:-27017}/dpdb
+
+      - name: Log in to GitHub Container Registry
+        if: success()
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image (only on success)
+        if: success()
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/dp-service:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository_owner }}/dp-service:latest
+          build-args: |
+            DP_GRPC_REPO=${{ env.DP_GRPC_REPO }}
+            DP_GRPC_REF=${{ env.DP_GRPC_REF }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+      - name: Collect logs (always)
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml -f docker-compose.ci.yml logs --no-color > compose-logs.txt || true
+          echo "---- docker ps ----"
+          docker ps --no-trunc > docker-ps.txt || true
+          tar -czf logs.tar.gz compose-logs.txt docker-ps.txt || true
+        shell: bash
+
+      - name: Upload logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs
+          path: |
+            compose-logs.txt
+            docker-ps.txt
+            logs.tar.gz
+
+      - name: Tear down services
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml -f docker-compose.ci.yml down -v

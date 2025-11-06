@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:8
+    container_name: dp-mongodb
+    restart: unless-stopped
+    environment:
+      # Use environment variable or fallback default
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-dpadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-dppassword}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-dpdb}
+    ports:
+      # Expose host port (default 27017) -> container 27017
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      # persistent named volume for DB files
+      - mongo-data:/data/db
+      # optional init scripts: place .js/.sh files in ./docker/mongo/initdb to run on first start
+      - ./docker/mongo/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dp-net
+
+volumes:
+  mongo-data:
+
+networks:
+  dp-net:
+    driver: bridge
+
