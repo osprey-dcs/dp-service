@@ -57,3 +57,4 @@
             path: |
               target/surefire-reports/**/*
               target/failsafe-reports/**/*
+          continue-on-error: true  # Don't fail the workflow if no reports found
