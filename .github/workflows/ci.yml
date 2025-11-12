@@ -49,11 +49,11 @@
             java-version: 21
             cache: 'maven'
 
-#        - name: Wait for MongoDB
-#          run: |
-#            echo "Waiting for MongoDB to be ready..."
-#            timeout 60 bash -c 'until mongosh --quiet --host localhost --port 27017 -u admin -p admin --authenticationDatabase admin --eval "db.adminCommand('\''ping'\'')" &>/dev/null; do sleep 2; done'
-#            echo "MongoDB is ready!"
+        - name: Build dp-grpc dependency
+          run: |
+            cd dp-grpc
+            mvn clean install -DskipTests --batch-mode
+            echo "dp-grpc built and installed to local Maven repository"
 
         - name: Run all tests (unit + integration)
           run: |
