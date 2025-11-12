@@ -5,11 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 - Build: `mvn clean package`
 - Build without tests: `mvn clean package -DskipTests`
-- Run unit tests only: `mvn test`
-- Run unit + integration tests: `mvn verify`
-- Run integration tests only: `mvn failsafe:integration-test`
-- Run single unit test: `mvn test -Dtest=TestClassName` or `mvn test -Dtest=TestClassName#testMethodName`
-- Run single integration test: `mvn failsafe:integration-test -Dit.test=ClassNameIT`
+- Run tests: `mvn test`
+- Run single test: `mvn test -Dtest=TestClassName` or `mvn test -Dtest=TestClassName#testMethodName`
 - Run specific service: 
   - Ingestion: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.11.0-shaded.jar com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer`
   - Query: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.11.0-shaded.jar com.ospreydcs.dp.service.query.server.QueryGrpcServer`
@@ -91,8 +88,7 @@ The client utilities include Excel data import capabilities:
 - API method implementations follow: Handler → Job → Database Client → Dispatcher pattern
 - Jobs named as `<APIMethod>Job`, Dispatchers as `<APIMethod>Dispatcher`
 - Error handling uses DpException and structured logging
-- Integration tests located in `src/test/integration/java/com/ospreydcs/dp/service/integration/` with `*IT.java` naming
-- Unit tests located in `src/test/java/` with `*Test.java` naming
+- Integration tests located in `integration.<service>` packages
 - Follow existing patterns for protobuf ↔ MongoDB document conversion
 - Result objects use `ResultStatus` class with `isError` (Boolean) and `msg` (String) fields
 
@@ -112,12 +108,20 @@ Recent API evolution has moved from "create" to "save" semantics:
 
 ## Testing Strategy
 - **Framework**: JUnit 4 (imports `org.junit.*`, uses `@Test`, `@Before`, `@After`)
-- **Test Separation**: Directory-based separation for optimal CI workflows
-  - **Unit Tests**: Located in `src/test/java/` with `*Test.java` naming - run with `mvn test`
-  - **Integration Tests**: Located in `src/test/integration/java/com/ospreydcs/dp/service/integration/` with `*IT.java` naming - run with `mvn verify`
+- **Integration Tests**: Located in `src/test/java/com/ospreydcs/dp/service/integration/`
 - **Test Base Classes**: `AnnotationTestBase`, `QueryTestBase`, `IngestionTestBase` provide common utilities
-- **Integration Test Base Classes**: `GrpcIntegrationTestBase`, `GrpcIntegrationServiceWrapperBase` in integration package
 - **Test Database**: Uses "dp-test" database (cleaned between tests)
 - **Scenario Methods**: Reusable test data generation (e.g., `simpleIngestionScenario()`, `createDataSetScenario()`)
-- **Maven Plugins**: Surefire for unit tests, Failsafe for integration tests
+- **Test Naming**: Test classes typically named `<APIMethod>Test`
 - **Temporary Files**: Use `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();` for test files
+
+## Continuous Integration
+- **GitHub Actions**: Automated CI/CD pipeline in `.github/workflows/ci.yml`
+- **Multi-Repository Setup**: Automatically builds dp-grpc dependency before testing dp-service
+- **Triggers**: 
+  - Automatic testing on pushes to main/master branch
+  - Automatic testing on pull requests to main/master
+  - Manual workflow dispatch for testing dev branches or ad-hoc validation
+- **Services**: Uses MongoDB 8.0 service container for integration tests
+- **Test Reports**: Uploads Surefire and Failsafe test reports as workflow artifacts
+- **Dependencies**: Builds and installs dp-grpc to local Maven repository before running dp-service tests

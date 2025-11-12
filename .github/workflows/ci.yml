@@ -2,7 +2,7 @@
 
   on:
     push:
-      branches: [ main, master ]  # Add your dev branch
+      branches: [ main, master ]
     pull_request:
       branches: [ main, master ]
     workflow_dispatch:
@@ -30,8 +30,17 @@
         MAVEN_OPTS: -Xmx2g
 
       steps:
-        - name: Checkout repository
+        - name: Checkout dp-service
           uses: actions/checkout@v4
+          with:
+            path: dp-service
+
+        - name: Checkout dp-grpc dependency
+          uses: actions/checkout@v4
+          with:
+            repository: craigmcchesney/dp-grpc
+            path: dp-grpc
+            token: ${{ secrets.GITHUB_TOKEN }}
 
         - name: Set up JDK 21
           uses: actions/setup-java@v4
@@ -40,14 +49,16 @@
             java-version: 21
             cache: 'maven'
 
-        - name: Wait for MongoDB
+        - name: Build dp-grpc dependency
           run: |
-            echo "Waiting for MongoDB to be ready..."
-            timeout 60 bash -c 'until mongosh --quiet --host localhost --port 27017 -u admin -p admin --authenticationDatabase admin --eval "db.adminCommand('\''ping'\'')" &>/dev/null; do sleep 2; done'
-            echo "MongoDB is ready!"
+            cd dp-grpc
+            mvn clean install -DskipTests --batch-mode
+            echo "dp-grpc built and installed to local Maven repository"
 
         - name: Run all tests (unit + integration)
-          run: mvn --batch-mode clean verify
+          run: |
+            cd dp-service
+            mvn --batch-mode clean verify
 
         - name: Upload test reports
           uses: actions/upload-artifact@v4
@@ -55,6 +66,6 @@
           with:
             name: test-reports
             path: |
-              target/surefire-reports/**/*
-              target/failsafe-reports/**/*
+              dp-service/target/surefire-reports/**/*
+              dp-service/target/failsafe-reports/**/*
           continue-on-error: true  # Don't fail the workflow if no reports found
