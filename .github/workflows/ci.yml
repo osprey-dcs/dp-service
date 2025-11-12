@@ -40,11 +40,11 @@
             java-version: 21
             cache: 'maven'
 
-        - name: Wait for MongoDB
-          run: |
-            echo "Waiting for MongoDB to be ready..."
-            timeout 60 bash -c 'until mongosh --quiet --host localhost --port 27017 -u admin -p admin --authenticationDatabase admin --eval "db.adminCommand('\''ping'\'')" &>/dev/null; do sleep 2; done'
-            echo "MongoDB is ready!"
+#        - name: Wait for MongoDB
+#          run: |
+#            echo "Waiting for MongoDB to be ready..."
+#            timeout 60 bash -c 'until mongosh --quiet --host localhost --port 27017 -u admin -p admin --authenticationDatabase admin --eval "db.adminCommand('\''ping'\'')" &>/dev/null; do sleep 2; done'
+#            echo "MongoDB is ready!"
 
         - name: Run all tests (unit + integration)
           run: mvn --batch-mode clean verify
