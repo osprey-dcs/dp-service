@@ -2,7 +2,7 @@
 
   on:
     push:
-      branches: [ main, master ]  # Add your dev branch
+      branches: [ main, master ]
     pull_request:
       branches: [ main, master ]
     workflow_dispatch:

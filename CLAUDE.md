@@ -114,3 +114,14 @@ Recent API evolution has moved from "create" to "save" semantics:
 - **Scenario Methods**: Reusable test data generation (e.g., `simpleIngestionScenario()`, `createDataSetScenario()`)
 - **Test Naming**: Test classes typically named `<APIMethod>Test`
 - **Temporary Files**: Use `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();` for test files
+
+## Continuous Integration
+- **GitHub Actions**: Automated CI/CD pipeline in `.github/workflows/ci.yml`
+- **Multi-Repository Setup**: Automatically builds dp-grpc dependency before testing dp-service
+- **Triggers**: 
+  - Automatic testing on pushes to main/master branch
+  - Automatic testing on pull requests to main/master
+  - Manual workflow dispatch for testing dev branches or ad-hoc validation
+- **Services**: Uses MongoDB 8.0 service container for integration tests
+- **Test Reports**: Uploads Surefire and Failsafe test reports as workflow artifacts
+- **Dependencies**: Builds and installs dp-grpc to local Maven repository before running dp-service tests
