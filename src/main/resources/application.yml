@@ -1,18 +1,9 @@
 # MongoClient: Settings for connection to MongoDB.
 MongoClient:
 
-  # MongoClient.dbHost: The host that is running the MongoDB server.
-  # Default value is "localhost", specifying that the database is running on the same host as the Data Platform services.
-  dbHost: localhost
-
-  # MongoClient.dbPort: Network port on dbHost for the MongoDB service.  MongoDB default installation is 27017.
-  dbPort: 27017
-
-  # MongoClient.dbUser: Username for connection to MongoDB by Data Platform services.
-  dbUser: admin
-
-  # MongoClient.dbPassword: Password for dbUser for connection to MongoDB by Data Platform services.
-  dbPassword: admin
+  # MongoClient.dbUri: URI for connecting to MongoDB.
+  # This resource is required, and if not provided, the URI is assembled from the resources for host, port, user, and password.
+  dbUri: mongodb://admin:admin@localhost:27017/
 
 # GrpcClient: General settings for gRPC clients.
 GrpcClient:

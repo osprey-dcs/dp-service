@@ -1,3 +1,11 @@
+## uncomment for testing replica set connection via URI
+## MongoClient: Settings for connection to MongoDB.
+#MongoClient:
+#
+#  # MongoClient.dbUri: URI for connecting to MongoDB.
+#  # This resource is required, and if not provided, the URI is assembled from the resources for host, port, user, and password.
+#  dbUri: mongodb://admin:admin@localhost:27017/?replicaSet=rs0&authSource=admin
+
 Level1:
   Level2:
     intValue: 60

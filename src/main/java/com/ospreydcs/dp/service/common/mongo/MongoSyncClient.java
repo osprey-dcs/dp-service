@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
+import com.mongodb.ReadPreference;
+import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
@@ -12,13 +14,14 @@ import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.conversions.Bson;
 
 public class MongoSyncClient extends MongoClientBase {
 
     // static variables
-    private static final Logger LOGGER = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     protected MongoClient mongoClient = null;
@@ -38,8 +41,32 @@ public class MongoSyncClient extends MongoClientBase {
 
     @Override
     protected boolean initMongoDatabase(String databaseName, CodecRegistry codecRegistry) {
-        mongoDatabase = mongoClient.getDatabase(databaseName);
+
+        // run 'hello' to detect mongo topology
+        final MongoDatabase adminDatabase = mongoClient.getDatabase(ADMIN_DATABASE_NAME);
+        final Document hello = adminDatabase.runCommand(new Document("hello", 1));
+        logger.debug("mongo topology detection response: " + hello.toJson());
+
+        if (hello.containsKey("setName")) {
+            // Replica set detected
+            logger.info("mongo replica set topology detected: " + hello.getString("setName"));
+
+            // Use primary preferred read and majority write for safety
+            mongoDatabase = mongoClient.getDatabase(databaseName)
+                    .withReadPreference(ReadPreference.primaryPreferred())
+                    .withWriteConcern(WriteConcern.MAJORITY);
+        } else {
+            // Standalone detected
+            System.out.println("mongo standalone topology detected");
+
+            // Standalone: normal read/write
+            mongoDatabase = mongoClient.getDatabase(databaseName)
+                    .withReadPreference(ReadPreference.primary())
+                    .withWriteConcern(WriteConcern.ACKNOWLEDGED);
+        }
+
         mongoDatabase = mongoDatabase.withCodecRegistry(codecRegistry);
+
         return true;
     }
 
