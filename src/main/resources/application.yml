@@ -1,6 +1,15 @@
 # MongoClient: Settings for connection to MongoDB.
 MongoClient:
 
+  # MongoClient.uri: Optional full MongoDB connection string. When set, it overrides
+  # the simple host/port/user/password settings below. Use this for replica sets,
+  # SRV records, TLS, and advanced options.
+  # Example:
+  #   mongodb://dp_user:dp_pass@mongo-0.mongo-headless.ns.svc.cluster.local:27017,\
+  #   mongo-1.mongo-headless.ns.svc.cluster.local:27017,\
+  #   mongo-2.mongo-headless.ns.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin
+  uri: ${DP_MONGO_DB_URI:}
+
   # MongoClient.dbHost: The host that is running the MongoDB server.
   # Default value is "localhost", specifying that the database is running on the same host as the Data Platform services.
   dbHost: ${DP_MONGO_DB_HOST:localhost}
