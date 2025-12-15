@@ -8,6 +8,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.util.Collections.singletonMap;
 
@@ -16,9 +18,11 @@ public class ConfigurationManager {
     private static final Logger LOGGER = LogManager.getLogger();
 
     public static final String CONFIG_PROPERTY_NAME = "dp.config";
+    // Keep the JVM command-line override prefix as 'dp.' so -Ddp.Some.Key works as before.
     public static final String DP_PROPERTY_PREFIX = "dp.";
     public static final String CONFIG_ENVIRONMENT_NAME = "DP.CONFIG";
     public static final String DEFAULT_CONFIG_FILE = "application.yml";
+    public static final String ENV_VARIABLE_PREFIX = "DP_";
 
     protected static volatile ConfigurationManager instance;
     private static Object mutex = new Object();
@@ -78,6 +82,9 @@ public class ConfigurationManager {
         Map<String, Object> yamlMap = yaml.load(inputStream);
         Map<String, Object> resultMap = getFlattenedMap(yamlMap);
         LOGGER.debug("initialize config file properties: {}", resultMap);
+
+        // Resolve ${VAR:default} placeholders in values using system properties then environment variables then default
+        resolvePlaceholders(resultMap);
 
         // Override config properties from command line.
         // Note that overrides passed on the command line must be set using "-D" as VM arguments so that they
@@ -144,6 +151,56 @@ public class ConfigurationManager {
                 result.put(key, value != null ? "" + value : "");
             }
         });
+    }
+
+    // Pattern to match ${NAME} or ${NAME:default}
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^:}]+)(?::([^}]*))?\\}");
+
+    // Resolve placeholders in all string values of the flattened map
+    private static void resolvePlaceholders(Map<String, Object> map) {
+        for (Map.Entry<String, Object> entry : new ArrayList<>(map.entrySet())) {
+            Object val = entry.getValue();
+            if (val instanceof String) {
+                String replaced = replacePlaceholders((String) val);
+                map.put(entry.getKey(), replaced);
+            }
+        }
+    }
+
+    // Replace ${NAME:default} with System.getProperty(NAME) or System.getenv(NAME) or default
+    private static String replacePlaceholders(String input) {
+        if (input == null || input.isEmpty()) return input;
+        String result = input;
+        // Iterate until no changes to support nested placeholders
+        while (true) {
+            Matcher matcher = PLACEHOLDER_PATTERN.matcher(result);
+            StringBuffer sb = new StringBuffer();
+            boolean found = false;
+            while (matcher.find()) {
+                found = true;
+                String name = matcher.group(1);
+                String defaultVal = matcher.group(2);
+                // Prefer DP_ prefixed values (both system properties and env vars), then unprefixed.
+                String replacement = null;
+                // 1) system property DP_<NAME>
+                replacement = System.getProperty(ENV_VARIABLE_PREFIX + name);
+                // 2) environment variable DP_<NAME>
+                if (replacement == null) replacement = System.getenv("DP_" + name);
+                // 3) unprefixed system property
+                if (replacement == null) replacement = System.getProperty(name);
+                // 4) unprefixed environment variable
+                if (replacement == null) replacement = System.getenv(name);
+                // 5) fallback to default from placeholder
+                if (replacement == null) replacement = defaultVal != null ? defaultVal : "";
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+            }
+            matcher.appendTail(sb);
+            if (!found) break;
+            String replaced = sb.toString();
+            if (replaced.equals(result)) break;
+            result = replaced;
+        }
+        return result;
     }
 
     public String getConfigString(String key) {
