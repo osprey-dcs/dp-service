@@ -38,8 +38,15 @@ public abstract class MongoClientBase {
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
-    public static final String CFG_KEY_DB_URI = "MongoClient.dbUri";
-    public static final String DEFAULT_DB_URI = "mongodb://admin:admin@localhost:27017/";
+    public static final String CFG_KEY_DB_HOST = "MongoClient.dbHost";
+    public static final String DEFAULT_DB_HOST = "localhost";
+    public static final String CFG_KEY_DB_PORT = "MongoClient.dbPort";
+    public static final int DEFAULT_DB_PORT = 27017;
+    public static final String CFG_KEY_DB_USER = "MongoClient.dbUser";
+    public static final String DEFAULT_DB_USER = "admin";
+    public static final String CFG_KEY_DB_PASSWORD = "MongoClient.dbPassword";
+    public static final String DEFAULT_DB_PASSWORD = "admin";
+    public static final String CFG_KEY_DB_URI = "MongoClient.uri"; // Optional full connection string override
 
     // abstract methods
     protected abstract boolean initMongoClient(String connectString);
@@ -218,8 +225,20 @@ public abstract class MongoClientBase {
 
     public static String getMongoConnectString() {
 
+        // Allow a full connection string override to support replica sets, TLS, options, etc.
+        String uriOverride = configMgr().getConfigString(CFG_KEY_DB_URI);
+        if (uriOverride != null && !uriOverride.isBlank()) {
+            return uriOverride;
+        }
+
+        // Default: build a simple single-host connection string
         // mongodb://admin:admin@localhost:27017/
-        final String connectString = configMgr().getConfigString(CFG_KEY_DB_URI, DEFAULT_DB_URI);
+        String dbHost = configMgr().getConfigString(CFG_KEY_DB_HOST, DEFAULT_DB_HOST);
+        Integer dbPort = configMgr().getConfigInteger(CFG_KEY_DB_PORT, DEFAULT_DB_PORT);
+        String dbUser = configMgr().getConfigString(CFG_KEY_DB_USER, DEFAULT_DB_USER);
+        String dbPassword = configMgr().getConfigString(CFG_KEY_DB_PASSWORD, DEFAULT_DB_PASSWORD);
+
+        String connectString = "mongodb://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/";
         return connectString;
     }
 

@@ -1,9 +1,27 @@
 # MongoClient: Settings for connection to MongoDB.
 MongoClient:
 
-  # MongoClient.dbUri: URI for connecting to MongoDB.
-  # This resource is required, and if not provided, the URI is assembled from the resources for host, port, user, and password.
-  dbUri: ${DP_MONGO_DB_URI:mongodb://admin:admin@localhost:27017/}
+  # MongoClient.uri: Optional full MongoDB connection string. When set, it overrides
+  # the simple host/port/user/password settings below. Use this for replica sets,
+  # SRV records, TLS, and advanced options.
+  # Example:
+  #   mongodb://dp_user:dp_pass@mongo-0.mongo-headless.ns.svc.cluster.local:27017,\
+  #   mongo-1.mongo-headless.ns.svc.cluster.local:27017,\
+  #   mongo-2.mongo-headless.ns.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin
+  uri: ${DP_MONGO_DB_URI:}
+
+  # MongoClient.dbHost: The host that is running the MongoDB server.
+  # Default value is "localhost", specifying that the database is running on the same host as the Data Platform services.
+  dbHost: ${DP_MONGO_DB_HOST:localhost}
+
+  # MongoClient.dbPort: Network port on dbHost for the MongoDB service.  MongoDB default installation is 27017.
+  dbPort: ${DP_MONGO_DB_PORT:27017}
+
+  # MongoClient.dbUser: Username for connection to MongoDB by Data Platform services.
+  dbUser: ${DP_MONGO_DB_USER:admin}
+
+  # MongoClient.dbPassword: Password for dbUser for connection to MongoDB by Data Platform services.
+  dbPassword: ${DP_MONGO_DB_PASSWORD:admin}
 
 # GrpcClient: General settings for gRPC clients.
 GrpcClient:
@@ -72,7 +90,7 @@ IngestionHandler:
 IngestionBenchmark:
 
   # IngestionBenchmark.grpcConnectString: String used for gRPC connection to Ingestion Service including "host:port".
-  grpcConnectString: "${DP_INGESTION_BENCHMARK_GRPC_CONNECT_STRING:localhost:60051}"
+  grpcConnectString: "${DP_INGESTION_BENCHMARK_GRPC_CONNECT_STRING:localhost:50051}"
 
   # IngestionBenchmark.startSeconds: Specifies fixed start time for data created by Ingestion benchmark application.
   startSeconds: ${DP_INGESTION_BENCHMARK_START_SECONDS:1698767462}
