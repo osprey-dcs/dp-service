@@ -19,8 +19,8 @@ public class IngestionServiceClientUtility {
         // configuration
         public static final String CFG_KEY_PORT = "IngestionServer.port";
         public static final int DEFAULT_PORT = 50051;
-        public static final String CFG_KEY_HOSTNAME = "GrpcClient.hostname";
-        public static final String DEFAULT_HOSTNAME = "localhost";
+        public static final String CFG_KEY_INGESTION_CONNECT_STRING = "GrpcClient.ingestionConnectString";
+        public static final String DEFAULT_INGESTION_CONNECT_STRING = "localhost:50051";
         private static final String CFG_KEY_CLIENT_KEEP_ALIVE_TIME_SECONDS = "GrpcClient.keepAliveTimeSeconds";
         private static final int DEFAULT_CLIENT_KEEP_ALIVE_TIME_SECONDS = 45;
         private static final String CFG_KEY_CLIENT_KEEP_ALIVE_TIMEOUT_SECONDS = "GrpcClient.keepAliveTimeoutSeconds";
@@ -61,17 +61,8 @@ public class IngestionServiceClientUtility {
             return ConfigurationManager.getInstance();
         }
 
-        protected static int getPort() {
-            return configMgr().getConfigInteger(CFG_KEY_PORT, DEFAULT_PORT);
-        }
-
-        protected static String getHostname() {
-            return configMgr().getConfigString(CFG_KEY_HOSTNAME, DEFAULT_HOSTNAME);
-        }
-        
         private String getConnectString() {
-            //     public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60051";
-            return getHostname() + ":" + getPort();
+            return configMgr().getConfigString(CFG_KEY_INGESTION_CONNECT_STRING, DEFAULT_INGESTION_CONNECT_STRING);
         }
 
         public Channel getChannel() {

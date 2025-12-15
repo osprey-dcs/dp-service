@@ -27,7 +27,8 @@ public abstract class IngestionBenchmarkBase {
     public static final String NAME_COLUMN_BASE = "dpTest_";
 
     // configuration
-    public static final String BENCHMARK_GRPC_CONNECT_STRING = "localhost:60051";
+    public static final String CFG_KEY_GRPC_CONNECT_STRING = "IngestionBenchmark.grpcConnectString";
+    public static final String DEFAULT_GRPC_CONNECT_STRING = "localhost:60051";
     public static final String CFG_KEY_START_SECONDS = "IngestionBenchmark.startSeconds";
     public static final Long DEFAULT_START_SECONDS = 1698767462L;
 
@@ -681,7 +682,7 @@ public abstract class IngestionBenchmarkBase {
 
     public static void runBenchmark(IngestionBenchmarkBase benchmark, boolean useSerializedDataColumns) {
 
-        final String connectString = BENCHMARK_GRPC_CONNECT_STRING;
+        final String connectString = configMgr().getConfigString(CFG_KEY_GRPC_CONNECT_STRING, DEFAULT_GRPC_CONNECT_STRING);
         logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
