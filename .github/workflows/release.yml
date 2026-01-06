@@ -1,0 +1,108 @@
+name: Release dp-service
+
+on:
+  push:
+    tags:
+      - 'rel-*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    env:
+      JAVA_VERSION: '21'
+      DP_GRPC_REPO: 'osprey-dcs/dp-grpc'
+
+    steps:
+      - name: Checkout dp-service at tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#rel-}"
+          if [[ "$VERSION" == "$TAG" ]]; then
+            echo "ERROR: tag does not start with 'rel-': $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Checkout dp-grpc at matching tag
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DP_GRPC_REPO }}
+          path: dp-grpc
+          ref: ${{ steps.version.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Build and install dp-grpc
+        working-directory: dp-grpc
+        run: |
+          mvn -B -DskipTests install
+
+      - name: Start MongoDB (for tests)
+        run: |
+          docker compose -f docker-compose.yaml up -d
+
+      - name: Wait for MongoDB to be healthy
+        run: |
+          for i in {1..30}; do
+            STATUS=$(docker inspect dp-mongodb --format '{{.State.Health.Status}}' 2>/dev/null || echo "")
+            echo "mongodb status: $STATUS"
+            if [[ "$STATUS" == "healthy" ]]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MongoDB did not become healthy"
+          docker compose logs mongodb || true
+          exit 1
+
+      - name: Build and test dp-service
+        env:
+          DP_MONGO_DB_HOST: localhost
+          DP_MONGO_DB_PORT: "27017"
+          DP_MONGO_DB_USER: admin
+          DP_MONGO_DB_PASSWORD: admin
+        run: |
+          mvn -B clean verify
+
+      - name: Tear down services
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml down -v || true
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release
+          cp target/dp-service-*.jar "release/dp-service-${VERSION}.jar"
+
+      - name: Verify release artifacts
+        run: |
+          test -f "release/dp-service-${VERSION}.jar" || \
+            (echo "Missing dp-service-${VERSION}.jar" && exit 1)
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release/dp-service-${{ env.VERSION }}.jar
