@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.ingest.utility;
 
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.ingest.benchmark.BenchmarkIngestDataBidiStream;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -14,13 +15,20 @@ public class TestDataGenerator extends BenchmarkIngestDataBidiStream {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
+    // configuration
+    public static final String CFG_KEY_INGESTION_CONNECT_STRING = "GrpcClient.ingestionConnectString";
+    public static final String DEFAULT_INGESTION_CONNECT_STRING = "localhost:50051";
+
     public static void main(final String[] args) {
 
         TestDataGenerator benchmark = new TestDataGenerator();
 
         logger.info("generating test data");
 
-        final String connectString = "localhost:50051";
+        final String connectString =
+                ConfigurationManager.getInstance().getConfigString(
+                        CFG_KEY_INGESTION_CONNECT_STRING,
+                        DEFAULT_INGESTION_CONNECT_STRING);
         logger.info("Creating gRPC channel using connect string: {}", connectString);
         final ManagedChannel channel =
                 Grpc.newChannelBuilder(connectString, InsecureChannelCredentials.create()).build();
