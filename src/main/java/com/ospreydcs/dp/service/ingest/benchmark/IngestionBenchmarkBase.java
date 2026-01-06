@@ -22,7 +22,7 @@ public abstract class IngestionBenchmarkBase {
     private static final Logger logger = LogManager.getLogger();
 
     // constants
-    protected static final Integer AWAIT_TIMEOUT_MINUTES = 1;
+    protected static final Integer AWAIT_TIMEOUT_MINUTES = 20;
     protected static final Integer TERMINATION_TIMEOUT_MINUTES = 5;
     public static final String NAME_COLUMN_BASE = "dpTest_";
 
