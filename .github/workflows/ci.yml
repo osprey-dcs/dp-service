@@ -1,71 +1,108 @@
-  name: Java CI with MongoDB
+name: CI
 
-  on:
-    push:
-      branches: [ main, master ]
-    pull_request:
-      branches: [ main, master ]
-    workflow_dispatch:
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
 
-  jobs:
-    build-and-test:
-      runs-on: ubuntu-latest
+permissions:
+  contents: read
+  packages: write
 
-      services:
-        mongo:
-          image: mongo:8.0
-          env:
-            MONGO_INITDB_ROOT_USERNAME: admin
-            MONGO_INITDB_ROOT_PASSWORD: admin
-            MONGO_INITDB_DATABASE: dp
-          ports:
-            - 27017:27017
-          options: >-
-            --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
-            --health-interval 10s
-            --health-timeout 5s
-            --health-retries 5
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_VERSION: '21'
+      DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
+      IMAGE_NAME: 'dp-service-ci'
+      # Use a fixed dp-grpc ref for CI PR runs
+      DP_GRPC_REF: 'main'
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      env:
-        MAVEN_OPTS: -Xmx2g
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'maven'
 
-      steps:
-        - name: Checkout dp-service
-          uses: actions/checkout@v4
-          with:
-            path: dp-service
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        id: docker-cache
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
-        - name: Checkout dp-grpc dependency
-          uses: actions/checkout@v4
-          with:
-            repository: craigmcchesney/dp-grpc
-            path: dp-grpc
-            token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout dp-grpc dependency
+        uses: actions/checkout@v4
+        with:
+          repository: 'osprey-dcs/dp-grpc'
+          path: dp-grpc
+          ref: ${{ env.DP_GRPC_REF }}
+          fetch-depth: 0
 
-        - name: Set up JDK 21
-          uses: actions/setup-java@v4
-          with:
-            distribution: 'temurin'
-            java-version: 21
-            cache: 'maven'
+      - name: Build and install dp-grpc to local Maven repo
+        working-directory: dp-grpc
+        run: |
+          mvn -B -DskipTests install
 
-        - name: Build dp-grpc dependency
-          run: |
-            cd dp-grpc
-            mvn clean install -DskipTests --batch-mode
-            echo "dp-grpc built and installed to local Maven repository"
+      - name: Start MongoDB with Docker Compose
+        run: |
+          # start the needed backends to execute the tests
+          docker compose -f docker-compose.yaml up -d
 
-        - name: Run all tests (unit + integration)
-          run: |
-            cd dp-service
-            mvn --batch-mode clean verify
+      - name: Wait for mongodb to be healthy
+        run: |
+          for i in {1..30}; do
+            STATUS=$(docker inspect dp-mongodb --format '{{json .State.Health.Status}}' 2>/dev/null || echo null)
+            echo "mongodb status: $STATUS"
+            if echo "$STATUS" | grep -iq healthy; then
+              echo "mongodb healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "mongodb did not become healthy" >&2
+          docker compose logs mongodb || true
+          exit 1
 
-        - name: Upload test reports
-          uses: actions/upload-artifact@v4
-          if: always()  # Upload even if tests fail
-          with:
-            name: test-reports
-            path: |
-              dp-service/target/surefire-reports/**/*
-              dp-service/target/failsafe-reports/**/*
-          continue-on-error: true  # Don't fail the workflow if no reports found
+      - name: Run Maven tests (integration/unit)
+        run: |
+          mvn -B test
+        env:
+          # Align with src/main/resources/application.yml
+          DP_MONGO_DB_HOST: localhost
+          DP_MONGO_DB_PORT: "27017"
+          DP_MONGO_DB_USER: admin
+          DP_MONGO_DB_PASSWORD: admin
+
+      - name: Collect logs (always)
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml logs --no-color > compose-logs.txt || true
+          echo "---- docker ps ----"
+          docker ps --no-trunc > docker-ps.txt || true
+          tar -czf logs.tar.gz compose-logs.txt docker-ps.txt || true
+        shell: bash
+
+      - name: Upload logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs
+          path: |
+            compose-logs.txt
+            docker-ps.txt
+            logs.tar.gz
+
+      - name: Tear down services
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml down -v

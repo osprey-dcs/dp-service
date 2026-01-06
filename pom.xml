@@ -10,7 +10,7 @@
     <groupId>com.ospreydcs</groupId>
     <artifactId>dp-service</artifactId>
     <packaging>jar</packaging>
-    <version>1.11.0</version>
+    <version>1.12.0</version>
 
     <properties>
 
@@ -22,7 +22,7 @@
 
         <main.basedir>${project.basedir}</main.basedir>
 
-        <dp-grpc.version>1.11.0</dp-grpc.version>
+        <dp-grpc.version>1.12.0</dp-grpc.version>
         <mongodb.version>5.4.0</mongodb.version>
         <log4j-version>2.23.1</log4j-version>
         <snakeyaml.version>2.2</snakeyaml.version>
@@ -159,10 +159,62 @@
             <scope>test</scope>
         </dependency>
 
+
     </dependencies>
 
     <build>
         <plugins>
+
+            <!-- Add integration test sources to compilation -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.4.0</version>
+                <executions>
+                    <execution>
+                        <id>add-integration-test-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/test/integration/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Unit Tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- Integration Tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
