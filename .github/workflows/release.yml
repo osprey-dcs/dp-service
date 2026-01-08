@@ -91,17 +91,8 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release
-      
-          JAR="target/dp-service-${VERSION}-shaded.jar"
-      
-          if [ ! -f "$JAR" ]; then
-            echo "ERROR: Expected shaded JAR not found: $JAR"
-            echo "Contents of target/:"
-            ls -la target
-            exit 1
-          fi
-
-          cp "$JAR" "release/dp-service-${VERSION}.jar"
+          SHADED_JAR=$(ls target/dp-service-*-shaded.jar)
+          cp "$SHADED_JAR" "release/dp-service-${VERSION}.jar"
 
       - name: Verify release artifacts
         run: |
