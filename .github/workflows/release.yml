@@ -99,11 +99,17 @@ jobs:
           test -f "release/dp-service-${VERSION}.jar" || \
             (echo "Missing dp-service-${VERSION}.jar" && exit 1)
 
-      - name: Publish GitHub release
+      - name: Generate checksum
+        run: |
+          sha256sum release/dp-service-${VERSION}.jar \
+            > release/dp-service-${VERSION}.jar.sha256
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
           files: |
             release/dp-service-${{ env.VERSION }}.jar
+            release/dp-service-${{ env.VERSION }}.jar.sha256
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
