@@ -2,7 +2,7 @@
 
 Below are java command lines for running the Data Platform Core Services, using the standard "dp" MongoDB database.  Use these commands for production and test systems.
 
-The [dp-support repo](https://github.com/osprey-dcs/dp-support?tab=readme-ov-file#data-platform-server-scripts) includes bash scripts for starting the services.
+The data-platform repo includes [bash scripts](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#data-platform-scripts) for starting the services.
 
 #### Ingestion Service
 ```
@@ -19,6 +19,12 @@ java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-
 
 ```
 java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-platform/config/log4j2.xml -cp ~/data-platform/lib/dp-service.jar com.ospreydcs.dp.service.annotation.server.AnnotationGrpcServer"
+```
+
+#### Ingestion Stream Service
+
+```
+java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-platform/config/log4j2.xml -cp ~/data-platform/lib/dp-service.jar com.ospreydcs.dp.service.ingestionstream.server.IngestionStreamGrpcServer"
 ```
 
 ## performance benchmark applications
@@ -73,9 +79,7 @@ java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-
 - **How:** Set environment variables before starting the JVM or provide them in your container/compose environment. Example (shell):
 
 ```bash
-export DP_MONGO_DB_HOST=mongo.example.com
-export DP_MONGO_DB_USER=dp_user
-export DP_MONGO_DB_PASSWORD=secret
+export DP_MONGO_DB_URI=mongodb://admin:admin@localhost:27017/
 java <other options> com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer
 ```
 
@@ -86,24 +90,17 @@ services:
 	dp-service:
 		image: your-image
 		environment:
-			- DP_MONGO_DB_HOST=mongo.example.com
-			- DP_MONGO_DB_USER=dp_user
-			- DP_MONGO_DB_PASSWORD=secret
+			- DP_MONGO_DB_URI=mongodb://admin:admin@localhost:27017/
 ```
 
 - **Notes:**
 	- Boolean values should be set as the strings `true` or `false` (unquoted or quoted are both accepted by the shell/container). Numeric values should be plain numbers. Strings containing colons or special characters should be quoted.
-	- `DP_MONGO_DB_URI` is a full connection string and, when provided, takes precedence over the simpler host/port/user/password fields (see `application.yml`).
 
 **Accepted environment variables**
 
 Below is the list of environment variables referenced in the project's `application.yml`. Each variable maps to a configuration property; if not set, the YAML default applies.
 
-- `DP_MONGO_DB_URI` : Optional full MongoDB connection string (overrides host/port/user/password). Example: `mongodb://user:pass@host:27017/?authSource=admin`
-- `DP_MONGO_DB_HOST` : MongoDB host (default: `localhost`)
-- `DP_MONGO_DB_PORT` : MongoDB port (default: `27017`)
-- `DP_MONGO_DB_USER` : MongoDB username (default: `admin`)
-- `DP_MONGO_DB_PASSWORD` : MongoDB password (default: `admin`)
+- `DP_MONGO_DB_URI` : Full MongoDB connection string. Example: `mongodb://user:pass@host:27017/?authSource=admin`
 - `DP_GRPC_CLIENT_HOSTNAME` : gRPC client hostname (default: `localhost`)
 - `DP_GRPC_CLIENT_KEEP_ALIVE_TIME_SECONDS` : gRPC client keepalive time in seconds (default: `45`)
 - `DP_GRPC_CLIENT_KEEP_ALIVE_TIMEOUT_SECONDS` : gRPC client keepalive timeout in seconds (default: `20`)
@@ -139,4 +136,4 @@ Below is the list of environment variables referenced in the project's `applicat
 - `DP_INGESTION_STREAM_TRIGGERED_EVENT_MANAGER_EVENT_EXPIRATION_NANOS` : TriggeredEventManager expiration in nanoseconds (default: `5000000000`)
 - `DP_INGESTION_STREAM_TRIGGERED_EVENT_MANAGER_EVENT_CLEANUP_INTERVAL_MILLIS` : TriggeredEventManager cleanup interval in ms (default: `5000`)
 
-If you want me to also add a short example `docker-compose.yml` snippet that demonstrates mounting configuration files while still using environment overrides, I can add that as a follow-up.
+TODO: add a short example `docker-compose.yml` snippet that demonstrates mounting configuration files while still using environment overrides, I can add that as a follow-up.
