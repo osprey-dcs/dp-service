@@ -1,8 +1,10 @@
+# Running MLDP Services and Applications
+
 ## core services
 
 Below are java command lines for running the Data Platform Core Services, using the standard "dp" MongoDB database.  Use these commands for production and test systems.
 
-The data-platform repo includes [bash scripts](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#data-platform-scripts) for starting the services.
+The data-platform repo includes [[bash scripts](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#data-platform-scripts)](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#data-platform-scripts) for starting the services.
 
 #### Ingestion Service
 ```
@@ -31,7 +33,7 @@ java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-
 
 The Data Platform includes tools for measuring performance of the Ingestion and Query Services.  There are special versions of the server applications that override the standard network port number and database, using the MongoDB database "dp-benchmark".  To run a benchmark for either service you must run both the server and client application.  Java command lines are given below.
 
-The [dp-support repo](https://github.com/osprey-dcs/dp-support?tab=readme-ov-file#data-platform-performance-benchmarks) includes bash scripts for starting the benchmark servers and running the client applications.
+The data-platform repo includes [bash scripts](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#data-platform-performance-benchmarks) for starting the benchmark servers and running the client applications.
 
 ### ingestion performance benchmark
 
@@ -67,13 +69,41 @@ Recognizing the previous use of the Ingestion Service performance benchmark to g
 
 To use the sample data generator, run the standard Ingestion Service as shown above, and use the Java command line below to run the client application.
 
-The [dp-support repo](https://github.com/osprey-dcs/dp-support?tab=readme-ov-file#data-platform-sample-data-generator) includes bash scripts for starting the standard Ingestion Service and running the sample data generator application.
+The data-platform repo includes [bash scripts](https://github.com/osprey-dcs/data-platform/blob/main/README-dp-support.md#sample-data-generator-scripts) for starting the standard Ingestion Service and running the sample data generator application.
 
 ```
 java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-platform/config/log4j2.xml -cp ~/data-platform/lib/dp-service.jar com.ospreydcs.dp.service.ingest.utility.TestDataGenerator
 ```
 
-## Custom Configuration via Environment Variables
+# Service Configuration
+
+
+## Default config file
+
+The default configuration file for the Data Platform services is in [application.yml](https://github.com/osprey-dcs/dp-service/blob/main/src/main/resources/application.yml). The config file contains in-line comments for each section and individual configuration options.
+
+The default settings are probably reasonable for most development systems, though you'll want to override the MongoDB URI resource to match your configuration. 
+
+Options for overriding the config file and individual resources are discussed below.
+
+
+## Overriding config file
+
+The default configuration file can be overridden in two different ways, by specifying an alternative file on either the command line used to start the application, or as an environment variable.
+
+To specify an alternative on the command line, add a VM option (e.g., on the command line BEFORE the class name) like the following: "-Ddp.config=/path/to/config/override.yml".
+
+To specify an alternative via an envoronment variable, define a variable in the environment "DP.CONFIG=/path/to/config/override.yml" before running the Ingestion Service application.  For example:
+```
+java -Ddp.config=$DP_HOME/config/dp.yml -Dlog4j.configurationFile=$DP_HOME/config/log4j2.xml -cp $DP_HOME/lib/dp-service/dp-service.jar com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer
+```
+
+
+## Overriding individual configuration properties on the command line
+
+In addition to overriding the default config file, individual configuration settings can be overridden on the command line.  To do so, use a VM option (in the java command line BEFORE the class name), prefixing the configuration setting name with "dp.".  For example, to override the gRPC port for the Ingestion Service, use "-Ddp.IngestionServer.port=50052".## Custom Configuration via Environment Variables
+
+## Overriding individual configuration properties via environment variables
 
 - **What:** The service reads configuration values from `application.yml` using the ${ENV_VAR:default} substitution syntax. If an environment variable is set, it overrides the default value declared in the YAML. If it is not set, the YAML default is used.
 - **How:** Set environment variables before starting the JVM or provide them in your container/compose environment. Example (shell):
