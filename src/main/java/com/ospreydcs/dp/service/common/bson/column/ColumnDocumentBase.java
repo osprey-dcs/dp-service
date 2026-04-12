@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.bson.column;
 
 import com.google.protobuf.Message;
+import com.ospreydcs.dp.grpc.v1.common.ColumnMetadata;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
@@ -37,6 +38,25 @@ public abstract class ColumnDocumentBase {
      * - Binary columns use direct deserialization pattern
      */
     public abstract Message toProtobufColumn();
+
+    /**
+     * If this document has columnMetadata, sets it on the provided proto message by rebuilding
+     * via the proto builder's setMetadata() method.  Returns the original message unchanged when
+     * no metadata is stored (the common case — zero overhead).
+     */
+    protected Message applyMetadataToProto(Message proto) {
+        if (columnMetadata == null) {
+            return proto;
+        }
+        try {
+            ColumnMetadata metaProto = columnMetadata.toColumnMetadata();
+            Message.Builder builder = proto.toBuilder();
+            builder.getClass().getMethod("setMetadata", ColumnMetadata.class).invoke(builder, metaProto);
+            return builder.build();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to apply columnMetadata to proto column", e);
+        }
+    }
 
     public byte[] toByteArray() {
         return toProtobufColumn().toByteArray();

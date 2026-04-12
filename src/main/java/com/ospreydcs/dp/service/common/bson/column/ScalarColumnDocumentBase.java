@@ -43,11 +43,11 @@ public abstract class ScalarColumnDocumentBase<T> extends ColumnDocumentBase {
         Message.Builder builder = createColumnBuilder();
         setBuilderName(builder, this.getName());
         addAllValuesToBuilder(builder);
-        
+
         // Allow subclasses to customize the builder before building
         customizeBuilder(builder);
-        
-        return builder.build();
+
+        return applyMetadataToProto(builder.build());
     }
     
     /**

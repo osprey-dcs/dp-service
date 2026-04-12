@@ -66,7 +66,7 @@ public abstract class BinaryColumnDocumentBase extends ColumnDocumentBase {
     @Override
     public final Message toProtobufColumn() {
         try {
-            return deserializeToProtobufColumn();
+            return applyMetadataToProto(deserializeToProtobufColumn());
         } catch (DpException e) {
             throw new RuntimeException("Failed to deserialize binary column", e);
         }
