@@ -114,7 +114,7 @@ public abstract class MongoClientBase {
                 BoolArrayColumnDocument.class,
                 StructColumnDocument.class,
                 ImageColumnDocument.class,
-                ImageColumnDocument.ImageDescriptorDocument.class,
+                ImageDescriptorDocument.class,
                 SerializedDataColumnDocument.class
         ).build();
 
