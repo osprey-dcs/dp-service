@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.DoubleColumn;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
@@ -15,6 +16,9 @@ public class DoubleColumnDocument extends ScalarColumnDocumentBase<Double> {
         DoubleColumnDocument document = new DoubleColumnDocument();
         document.setName(requestColumn.getName());
         document.setValues(requestColumn.getValuesList());
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

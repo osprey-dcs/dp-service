@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -70,6 +71,10 @@ public class DataColumnDocument extends ColumnDocumentBase {
             final DataValue.ValueCase dataValueCase = requestDataColumn.getDataValues(0).getValueCase();
             document.setValueCase(dataValueCase.getNumber());
             document.setValueType(dataValueCase.name());
+        }
+        // Metadata also embedded in bytes above, but extracted here for MongoDB queryability.
+        if (requestDataColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestDataColumn.getMetadata()));
         }
         return document;
     }

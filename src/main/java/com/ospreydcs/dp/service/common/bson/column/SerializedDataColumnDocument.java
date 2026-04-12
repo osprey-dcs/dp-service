@@ -5,6 +5,7 @@ import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
@@ -36,7 +37,9 @@ SerializedDataColumnDocument extends BinaryColumnDocumentBase {
         // Store binary payload directly - no serialization needed since client already provides binary data
         byte[] payload = requestColumn.getPayload().toByteArray();
         document.setBinaryData(payload);
-        
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

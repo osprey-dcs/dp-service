@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.common.bson.column;
 import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
@@ -11,6 +12,7 @@ public abstract class ColumnDocumentBase {
 
     // instance variables
     private String name;
+    private ColumnMetadataDocument columnMetadata;
 
     public String getName() {
         return name;
@@ -18,6 +20,14 @@ public abstract class ColumnDocumentBase {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public ColumnMetadataDocument getColumnMetadata() {
+        return columnMetadata;
+    }
+
+    public void setColumnMetadata(ColumnMetadataDocument columnMetadata) {
+        this.columnMetadata = columnMetadata;
     }
 
     /**

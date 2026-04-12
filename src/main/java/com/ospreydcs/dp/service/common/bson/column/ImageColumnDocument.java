@@ -5,6 +5,7 @@ import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.ImageColumn;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
@@ -31,6 +32,9 @@ public class ImageColumnDocument extends BinaryColumnDocumentBase {
         document.setName(requestColumn.getName());
         document.setImageDescriptor(ImageDescriptorDocument.fromImageDescriptor(requestColumn.getImageDescriptor()));
         document.setBinaryData(requestColumn.toByteArray());
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 
