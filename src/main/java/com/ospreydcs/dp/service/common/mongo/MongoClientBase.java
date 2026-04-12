@@ -94,6 +94,8 @@ public abstract class MongoClientBase {
                 CalculationsDataFrameDocument.class,
                 TimestampDocument.class,
                 DataTimestampsDocument.class,
+                ColumnProvenanceDocument.class,
+                ColumnMetadataDocument.class,
                 ColumnDocumentBase.class,
                 DataColumnDocument.class,
                 DoubleColumnDocument.class,
