@@ -368,10 +368,10 @@ public class IngestionTestBase {
             builder.addAllTags(tags);
         }
         if (attributes != null) {
-            for (Map.Entry<String, String> entry : attributes.entrySet()) {
-                builder.addAttributes(
-                        Attribute.newBuilder().setName(entry.getKey()).setValue(entry.getValue()).build());
-            }
+            // Use sorted key order to match AttributesUtility.attributeListFromMap() which iterates
+            // a TreeMap — ensuring proto attribute list order is stable across round-trips.
+            new java.util.TreeMap<>(attributes).forEach((k, v) ->
+                builder.addAttributes(Attribute.newBuilder().setName(k).setValue(v).build()));
         }
         return builder.build();
     }
