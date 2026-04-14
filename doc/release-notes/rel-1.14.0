@@ -1,0 +1,41 @@
+# dp-service 1.14.0 Release Notes
+
+## Column-Level Metadata in Ingestion (Issues dp-grpc #116, dp-service #177)
+
+### gRPC API Changes (dp-grpc #116)
+
+Two new protobuf messages were added to `common.proto`:
+
+```protobuf
+message ColumnProvenance {
+  string source = 1;   // origin system (e.g. "archiver", "epics-bridge")
+  string process = 2;  // originating process or pipeline step
+}
+
+message ColumnMetadata {
+  ColumnProvenance provenance = 1;
+  repeated string tags = 2;
+  repeated Attribute attributes = 3;
+}
+```
+
+An optional `metadata` field (field number 10) was added to all 16 column message types: `DataColumn`, `SerializedDataColumn`, `DoubleColumn`, `FloatColumn`, `Int64Column`, `Int32Column`, `BoolColumn`, `StringColumn`, `EnumColumn`, `DoubleArrayColumn`, `FloatArrayColumn`, `Int32ArrayColumn`, `Int64ArrayColumn`, `BoolArrayColumn`, `StructColumn`, and `ImageColumn`.
+
+### Ingestion Service Changes (dp-service #177)
+
+**Metadata persistence:** When an `IngestDataRequest` includes `ColumnMetadata` on any column, the metadata is now extracted and stored as a `columnMetadata` subdocument on the column's MongoDB bucket document. The field is stored within `ColumnDocumentBase` (the base class for all column document types), making it available under the dot-notation path `dataColumn.columnMetadata` for future query support. All 16 column types are handled.
+
+**New BSON document classes:**
+- `ColumnProvenanceDocument` — persists `source` and `process` fields
+- `ColumnMetadataDocument` — persists `provenance`, `tags`, and `attributes` (attributes stored as a sorted `Map<String, String>` via `AttributesUtility`)
+
+**Metadata validation:** A new validation layer was added to `IngestionValidationUtility` covering all column types. Limits enforced:
+- `provenance.source` and `provenance.process`: ≤ 256 characters each
+- `tags`: ≤ 20 entries, each ≤ 256 characters
+- `attributes`: ≤ 20 entries, each key and value ≤ 256 characters
+
+Columns without a `metadata` field are unaffected and incur no additional overhead.
+
+**Proto round-trip:** `toProtobufColumn()` was updated across all column document types to restore the `ColumnMetadata` field when deserializing from MongoDB, ensuring the retrieved proto column equals the original ingested column.
+
+**Test coverage:** 26 unit tests (BSON document classes and factory methods), 9 validation unit tests, and 5 end-to-end integration tests covering full metadata, absent metadata, partial metadata (provenance only), mixed columns (one with metadata, one without), and all three column categories (scalar, array, binary).
