@@ -7,6 +7,7 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -25,6 +26,48 @@ public class ColumnDocumentMetadataTest {
                 .addTags("fast")
                 .addAttributes(Attribute.newBuilder().setName("units").setValue("mm").build())
                 .build();
+    }
+
+    // -----------------------------------------------------------------------
+    // Legacy DataColumn round-trip
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testDataColumn_withMetadata_roundTrip() {
+        ColumnMetadata meta = buildFullMetadata();
+        DataValue dataValue = DataValue.newBuilder().setDoubleValue(3.14).build();
+        DataColumn original = DataColumn.newBuilder()
+                .setName("pv:legacy")
+                .addDataValues(dataValue)
+                .setMetadata(meta)
+                .build();
+
+        DataColumnDocument doc = DataColumnDocument.fromDataColumn(original);
+
+        // factory method must extract metadata into columnMetadata field
+        assertNotNull("columnMetadata should be stored by fromDataColumn()", doc.getColumnMetadata());
+        assertEquals("archiver", doc.getColumnMetadata().getProvenance().getSource());
+
+        // toProtobufColumn() must restore metadata (round-trip)
+        DataColumn roundTrip = (DataColumn) doc.toProtobufColumn();
+        assertTrue("metadata should survive round-trip via toProtobufColumn()", roundTrip.hasMetadata());
+        assertEquals("metadata round-trip must equal original", meta, roundTrip.getMetadata());
+        assertEquals("data values must survive round-trip", original.getDataValuesList(), roundTrip.getDataValuesList());
+    }
+
+    @Test
+    public void testDataColumn_withoutMetadata() {
+        DataValue dataValue = DataValue.newBuilder().setDoubleValue(1.0).build();
+        DataColumn col = DataColumn.newBuilder()
+                .setName("pv:legacy:nometa")
+                .addDataValues(dataValue)
+                .build();
+
+        DataColumnDocument doc = DataColumnDocument.fromDataColumn(col);
+
+        assertNull("columnMetadata should be null when column has no metadata", doc.getColumnMetadata());
+        DataColumn roundTrip = (DataColumn) doc.toProtobufColumn();
+        assertFalse("metadata should not be present on round-trip", roundTrip.hasMetadata());
     }
 
     // -----------------------------------------------------------------------

@@ -6,6 +6,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationTestBase;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
+import com.ospreydcs.dp.service.query.QueryTestBase;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -90,6 +91,21 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
 
         assertEquals(1, buckets.size());
         GrpcIntegrationIngestionServiceWrapper.verifyBucketColumnMetadata(buckets.get(0), metadata);
+
+        // verify metadata survives the gRPC query API round-trip (applyMetadataToProto() path)
+        {
+            QueryTestBase.QueryDataRequestParams queryParams = new QueryTestBase.QueryDataRequestParams(
+                    Collections.singletonList(pvName),
+                    startSeconds, startNanos,
+                    startSeconds + 1L, 0L);
+            List<DataBucket> queryBuckets = queryServiceWrapper.queryData(queryParams, false, "");
+            assertEquals(1, queryBuckets.size());
+            DataBucket bucket = queryBuckets.get(0);
+            DoubleColumn queriedColumn = bucket.getDataValues().getDoubleColumn();
+            assertTrue("metadata must be present in query result column", queriedColumn.hasMetadata());
+            assertEquals("metadata returned by query must equal originally ingested metadata",
+                    metadata, queriedColumn.getMetadata());
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -272,6 +288,21 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
         assertEquals(3, buckets.size());
         for (BucketDocument bucket : buckets) {
             GrpcIntegrationIngestionServiceWrapper.verifyBucketColumnMetadata(bucket, metadata);
+        }
+
+        // verify metadata survives the gRPC query API round-trip for the binary (struct) column
+        {
+            QueryTestBase.QueryDataRequestParams queryParams = new QueryTestBase.QueryDataRequestParams(
+                    Collections.singletonList(structPv),
+                    startSeconds, startNanos,
+                    startSeconds + 1L, 0L);
+            List<DataBucket> queryBuckets = queryServiceWrapper.queryData(queryParams, false, "");
+            assertEquals(1, queryBuckets.size());
+            DataBucket bucket = queryBuckets.get(0);
+            StructColumn queriedColumn = bucket.getDataValues().getStructColumn();
+            assertTrue("metadata must be present in binary column query result", queriedColumn.hasMetadata());
+            assertEquals("metadata returned by query must equal originally ingested metadata",
+                    metadata, queriedColumn.getMetadata());
         }
     }
 }

@@ -53,7 +53,9 @@ public class DataColumnDocument extends ColumnDocumentBase {
     public Message toProtobufColumn() {
         if (this.bytes != null) {
             try {
-                return DataColumn.parseFrom(this.bytes);
+                // bytes already contain metadata when present, but applyMetadataToProto() is called
+                // here for architectural consistency with all other column types.
+                return applyMetadataToProto(DataColumn.parseFrom(this.bytes));
             } catch (InvalidProtocolBufferException e) {
                 logger.error("protobuf parsing error", e);
                 // Return empty DataColumn as fallback

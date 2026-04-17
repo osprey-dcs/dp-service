@@ -17,20 +17,9 @@ import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 @BsonDiscriminator(key = "_t", value = "structColumn")
 public class StructColumnDocument extends BinaryColumnDocumentBase {
 
-    private String schemaId;
-
-    public String getSchemaId() {
-        return schemaId;
-    }
-
-    public void setSchemaId(String schemaId) {
-        this.schemaId = schemaId;
-    }
-
     public static StructColumnDocument fromStructColumn(StructColumn requestColumn) throws DpException {
         StructColumnDocument document = new StructColumnDocument();
         document.setName(requestColumn.getName());
-        document.setSchemaId(requestColumn.getSchemaId());
         document.setBinaryData(requestColumn.toByteArray());
         if (requestColumn.hasMetadata()) {
             document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));

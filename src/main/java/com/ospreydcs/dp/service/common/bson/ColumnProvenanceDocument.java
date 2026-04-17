@@ -28,8 +28,15 @@ public class ColumnProvenanceDocument {
 
     public static ColumnProvenanceDocument fromColumnProvenance(ColumnProvenance proto) {
         ColumnProvenanceDocument document = new ColumnProvenanceDocument();
-        document.setSource(proto.getSource());
-        document.setProcess(proto.getProcess());
+        // Only store non-empty strings so that unset proto fields (which default to "") are
+        // stored as null in MongoDB rather than "".  toColumnProvenance() already handles null
+        // by converting back to "", preserving correct protobuf round-trip semantics.
+        if (!proto.getSource().isEmpty()) {
+            document.setSource(proto.getSource());
+        }
+        if (!proto.getProcess().isEmpty()) {
+            document.setProcess(proto.getProcess());
+        }
         return document;
     }
 

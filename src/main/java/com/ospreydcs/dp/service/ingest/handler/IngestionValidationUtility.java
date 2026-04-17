@@ -553,40 +553,40 @@ public class IngestionValidationUtility {
             ColumnProvenance provenance = metadata.getProvenance();
             if (provenance.getSource().length() > MAX_STRING_LENGTH) {
                 return new ResultStatus(true, fieldPath + ".metadata.provenance.source length exceeds maximum: " +
-                        "length=" + provenance.getSource().length() + ", max=" + MAX_STRING_LENGTH);
+                        "got: " + provenance.getSource().length() + ", max: " + MAX_STRING_LENGTH);
             }
             if (provenance.getProcess().length() > MAX_STRING_LENGTH) {
                 return new ResultStatus(true, fieldPath + ".metadata.provenance.process length exceeds maximum: " +
-                        "length=" + provenance.getProcess().length() + ", max=" + MAX_STRING_LENGTH);
+                        "got: " + provenance.getProcess().length() + ", max: " + MAX_STRING_LENGTH);
             }
         }
 
         List<String> tags = metadata.getTagsList();
         if (tags.size() > MAX_METADATA_TAGS_COUNT) {
             return new ResultStatus(true, fieldPath + ".metadata.tags count exceeds maximum: " +
-                    "count=" + tags.size() + ", max=" + MAX_METADATA_TAGS_COUNT);
+                    "got: " + tags.size() + ", max: " + MAX_METADATA_TAGS_COUNT);
         }
         for (int i = 0; i < tags.size(); i++) {
             if (tags.get(i).length() > MAX_STRING_LENGTH) {
                 return new ResultStatus(true, fieldPath + ".metadata.tags[" + i + "] length exceeds maximum: " +
-                        "length=" + tags.get(i).length() + ", max=" + MAX_STRING_LENGTH);
+                        "got: " + tags.get(i).length() + ", max: " + MAX_STRING_LENGTH);
             }
         }
 
         List<Attribute> attributes = metadata.getAttributesList();
         if (attributes.size() > MAX_METADATA_ATTRIBUTES_COUNT) {
             return new ResultStatus(true, fieldPath + ".metadata.attributes count exceeds maximum: " +
-                    "count=" + attributes.size() + ", max=" + MAX_METADATA_ATTRIBUTES_COUNT);
+                    "got: " + attributes.size() + ", max: " + MAX_METADATA_ATTRIBUTES_COUNT);
         }
         for (int i = 0; i < attributes.size(); i++) {
             Attribute attr = attributes.get(i);
             if (attr.getName().length() > MAX_STRING_LENGTH) {
                 return new ResultStatus(true, fieldPath + ".metadata.attributes[" + i + "].name length exceeds maximum: " +
-                        "length=" + attr.getName().length() + ", max=" + MAX_STRING_LENGTH);
+                        "got: " + attr.getName().length() + ", max: " + MAX_STRING_LENGTH);
             }
             if (attr.getValue().length() > MAX_STRING_LENGTH) {
                 return new ResultStatus(true, fieldPath + ".metadata.attributes[" + i + "].value length exceeds maximum: " +
-                        "length=" + attr.getValue().length() + ", max=" + MAX_STRING_LENGTH);
+                        "got: " + attr.getValue().length() + ", max: " + MAX_STRING_LENGTH);
             }
         }
 

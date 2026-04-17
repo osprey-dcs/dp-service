@@ -17,20 +17,9 @@ import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 @BsonDiscriminator(key = "_t", value = "imageColumn")
 public class ImageColumnDocument extends BinaryColumnDocumentBase {
 
-    private ImageDescriptorDocument imageDescriptor;
-
-    public ImageDescriptorDocument getImageDescriptor() {
-        return imageDescriptor;
-    }
-
-    public void setImageDescriptor(ImageDescriptorDocument imageDescriptor) {
-        this.imageDescriptor = imageDescriptor;
-    }
-
     public static ImageColumnDocument fromImageColumn(ImageColumn requestColumn) throws DpException {
         ImageColumnDocument document = new ImageColumnDocument();
         document.setName(requestColumn.getName());
-        document.setImageDescriptor(ImageDescriptorDocument.fromImageDescriptor(requestColumn.getImageDescriptor()));
         document.setBinaryData(requestColumn.toByteArray());
         if (requestColumn.hasMetadata()) {
             document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));

@@ -50,6 +50,10 @@ public abstract class ColumnDocumentBase {
      * via the proto builder's setMetadata() method.  Returns the original message unchanged when
      * no metadata is stored (the common case — zero overhead).
      * The resolved setMetadata Method is cached per builder class to avoid repeated reflection lookups.
+     *
+     * Note: when metadata IS present, proto.toBuilder() creates a full in-memory copy of the proto.
+     * For large binary columns (e.g. ImageColumn up to 50 MB) this temporarily doubles the memory
+     * footprint.  The null / no-metadata path has zero overhead.
      */
     protected Message applyMetadataToProto(Message proto) {
         if (columnMetadata == null) {
@@ -59,15 +63,19 @@ public abstract class ColumnDocumentBase {
             ColumnMetadata metaProto = columnMetadata.toColumnMetadata();
             Message.Builder builder = proto.toBuilder();
             Class<?> builderClass = builder.getClass();
-            Method setMetadata = SET_METADATA_METHOD_CACHE.computeIfAbsent(builderClass, cls -> {
-                try {
-                    return cls.getMethod("setMetadata", ColumnMetadata.class);
-                } catch (NoSuchMethodException e) {
-                    throw new RuntimeException("No setMetadata(ColumnMetadata) method on " + cls.getName(), e);
-                }
-            });
+            // Separate the cache lookup from exception handling: computeIfAbsent must not throw,
+            // because a throwing mapping function prevents the entry from being cached and buries
+            // the real cause inside a second RuntimeException wrapper.
+            Method setMetadata = SET_METADATA_METHOD_CACHE.get(builderClass);
+            if (setMetadata == null) {
+                setMetadata = builderClass.getMethod("setMetadata", ColumnMetadata.class);
+                SET_METADATA_METHOD_CACHE.put(builderClass, setMetadata);
+            }
             setMetadata.invoke(builder, metaProto);
             return builder.build();
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(
+                    "No setMetadata(ColumnMetadata) method on builder for " + proto.getClass().getName(), e);
         } catch (Exception e) {
             throw new RuntimeException(
                     "Failed to apply columnMetadata to proto column of type " + proto.getClass().getName(), e);
