@@ -94,6 +94,8 @@ public abstract class MongoClientBase {
                 CalculationsDataFrameDocument.class,
                 TimestampDocument.class,
                 DataTimestampsDocument.class,
+                ColumnProvenanceDocument.class,
+                ColumnMetadataDocument.class,
                 ColumnDocumentBase.class,
                 DataColumnDocument.class,
                 DoubleColumnDocument.class,
@@ -114,7 +116,6 @@ public abstract class MongoClientBase {
                 BoolArrayColumnDocument.class,
                 StructColumnDocument.class,
                 ImageColumnDocument.class,
-                ImageColumnDocument.ImageDescriptorDocument.class,
                 SerializedDataColumnDocument.class
         ).build();
 

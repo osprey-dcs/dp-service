@@ -790,6 +790,245 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
         assertTrue(result.msg.contains("current=100.300000000"));
     }
 
+    // ===== Column Metadata Validation Tests =====
+
+    private static IngestDataRequest buildRequestWithDoubleColumn(DoubleColumn column) {
+        Timestamp startTime = TimestampUtility.getTimestampNow();
+        SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(startTime)
+                .setPeriodNanos(1_000_000L)
+                .setCount(column.getValuesCount())
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder().setSamplingClock(clock).build();
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addDoubleColumns(column)
+                .build();
+        return IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+    }
+
+    private static String longString(int length) {
+        return "X".repeat(length);
+    }
+
+    /**
+     * Valid full metadata — should pass.
+     */
+    @Test
+    public void testValidateColumnMetadata_validMetadata() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder().setSource("src").setProcess("proc").build())
+                .addTags("tag1")
+                .addAttributes(Attribute.newBuilder().setName("k").setValue("v").build())
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertFalse(result.isError);
+    }
+
+    /**
+     * Column without metadata — should pass.
+     */
+    @Test
+    public void testValidateColumnMetadata_noMetadata() {
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertFalse(result.isError);
+    }
+
+    /**
+     * provenance.source too long — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_provenanceSourceTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder().setSource(longString(257)).setProcess("proc").build())
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.provenance.source length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * provenance.process too long — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_provenanceProcessTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder().setSource("src").setProcess(longString(257)).build())
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.provenance.process length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * A single tag too long — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_tagTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .addTags("ok-tag")
+                .addTags(longString(257))
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.tags[1] length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * More than 20 tags — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_tooManyTags() {
+        ColumnMetadata.Builder metaBuilder = ColumnMetadata.newBuilder();
+        for (int i = 0; i < 21; i++) {
+            metaBuilder.addTags("tag" + i);
+        }
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(metaBuilder.build()).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.tags count exceeds maximum"));
+        assertTrue(result.msg.contains("got: 21, max: 20"));
+    }
+
+    /**
+     * Attribute key too long — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_attributeKeyTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .addAttributes(Attribute.newBuilder().setName(longString(257)).setValue("v").build())
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.attributes[0].name length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * Attribute value too long — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_attributeValueTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .addAttributes(Attribute.newBuilder().setName("k").setValue(longString(257)).build())
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.attributes[0].value length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * More than 20 attributes — should fail.
+     */
+    @Test
+    public void testValidateColumnMetadata_tooManyAttributes() {
+        ColumnMetadata.Builder metaBuilder = ColumnMetadata.newBuilder();
+        for (int i = 0; i < 21; i++) {
+            metaBuilder.addAttributes(Attribute.newBuilder().setName("k" + i).setValue("v").build());
+        }
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(metaBuilder.build()).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("metadata.attributes count exceeds maximum"));
+        assertTrue(result.msg.contains("got: 21, max: 20"));
+    }
+
+    /**
+     * DoubleArrayColumn with provenance.source too long — validates the array column metadata path.
+     */
+    @Test
+    public void testValidateColumnMetadata_arrayColumn_provenanceSourceTooLong() {
+        Timestamp startTime = com.ospreydcs.dp.service.common.protobuf.TimestampUtility.getTimestampNow();
+        SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(startTime)
+                .setPeriodNanos(1_000_000L)
+                .setCount(2)
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder().setSamplingClock(clock).build();
+
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder().setSource(longString(257)).build())
+                .build();
+        ArrayDimensions dims = ArrayDimensions.newBuilder().addDims(1).build();
+        DoubleArrayColumn col = DoubleArrayColumn.newBuilder()
+                .setName("array-pv")
+                .setDimensions(dims)
+                .addValues(1.0)
+                .addValues(2.0)
+                .setMetadata(meta)
+                .build();
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addDoubleArrayColumns(col)
+                .build();
+        IngestDataRequest request = IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("doubleArrayColumns[0]"));
+        assertTrue(result.msg.contains("metadata.provenance.source length exceeds maximum"));
+        assertTrue(result.msg.contains("got: 257, max: 256"));
+    }
+
+    /**
+     * StructColumn with too many tags — validates the binary column metadata path.
+     */
+    @Test
+    public void testValidateColumnMetadata_binaryColumn_tooManyTags() {
+        Timestamp startTime = com.ospreydcs.dp.service.common.protobuf.TimestampUtility.getTimestampNow();
+        SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(startTime)
+                .setPeriodNanos(1_000_000L)
+                .setCount(1)
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder().setSamplingClock(clock).build();
+
+        ColumnMetadata.Builder metaBuilder = ColumnMetadata.newBuilder();
+        for (int i = 0; i < 21; i++) {
+            metaBuilder.addTags("tag" + i);
+        }
+        StructColumn col = StructColumn.newBuilder()
+                .setName("struct-pv")
+                .setSchemaId("schema-1")
+                .addValues(com.google.protobuf.ByteString.copyFrom(new byte[]{1, 2, 3}))
+                .setMetadata(metaBuilder.build())
+                .build();
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addStructColumns(col)
+                .build();
+        IngestDataRequest request = IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("structColumns[0]"));
+        assertTrue(result.msg.contains("metadata.tags count exceeds maximum"));
+        assertTrue(result.msg.contains("got: 21, max: 20"));
+    }
+
     /**
      * Test successful validation with multiple new column types
      */

@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.StringColumn;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 @BsonDiscriminator(key = "_t", value = "stringColumn")
@@ -15,6 +16,9 @@ public class StringColumnDocument extends ScalarColumnDocumentBase<String> {
         StringColumnDocument document = new StringColumnDocument();
         document.setName(requestColumn.getName());
         document.setValues(requestColumn.getValuesList());
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

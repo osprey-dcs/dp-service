@@ -1228,4 +1228,56 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
         responseObserver.awaitCloseLatch();
     }
 
+    /**
+     * Verifies that the columnMetadata field of a BucketDocument matches the expected ColumnMetadata proto.
+     * Asserts provenance source/process, tags list, and attributes map.
+     * Pass null for expectedMetadata to assert that columnMetadata is null on the bucket.
+     */
+    public static void verifyBucketColumnMetadata(
+            BucketDocument bucket,
+            ColumnMetadata expectedMetadata) {
+
+        com.ospreydcs.dp.service.common.bson.column.ColumnDocumentBase columnDocument = bucket.getDataColumn();
+
+        if (expectedMetadata == null) {
+            assertNull("expected no columnMetadata on bucket for PV: " + bucket.getPvName(),
+                    columnDocument.getColumnMetadata());
+            return;
+        }
+
+        com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument metaDoc = columnDocument.getColumnMetadata();
+        assertNotNull("expected columnMetadata on bucket for PV: " + bucket.getPvName(), metaDoc);
+
+        // verify provenance
+        if (expectedMetadata.hasProvenance()) {
+            assertNotNull("expected provenance in columnMetadata", metaDoc.getProvenance());
+            assertEquals(expectedMetadata.getProvenance().getSource(), metaDoc.getProvenance().getSource());
+            assertEquals(expectedMetadata.getProvenance().getProcess(), metaDoc.getProvenance().getProcess());
+        } else {
+            assertNull("expected no provenance in columnMetadata", metaDoc.getProvenance());
+        }
+
+        // verify tags
+        if (expectedMetadata.getTagsCount() > 0) {
+            assertNotNull("expected tags in columnMetadata", metaDoc.getTags());
+            assertEquals(expectedMetadata.getTagsList(), metaDoc.getTags());
+        } else {
+            assertNull("expected no tags in columnMetadata", metaDoc.getTags());
+        }
+
+        // verify attributes
+        if (expectedMetadata.getAttributesCount() > 0) {
+            assertNotNull("expected attributes in columnMetadata", metaDoc.getAttributes());
+            for (Attribute attr : expectedMetadata.getAttributesList()) {
+                assertTrue("expected attribute key: " + attr.getName(), metaDoc.getAttributes().containsKey(attr.getName()));
+                assertEquals("expected attribute value for key: " + attr.getName(),
+                        attr.getValue(), metaDoc.getAttributes().get(attr.getName()));
+            }
+            assertEquals(expectedMetadata.getAttributesCount(), metaDoc.getAttributes().size());
+        } else {
+            assertNull("expected no attributes in columnMetadata", metaDoc.getAttributes());
+        }
+    }
+
+
 }

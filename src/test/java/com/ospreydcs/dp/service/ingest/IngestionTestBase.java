@@ -348,6 +348,53 @@ public class IngestionTestBase {
         }
 
     /**
+     * Builds a ColumnMetadata proto with the supplied provenance, tags, and attributes.
+     * Any parameter may be null to omit that field.
+     */
+    public static ColumnMetadata buildColumnMetadata(
+            String source,
+            String process,
+            List<String> tags,
+            Map<String, String> attributes) {
+
+        ColumnMetadata.Builder builder = ColumnMetadata.newBuilder();
+        if (source != null || process != null) {
+            ColumnProvenance.Builder provBuilder = ColumnProvenance.newBuilder();
+            if (source != null) provBuilder.setSource(source);
+            if (process != null) provBuilder.setProcess(process);
+            builder.setProvenance(provBuilder.build());
+        }
+        if (tags != null) {
+            builder.addAllTags(tags);
+        }
+        if (attributes != null) {
+            // Use sorted key order to match AttributesUtility.attributeListFromMap() which iterates
+            // a TreeMap — ensuring proto attribute list order is stable across round-trips.
+            new java.util.TreeMap<>(attributes).forEach((k, v) ->
+                builder.addAttributes(Attribute.newBuilder().setName(k).setValue(v).build()));
+        }
+        return builder.build();
+    }
+
+    /**
+     * Builds a DoubleColumn with the supplied name, values, and metadata.
+     * Metadata may be null to produce a column with no metadata field set.
+     */
+    public static DoubleColumn buildDoubleColumnWithMetadata(
+            String name,
+            List<Double> values,
+            ColumnMetadata metadata) {
+
+        DoubleColumn.Builder builder = DoubleColumn.newBuilder()
+                .setName(name)
+                .addAllValues(values);
+        if (metadata != null) {
+            builder.setMetadata(metadata);
+        }
+        return builder.build();
+    }
+
+    /**
      * Builds an IngestDataRequest API object from an IngestionRequestParams object.
      * This utility avoids having code to build API requests scattered around the test methods.
      * If params object contains a list of column names and column data values, there is special handling

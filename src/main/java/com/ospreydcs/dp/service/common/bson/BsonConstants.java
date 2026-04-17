@@ -29,6 +29,10 @@ public class BsonConstants {
     public static final String BSON_KEY_BUCKET_DATA_TYPE = "dataColumn._t";
     public static final String BSON_KEY_BUCKET_PROVIDER_ID = "providerId";
     public static final String BSON_KEY_BUCKET_PROVIDER_NAME = "providerName";
+    public static final String BSON_KEY_BUCKET_COLUMN_METADATA = "dataColumn.columnMetadata";
+    public static final String BSON_KEY_BUCKET_COLUMN_METADATA_PROVENANCE = "dataColumn.columnMetadata.provenance";
+    public static final String BSON_KEY_BUCKET_COLUMN_METADATA_TAGS = "dataColumn.columnMetadata.tags";
+    public static final String BSON_KEY_BUCKET_COLUMN_METADATA_ATTRIBUTES = "dataColumn.columnMetadata.attributes";
 
     public static final String BSON_KEY_REQ_STATUS_ID = "_id";
     public static final String BSON_KEY_REQ_STATUS_PROVIDER_ID = "providerId";

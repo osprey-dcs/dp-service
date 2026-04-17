@@ -4,6 +4,7 @@ import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.DoubleArrayColumn;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
@@ -33,7 +34,9 @@ public class DoubleArrayColumnDocument extends ArrayColumnDocumentBase {
         
         byte[] binaryData = document.serializeValues(values, sampleCount);
         document.setBinaryData(binaryData);
-        
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

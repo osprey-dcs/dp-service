@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.Int64ArrayColumn;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 import java.nio.ByteBuffer;
@@ -33,7 +34,9 @@ public class Int64ArrayColumnDocument extends ArrayColumnDocumentBase {
         
         byte[] binaryData = document.serializeValues(values, sampleCount);
         document.setBinaryData(binaryData);
-        
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

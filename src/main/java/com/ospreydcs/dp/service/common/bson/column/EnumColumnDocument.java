@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.DataValues;
 import com.ospreydcs.dp.grpc.v1.common.EnumColumn;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 @BsonDiscriminator(key = "_t", value = "enumColumn")
@@ -26,6 +27,9 @@ public class EnumColumnDocument extends ScalarColumnDocumentBase<Integer> {
         document.setName(requestColumn.getName());
         document.setValues(requestColumn.getValuesList());
         document.setEnumId(requestColumn.getEnumId());
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
 

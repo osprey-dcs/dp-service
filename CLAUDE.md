@@ -64,7 +64,7 @@ MongoDB documents use embedded protobuf serialization:
 The ingestion service uses a sophisticated class hierarchy for MongoDB column document storage:
 
 **Base Classes:**
-- **`ColumnDocumentBase`**: Abstract base with `name` field and methods for protobuf/MongoDB conversion
+- **`ColumnDocumentBase`**: Abstract base with `name` and `columnMetadata` fields and methods for protobuf/MongoDB conversion
 - **`ScalarColumnDocumentBase<T>`**: Generic intermediate class for scalar column types
 
 **Scalar Column Implementation Pattern:**
@@ -72,11 +72,14 @@ The ingestion service uses a sophisticated class hierarchy for MongoDB column do
 @BsonDiscriminator(key = "_t", value = "columnType")
 public class TypeColumnDocument extends ScalarColumnDocumentBase<JavaType> {
     
-    // Static factory method
+    // Static factory method — always extract metadata if present
     public static TypeColumnDocument fromTypeColumn(TypeColumn requestColumn) {
         TypeColumnDocument document = new TypeColumnDocument();
         document.setName(requestColumn.getName());
         document.setValues(requestColumn.getValuesList());
+        if (requestColumn.hasMetadata()) {
+            document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+        }
         return document;
     }
     
@@ -88,8 +91,8 @@ public class TypeColumnDocument extends ScalarColumnDocumentBase<JavaType> {
     
     // Add values to protobuf builder
     @Override
-    protected void addAllValuesToBuilder(Message.Builder builder, List<JavaType> values) {
-        ((TypeColumn.Builder) builder).addAllValues(values);
+    protected void addAllValuesToBuilder(Message.Builder builder) {
+        ((TypeColumn.Builder) builder).addAllValues(this.getValues());
     }
     
     // Convert scalar to DataValue for legacy compatibility
@@ -216,8 +219,8 @@ The ingestion service uses a proven **7-step systematic process** for adding com
 
 **Step 3: Register POJO Class in MongoDB Codec**
 - Add document class to `MongoClientBase.getPojoCodecRegistry()`
-- For embedded helper classes (e.g., ImageDescriptorDocument), register separately
-- Ensures proper MongoDB serialization/deserialization
+- For embedded helper classes (e.g., `ImageDescriptorDocument`), register separately before the parent class
+- **Warning**: MongoDB POJO codec silently skips any field missing a getter or setter — `insertMany` succeeds but the field is not written to the database. Every instance variable on every registered BSON class must have both getter and setter.
 
 **Step 4: Add Data Subscription Support**
 - Update `SourceMonitorManager.publishDataSubscriptions()`
@@ -338,6 +341,55 @@ public class TypeArrayColumnDocument extends ArrayColumnDocumentBase {
 - **Type Safety**: ArrayColumnDocumentBase provides array-specific validation and serialization
 - **Extensibility**: Easy to add new binary column types (ImageColumn, StructColumn)
 - **Performance**: Binary serialization optimized for high-frequency array ingestion scenarios
+
+### Column-Level Metadata
+
+All 16 column proto types carry an optional `metadata = 10` field (`ColumnMetadata`) added in dp-grpc issue #116. The ingestion service persists this metadata alongside column data in MongoDB.
+
+**Proto Messages:**
+```protobuf
+message ColumnProvenance { string source = 1; string process = 2; }
+message ColumnMetadata {
+  ColumnProvenance provenance = 1;
+  repeated string tags = 2;
+  repeated Attribute attributes = 3;
+}
+```
+
+**BSON Document Classes** (`common/bson/`):
+- `ColumnProvenanceDocument` — fields: `source`, `process`; factory `fromColumnProvenance()`, conversion `toColumnProvenance()`
+- `ColumnMetadataDocument` — fields: `provenance`, `tags`, `Map<String,String> attributes`; factory `fromColumnMetadata()`, conversion `toColumnMetadata()`
+- Attributes stored as `Map<String, String>` using `AttributesUtility.attributeMapFromList()` / `attributeListFromMap()`
+- Both classes **must** be registered in `MongoClientBase.getPojoCodecRegistry()` before `ColumnDocumentBase.class`
+
+**Storage Location:**
+Metadata is stored as `columnMetadata` on `ColumnDocumentBase` (not on `BucketDocument`). Since there is one `BucketDocument` per column, metadata is semantically owned by the column document. This also enables future MongoDB queries via dot-notation paths defined in `BsonConstants`:
+```java
+BSON_KEY_BUCKET_COLUMN_METADATA             = "dataColumn.columnMetadata"
+BSON_KEY_BUCKET_COLUMN_METADATA_PROVENANCE  = "dataColumn.columnMetadata.provenance"
+BSON_KEY_BUCKET_COLUMN_METADATA_TAGS        = "dataColumn.columnMetadata.tags"
+BSON_KEY_BUCKET_COLUMN_METADATA_ATTRIBUTES  = "dataColumn.columnMetadata.attributes"
+```
+
+**Factory Method Pattern:**
+Every `fromXxxColumn()` factory must check `hasMetadata()` and call `setColumnMetadata()`:
+```java
+if (requestColumn.hasMetadata()) {
+    document.setColumnMetadata(ColumnMetadataDocument.fromColumnMetadata(requestColumn.getMetadata()));
+}
+```
+This is present in all 16 column document factory methods. Omitting it silently drops metadata.
+
+**Round-Trip Restoration via `applyMetadataToProto()`:**
+`toProtobufColumn()` reconstructs the proto column from stored fields and must re-attach metadata. `ColumnDocumentBase.applyMetadataToProto(Message)` handles this via reflection (`setMetadata` on the proto builder). It is called automatically by both `ScalarColumnDocumentBase.toProtobufColumn()` and `BinaryColumnDocumentBase.toProtobufColumn()` — no action needed in individual column document classes. Without this, the stored proto round-trip would not equal the original request column (breaking `verifyIngestionRequestHandling` equality checks).
+
+**Validation Limits** (enforced in `IngestionValidationUtility.validateAllColumnMetadata()`):
+- `provenance.source` / `provenance.process`: ≤ 256 characters
+- `tags`: ≤ 20 entries, each ≤ 256 characters
+- `attributes`: ≤ 20 entries, each key and value ≤ 256 characters
+
+**MongoDB POJO Codec Silent Failure Warning:**
+The MongoDB POJO codec silently skips fields that lack getter/setter methods — `insertMany` succeeds but the field is not written. Any new BSON document class added to the hierarchy (including helper classes like `ColumnProvenanceDocument`) **must** have both a getter and setter for every instance variable, or the field will be silently dropped in MongoDB.
 
 ## Export Framework Architecture
 The Annotation Service includes a sophisticated export framework with format-specific support for different column types:
