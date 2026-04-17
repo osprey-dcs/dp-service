@@ -8,8 +8,14 @@ import com.ospreydcs.dp.service.common.bson.ColumnMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
+import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
+
 @BsonDiscriminator
 public abstract class ColumnDocumentBase {
+
+    private static final ConcurrentHashMap<Class<?>, Method> SET_METADATA_METHOD_CACHE =
+            new ConcurrentHashMap<>();
 
     // instance variables
     private String name;
@@ -43,6 +49,7 @@ public abstract class ColumnDocumentBase {
      * If this document has columnMetadata, sets it on the provided proto message by rebuilding
      * via the proto builder's setMetadata() method.  Returns the original message unchanged when
      * no metadata is stored (the common case — zero overhead).
+     * The resolved setMetadata Method is cached per builder class to avoid repeated reflection lookups.
      */
     protected Message applyMetadataToProto(Message proto) {
         if (columnMetadata == null) {
@@ -51,10 +58,19 @@ public abstract class ColumnDocumentBase {
         try {
             ColumnMetadata metaProto = columnMetadata.toColumnMetadata();
             Message.Builder builder = proto.toBuilder();
-            builder.getClass().getMethod("setMetadata", ColumnMetadata.class).invoke(builder, metaProto);
+            Class<?> builderClass = builder.getClass();
+            Method setMetadata = SET_METADATA_METHOD_CACHE.computeIfAbsent(builderClass, cls -> {
+                try {
+                    return cls.getMethod("setMetadata", ColumnMetadata.class);
+                } catch (NoSuchMethodException e) {
+                    throw new RuntimeException("No setMetadata(ColumnMetadata) method on " + cls.getName(), e);
+                }
+            });
+            setMetadata.invoke(builder, metaProto);
             return builder.build();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to apply columnMetadata to proto column", e);
+            throw new RuntimeException(
+                    "Failed to apply columnMetadata to proto column of type " + proto.getClass().getName(), e);
         }
     }
 
