@@ -89,6 +89,7 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
         IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
         List<BucketDocument> buckets = ingestionServiceWrapper.sendAndVerifyIngestData(params, request);
 
+
         assertEquals(1, buckets.size());
         GrpcIntegrationIngestionServiceWrapper.verifyBucketColumnMetadata(buckets.get(0), metadata);
 
