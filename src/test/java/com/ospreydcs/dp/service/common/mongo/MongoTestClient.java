@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -142,6 +143,24 @@ public class MongoTestClient extends MongoSyncClient {
             } else {
                 try {
                     logger.info("findAnnotation id: " + annotationId + " retrying");
+                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                } catch (InterruptedException ex) {
+                    // ignore and just retry
+                }
+            }
+        }
+        return null;
+    }
+
+    public PvMetadataDocument findPvMetadata(String pvName) {
+        for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+            final List<PvMetadataDocument> matchingDocuments = new ArrayList<>();
+            mongoCollectionPvMetadata.find(eq("pvName", pvName)).into(matchingDocuments);
+            if (matchingDocuments.size() > 0) {
+                return matchingDocuments.get(0);
+            } else {
+                try {
+                    logger.info("findPvMetadata pvName: " + pvName + " retrying");
                     Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
                 } catch (InterruptedException ex) {
                     // ignore and just retry

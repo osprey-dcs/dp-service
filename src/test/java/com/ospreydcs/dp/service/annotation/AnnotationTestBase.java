@@ -1148,4 +1148,337 @@ public class AnnotationTestBase {
         }
     }
 
+    // =========================================================================
+    // PvMetadata response observers and request builders
+    // =========================================================================
+
+    public static class SavePvMetadataResponseObserver implements StreamObserver<SavePvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public String getPvName() {
+            return pvNameList.isEmpty() ? null : pvNameList.get(0);
+        }
+
+        @Override
+        public void onNext(SavePvMetadataResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasSavePvMetadataResult());
+                final SavePvMetadataResponse.SavePvMetadataResult result = response.getSavePvMetadataResult();
+                assertNotNull(result);
+                if (!pvNameList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                } else {
+                    pvNameList.add(result.getPvName());
+                    finishLatch.countDown();
+                }
+            }).start();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
+    public static class QueryPvMetadataResponseObserver implements StreamObserver<QueryPvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> pvMetadataList =
+                Collections.synchronizedList(new ArrayList<>());
+        private String nextPageToken = "";
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> getPvMetadataList() {
+            return pvMetadataList;
+        }
+
+        public String getNextPageToken() { return nextPageToken; }
+
+        @Override
+        public void onNext(QueryPvMetadataResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasPvMetadataResult());
+                final QueryPvMetadataResponse.PvMetadataResult result = response.getPvMetadataResult();
+                assertNotNull(result);
+                pvMetadataList.addAll(result.getPvMetadataList());
+                nextPageToken = result.getNextPageToken();
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
+    public static class GetPvMetadataResponseObserver implements StreamObserver<GetPvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> pvMetadataList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public com.ospreydcs.dp.grpc.v1.common.PvMetadata getPvMetadata() {
+            return pvMetadataList.isEmpty() ? null : pvMetadataList.get(0);
+        }
+
+        @Override
+        public void onNext(GetPvMetadataResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasGetPvMetadataResult());
+                final GetPvMetadataResponse.GetPvMetadataResult result = response.getGetPvMetadataResult();
+                assertNotNull(result);
+                pvMetadataList.add(result.getPvMetadata());
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
+    public static class DeletePvMetadataResponseObserver implements StreamObserver<DeletePvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public String getDeletedPvName() {
+            return pvNameList.isEmpty() ? null : pvNameList.get(0);
+        }
+
+        @Override
+        public void onNext(DeletePvMetadataResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasDeletePvMetadataResult());
+                final DeletePvMetadataResponse.DeletePvMetadataResult result = response.getDeletePvMetadataResult();
+                assertNotNull(result);
+                pvNameList.add(result.getPvName());
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
+    public record SavePvMetadataParams(
+            String pvName,
+            List<String> aliases,
+            List<String> tags,
+            List<com.ospreydcs.dp.grpc.v1.common.Attribute> attributes,
+            String description,
+            String modifiedBy
+    ) {}
+
+    public static SavePvMetadataRequest buildSavePvMetadataRequest(SavePvMetadataParams params) {
+        final SavePvMetadataRequest.Builder builder = SavePvMetadataRequest.newBuilder();
+        if (params.pvName() != null) {
+            builder.setPvName(params.pvName());
+        }
+        if (params.aliases() != null) {
+            builder.addAllAliases(params.aliases());
+        }
+        if (params.tags() != null) {
+            builder.addAllTags(params.tags());
+        }
+        if (params.attributes() != null) {
+            builder.addAllAttributes(params.attributes());
+        }
+        if (params.description() != null) {
+            builder.setDescription(params.description());
+        }
+        if (params.modifiedBy() != null) {
+            builder.setModifiedBy(params.modifiedBy());
+        }
+        return builder.build();
+    }
+
+    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(
+            List<QueryPvMetadataRequest.QueryPvMetadataCriterion> criteria,
+            int limit,
+            String pageToken
+    ) {
+        final QueryPvMetadataRequest.Builder builder = QueryPvMetadataRequest.newBuilder();
+        builder.addAllCriteria(criteria);
+        if (limit > 0) {
+            builder.setLimit(limit);
+        }
+        if (pageToken != null && !pageToken.isBlank()) {
+            builder.setPageToken(pageToken);
+        }
+        return builder.build();
+    }
+
+    public static GetPvMetadataRequest buildGetPvMetadataRequest(String pvNameOrAlias) {
+        return GetPvMetadataRequest.newBuilder()
+                .setPvNameOrAlias(pvNameOrAlias)
+                .build();
+    }
+
+    public static DeletePvMetadataRequest buildDeletePvMetadataRequest(String pvNameOrAlias) {
+        return DeletePvMetadataRequest.newBuilder()
+                .setPvNameOrAlias(pvNameOrAlias)
+                .build();
+    }
+
 }

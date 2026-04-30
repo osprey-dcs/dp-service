@@ -650,6 +650,249 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         // handle request
         HandlerExportDataRequest handlerRequest = new HandlerExportDataRequest(request, responseObserver);
         handler.handleExportData(handlerRequest);
+    }
 
+    // =========================================================
+    // savePvMetadata
+    // =========================================================
+
+    private static SavePvMetadataResponse savePvMetadataResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return SavePvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendSavePvMetadataResponseReject(
+            String msg, StreamObserver<SavePvMetadataResponse> responseObserver) {
+        responseObserver.onNext(savePvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSavePvMetadataResponseError(
+            String msg, StreamObserver<SavePvMetadataResponse> responseObserver) {
+        responseObserver.onNext(savePvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSavePvMetadataResponseSuccess(
+            String pvName, StreamObserver<SavePvMetadataResponse> responseObserver) {
+        final SavePvMetadataResponse.SavePvMetadataResult result =
+                SavePvMetadataResponse.SavePvMetadataResult.newBuilder()
+                        .setPvName(pvName)
+                        .build();
+        responseObserver.onNext(SavePvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setSavePvMetadataResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void savePvMetadata(
+            SavePvMetadataRequest request,
+            StreamObserver<SavePvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} savePvMetadata request received pvName: {}",
+                responseObserver.hashCode(), request.getPvName());
+        handler.handleSavePvMetadata(request, responseObserver);
+    }
+
+    // =========================================================
+    // queryPvMetadata
+    // =========================================================
+
+    private static QueryPvMetadataResponse queryPvMetadataResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return QueryPvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendQueryPvMetadataResponseReject(
+            String msg, StreamObserver<QueryPvMetadataResponse> responseObserver) {
+        responseObserver.onNext(queryPvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryPvMetadataResponseError(
+            String msg, StreamObserver<QueryPvMetadataResponse> responseObserver) {
+        responseObserver.onNext(queryPvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryPvMetadataResponse(
+            QueryPvMetadataResponse.PvMetadataResult result,
+            StreamObserver<QueryPvMetadataResponse> responseObserver) {
+        responseObserver.onNext(QueryPvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setPvMetadataResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryPvMetadata(
+            QueryPvMetadataRequest request,
+            StreamObserver<QueryPvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} queryPvMetadata request received", responseObserver.hashCode());
+        handler.handleQueryPvMetadata(request, responseObserver);
+    }
+
+    // =========================================================
+    // getPvMetadata
+    // =========================================================
+
+    private static GetPvMetadataResponse getPvMetadataResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return GetPvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendGetPvMetadataResponseReject(
+            String msg, StreamObserver<GetPvMetadataResponse> responseObserver) {
+        responseObserver.onNext(getPvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetPvMetadataResponseSuccess(
+            com.ospreydcs.dp.grpc.v1.common.PvMetadata pvMetadata,
+            StreamObserver<GetPvMetadataResponse> responseObserver) {
+        final GetPvMetadataResponse.GetPvMetadataResult result =
+                GetPvMetadataResponse.GetPvMetadataResult.newBuilder()
+                        .setPvMetadata(pvMetadata)
+                        .build();
+        responseObserver.onNext(GetPvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setGetPvMetadataResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getPvMetadata(
+            GetPvMetadataRequest request,
+            StreamObserver<GetPvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} getPvMetadata request received pvNameOrAlias: {}",
+                responseObserver.hashCode(), request.getPvNameOrAlias());
+        handler.handleGetPvMetadata(request, responseObserver);
+    }
+
+    // =========================================================
+    // deletePvMetadata
+    // =========================================================
+
+    private static DeletePvMetadataResponse deletePvMetadataResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return DeletePvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendDeletePvMetadataResponseReject(
+            String msg, StreamObserver<DeletePvMetadataResponse> responseObserver) {
+        responseObserver.onNext(deletePvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeletePvMetadataResponseError(
+            String msg, StreamObserver<DeletePvMetadataResponse> responseObserver) {
+        responseObserver.onNext(deletePvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeletePvMetadataResponseSuccess(
+            String pvName, StreamObserver<DeletePvMetadataResponse> responseObserver) {
+        final DeletePvMetadataResponse.DeletePvMetadataResult result =
+                DeletePvMetadataResponse.DeletePvMetadataResult.newBuilder()
+                        .setPvName(pvName)
+                        .build();
+        responseObserver.onNext(DeletePvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setDeletePvMetadataResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void deletePvMetadata(
+            DeletePvMetadataRequest request,
+            StreamObserver<DeletePvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} deletePvMetadata request received pvNameOrAlias: {}",
+                responseObserver.hashCode(), request.getPvNameOrAlias());
+        handler.handleDeletePvMetadata(request, responseObserver);
+    }
+
+    // =========================================================
+    // patchPvMetadata (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void patchPvMetadata(
+            PatchPvMetadataRequest request,
+            StreamObserver<PatchPvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} patchPvMetadata request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("patchPvMetadata is not yet implemented")
+                .build();
+        responseObserver.onNext(PatchPvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    // =========================================================
+    // bulkSavePvMetadata (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void bulkSavePvMetadata(
+            BulkSavePvMetadataRequest request,
+            StreamObserver<BulkSavePvMetadataResponse> responseObserver
+    ) {
+        logger.info("id: {} bulkSavePvMetadata request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("bulkSavePvMetadata is not yet implemented")
+                .build();
+        responseObserver.onNext(BulkSavePvMetadataResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
     }
 }

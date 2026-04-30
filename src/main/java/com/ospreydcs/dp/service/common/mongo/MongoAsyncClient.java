@@ -120,4 +120,16 @@ public class MongoAsyncClient extends MongoClientBase {
         mongoCollectionCalculations.createIndex(fieldNamesBson);
         return true;
     }
+
+    @Override
+    protected boolean initMongoCollectionPvMetadata(String collectionName) {
+        // pvMetadata collection not used by async client
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexPvMetadata(Bson fieldNamesBson) {
+        // pvMetadata indexes not used by async client
+        return true;
+    }
 }

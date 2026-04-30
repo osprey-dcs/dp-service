@@ -12,6 +12,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -32,6 +33,7 @@ public class MongoSyncClient extends MongoClientBase {
     protected MongoCollection<DataSetDocument> mongoCollectionDataSets = null;
     protected MongoCollection<AnnotationDocument> mongoCollectionAnnotations = null;
     protected MongoCollection<CalculationsDocument> mongoCollectionCalculations = null;
+    protected MongoCollection<PvMetadataDocument> mongoCollectionPvMetadata = null;
 
     @Override
     protected boolean initMongoClient(String connectString) {
@@ -139,6 +141,18 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean createMongoIndexCalculations(Bson fieldNamesBson) {
         mongoCollectionCalculations.createIndex(fieldNamesBson);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionPvMetadata(String collectionName) {
+        mongoCollectionPvMetadata = mongoDatabase.getCollection(collectionName, PvMetadataDocument.class);
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexPvMetadata(Bson fieldNamesBson) {
+        mongoCollectionPvMetadata.createIndex(fieldNamesBson);
         return true;
     }
 
