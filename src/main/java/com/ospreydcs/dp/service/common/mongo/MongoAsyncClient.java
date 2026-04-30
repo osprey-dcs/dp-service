@@ -132,4 +132,10 @@ public class MongoAsyncClient extends MongoClientBase {
         // pvMetadata indexes not used by async client
         return true;
     }
+
+    @Override
+    protected boolean createMongoIndexPvMetadataWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions) {
+        // pvMetadata indexes not used by async client
+        return true;
+    }
 }

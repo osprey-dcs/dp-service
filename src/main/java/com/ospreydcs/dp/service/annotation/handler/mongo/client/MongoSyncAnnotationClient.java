@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
@@ -18,6 +19,7 @@ import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
+import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -489,7 +491,19 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         logger.debug("saving PvMetadataDocument pvName: {}", document.getPvName());
 
-        final PvMetadataDocument existingDocument = findPvMetadataByNameOrAlias(document.getPvName());
+        // Look up only by canonical pvName (not alias) to avoid mistakenly copying createdAt
+        // from an unrelated document that merely has this pvName as one of its aliases.
+        final List<PvMetadataDocument> exactMatches = new ArrayList<>();
+        try {
+            mongoCollectionPvMetadata.find(
+                    eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, document.getPvName())
+            ).into(exactMatches);
+        } catch (Exception ex) {
+            final String errorMsg = "MongoException looking up PvMetadataDocument by pvName: " + ex.getMessage();
+            logger.error(errorMsg);
+            return new MongoSaveResult(true, errorMsg, null, false);
+        }
+        final PvMetadataDocument existingDocument = exactMatches.isEmpty() ? null : exactMatches.get(0);
 
         try {
             if (existingDocument == null) {
@@ -532,7 +546,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public MongoCursor<PvMetadataDocument> executeQueryPvMetadata(QueryPvMetadataRequest request) {
+    public PvMetadataQueryResult executeQueryPvMetadata(QueryPvMetadataRequest request) {
 
         final List<Bson> filterList = new ArrayList<>();
 
@@ -582,9 +596,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 case TAGSCRITERION -> {
                     final QueryPvMetadataRequest.QueryPvMetadataCriterion.TagsCriterion c =
                             criterion.getTagsCriterion();
-                    if (!c.getValuesList().isEmpty()) {
-                        filterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, c.getValuesList()));
-                    }
+                    filterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, c.getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
@@ -608,7 +620,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
                 : and(filterList);
 
-        int limit = request.getLimit() > 0 ? request.getLimit() : 0;
+        final int limit = request.getLimit() > 0 ? request.getLimit() : 0;
         int skip = 0;
         if (!request.getPageToken().isBlank()) {
             try {
@@ -624,31 +636,25 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 .sort(ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME));
 
         if (skip > 0) query = query.skip(skip);
-        if (limit > 0) query = query.limit(limit);
 
-        return query.cursor();
-    }
-
-    @Override
-    public String getQueryPvMetadataNextPageToken(QueryPvMetadataRequest request) {
-
-        if (request.getLimit() <= 0) {
-            return "";
+        // Fetch limit+1 to detect whether a next page exists without an extra count query.
+        final List<PvMetadataDocument> documents = new ArrayList<>();
+        if (limit > 0) {
+            query.limit(limit + 1).into(documents);
+        } else {
+            query.into(documents);
         }
 
-        int skip = 0;
-        if (!request.getPageToken().isBlank()) {
-            try {
-                skip = Integer.parseInt(
-                        new String(Base64.getDecoder().decode(request.getPageToken()), StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                // ignore invalid token
-            }
+        // Determine next-page token: only produce one when the result set is full (has more).
+        String nextPageToken = "";
+        if (limit > 0 && documents.size() > limit) {
+            documents.remove(documents.size() - 1); // trim the extra probe document
+            final int nextSkip = skip + limit;
+            nextPageToken = Base64.getEncoder().encodeToString(
+                    Integer.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
         }
 
-        final int nextSkip = skip + request.getLimit();
-        return Base64.getEncoder().encodeToString(
-                Integer.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
+        return new PvMetadataQueryResult(documents, nextPageToken);
     }
 
     @Override

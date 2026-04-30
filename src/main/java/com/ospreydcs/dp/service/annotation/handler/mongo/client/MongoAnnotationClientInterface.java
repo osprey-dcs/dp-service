@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
+import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
 
 public interface MongoAnnotationClientInterface {
 
@@ -35,9 +36,7 @@ public interface MongoAnnotationClientInterface {
 
     MongoSaveResult savePvMetadata(PvMetadataDocument document);
 
-    MongoCursor<PvMetadataDocument> executeQueryPvMetadata(QueryPvMetadataRequest request);
-
-    String getQueryPvMetadataNextPageToken(QueryPvMetadataRequest request);
+    PvMetadataQueryResult executeQueryPvMetadata(QueryPvMetadataRequest request);
 
     PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias);
 

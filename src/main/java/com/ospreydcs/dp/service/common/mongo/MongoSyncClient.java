@@ -156,4 +156,10 @@ public class MongoSyncClient extends MongoClientBase {
         return true;
     }
 
+    @Override
+    protected boolean createMongoIndexPvMetadataWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions) {
+        mongoCollectionPvMetadata.createIndex(fieldNamesBson, indexOptions);
+        return true;
+    }
+
 }

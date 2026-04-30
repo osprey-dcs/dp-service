@@ -1,12 +1,11 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryPvMetadataDispatcher;
-import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -46,6 +45,29 @@ public class QueryPvMetadataJob extends HandlerJob {
         // validate each criterion
         for (QueryPvMetadataRequest.QueryPvMetadataCriterion criterion : request.getCriteriaList()) {
             switch (criterion.getCriterionCase()) {
+                case PVNAMECRITERION -> {
+                    final var c = criterion.getPvNameCriterion();
+                    if (c.getExactList().isEmpty() && c.getPrefixList().isEmpty() && c.getContainsList().isEmpty()) {
+                        dispatcher.handleValidationError(new ResultStatus(
+                                true, "QueryPvMetadataRequest.criteria.PvNameCriterion must specify at least one of: exact, prefix, contains"));
+                        return;
+                    }
+                }
+                case ALIASESCRITERION -> {
+                    final var c = criterion.getAliasesCriterion();
+                    if (c.getExactList().isEmpty() && c.getPrefixList().isEmpty() && c.getContainsList().isEmpty()) {
+                        dispatcher.handleValidationError(new ResultStatus(
+                                true, "QueryPvMetadataRequest.criteria.AliasesCriterion must specify at least one of: exact, prefix, contains"));
+                        return;
+                    }
+                }
+                case TAGSCRITERION -> {
+                    if (criterion.getTagsCriterion().getValuesList().isEmpty()) {
+                        dispatcher.handleValidationError(new ResultStatus(
+                                true, "QueryPvMetadataRequest.criteria.TagsCriterion must specify at least one value"));
+                        return;
+                    }
+                }
                 case ATTRIBUTESCRITERION -> {
                     if (criterion.getAttributesCriterion().getKey().isBlank()) {
                         dispatcher.handleValidationError(new ResultStatus(
@@ -58,16 +80,14 @@ public class QueryPvMetadataJob extends HandlerJob {
                             true, "QueryPvMetadataRequest.criteria criterion case not set"));
                     return;
                 }
-                default -> { /* pvNameCriterion, aliasesCriterion, tagsCriterion are valid as-is */ }
             }
         }
 
-        final MongoCursor<PvMetadataDocument> cursor = mongoClient.executeQueryPvMetadata(request);
-        if (cursor == null) {
+        final PvMetadataQueryResult queryResult = mongoClient.executeQueryPvMetadata(request);
+        if (queryResult == null) {
             dispatcher.handleError("error executing pvMetadata query");
             return;
         }
-        final String nextPageToken = mongoClient.getQueryPvMetadataNextPageToken(request);
-        dispatcher.handleResult(cursor, nextPageToken);
+        dispatcher.handleResult(queryResult.getDocuments(), queryResult.getNextPageToken());
     }
 }

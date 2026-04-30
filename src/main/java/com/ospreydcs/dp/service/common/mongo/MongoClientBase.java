@@ -62,6 +62,7 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexCalculations(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionPvMetadata(String collectionName);
     protected abstract boolean createMongoIndexPvMetadata(Bson fieldNamesBson);
+    protected abstract boolean createMongoIndexPvMetadataWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions);
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -245,10 +246,15 @@ public abstract class MongoClientBase {
     }
 
     private boolean createMongoIndexesPvMetadata() {
-        // regular index on pvName (used for upsert filter and sort)
-        createMongoIndexPvMetadata(Indexes.ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME));
+        // unique index on pvName to enforce DB-level uniqueness
+        createMongoIndexPvMetadataWithOptions(
+                Indexes.ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME),
+                new com.mongodb.client.model.IndexOptions().unique(true));
         // regular index on aliases for fast name-or-alias lookup
         createMongoIndexPvMetadata(Indexes.ascending("aliases"));
+        // regular indexes on tags and attributes to support query filter patterns
+        createMongoIndexPvMetadata(Indexes.ascending(BsonConstants.BSON_KEY_TAGS));
+        createMongoIndexPvMetadata(Indexes.ascending(BsonConstants.BSON_KEY_ATTRIBUTES));
         return true;
     }
 

@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataResponse;
 import com.ospreydcs.dp.grpc.v1.common.PvMetadata;
@@ -34,10 +33,9 @@ public class QueryPvMetadataDispatcher extends Dispatcher {
         AnnotationServiceImpl.sendQueryPvMetadataResponseError(errorMsg, responseObserver);
     }
 
-    public void handleResult(MongoCursor<PvMetadataDocument> cursor, String nextPageToken) {
+    public void handleResult(List<PvMetadataDocument> documents, String nextPageToken) {
         final List<PvMetadata> pvMetadataList = new ArrayList<>();
-        while (cursor.hasNext()) {
-            final PvMetadataDocument document = cursor.next();
+        for (PvMetadataDocument document : documents) {
             pvMetadataList.add(document.toPvMetadata());
         }
 
