@@ -11,7 +11,7 @@ import java.time.Instant;
 import static com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper.GCC_INGESTION_PROVIDER;
 
 @RunWith(JUnit4.class)
-public class QueryProviderMetadataIT extends GrpcIntegrationTestBase {
+public class QueryProviderStatsIT extends GrpcIntegrationTestBase {
 
     @Before
     public void setUp() throws Exception {
@@ -24,7 +24,7 @@ public class QueryProviderMetadataIT extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testQueryProviderMetadata() {
+    public void testQueryProviderStats() {
 
         // ingest some data
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
@@ -32,12 +32,12 @@ public class QueryProviderMetadataIT extends GrpcIntegrationTestBase {
             ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond(), false);
         }
 
-        // queryProviderMetadata() positive test for empty query result.
+        // queryProviderStats() positive test for empty query result.
         {
             final String undefinedProviderId = "undefined-provider-id";
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
-            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
+            queryServiceWrapper.sendAndVerifyQueryProviderStats(
                     undefinedProviderId,
                     null,
                     expectReject,
@@ -45,11 +45,11 @@ public class QueryProviderMetadataIT extends GrpcIntegrationTestBase {
                     0);
         }
 
-        // queryProviderMetadata() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
+        // queryProviderStats() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
         {
             final GrpcIntegrationIngestionServiceWrapper.IngestionProviderInfo gccProviderInfo =
                     ingestionScenarioResult.providerInfoMap().get(GCC_INGESTION_PROVIDER);
-            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
+            queryServiceWrapper.sendAndVerifyQueryProviderStats(
                     gccProviderInfo.providerId(),
                     gccProviderInfo,
                     false,
@@ -59,13 +59,13 @@ public class QueryProviderMetadataIT extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void testQueryProviderMetadataReject() {
-        // queryProviderMetadata() negative test, rejected because providerId is blank
+    public void testQueryProviderStatsReject() {
+        // queryProviderStats() negative test, rejected because providerId is blank
         {
             final String blankProviderId = "";
             final boolean expectReject = true;
-            final String expectedRejectMessage = "QueryProviderMetadataRequest.providerId must be specified";
-            queryServiceWrapper.sendAndVerifyQueryProviderMetadata(
+            final String expectedRejectMessage = "QueryProviderStatsRequest.providerId must be specified";
+            queryServiceWrapper.sendAndVerifyQueryProviderStats(
                     blankProviderId,
                     null,
                     expectReject,

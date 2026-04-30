@@ -1,7 +1,7 @@
 package com.ospreydcs.dp.client;
 
 import com.ospreydcs.dp.client.result.QueryProvidersApiResult;
-import com.ospreydcs.dp.client.result.QueryPvMetadataApiResult;
+import com.ospreydcs.dp.client.result.QueryPvStatsApiResult;
 import com.ospreydcs.dp.client.result.QueryTableApiResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
@@ -103,13 +103,13 @@ public class QueryClient extends ServiceApiClientBase {
         }
     }
 
-    public static class QueryPvMetadataResponseObserver implements StreamObserver<QueryPvMetadataResponse> {
+    public static class QueryPvStatsResponseObserver implements StreamObserver<QueryPvStatsResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryPvMetadataResponse> responseList =
+        private final List<QueryPvStatsResponse> responseList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -132,7 +132,7 @@ public class QueryClient extends ServiceApiClientBase {
             }
         }
 
-        public QueryPvMetadataResponse getResponse() {
+        public QueryPvStatsResponse getResponse() {
             if (responseList.isEmpty() || responseList.size() > 1) {
                 return null;
             } else {
@@ -141,7 +141,7 @@ public class QueryClient extends ServiceApiClientBase {
         }
 
         @Override
-        public void onNext(QueryPvMetadataResponse response) {
+        public void onNext(QueryPvStatsResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -391,9 +391,9 @@ public class QueryClient extends ServiceApiClientBase {
         return sendQueryTable(request);
     }
 
-    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(List<String> pvNames) {
+    public static QueryPvStatsRequest buildQueryPvStatsRequest(List<String> pvNames) {
 
-        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
+        QueryPvStatsRequest.Builder requestBuilder = QueryPvStatsRequest.newBuilder();
 
         PvNameList.Builder pvNameListBuilder = PvNameList.newBuilder();
         pvNameListBuilder.addAllPvNames(pvNames);
@@ -402,10 +402,10 @@ public class QueryClient extends ServiceApiClientBase {
         requestBuilder.setPvNameList(pvNameListBuilder);
         return requestBuilder.build();
     }
-    
-    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(String columnNamePattern) {
 
-        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
+    public static QueryPvStatsRequest buildQueryPvStatsRequest(String columnNamePattern) {
+
+        QueryPvStatsRequest.Builder requestBuilder = QueryPvStatsRequest.newBuilder();
 
         PvNamePattern.Builder pvNamePatternBuilder = PvNamePattern.newBuilder();
         pvNamePatternBuilder.setPattern(columnNamePattern);
@@ -415,40 +415,40 @@ public class QueryClient extends ServiceApiClientBase {
         return requestBuilder.build();
     }
 
-    public QueryPvMetadataApiResult sendQueryPvMetadata(
-            QueryPvMetadataRequest request
+    public QueryPvStatsApiResult sendQueryPvStats(
+            QueryPvStatsRequest request
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final QueryPvMetadataResponseObserver responseObserver = new QueryPvMetadataResponseObserver();
+        final QueryPvStatsResponseObserver responseObserver = new QueryPvStatsResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.queryPvMetadata(request, responseObserver);
+            asyncStub.queryPvStats(request, responseObserver);
         }).start();
 
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryPvMetadataApiResult(true, responseObserver.getErrorMessage());
+            return new QueryPvStatsApiResult(true, responseObserver.getErrorMessage());
         } else {
-            return new QueryPvMetadataApiResult(responseObserver.getResponse());
+            return new QueryPvStatsApiResult(responseObserver.getResponse());
         }
     }
-    
-    public QueryPvMetadataApiResult queryPvMetadata(
+
+    public QueryPvStatsApiResult queryPvStats(
             List<String> columnNames
     ) {
-        final QueryPvMetadataRequest request = buildQueryPvMetadataRequest(columnNames);
-        return sendQueryPvMetadata(request);
+        final QueryPvStatsRequest request = buildQueryPvStatsRequest(columnNames);
+        return sendQueryPvStats(request);
     }
 
-    public QueryPvMetadataApiResult queryPvMetadata(
+    public QueryPvStatsApiResult queryPvStats(
             String columnNamePattern
     ) {
-        final QueryPvMetadataRequest request = buildQueryPvMetadataRequest(columnNamePattern);
-        return sendQueryPvMetadata(request);
+        final QueryPvStatsRequest request = buildQueryPvStatsRequest(columnNamePattern);
+        return sendQueryPvStats(request);
     }
     
     public static QueryProvidersRequest buildQueryProvidersRequest(QueryProvidersRequestParams params) {

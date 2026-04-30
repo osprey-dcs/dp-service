@@ -4,7 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
+import com.ospreydcs.dp.grpc.v1.query.ProviderStats;
 import com.ospreydcs.dp.service.query.benchmark.QueryBenchmarkBase;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -153,9 +153,9 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(String columnNamePattern) {
+    public static QueryPvStatsRequest buildQueryPvStatsRequest(String columnNamePattern) {
 
-        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
+        QueryPvStatsRequest.Builder requestBuilder = QueryPvStatsRequest.newBuilder();
 
         PvNamePattern.Builder pvNamePatternBuilder = PvNamePattern.newBuilder();
         pvNamePatternBuilder.setPattern(columnNamePattern);
@@ -165,9 +165,9 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(List<String> pvNames) {
+    public static QueryPvStatsRequest buildQueryPvStatsRequest(List<String> pvNames) {
 
-        QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
+        QueryPvStatsRequest.Builder requestBuilder = QueryPvStatsRequest.newBuilder();
 
         PvNameList.Builder pvNameListBuilder = PvNameList.newBuilder();
         pvNameListBuilder.addAllPvNames(pvNames);
@@ -177,9 +177,9 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
-    public static QueryProviderMetadataRequest buildQueryProviderMetadataRequest(String providerId) {
+    public static QueryProviderStatsRequest buildQueryProviderStatsRequest(String providerId) {
 
-        QueryProviderMetadataRequest.Builder requestBuilder = QueryProviderMetadataRequest.newBuilder();
+        QueryProviderStatsRequest.Builder requestBuilder = QueryProviderStatsRequest.newBuilder();
         requestBuilder.setProviderId(providerId);
         return requestBuilder.build();
     }
@@ -397,13 +397,13 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryPvMetadataResponseObserver implements StreamObserver<QueryPvMetadataResponse> {
+    public static class QueryPvStatsResponseObserver implements StreamObserver<QueryPvStatsResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
+        private final List<QueryPvStatsResponse.StatsResult.PvStats> pvStatsList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -426,19 +426,19 @@ public class QueryTestBase {
             }
         }
 
-        public List<QueryPvMetadataResponse.MetadataResult.PvInfo> getPvInfoList() {
-            return pvInfoList;
+        public List<QueryPvStatsResponse.StatsResult.PvStats> getPvStatsList() {
+            return pvStatsList;
         }
 
         @Override
-        public void onNext(QueryPvMetadataResponse response) {
+        public void onNext(QueryPvStatsResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
-                    final String errorMsg = "QueryResponseColumnInfoObserver onNext received exception response: "
+                    final String errorMsg = "QueryPvStatsResponseObserver onNext received exception response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
                     isError.set(true);
@@ -447,23 +447,19 @@ public class QueryTestBase {
                     return;
                 }
 
-                assertTrue(response.hasMetadataResult());
-                final QueryPvMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
-                assertNotNull(metadataResult);
-                // assertTrue(metadataResult.getPvInfosCount() > 0); - MAYBE ALLOW AN EMPTY RESULT FOR NEGATIVE TEST CASE?
+                assertTrue(response.hasStatsResult());
+                final QueryPvStatsResponse.StatsResult statsResult = response.getStatsResult();
+                assertNotNull(statsResult);
 
                 // flag error if already received a response
-                if (!pvInfoList.isEmpty()) {
-                    final String errorMsg = "QueryResponseColumnInfoObserver onNext received more than one response";
+                if (!pvStatsList.isEmpty()) {
+                    final String errorMsg = "QueryPvStatsResponseObserver onNext received more than one response";
                     System.err.println(errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);
 
                 } else {
-                    for (QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo :
-                            response.getMetadataResult().getPvInfosList()) {
-                        pvInfoList.add(pvInfo);
-                    }
+                    pvStatsList.addAll(response.getStatsResult().getPvStatsList());
                     finishLatch.countDown();
                 }
             }).start();
@@ -577,13 +573,13 @@ public class QueryTestBase {
         }
     }
 
-    public static class QueryProviderMetadataResponseObserver implements StreamObserver<QueryProviderMetadataResponse> {
+    public static class QueryProviderStatsResponseObserver implements StreamObserver<QueryProviderStatsResponse> {
 
         // instance variables
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<ProviderMetadata> providerMetadataList =
+        private final List<ProviderStats> providerStatsList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -606,12 +602,12 @@ public class QueryTestBase {
             }
         }
 
-        public List<ProviderMetadata> getProviderMetadataList() {
-            return providerMetadataList;
+        public List<ProviderStats> getProviderStatsList() {
+            return providerStatsList;
         }
 
         @Override
-        public void onNext(QueryProviderMetadataResponse response) {
+        public void onNext(QueryProviderStatsResponse response) {
 
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
@@ -627,19 +623,19 @@ public class QueryTestBase {
                     return;
                 }
 
-                assertTrue(response.hasMetadataResult());
-                final QueryProviderMetadataResponse.MetadataResult metadataResult = response.getMetadataResult();
-                assertNotNull(metadataResult);
+                assertTrue(response.hasStatsResult());
+                final QueryProviderStatsResponse.StatsResult statsResult = response.getStatsResult();
+                assertNotNull(statsResult);
 
                 // flag error if already received a response
-                if (!providerMetadataList.isEmpty()) {
+                if (!providerStatsList.isEmpty()) {
                     final String errorMsg = "onNext received more than one response";
                     System.err.println(errorMsg);
                     isError.set(true);
                     errorMessageList.add(errorMsg);
 
                 } else {
-                    providerMetadataList.addAll(response.getMetadataResult().getProviderMetadatasList());
+                    providerStatsList.addAll(response.getStatsResult().getProviderStatsList());
                     finishLatch.countDown();
                 }
             }).start();

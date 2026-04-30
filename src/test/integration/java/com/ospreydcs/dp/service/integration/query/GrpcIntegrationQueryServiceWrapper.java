@@ -5,7 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.query.*;
-import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
+import com.ospreydcs.dp.grpc.v1.query.ProviderStats;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
@@ -637,18 +637,18 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
                 dataBucketList);
     }
 
-    protected List<QueryPvMetadataResponse.MetadataResult.PvInfo> sendQueryPvMetadata(
-            QueryPvMetadataRequest request, boolean expectReject, String expectedRejectMessage
+    protected List<QueryPvStatsResponse.StatsResult.PvStats> sendQueryPvStats(
+            QueryPvStatsRequest request, boolean expectReject, String expectedRejectMessage
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final QueryTestBase.QueryPvMetadataResponseObserver responseObserver =
-                new QueryTestBase.QueryPvMetadataResponseObserver();
+        final QueryTestBase.QueryPvStatsResponseObserver responseObserver =
+                new QueryTestBase.QueryPvStatsResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.queryPvMetadata(request, responseObserver);
+            asyncStub.queryPvStats(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -660,51 +660,51 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
-        return responseObserver.getPvInfoList();
+        return responseObserver.getPvStatsList();
     }
 
-    private void sendAndVerifyQueryPvMetadata(
-            QueryPvMetadataRequest request,
+    private void sendAndVerifyQueryPvStats(
+            QueryPvStatsRequest request,
             List<String> pvNames,
             Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage,
             boolean expectEmpty) {
-        final List<QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoList =
-                sendQueryPvMetadata(request, expectReject, expectedRejectMessage);
+        final List<QueryPvStatsResponse.StatsResult.PvStats> pvStatsList =
+                sendQueryPvStats(request, expectReject, expectedRejectMessage);
 
         if (expectReject || expectEmpty) {
-            assertEquals(0, pvInfoList.size());
+            assertEquals(0, pvStatsList.size());
             return;
         }
 
-        // verify results, check that there is a ColumnInfo for each column in the query
-        assertEquals(pvNames.size(), pvInfoList.size());
+        // verify results, check that there is a PvStats for each column in the query
+        assertEquals(pvNames.size(), pvStatsList.size());
 
-        // build map of pv info list for convenience
-        final Map<String, QueryPvMetadataResponse.MetadataResult.PvInfo> pvInfoMap = new HashMap<>();
-        for (QueryPvMetadataResponse.MetadataResult.PvInfo columnInfo : pvInfoList) {
-            pvInfoMap.put(columnInfo.getPvName(), columnInfo);
+        // build map of pv stats list for convenience
+        final Map<String, QueryPvStatsResponse.StatsResult.PvStats> pvStatsMap = new HashMap<>();
+        for (QueryPvStatsResponse.StatsResult.PvStats pvStats : pvStatsList) {
+            pvStatsMap.put(pvStats.getPvName(), pvStats);
         }
 
         // build list of pv names in response to verify against expected
         final List<String> responsePvNames = new ArrayList<>();
-        for (QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo : pvInfoList) {
-            responsePvNames.add(pvInfo.getPvName());
+        for (QueryPvStatsResponse.StatsResult.PvStats pvStats : pvStatsList) {
+            responsePvNames.add(pvStats.getPvName());
         }
 
         // check that response pvNames are sorted (against list in sorted order)
         assertEquals(pvNames, responsePvNames);
 
-        // check that a PvInfo was received for each name and verify its contents
+        // check that a PvStats was received for each name and verify its contents
         for (String pvName : pvNames) {
-            final QueryPvMetadataResponse.MetadataResult.PvInfo pvInfo =
-                    pvInfoMap.get(pvName);
-            assertNotNull(pvInfo);
-            assertEquals(pvName, pvInfo.getPvName());
-            assertEquals("dataColumn", pvInfo.getLastBucketDataType());
-            assertEquals(1, pvInfo.getLastBucketDataTimestampsCase());
-            assertEquals("SAMPLINGCLOCK", pvInfo.getLastBucketDataTimestampsType());
+            final QueryPvStatsResponse.StatsResult.PvStats pvStats =
+                    pvStatsMap.get(pvName);
+            assertNotNull(pvStats);
+            assertEquals(pvName, pvStats.getPvName());
+            assertEquals("dataColumn", pvStats.getLastBucketDataType());
+            assertEquals(1, pvStats.getLastBucketDataTimestampsCase());
+            assertEquals("SAMPLINGCLOCK", pvStats.getLastBucketDataTimestampsType());
 
             // iterate through validationMap to get info for first and last bucket for pv, number of buckets
             GrpcIntegrationIngestionServiceWrapper.IngestionBucketInfo firstBucketInfo = null;
@@ -723,38 +723,38 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
                 }
             }
 
-            // verify pvInfo contents for column against last and first bucket details
+            // verify pvStats contents for column against last and first bucket details
             assertNotNull(lastBucketInfo);
-            assertEquals(lastBucketInfo.intervalNanos(), pvInfo.getLastBucketSamplePeriod());
-            assertEquals(lastBucketInfo.numValues(), pvInfo.getLastBucketSampleCount());
-            assertEquals(lastBucketInfo.endSeconds(), pvInfo.getLastDataTimestamp().getEpochSeconds());
-            assertEquals(lastBucketInfo.endNanos(), pvInfo.getLastDataTimestamp().getNanoseconds());
+            assertEquals(lastBucketInfo.intervalNanos(), pvStats.getLastBucketSamplePeriod());
+            assertEquals(lastBucketInfo.numValues(), pvStats.getLastBucketSampleCount());
+            assertEquals(lastBucketInfo.endSeconds(), pvStats.getLastDataTimestamp().getEpochSeconds());
+            assertEquals(lastBucketInfo.endNanos(), pvStats.getLastDataTimestamp().getNanoseconds());
             assertNotNull(firstBucketInfo);
-            assertEquals(firstBucketInfo.startSeconds(), pvInfo.getFirstDataTimestamp().getEpochSeconds());
-            assertEquals(firstBucketInfo.startNanos(), pvInfo.getFirstDataTimestamp().getNanoseconds());
-            assertEquals(numBuckets, pvInfo.getNumBuckets());
+            assertEquals(firstBucketInfo.startSeconds(), pvStats.getFirstDataTimestamp().getEpochSeconds());
+            assertEquals(firstBucketInfo.startNanos(), pvStats.getFirstDataTimestamp().getNanoseconds());
+            assertEquals(numBuckets, pvStats.getNumBuckets());
 
             // check last bucket id
             final String expectedLastBucketId =
                     pvName + "-" + lastBucketInfo.startSeconds() + "-" + lastBucketInfo.startNanos();
-            assertEquals(expectedLastBucketId, pvInfo.getLastBucketId());
+            assertEquals(expectedLastBucketId, pvStats.getLastBucketId());
 
         }
     }
 
-    protected void sendAndVerifyQueryPvMetadata(
+    protected void sendAndVerifyQueryPvStats(
             List<String> columnNames,
             Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap,
             boolean expectReject,
             String expectedRejectMessage,
             boolean expectEmpty
     ) {
-        final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNames);
-        sendAndVerifyQueryPvMetadata(
+        final QueryPvStatsRequest request = QueryTestBase.buildQueryPvStatsRequest(columnNames);
+        sendAndVerifyQueryPvStats(
                 request, columnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
-    protected void sendAndVerifyQueryPvMetadata(
+    protected void sendAndVerifyQueryPvStats(
             String columnNamePattern,
             Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap,
             List<String> expectedColumnNames,
@@ -762,8 +762,8 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
             String expectedRejectMessage,
             boolean expectEmpty
     ) {
-        final QueryPvMetadataRequest request = QueryTestBase.buildQueryPvMetadataRequest(columnNamePattern);
-        sendAndVerifyQueryPvMetadata(
+        final QueryPvStatsRequest request = QueryTestBase.buildQueryPvStatsRequest(columnNamePattern);
+        sendAndVerifyQueryPvStats(
                 request, expectedColumnNames, validationMap, expectReject, expectedRejectMessage, expectEmpty);
     }
 
@@ -841,20 +841,20 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
         }
     }
 
-    private List<ProviderMetadata> sendQueryProviderMetadata(
-            QueryProviderMetadataRequest request,
+    private List<ProviderStats> sendQueryProviderStats(
+            QueryProviderStatsRequest request,
             boolean expectReject,
             String expectedRejectMessage
     ) {
         final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
 
-        final QueryTestBase.QueryProviderMetadataResponseObserver responseObserver =
-                new QueryTestBase.QueryProviderMetadataResponseObserver();
+        final QueryTestBase.QueryProviderStatsResponseObserver responseObserver =
+                new QueryTestBase.QueryProviderStatsResponseObserver();
 
         // send request in separate thread to better simulate out of process grpc,
         // otherwise service handles request in this thread
         new Thread(() -> {
-            asyncStub.queryProviderMetadata(request, responseObserver);
+            asyncStub.queryProviderStats(request, responseObserver);
         }).start();
 
         responseObserver.await();
@@ -866,10 +866,10 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }
 
-        return responseObserver.getProviderMetadataList();
+        return responseObserver.getProviderStatsList();
     }
 
-    protected void sendAndVerifyQueryProviderMetadata(
+    protected void sendAndVerifyQueryProviderStats(
             String providerId,
             GrpcIntegrationIngestionServiceWrapper.IngestionProviderInfo providerInfo,
             boolean expectReject,
@@ -877,28 +877,28 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
             int numMatchesExpected
     ) {
 
-        final QueryProviderMetadataRequest request = QueryTestBase.buildQueryProviderMetadataRequest(providerId);
+        final QueryProviderStatsRequest request = QueryTestBase.buildQueryProviderStatsRequest(providerId);
 
-        final List<ProviderMetadata> providerMetadataList =
-                sendQueryProviderMetadata(request, expectReject, expectedRejectMessage);
+        final List<ProviderStats> providerStatsList =
+                sendQueryProviderStats(request, expectReject, expectedRejectMessage);
 
         if (expectReject || numMatchesExpected == 0) {
-            assertEquals(0, providerMetadataList.size());
+            assertEquals(0, providerStatsList.size());
             return;
         }
 
-        // verify results, check that there is a ColumnInfo for each column in the query
-        assertEquals(numMatchesExpected, providerMetadataList.size());
-        final ProviderMetadata responseProviderMetadata =
-                providerMetadataList.get(0);
-        assertEquals(providerId, responseProviderMetadata.getId());
-        assertEquals(providerInfo.numBuckets(), responseProviderMetadata.getNumBuckets());
-        assertEquals(providerInfo.firstTimeSeconds(), responseProviderMetadata.getFirstBucketTime().getEpochSeconds());
-        assertEquals(providerInfo.firstTimeNanos(), responseProviderMetadata.getFirstBucketTime().getNanoseconds());
-        assertEquals(providerInfo.lastTimeSeconds(), responseProviderMetadata.getLastBucketTime().getEpochSeconds());
-        assertEquals(providerInfo.lastTimeNanos(), responseProviderMetadata.getLastBucketTime().getNanoseconds());
-        assertEquals(providerInfo.pvNameSet().size(), responseProviderMetadata.getPvNamesCount());
-        assertEquals(providerInfo.pvNameSet(), new HashSet<>(responseProviderMetadata.getPvNamesList()));
+        // verify results, check that there is a ProviderStats for each provider in the query
+        assertEquals(numMatchesExpected, providerStatsList.size());
+        final ProviderStats responseProviderStats =
+                providerStatsList.get(0);
+        assertEquals(providerId, responseProviderStats.getId());
+        assertEquals(providerInfo.numBuckets(), responseProviderStats.getNumBuckets());
+        assertEquals(providerInfo.firstTimeSeconds(), responseProviderStats.getFirstBucketTime().getEpochSeconds());
+        assertEquals(providerInfo.firstTimeNanos(), responseProviderStats.getFirstBucketTime().getNanoseconds());
+        assertEquals(providerInfo.lastTimeSeconds(), responseProviderStats.getLastBucketTime().getEpochSeconds());
+        assertEquals(providerInfo.lastTimeNanos(), responseProviderStats.getLastBucketTime().getNanoseconds());
+        assertEquals(providerInfo.pvNameSet().size(), responseProviderStats.getPvNamesCount());
+        assertEquals(providerInfo.pvNameSet(), new HashSet<>(responseProviderStats.getPvNamesList()));
     }
 
 }

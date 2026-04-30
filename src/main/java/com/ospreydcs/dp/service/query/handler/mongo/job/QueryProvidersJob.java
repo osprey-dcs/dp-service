@@ -1,14 +1,14 @@
 package com.ospreydcs.dp.service.query.handler.mongo.job;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
+import com.ospreydcs.dp.grpc.v1.query.ProviderStats;
 import com.ospreydcs.dp.grpc.v1.query.QueryProvidersRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
-import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProviderMetadataDispatcher;
+import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProviderStatsDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryProvidersDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -58,43 +58,43 @@ public class QueryProvidersJob extends HandlerJob {
             return;
         }
 
-        // iterate through query result, creating ProviderInfo with embedded ProviderMetadata for each result document
+        // iterate through query result, creating ProviderInfo with embedded ProviderStats for each result document
         List<QueryProvidersResponse.ProvidersResult.ProviderInfo> providerInfos = new ArrayList<>();
         while (cursor.hasNext()) {
             final ProviderDocument providerDocument = cursor.next();
             final String responseProviderId = providerDocument.getId().toString();
 
-            // execute provider metadta query for provider
+            // execute provider stats query for provider
             final MongoCursor<ProviderMetadataQueryResultDocument> metadataCursor =
-                    this.mongoClient.executeQueryProviderMetadata(responseProviderId);
+                    this.mongoClient.executeQueryProviderStats(responseProviderId);
 
-            // check metadata query result cursor
+            // check stats query result cursor
             if (metadataCursor == null) {
                 // send error response and close response stream if cursor is null
                 final String msg =
-                        "provider metadata query returned null cursor for id: " + responseProviderId;
+                        "provider stats query returned null cursor for id: " + responseProviderId;
                 logger.error(msg);
                 QueryServiceImpl.sendQueryProvidersResponseError(msg, this.responseObserver);
                 return;
             }
 
-            ProviderMetadata providerMetadata = null;
+            ProviderStats providerStats = null;
             if (metadataCursor.hasNext()) {
-                // get ProviderMetadtaa for metadta document from result cursor
+                // get ProviderStats for stats document from result cursor
                 final ProviderMetadataQueryResultDocument metadataDocument = metadataCursor.next();
-                providerMetadata =
-                        QueryProviderMetadataDispatcher.providerMetadataFromDocument(metadataDocument);
+                providerStats =
+                        QueryProviderStatsDispatcher.providerStatsFromDocument(metadataDocument);
 
             } else {
-                // no provider metadata found for specified id
+                // no provider stats found for specified id
                 final String msg =
-                        "no metadata found for provider id: " + responseProviderId;
+                        "no stats found for provider id: " + responseProviderId;
                 logger.error(msg);
             }
 
             // create ProviderInfo for each result document
             final QueryProvidersResponse.ProvidersResult.ProviderInfo responseProviderInfo =
-                    providerDocument.toProviderInfo(providerMetadata);
+                    providerDocument.toProviderInfo(providerStats);
             providerInfos.add(responseProviderInfo);
         }
 

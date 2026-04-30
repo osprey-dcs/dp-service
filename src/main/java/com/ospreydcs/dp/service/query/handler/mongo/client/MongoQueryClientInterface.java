@@ -21,15 +21,15 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<BucketDocument> executeQueryTable(QueryTableRequest request);
 
-    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(QueryPvStatsRequest request);
 
-    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(Collection<String> pvNameList);
 
-    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString);
+    MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(String pvNamePatternString);
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 
-    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(QueryProviderMetadataRequest request);
+    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest request);
 
-    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(String id);
+    MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id);
 }

@@ -27,13 +27,13 @@ public interface QueryHandlerInterface {
     void handleQueryTable(
             QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver);
 
-    void handleQueryPvMetadata(
-            QueryPvMetadataRequest request, StreamObserver<QueryPvMetadataResponse> responseObserver);
+    void handleQueryPvStats(
+            QueryPvStatsRequest request, StreamObserver<QueryPvStatsResponse> responseObserver);
 
     void handleQueryProviders(
             QueryProvidersRequest request, StreamObserver<QueryProvidersResponse> responseObserver);
 
-    void handleQueryProviderMetadata(
-            QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver);
+    void handleQueryProviderStats(
+            QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver);
 
 }

@@ -136,7 +136,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
 
         // execute metadata query for list of pv names
-        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
+        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvStats(uniquePvNames);
         if (pvMetadata == null) {
             return new ResultStatus(true, "error executing pv metadata query to validate request");
         }
