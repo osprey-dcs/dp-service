@@ -52,6 +52,7 @@ When modifying gRPC APIs:
 - **dataSets**: Annotation dataset definitions (contains DataBlockDocuments for time ranges and PV names)
 - **annotations**: Data annotations (references dataSets and optionally calculations)
 - **calculations**: Associated calculation results (embedded CalculationsDataFrameDocuments)
+- **pvMetadata**: PV metadata records managed by the Annotation Service (pvName, aliases, tags, attributes, description, modifiedBy, createdAt, updatedAt)
 
 ### Document Embedding Pattern
 MongoDB documents use embedded protobuf serialization:
@@ -421,6 +422,147 @@ The client utilities include Excel data import capabilities:
 - Supports automatic type detection (numeric → double, string → string, boolean → boolean)
 - Formula evaluation supported for calculated Excel cells
 
+## Annotation Service CRUD API Pattern
+
+This section documents the standard pattern for implementing new CRUD APIs on the Annotation Service, established by the `pvMetadata` API (dp-service #178). Follow this pattern for all new annotation service APIs and enhancements to existing ones.
+
+### Full Implementation Pipeline
+
+A new annotation service API method follows this end-to-end pipeline:
+
+```
+AnnotationServiceImpl (gRPC stub override)
+  → validates request fields
+  → calls AnnotationHandlerInterface method
+  → MongoAnnotationHandler (enqueues job)
+  → XxxJob.execute() (validates, queries/mutates MongoDB, dispatches result)
+  → MongoAnnotationClientInterface / MongoSyncAnnotationClient (MongoDB operations)
+  → XxxDispatcher (sends gRPC response to StreamObserver)
+```
+
+**Stub methods** (not yet implemented) skip the queue entirely: `AnnotationServiceImpl` calls the dispatcher directly and returns `RESULT_STATUS_ERROR` "not yet implemented" without queuing a job.
+
+### Step-by-Step: Adding a New API Method
+
+**Step 1 — BSON Document Class** (`common/bson/<entity>/XxxDocument.java`)
+- Extend `DpBsonDocumentBase` if the entity has tags, attributes, createdAt, or updatedAt (inherited automatically)
+- Add entity-specific fields with getters and setters (**every** field must have both — the MongoDB POJO codec silently drops fields missing either)
+- Add a static factory method `fromSaveXxxRequest(SaveXxxRequest)` to populate from a proto request
+- Add a `toXxx()` method to convert back to the proto message
+- Register the class in `MongoClientBase.getPojoCodecRegistry()`; register embedded helper classes before their parent
+
+**Step 2 — MongoDB Collection** (`common/mongo/MongoClientBase.java` and `common/bson/BsonConstants.java`)
+- Add `public static final String COLLECTION_NAME_XXX = "xxxCollection";` to `MongoClientBase`
+- Add field-name constants to `BsonConstants` for each queryable field
+- In `MongoSyncAnnotationClient.init()`, call `createIndex()` for any unique or query-critical fields — this runs at startup and is idempotent
+
+**Step 3 — MongoClient interface and implementation**
+- Add method signatures to `MongoAnnotationClientInterface`
+- Implement in `MongoSyncAnnotationClient`
+- Add no-op stubs to `MongoAsyncAnnotationClient` (required since it implements the interface)
+
+**Step 4 — Dispatcher** (`annotation/handler/mongo/dispatch/XxxDispatcher.java`)
+- Extend `Dispatcher` and hold a `StreamObserver<XxxResponse>`
+- Add `handleValidationError(ResultStatus)`, `handleError(String)`, and `handleResult(...)` methods
+- For not-found cases on get/delete, use `RESULT_STATUS_REJECT` (not error) — call `AnnotationServiceImpl.sendXxxResponseReject()`
+
+**Step 5 — Job** (`annotation/handler/mongo/job/XxxJob.java`)
+- Extend `HandlerJob`; hold references to request, responseObserver, mongoClient, and dispatcher
+- `execute()` performs validation first (fail-fast), then calls mongoClient, then dispatches
+- Validation lives directly in `execute()` — no separate utility class for annotation service jobs
+
+**Step 6 — Handler** (`annotation/handler/mongo/MongoAnnotationHandler.java`)
+- Add the new method to `AnnotationHandlerInterface`
+- Implement in `MongoAnnotationHandler` following the `handleSaveDataSet` queue pattern: create a job and call `executeJob(job)`
+
+**Step 7 — Service Implementation** (`annotation/service/AnnotationServiceImpl.java`)
+- Add static response helper methods: `sendXxxResponseReject(...)`, `sendXxxResponseError(...)`, `sendXxxResponseSuccess(...)`
+- Override the gRPC stub method; validate, then delegate to the handler
+- For stubs: immediately call `sendXxxResponseError(...)` "not yet implemented" and return — no handler call
+
+### BSON Document Base Class: `DpBsonDocumentBase`
+
+Documents that need tags, attributes, or managed timestamps should extend `DpBsonDocumentBase`:
+
+```java
+public class XxxDocument extends DpBsonDocumentBase {
+    // Inherited: List<String> tags, Map<String,String> attributes, Instant createdAt, Instant updatedAt
+    private String specificField;
+    // ... getters and setters for all fields
+}
+```
+
+- **Attributes** are stored as `Map<String, String>` in MongoDB; use `AttributesUtility.attributeMapFromList()` (proto `List<Attribute>` → map) and `AttributesUtility.attributeListFromMap()` (map → proto `List<Attribute>`) to convert
+- **Timestamps** (createdAt/updatedAt) are `Instant`; use `TimestampUtility.getTimestampFromInstant()` to convert to proto `Timestamp` when building the response proto
+
+### Standard Conventions
+
+**Tag normalization:** Tags are normalized on save — lowercase, deduplicated, sorted:
+```java
+List<String> normalizedTags = new ArrayList<>(
+    new TreeSet<>(request.getTagsList().stream().map(String::toLowerCase).toList()));
+```
+
+**Upsert with `createdAt` preservation:** On first save, set `createdAt = Instant.now()` and leave `updatedAt` null. On update (upsert of existing record), preserve the original `createdAt` and set `updatedAt = Instant.now()`. Use `findOneAndReplace` with `upsert=true`, or a find-then-insert/replace approach.
+
+**Not-found → RESULT_STATUS_REJECT:** When a get or delete lookup finds no matching record, return `RESULT_STATUS_REJECT` (not `RESULT_STATUS_ERROR`). Error message: `"no XxxRecord found for: {identifier}"`.
+
+**Stub methods → immediate RESULT_STATUS_ERROR:** API methods not yet implemented respond immediately in `AnnotationServiceImpl` with `RESULT_STATUS_ERROR` and message `"not yet implemented"`. They do not enqueue a job.
+
+**Validation in Job.execute():** Request validation lives directly in `execute()`. Call `dispatcher.handleValidationError(new ResultStatus(true, "message"))` and return early for each violation. No separate validation utility class.
+
+**Result wrapper classes:** Use these standard wrappers for MongoDB operation results:
+- `MongoSaveResult` — holds document identifier (e.g., pvName) and error state
+- `MongoDeleteResult` — holds deleted document identifier and error state
+- `PvMetadataQueryResult` — holds `List<PvMetadataDocument>` and `String nextPageToken` for paginated queries
+
+### Pagination Pattern
+
+Paginated queries use a base64-encoded integer skip offset as the page token:
+```java
+// Decode incoming token (null/empty → skip 0)
+int skipOffset = (pageToken == null || pageToken.isEmpty()) ? 0
+    : Integer.parseInt(new String(Base64.getDecoder().decode(pageToken)));
+// Execute: collection.find(filter).sort(...).skip(skipOffset).limit(limit)
+// Compute next token
+String nextPageToken = (skipOffset + results.size() < totalCount)
+    ? Base64.getEncoder().encodeToString(String.valueOf(skipOffset + results.size()).getBytes())
+    : null;
+```
+
+### Query Criteria → MongoDB Filter Pattern
+
+Build a compound `Filters.and()` from a list of criteria; each criterion maps to one or more `Bson` filters:
+
+| Criterion type | MongoDB filter |
+|---|---|
+| Exact match | `Filters.eq(field, value)` |
+| Prefix match | `Filters.regex(field, "^prefix")` |
+| Contains match | `Filters.regex(field, ".*substring.*")` |
+| Tags `$in` | `Filters.in(BSON_KEY_TAGS, values)` |
+| Attribute key-only | `Filters.exists("attributes." + key)` |
+| Attribute key+values | `Filters.in("attributes." + key, values)` |
+
+Multiple match types within one criterion are combined with `Filters.or()`.
+
+### Adding a New MongoDB Collection
+
+When a new API requires a dedicated collection:
+
+1. Add `public static final String COLLECTION_NAME_XXX = "xxx";` to `MongoClientBase`
+2. Add field-name constants to `BsonConstants` (prefix: `BSON_KEY_XXX_...`)
+3. In `MongoSyncAnnotationClient.init()`, get the collection and call `createIndex()` for key fields:
+   ```java
+   MongoCollection<XxxDocument> col = database.getCollection(COLLECTION_NAME_XXX, XxxDocument.class);
+   col.createIndex(Indexes.ascending(BSON_KEY_XXX_NATURAL_KEY),
+       new IndexOptions().unique(true));
+   col.createIndex(Indexes.ascending(BSON_KEY_XXX_SECONDARY_FIELD));
+   ```
+4. Store the collection reference as an instance field on `MongoSyncAnnotationClient`
+5. Register `XxxDocument.class` in `MongoClientBase.getPojoCodecRegistry()`
+
+`createIndex()` is idempotent — safe to call on every startup.
+
 ## Code Style Guidelines
 - Java 21 is used for this project
 - MongoDB is used for persistence with embedded protobuf serialization
@@ -437,8 +579,16 @@ The client utilities include Excel data import capabilities:
 Recent API evolution has moved from "create" to "save" semantics:
 - `saveDataSet()` performs upsert operations (create or update)
 - `saveAnnotation()` performs upsert operations (create or update)
+- `savePvMetadata()` performs upsert operations (create or update)
 - Request/Response/Result types follow `Save*Request`, `Save*Response`, `Save*Result` patterns
 - Legacy "create" references should be updated to "save" when encountered
+
+**CRUD method naming for new annotation APIs:**
+- `saveXxx` — upsert (create or update) by natural key
+- `queryXxx` — search with filter criteria; returns a list, paginated
+- `getXxx` — single-record lookup by natural key or alias; returns `RESULT_STATUS_REJECT` if not found
+- `deleteXxx` — remove by natural key or alias; returns `RESULT_STATUS_REJECT` if not found
+- `patchXxx` / `bulkSaveXxx` — reserved for partial update and bulk operations; implement as stubs returning `RESULT_STATUS_ERROR` "not yet implemented" until ready
 
 ## Client API Utilities
 - **Data Import**: `DataImportUtility.importXlsxData()` for importing time-series data from Excel files
@@ -551,6 +701,72 @@ Key parameters configured in benchmark classes:
 - **Scenario Methods**: Reusable test data generation (e.g., `simpleIngestionScenario()`, `createDataSetScenario()`)
 - **Test Naming**: Test classes typically named `<APIMethod>Test`
 - **Temporary Files**: Use `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();` for test files
+
+### Annotation Service Test Framework
+
+Integration tests for annotation service APIs follow a layered structure:
+
+**Test base classes:**
+- `AnnotationTestBase` — request builders, response observer inner classes, and `*Params` records for each API method
+- `AnnotationIntegrationTestIntermediate` — extends `AnnotationTestBase`, starts the service and wires up the wrapper
+- `GrpcIntegrationAnnotationServiceWrapper` — `sendAndVerifyXxx()` helper methods that send a request, await the response, and assert success/failure
+
+**Response observer pattern** (defined as inner classes in `AnnotationTestBase`):
+```java
+public static class SaveXxxResponseObserver implements StreamObserver<SaveXxxResponse> {
+    private final CountDownLatch latch = new CountDownLatch(1);
+    private final AtomicBoolean isError = new AtomicBoolean(false);
+    private final List<String> errorMessages = new ArrayList<>();
+    private final List<SaveXxxResponse> responses = new ArrayList<>();
+
+    @Override public void onNext(SaveXxxResponse r) { responses.add(r); }
+    @Override public void onError(Throwable t) { isError.set(true); errorMessages.add(t.getMessage()); latch.countDown(); }
+    @Override public void onCompleted() { latch.countDown(); }
+
+    public void await() throws InterruptedException { latch.await(RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS); }
+    public boolean isError() { return isError.get(); }
+    public String getErrorMessage() { return errorMessages.isEmpty() ? null : errorMessages.get(0); }
+    public List<SaveXxxResponse> getResponses() { return responses; }
+}
+```
+
+**`sendAndVerifyXxx()` wrapper pattern:**
+```java
+public String sendAndVerifyXxx(XxxParams params, boolean expectError, String expectedMsg) {
+    XxxResponseObserver observer = new XxxResponseObserver();
+    stub.saveXxx(buildSaveXxxRequest(params), observer);
+    observer.await();
+    if (expectError) {
+        assertTrue(observer.isError() || responseHasReject(observer));
+        if (expectedMsg != null) assertTrue(observer.getErrorMessage().contains(expectedMsg));
+        return null;
+    } else {
+        assertFalse(observer.isError());
+        // extract and return key identifier from response
+    }
+}
+```
+
+**`MongoTestClient` verification pattern:**
+Add a `findXxx(String key)` method following the retry-loop pattern used by `findAnnotation()`:
+```java
+public XxxDocument findXxx(String key) throws InterruptedException {
+    for (int i = 0; i < RETRY_ATTEMPTS; i++) {
+        XxxDocument doc = mongoCollectionXxx.find(eq("keyField", key)).first();
+        if (doc != null) return doc;
+        Thread.sleep(RETRY_SLEEP_MS);
+    }
+    return null;
+}
+```
+This handles asynchronous insertion: the job runs on a worker thread and the document may not yet exist when the test first queries MongoDB.
+
+**Integration test structure** (see `PvMetadataIT` as the reference implementation):
+- Extend `AnnotationIntegrationTestIntermediate`
+- Group tests by operation: save/create, query (all criterion types), get, delete, stubs
+- Use `sendAndVerify*` wrappers for the happy path and error cases
+- Use `MongoTestClient.findXxx()` to verify direct DB state after saves
+- For pagination, use `DpAnnotationServiceGrpc.newStub(channel)` directly with an inline `StreamObserver` and `CountDownLatch`
 
 ### Ingestion Test Framework
 The ingestion test framework has been streamlined to support systematic addition of new protobuf column types with minimal boilerplate code.
