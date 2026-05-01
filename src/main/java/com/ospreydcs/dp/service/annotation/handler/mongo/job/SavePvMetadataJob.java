@@ -53,12 +53,32 @@ public class SavePvMetadataJob extends HandlerJob {
             }
         }
 
-        // check for alias conflicts with other pvName records
-        for (String alias : request.getAliasesList()) {
-            final PvMetadataDocument conflictDoc = mongoClient.findPvMetadataByNameOrAlias(alias);
-            if (conflictDoc != null && !conflictDoc.getPvName().equals(request.getPvName())) {
+        // check that pvName itself is not already registered as an alias on a different record
+        try {
+            final PvMetadataDocument pvNameAsAliasConflict =
+                    mongoClient.findPvMetadataByNameOrAlias(request.getPvName());
+            if (pvNameAsAliasConflict != null && !pvNameAsAliasConflict.getPvName().equals(request.getPvName())) {
                 dispatcher.handleValidationError(new ResultStatus(
-                        true, "alias '" + alias + "' is already used by pvName: " + conflictDoc.getPvName()));
+                        true, "pvName '" + request.getPvName() + "' is already registered as an alias of pvName: "
+                        + pvNameAsAliasConflict.getPvName()));
+                return;
+            }
+        } catch (Exception ex) {
+            dispatcher.handleError("error checking pvName alias conflict: " + ex.getMessage());
+            return;
+        }
+
+        // check that none of the requested aliases conflict with another record's pvName or aliases
+        for (String alias : request.getAliasesList()) {
+            try {
+                final PvMetadataDocument conflictDoc = mongoClient.findPvMetadataByNameOrAlias(alias);
+                if (conflictDoc != null && !conflictDoc.getPvName().equals(request.getPvName())) {
+                    dispatcher.handleValidationError(new ResultStatus(
+                            true, "alias '" + alias + "' is already used by pvName: " + conflictDoc.getPvName()));
+                    return;
+                }
+            } catch (Exception ex) {
+                dispatcher.handleError("error checking alias conflict for '" + alias + "': " + ex.getMessage());
                 return;
             }
         }

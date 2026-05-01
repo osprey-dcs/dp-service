@@ -1176,4 +1176,30 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         }
     }
 
+    public void sendAndVerifyPatchPvMetadataStub(String pvName) {
+        final PatchPvMetadataRequest request = PatchPvMetadataRequest.newBuilder()
+                .setPvName(pvName)
+                .build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.PatchPvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.PatchPvMetadataResponseObserver();
+        new Thread(() -> asyncStub.patchPvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
+    public void sendAndVerifyBulkSavePvMetadataStub() {
+        final BulkSavePvMetadataRequest request = BulkSavePvMetadataRequest.newBuilder().build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.BulkSavePvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.BulkSavePvMetadataResponseObserver();
+        new Thread(() -> asyncStub.bulkSavePvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
 }

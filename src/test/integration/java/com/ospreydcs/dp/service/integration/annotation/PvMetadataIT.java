@@ -96,6 +96,20 @@ public class PvMetadataIT extends AnnotationIntegrationTestIntermediate {
     }
 
     @Test
+    public void testSavePvMetadataRejectPvNameIsAliasOfOther() {
+        // save first record with alias "shared-name"
+        final AnnotationTestBase.SavePvMetadataParams params1 = new AnnotationTestBase.SavePvMetadataParams(
+                "TEST:PV:020", List.of("shared-name"), null, null, null, null);
+        annotationServiceWrapper.sendAndVerifySavePvMetadata(params1, false, null);
+
+        // attempt to save a new record whose pvName equals the alias of the first record — should be rejected
+        final AnnotationTestBase.SavePvMetadataParams params2 = new AnnotationTestBase.SavePvMetadataParams(
+                "shared-name", null, null, null, null, null);
+        annotationServiceWrapper.sendAndVerifySavePvMetadata(
+                params2, true, "is already registered as an alias of pvName");
+    }
+
+    @Test
     public void testSavePvMetadataRejectAliasConflict() {
         // save first record with alias "shared-alias"
         final AnnotationTestBase.SavePvMetadataParams params1 = new AnnotationTestBase.SavePvMetadataParams(
@@ -405,9 +419,18 @@ public class PvMetadataIT extends AnnotationIntegrationTestIntermediate {
         assertNotNull(nextPageToken);
         assertFalse(nextPageToken.isBlank());
 
-        // page 2: use nextPageToken, expect 1 result and empty nextPageToken
-        final List<PvMetadata> page2Results = annotationServiceWrapper.sendAndVerifyQueryPvMetadata(
-                List.of(criterion), 2, nextPageToken, false, null, 1);
+        // page 2: use nextPageToken, expect 1 result and empty nextPageToken (last page)
+        final AnnotationTestBase.QueryPvMetadataResponseObserver page2Observer =
+                new AnnotationTestBase.QueryPvMetadataResponseObserver();
+        final com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataRequest page2Request =
+                AnnotationTestBase.buildQueryPvMetadataRequest(List.of(criterion), 2, nextPageToken);
+        new Thread(() -> com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc
+                .newStub(annotationServiceWrapper.getChannel())
+                .queryPvMetadata(page2Request, page2Observer)).start();
+        page2Observer.await();
+        assertFalse(page2Observer.getErrorMessage(), page2Observer.isError());
+        assertEquals(1, page2Observer.getPvMetadataList().size());
+        assertTrue("expected empty nextPageToken on last page", page2Observer.getNextPageToken().isBlank());
     }
 
     // =========================================================================
@@ -510,77 +533,12 @@ public class PvMetadataIT extends AnnotationIntegrationTestIntermediate {
 
     @Test
     public void testPatchPvMetadataStub() {
-        final com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataRequest request =
-                com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataRequest.newBuilder()
-                        .setPvName("ANY:PV:001")
-                        .build();
-
-        final com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc.newStub(
-                        annotationServiceWrapper.getChannel());
-
-        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.atomic.AtomicBoolean isError = new java.util.concurrent.atomic.AtomicBoolean(false);
-        final java.util.concurrent.atomic.AtomicReference<String> errorMsg = new java.util.concurrent.atomic.AtomicReference<>("");
-
-        asyncStub.patchPvMetadata(request,
-                new io.grpc.stub.StreamObserver<com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataResponse>() {
-                    @Override
-                    public void onNext(com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataResponse response) {
-                        new Thread(() -> {
-                            if (response.hasExceptionalResult()) {
-                                isError.set(true);
-                                errorMsg.set(response.getExceptionalResult().getMessage());
-                            }
-                            latch.countDown();
-                        }).start();
-                    }
-                    @Override
-                    public void onError(Throwable t) { latch.countDown(); }
-                    @Override
-                    public void onCompleted() {}
-                });
-
-        try { latch.await(1, java.util.concurrent.TimeUnit.MINUTES); } catch (InterruptedException ignored) {}
-        assertTrue(isError.get());
-        assertTrue(errorMsg.get().contains("not yet implemented"));
+        annotationServiceWrapper.sendAndVerifyPatchPvMetadataStub("ANY:PV:001");
     }
 
     @Test
     public void testBulkSavePvMetadataStub() {
-        final com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataRequest request =
-                com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataRequest.newBuilder()
-                        .build();
-
-        final com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
-                com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc.newStub(
-                        annotationServiceWrapper.getChannel());
-
-        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.atomic.AtomicBoolean isError = new java.util.concurrent.atomic.AtomicBoolean(false);
-        final java.util.concurrent.atomic.AtomicReference<String> errorMsg = new java.util.concurrent.atomic.AtomicReference<>("");
-
-        asyncStub.bulkSavePvMetadata(request,
-                new io.grpc.stub.StreamObserver<com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataResponse>() {
-                    @Override
-                    public void onNext(com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataResponse response) {
-                        new Thread(() -> {
-                            if (response.hasExceptionalResult()) {
-                                isError.set(true);
-                                errorMsg.set(response.getExceptionalResult().getMessage());
-                            }
-                            latch.countDown();
-                        }).start();
-                    }
-                    @Override
-                    public void onError(Throwable t) { latch.countDown(); }
-                    @Override
-                    public void onCompleted() {}
-                });
-
-        try { latch.await(1, java.util.concurrent.TimeUnit.MINUTES); } catch (InterruptedException ignored) {}
-        assertTrue(isError.get());
-        assertTrue(errorMsg.get().contains("not yet implemented"));
+        annotationServiceWrapper.sendAndVerifyBulkSavePvMetadataStub();
     }
 
 }

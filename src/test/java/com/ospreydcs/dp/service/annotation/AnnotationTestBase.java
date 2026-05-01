@@ -1421,6 +1421,90 @@ public class AnnotationTestBase {
         public void onCompleted() {}
     }
 
+    public static class PatchPvMetadataResponseObserver
+            implements StreamObserver<com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                isError.set(true);
+                errorMessageList.add("InterruptedException waiting for finishLatch");
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        @Override
+        public void onNext(com.ospreydcs.dp.grpc.v1.annotation.PatchPvMetadataResponse response) {
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+            }
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            isError.set(true);
+            errorMessageList.add("onError: " + Status.fromThrowable(t));
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
+    public static class BulkSavePvMetadataResponseObserver
+            implements StreamObserver<com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                isError.set(true);
+                errorMessageList.add("InterruptedException waiting for finishLatch");
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        @Override
+        public void onNext(com.ospreydcs.dp.grpc.v1.annotation.BulkSavePvMetadataResponse response) {
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+            }
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            isError.set(true);
+            errorMessageList.add("onError: " + Status.fromThrowable(t));
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {}
+    }
+
     public record SavePvMetadataParams(
             String pvName,
             List<String> aliases,

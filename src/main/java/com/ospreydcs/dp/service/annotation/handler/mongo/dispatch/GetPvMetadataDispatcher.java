@@ -25,6 +25,10 @@ public class GetPvMetadataDispatcher extends Dispatcher {
         AnnotationServiceImpl.sendGetPvMetadataResponseReject(resultStatus.msg, responseObserver);
     }
 
+    public void handleError(String errorMsg) {
+        AnnotationServiceImpl.sendGetPvMetadataResponseError(errorMsg, responseObserver);
+    }
+
     public void handleResult(PvMetadataDocument document) {
         if (document == null) {
             final String msg = "no PvMetadata record found for: " + request.getPvNameOrAlias();

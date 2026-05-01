@@ -639,10 +639,15 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         // Fetch limit+1 to detect whether a next page exists without an extra count query.
         final List<PvMetadataDocument> documents = new ArrayList<>();
-        if (limit > 0) {
-            query.limit(limit + 1).into(documents);
-        } else {
-            query.into(documents);
+        try {
+            if (limit > 0) {
+                query.limit(limit + 1).into(documents);
+            } else {
+                query.into(documents);
+            }
+        } catch (Exception ex) {
+            logger.error("executeQueryPvMetadata: mongo exception: {}", ex.getMessage());
+            return null;
         }
 
         // Determine next-page token: only produce one when the result set is full (has more).
@@ -668,8 +673,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     eq("aliases", pvNameOrAlias));
             mongoCollectionPvMetadata.find(filter).into(matchingDocuments);
         } catch (Exception ex) {
-            logger.error("findPvMetadataByNameOrAlias: mongo exception: {}", ex.getMessage());
-            return null;
+            final String errorMsg = "findPvMetadataByNameOrAlias: mongo exception: " + ex.getMessage();
+            logger.error(errorMsg);
+            throw new RuntimeException(errorMsg, ex);
         }
 
         return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);

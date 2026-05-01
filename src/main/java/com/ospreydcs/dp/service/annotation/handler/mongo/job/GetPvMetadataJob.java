@@ -41,8 +41,13 @@ public class GetPvMetadataJob extends HandlerJob {
             return;
         }
 
-        final PvMetadataDocument document =
-                mongoClient.findPvMetadataByNameOrAlias(request.getPvNameOrAlias());
+        final PvMetadataDocument document;
+        try {
+            document = mongoClient.findPvMetadataByNameOrAlias(request.getPvNameOrAlias());
+        } catch (Exception ex) {
+            dispatcher.handleError("error looking up pvMetadata: " + ex.getMessage());
+            return;
+        }
         dispatcher.handleResult(document);
     }
 }

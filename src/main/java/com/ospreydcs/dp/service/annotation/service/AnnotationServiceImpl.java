@@ -452,6 +452,7 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         if (criterionList.size() == 0) {
             final String errorMsg = "QueryAnnotationsRequest.criteria list must not be empty";
             sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+            return;
         }
 
         // validate query criteria
@@ -774,6 +775,13 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
             String msg, StreamObserver<GetPvMetadataResponse> responseObserver) {
         responseObserver.onNext(getPvMetadataResponseExceptionalResult(
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetPvMetadataResponseError(
+            String msg, StreamObserver<GetPvMetadataResponse> responseObserver) {
+        responseObserver.onNext(getPvMetadataResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
         responseObserver.onCompleted();
     }
 
