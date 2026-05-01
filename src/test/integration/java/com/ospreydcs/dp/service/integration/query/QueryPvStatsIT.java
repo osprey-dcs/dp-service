@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RunWith(JUnit4.class)
-public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
+public class QueryPvStatsIT extends GrpcIntegrationTestBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
@@ -29,7 +29,7 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
     }
 
     @Test
-    public void queryPvMetadataTest() {
+    public void queryPvStatsTest() {
 
         // use request data contained by validationMap to verify query results
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
@@ -41,16 +41,16 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
             ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond(), false);
         }
 
-        // negative test case: test rejected metadata query due to blank PV name pattern
+        // negative test case: test rejected stats query due to blank PV name pattern
         {
             final String columnNamePattern = ""; // send a blank string for name pattern
             final List<String> expectedColumnNameMatches = new ArrayList<>();
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
                     true,
-                    "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty",
+                    "QueryPvStatsRequest.pvNamePattern.pattern must not be empty",
                     false);
         }
 
@@ -60,7 +60,7 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
             final boolean expectReject = false;
             final String expectedRejectMessage = "";
             final boolean expectEmpty = true;
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     pvNames,
                     ingestionScenarioResult.validationMap(),
                     expectReject,
@@ -68,10 +68,10 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
                     expectEmpty);
         }
 
-        // positive test case: send metadata query for list of columns
+        // positive test case: send stats query for list of columns
         {
             final List<String> queryColumnNames = List.of("S01-GCC02", "S02-BPM03");
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     queryColumnNames,
                     ingestionScenarioResult.validationMap(),
                     false,
@@ -85,7 +85,7 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
             final List<String> expectedColumnNameMatches =
                     List.of();
             final boolean expectEmpty = true;
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
@@ -94,12 +94,12 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
                     expectEmpty);
         }
 
-        // positive test case: send metadata query for column pattern matching all "S01" devices
+        // positive test case: send stats query for column pattern matching all "S01" devices
         {
             final String columnNamePattern = "S01";
             final List<String> expectedColumnNameMatches =
                     List.of("S01-BPM01", "S01-BPM02", "S01-BPM03", "S01-GCC01", "S01-GCC02", "S01-GCC03"); // use sorted order!
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,
@@ -108,7 +108,7 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
                     false);
         }
 
-        // positive test case: send metadata query for column pattern matching all "GCC02" devices
+        // positive test case: send stats query for column pattern matching all "GCC02" devices
         {
             final String columnNamePattern = "GCC02";
             final List<String> expectedColumnNameMatches = new ArrayList<>();
@@ -116,7 +116,7 @@ public class QueryPvMetadataIT extends GrpcIntegrationTestBase {
                 final String sectorName = String.format("S%02d", i);
                 expectedColumnNameMatches.add(sectorName + "-GCC02");
             }
-            queryServiceWrapper.sendAndVerifyQueryPvMetadata(
+            queryServiceWrapper.sendAndVerifyQueryPvStats(
                     columnNamePattern,
                     ingestionScenarioResult.validationMap(),
                     expectedColumnNameMatches,

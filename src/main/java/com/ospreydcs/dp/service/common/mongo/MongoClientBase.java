@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Indexes;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.column.*;
@@ -36,6 +37,7 @@ public abstract class MongoClientBase {
     public static final String COLLECTION_NAME_DATA_SETS = "dataSets";
     public static final String COLLECTION_NAME_ANNOTATIONS = "annotations";
     public static final String COLLECTION_NAME_CALCULATIONS = "calculations";
+    public static final String COLLECTION_NAME_PV_METADATA = "pvMetadata";
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
@@ -58,6 +60,9 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexAnnotations(Bson fieldNamesBson);
     protected abstract boolean initMongoCollectionCalculations(String collectionName);
     protected abstract boolean createMongoIndexCalculations(Bson fieldNamesBson);
+    protected abstract boolean initMongoCollectionPvMetadata(String collectionName);
+    protected abstract boolean createMongoIndexPvMetadata(Bson fieldNamesBson);
+    protected abstract boolean createMongoIndexPvMetadataWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions);
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -116,7 +121,8 @@ public abstract class MongoClientBase {
                 BoolArrayColumnDocument.class,
                 StructColumnDocument.class,
                 ImageColumnDocument.class,
-                SerializedDataColumnDocument.class
+                SerializedDataColumnDocument.class,
+                PvMetadataDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -239,6 +245,19 @@ public abstract class MongoClientBase {
         return true;
     }
 
+    private boolean createMongoIndexesPvMetadata() {
+        // unique index on pvName to enforce DB-level uniqueness
+        createMongoIndexPvMetadataWithOptions(
+                Indexes.ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME),
+                new com.mongodb.client.model.IndexOptions().unique(true));
+        // regular index on aliases for fast name-or-alias lookup
+        createMongoIndexPvMetadata(Indexes.ascending("aliases"));
+        // regular indexes on tags and attributes to support query filter patterns
+        createMongoIndexPvMetadata(Indexes.ascending(BsonConstants.BSON_KEY_TAGS));
+        createMongoIndexPvMetadata(Indexes.ascending(BsonConstants.BSON_KEY_ATTRIBUTES));
+        return true;
+    }
+
     public static String getMongoConnectString() {
         // Allow a full connection string override to support replica sets, TLS, options, etc.
         String uriOverride = configMgr().getConfigString(CFG_KEY_DB_URI, DEFAULT_DB_URI);
@@ -283,6 +302,10 @@ public abstract class MongoClientBase {
 
     protected String getCollectionNameCalculations() {
         return COLLECTION_NAME_CALCULATIONS;
+    }
+
+    protected String getCollectionNamePvMetadata() {
+        return COLLECTION_NAME_PV_METADATA;
     }
 
     public boolean init() {
@@ -337,6 +360,10 @@ public abstract class MongoClientBase {
         // initialize calculations collection
         initMongoCollectionCalculations(collectionNameCalculations);
         createMongoIndexesCalculations();
+
+        // initialize pvMetadata collection
+        initMongoCollectionPvMetadata(getCollectionNamePvMetadata());
+        createMongoIndexesPvMetadata();
 
         return true;
     }

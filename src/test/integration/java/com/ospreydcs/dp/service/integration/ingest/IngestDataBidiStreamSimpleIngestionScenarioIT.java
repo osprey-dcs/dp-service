@@ -21,7 +21,7 @@ public class IngestDataBidiStreamSimpleIngestionScenarioIT extends GrpcIntegrati
     }
 
     @Test
-    public void testQueryProviderMetadata() {
+    public void testQueryProviderStats() {
 
         // ingest some data
         GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;

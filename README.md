@@ -2,7 +2,7 @@
 
 This repo is part of the Data Platform project.  The Data Platform provides tools for managing the data captured in an experimental research facility, such as a particle accelerator. The data are used within control systems and analytics applications, and facilitate the creation of machine learning models for those applications.  The [data-platform repo](https://github.com/osprey-dcs/data-platform) provides a project overview and links to the various project componnents, as well as an installer for running the latest version.
 
-This repo contains Java implementations of the Data Platform Ingestion, Query, and Annotation Service APIs defined in the [dp-grpc repo](https://github.com/osprey-dcs/dp-grpc).  The Ingestion Service provides a variety of methods for use in capturing data to the archive with a focus on the performance required to handle the data rates in an accelerator facility.  The Query Service provides methods for retrieving raw time-series data for use in machine learning applications, and higher-level APIs for retrieving tabular time-series data as well as for querying metadata and annotations in the archive.  The Annotation Service provides APIs for annotating the data in the archive.
+This repo contains Java implementations of the Data Platform Ingestion, Query, and Annotation Service APIs defined in the [dp-grpc repo](https://github.com/osprey-dcs/dp-grpc).  The Ingestion Service provides a variety of methods for use in capturing data to the archive with a focus on the performance required to handle the data rates in an accelerator facility.  The Query Service provides methods for retrieving raw time-series data for use in machine learning applications, and higher-level APIs for retrieving tabular time-series data as well as for querying metadata and annotations in the archive.  The Annotation Service provides APIs for annotating the data in the archive and for managing PV metadata.
 
 The main objective of this document is to give an overview of the dp-service repo focusing on code organization, navigation and conventions in order to help a developer find the relevant code for handling a particular API method or adding a new API method.  This document contains the following sections:
 
@@ -63,36 +63,36 @@ The table below shows the concrete classes and packages corresponding to the gen
 ---
 ## Example API Method Handling Flow
 
-This section shows some of the code involved for handling an incoming queryProviderMetadata() API method request by the Query Service.  This example was chosen for its simplicity.  Handling for all API methods follows a similar pattern, but using the class and method names appropriate to the specific service and API method.  See notes at each step for more details.
+This section shows some of the code involved for handling an incoming queryProviderStats() API method request by the Query Service.  This example was chosen for its simplicity.  Handling for all API methods follows a similar pattern, but using the class and method names appropriate to the specific service and API method.  See notes at each step for more details.
 
 ### Service Implementation (QueryServiceImpl) receives incoming request, dispatches to Handler.
 The method name in the Service Implementation matches the name of the method as defined in the gRPC proto file corresponding to the service.
 ```
     @Override
-    public void queryProviderMetadata(
-            QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public void queryProviderStats(
+            QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
         // check that request contains non-empty providerId
         if (request.getProviderId().isBlank()) {
-            final String errorMsg = "QueryProviderMetadataRequest.providerId must be specified";
-            sendQueryProviderMetadataResponseReject(errorMsg, responseObserver);
+            final String errorMsg = "QueryProviderStatsRequest.providerId must be specified";
+            sendQueryProviderStatsResponseReject(errorMsg, responseObserver);
             return;
         }
 
-        handler.handleQueryProviderMetadata(request, responseObserver);
+        handler.handleQueryProviderStats(request, responseObserver);
     }
 ```
 
-### Handler (MongoSyncQueryHandler) adds Job for request to queue.
+### Handler (MongoQueryHandler) adds Job for request to queue.
 Handler method naming convention is "handleXXX()" where "XXX" is the name of the API method being handled, within the appropriate Handler concrete class for the service defining that method.
 ```
     @Override
-    public void handleQueryProviderMetadata(
-            QueryProviderMetadataRequest request, 
-            StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public void handleQueryProviderStats(
+            QueryProviderStatsRequest request,
+            StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
-        final QueryProviderMetadataJob job =
-                new QueryProviderMetadataJob(request, responseObserver, mongoQueryClient);
+        final QueryProviderStatsJob job =
+                new QueryProviderStatsJob(request, responseObserver, mongoQueryClient);
 
         try {
             requestQueue.put(job);
@@ -139,15 +139,15 @@ QueueHandlerBase is a common base class for each of the service concrete Handler
     }
 ```
 
-### Job (QueryProviderMetadataJob) executes query for request via Database Interface Client, sends response via Dispatcher.
+### Job (QueryProviderStatsJob) executes query for request via Database Interface Client, sends response via Dispatcher.
 For the most part, Job classes are named using the convention "XXXJob" where "XXX" is the API method name, and are contained in the handler.mongo.job package under the appropriate service package.
 ```
     @Override
     public void execute() {
-    
+
         final MongoCursor<ProviderMetadataQueryResultDocument> cursor =
-                this.mongoClient.executeQueryProviderMetadata(this.request);
-                        
+                this.mongoClient.executeQueryProviderStats(this.request);
+
         dispatcher.handleResult(cursor);
     }
 ```
@@ -156,8 +156,8 @@ For the most part, Job classes are named using the convention "XXXJob" where "XX
 Where possible, the method names in the concrete Database Interface classes reflect the name of the corresponding API method.  The best place to find the appropriate Database Interface method name for an API method is to look at the execute() method for the concrete Job class that handles that API method.
 ```
     @Override
-    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(
-            QueryProviderMetadataRequest request
+    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(
+            QueryProviderStatsRequest request
     ) {
         final Bson providerIdFilter = eq(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID, request.getProviderId());
 
@@ -204,7 +204,7 @@ Where possible, the method names in the concrete Database Interface classes refl
     }
 ```
 
-### Dispatcher (QueryProviderMetadataDispatcher) sends results from database cursor to client in response stream.
+### Dispatcher (QueryProviderStatsDispatcher) sends results from database cursor to client in response stream.
 Concrete Dispatcher class names use the convention "XXXDispatcher", where "XXX" is the API method name.  They are contained in the handler.mongo.dispatch package of the package for the service that defines that API method.
 ```
     public void handleResult(MongoCursor<ProviderMetadataQueryResultDocument> cursor) {
@@ -212,72 +212,48 @@ Concrete Dispatcher class names use the convention "XXXDispatcher", where "XXX" 
         // validate cursor
         if (cursor == null) {
             // send error response and close response stream if cursor is null
-            final String msg = "providerMetadata query returned null cursor";
-            QueryServiceImpl.sendQueryProviderMetadataResponseError(msg, this.responseObserver);
-            return;
-        } else if (!cursor.hasNext()) {
-            // send empty QueryStatus and close response stream if query matched no data
-            QueryServiceImpl.sendQueryProviderMetadataResponseEmpty(this.responseObserver);
+            final String msg = "providerStats query returned null cursor";
+            QueryServiceImpl.sendQueryProviderStatsResponseError(msg, this.responseObserver);
             return;
         }
 
-        QueryProviderMetadataResponse.MetadataResult.Builder providerMetadataResultBuilder =
-                QueryProviderMetadataResponse.MetadataResult.newBuilder();
+        QueryProviderStatsResponse.StatsResult.Builder providerStatsResultBuilder =
+                QueryProviderStatsResponse.StatsResult.newBuilder();
 
         while (cursor.hasNext()) {
-            // add protobuf object for each document in cursor
-
+            // add protobuf object for each document in result cursor
             final ProviderMetadataQueryResultDocument providerMetadataDocument = cursor.next();
-
-            final QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.Builder providerMetadataBuilder =
-                    QueryProviderMetadataResponse.MetadataResult.ProviderMetadata.newBuilder();
-
-            providerMetadataBuilder.setId(providerMetadataDocument.getId());
-            
-            providerMetadataBuilder.addAllPvNames(providerMetadataDocument.getPvNames());
-            
-            final Instant firstTimeInstant = providerMetadataDocument.getFirstBucketTimestamp().toInstant();
-            providerMetadataBuilder.setFirstBucketTime(
-                    TimestampUtility.timestampFromSeconds(
-                            firstTimeInstant.getEpochSecond(), firstTimeInstant.getNano()));
-            
-            final Instant lastTimeInstant = providerMetadataDocument.getLastBucketTimestamp().toInstant();
-            providerMetadataBuilder.setLastBucketTime(
-                    TimestampUtility.timestampFromSeconds(
-                            lastTimeInstant.getEpochSecond(), lastTimeInstant.getNano()));
-            
-            providerMetadataBuilder.setNumBuckets(providerMetadataDocument.getNumBuckets());
-            providerMetadataResultBuilder.addProviderMetadatas(providerMetadataBuilder.build());
+            providerStatsResultBuilder.addProviderStats(providerStatsFromDocument(providerMetadataDocument));
         }
-        
-        // send response and close response stream
-        final QueryProviderMetadataResponse.MetadataResult metadataResult = providerMetadataResultBuilder.build();
-        QueryServiceImpl.sendQueryProviderMetadataResponse(metadataResult, this.responseObserver);
-    }
 
+        // send response and close response stream
+        final QueryProviderStatsResponse.StatsResult statsResult = providerStatsResultBuilder.build();
+        QueryServiceImpl.sendQueryProviderStatsResponse(statsResult, this.responseObserver);
+    }
 ```
 
-### Test coverage is provided by QueryProviderMetadataTest.
-Most test coverage for API methods is contained in the test package com.ospreydcs.dp.service.integration.  That package contains packages "annotation", "ingest", and "query" corresponding to the respective service name.  The test coverage for the API methods for a particular service are contained in the integration test package for that service.  E.g., QueryProviderMetadataTest is in the test package integration.query.  Where possible, test class names begin with the name of the corresponding API method name.
+### Test coverage is provided by QueryProviderStatsIT.
+Most test coverage for API methods is contained in the test package com.ospreydcs.dp.service.integration.  That package contains packages "annotation", "ingest", and "query" corresponding to the respective service name.  The test coverage for the API methods for a particular service are contained in the integration test package for that service.  E.g., QueryProviderStatsIT is in the test package integration.query.  Where possible, test class names begin with the name of the corresponding API method name.
 ```
     @Test
-    public void testQueryProviderMetadata() {
+    public void testQueryProviderStats() {
 
         // ingest some data
-        IngestionScenarioResult ingestionScenarioResult;
+        GrpcIntegrationIngestionServiceWrapper.IngestionScenarioResult ingestionScenarioResult;
         {
-            ingestionScenarioResult = simpleIngestionScenario();
+            ingestionScenarioResult = ingestionServiceWrapper.simpleIngestionScenario(Instant.now().getEpochSecond(), false);
         }
 
-        // queryProviderMetadata() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
+        // queryProviderStats() positive test for GCC_INGESTION_PROVIDER using result of simpleIngestionScenario.
         {
-            final IngestionProviderInfo gccProviderInfo =
-                    ingestionScenarioResult.providerInfoMap.get(GCC_INGESTION_PROVIDER);
-            sendAndVerifyQueryProviderMetadata(
-                    gccProviderInfo.providerId,
+            final GrpcIntegrationIngestionServiceWrapper.IngestionProviderInfo gccProviderInfo =
+                    ingestionScenarioResult.providerInfoMap().get(GCC_INGESTION_PROVIDER);
+            queryServiceWrapper.sendAndVerifyQueryProviderStats(
+                    gccProviderInfo.providerId(),
                     gccProviderInfo,
                     false,
-                    null);
+                    null,
+                    1);
         }
     }
 ```
@@ -305,7 +281,7 @@ The Query Service's queryProviders() method matches documents from the providers
 
 The "buckets" collection contains bucketed time-series data for PVs and is populated by the Ingestion Service's ingestData*() methods. A BucketDocument is created for each DataColumn in the IngestDataRequest.  Each BucketDocument contains a vector of PV measurements for a specified time range.
 
-The domain of the Query Service methods is the "buckets" collection.  A time-series data query specifies a list of PV names and time range and the result contains those buckets matching the query parameters.  queryPvMetadata() returns results for the buckets matching the PV name(s) in the query.  queryProviderMetadata() returns statistics about BucketDocuments created with a particular providerId.
+The domain of the Query Service methods is the "buckets" collection.  A time-series data query specifies a list of PV names and time range and the result contains those buckets matching the query parameters.  queryPvStats() returns results for the buckets matching the PV name(s) in the query.  queryProviderStats() returns statistics about BucketDocuments created with a particular providerId.
 
 BucketDocuments contain an embedded DataTimestampsDocument with details about the begin / end times, sample period, and number of samples for the bucket (or an explicit list of Timestamps).  The protobuf DataTimestamps object is serialized to the "bytes" field of the DataTimestampsDocument.
 
@@ -348,6 +324,14 @@ The CalculationsDocument is created when the corresponding AnnotationDocument is
 Each CalculationsDocument contains a list of embedded CalculationsDataFrameDocuments.  Each of these contains an embedded DataTimestampsDocument specifying the timestamps for the list of embedded DataColumnDocuments (these are the same embedded documents used in BucketDocuments as described above).
 
 It might be helpful to think of an analogy between the CalculationsDocument and an Excel workbook.  The CalculationsDocument is the workbook, and each CalculationsDataFrameDocument is a worksheet with a column of timestamps and a list of data columns containing values for each timestamp.
+
+#### pvMetadata
+
+The "pvMetadata" collection contains PvMetadataDocuments managed by the Annotation Service.  Each document stores user-defined metadata for a single PV: a canonical name (`pvName`), optional aliases, tags (normalized to lowercase unique sorted list), attributes (key-value pairs), description, and a `modifiedBy` field.  Managed `createdAt` and `updatedAt` timestamps are maintained automatically.
+
+A unique index is created on `pvName` and a regular index on `aliases`.  Aliases are enforced to be globally unique across all records.
+
+The Annotation Service's `savePvMetadata()` method upserts documents by `pvName`, preserving `createdAt` on updates.  `queryPvMetadata()` supports filtering by PV name, alias, tags, and attributes with AND semantics across multiple criteria and optional pagination.  `getPvMetadata()` and `deletePvMetadata()` look up a record by canonical name or alias.
 
 #### TimestmapDocument
 

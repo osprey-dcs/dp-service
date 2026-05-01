@@ -25,4 +25,20 @@ public interface AnnotationHandlerInterface {
             QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
 
     void handleExportData(HandlerExportDataRequest handlerRequest);
+
+    void handleSavePvMetadata(
+            SavePvMetadataRequest request,
+            StreamObserver<SavePvMetadataResponse> responseObserver);
+
+    void handleQueryPvMetadata(
+            QueryPvMetadataRequest request,
+            StreamObserver<QueryPvMetadataResponse> responseObserver);
+
+    void handleGetPvMetadata(
+            GetPvMetadataRequest request,
+            StreamObserver<GetPvMetadataResponse> responseObserver);
+
+    void handleDeletePvMetadata(
+            DeletePvMetadataRequest request,
+            StreamObserver<DeletePvMetadataResponse> responseObserver);
 }

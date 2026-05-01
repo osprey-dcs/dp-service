@@ -3,24 +3,32 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
+import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.*;
@@ -475,6 +483,227 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             return matchingDocuments.get(0);
         } else {
             return null;
+        }
+    }
+
+    @Override
+    public MongoSaveResult savePvMetadata(PvMetadataDocument document) {
+
+        logger.debug("saving PvMetadataDocument pvName: {}", document.getPvName());
+
+        // Look up only by canonical pvName (not alias) to avoid mistakenly copying createdAt
+        // from an unrelated document that merely has this pvName as one of its aliases.
+        final List<PvMetadataDocument> exactMatches = new ArrayList<>();
+        try {
+            mongoCollectionPvMetadata.find(
+                    eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, document.getPvName())
+            ).into(exactMatches);
+        } catch (Exception ex) {
+            final String errorMsg = "MongoException looking up PvMetadataDocument by pvName: " + ex.getMessage();
+            logger.error(errorMsg);
+            return new MongoSaveResult(true, errorMsg, null, false);
+        }
+        final PvMetadataDocument existingDocument = exactMatches.isEmpty() ? null : exactMatches.get(0);
+
+        try {
+            if (existingDocument == null) {
+                document.addCreationTime();
+                InsertOneResult insertOneResult = mongoCollectionPvMetadata.insertOne(document);
+
+                if (!insertOneResult.wasAcknowledged()) {
+                    final String errorMsg = "insertOne failed for PvMetadataDocument, result not acknowledged";
+                    logger.error(errorMsg);
+                    return new MongoSaveResult(true, errorMsg, null, true);
+                }
+                if (insertOneResult.getInsertedId() == null) {
+                    final String errorMsg = "PvMetadataDocument insert failed to return document id";
+                    logger.error(errorMsg);
+                    return new MongoSaveResult(true, errorMsg, null, true);
+                }
+                return new MongoSaveResult(false, "", document.getPvName(), true);
+
+            } else {
+                document.setCreatedAt(existingDocument.getCreatedAt());
+                document.addUpdatedTime();
+
+                final Bson filter = eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, document.getPvName());
+                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                final UpdateResult result = mongoCollectionPvMetadata.replaceOne(filter, document, replaceOptions);
+
+                if (!result.wasAcknowledged()) {
+                    final String errorMsg = "replaceOne not acknowledged for PvMetadataDocument pvName: "
+                            + document.getPvName();
+                    logger.error(errorMsg);
+                    return new MongoSaveResult(true, errorMsg, document.getPvName(), false);
+                }
+                return new MongoSaveResult(false, "", document.getPvName(), false);
+            }
+        } catch (MongoException ex) {
+            final String errorMsg = "MongoException saving PvMetadataDocument: " + ex.getMessage();
+            logger.error(errorMsg);
+            return new MongoSaveResult(true, errorMsg, null, false);
+        }
+    }
+
+    @Override
+    public PvMetadataQueryResult executeQueryPvMetadata(QueryPvMetadataRequest request) {
+
+        final List<Bson> filterList = new ArrayList<>();
+
+        for (QueryPvMetadataRequest.QueryPvMetadataCriterion criterion : request.getCriteriaList()) {
+            switch (criterion.getCriterionCase()) {
+
+                case PVNAMECRITERION -> {
+                    final QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion c =
+                            criterion.getPvNameCriterion();
+                    final List<Bson> nameFilters = new ArrayList<>();
+                    if (!c.getExactList().isEmpty()) {
+                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, c.getExactList()));
+                    }
+                    for (String prefix : c.getPrefixList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
+                                "^" + java.util.regex.Pattern.quote(prefix)));
+                    }
+                    for (String contains : c.getContainsList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
+                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
+                    }
+                    if (!nameFilters.isEmpty()) {
+                        filterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
+                    }
+                }
+
+                case ALIASESCRITERION -> {
+                    final QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion c =
+                            criterion.getAliasesCriterion();
+                    final List<Bson> aliasFilters = new ArrayList<>();
+                    if (!c.getExactList().isEmpty()) {
+                        aliasFilters.add(Filters.in("aliases", c.getExactList()));
+                    }
+                    for (String prefix : c.getPrefixList()) {
+                        aliasFilters.add(Filters.regex("aliases",
+                                "^" + java.util.regex.Pattern.quote(prefix)));
+                    }
+                    for (String contains : c.getContainsList()) {
+                        aliasFilters.add(Filters.regex("aliases",
+                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
+                    }
+                    if (!aliasFilters.isEmpty()) {
+                        filterList.add(aliasFilters.size() == 1 ? aliasFilters.get(0) : or(aliasFilters));
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    final QueryPvMetadataRequest.QueryPvMetadataCriterion.TagsCriterion c =
+                            criterion.getTagsCriterion();
+                    filterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, c.getValuesList()));
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    final QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion c =
+                            criterion.getAttributesCriterion();
+                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
+                    if (c.getValuesList().isEmpty()) {
+                        filterList.add(Filters.exists(mapKey));
+                    } else {
+                        filterList.add(Filters.in(mapKey, c.getValuesList()));
+                    }
+                }
+
+                default -> {
+                    logger.error("executeQueryPvMetadata unexpected criterion case: {}", criterion.getCriterionCase());
+                }
+            }
+        }
+
+        final Bson queryFilter = filterList.isEmpty()
+                ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
+                : and(filterList);
+
+        final int limit = request.getLimit() > 0 ? request.getLimit() : 0;
+        int skip = 0;
+        if (!request.getPageToken().isBlank()) {
+            try {
+                skip = Integer.parseInt(
+                        new String(Base64.getDecoder().decode(request.getPageToken()), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
+            }
+        }
+
+        var query = mongoCollectionPvMetadata
+                .find(queryFilter)
+                .sort(ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME));
+
+        if (skip > 0) query = query.skip(skip);
+
+        // Fetch limit+1 to detect whether a next page exists without an extra count query.
+        final List<PvMetadataDocument> documents = new ArrayList<>();
+        try {
+            if (limit > 0) {
+                query.limit(limit + 1).into(documents);
+            } else {
+                query.into(documents);
+            }
+        } catch (Exception ex) {
+            logger.error("executeQueryPvMetadata: mongo exception: {}", ex.getMessage());
+            return null;
+        }
+
+        // Determine next-page token: only produce one when the result set is full (has more).
+        String nextPageToken = "";
+        if (limit > 0 && documents.size() > limit) {
+            documents.remove(documents.size() - 1); // trim the extra probe document
+            final int nextSkip = skip + limit;
+            nextPageToken = Base64.getEncoder().encodeToString(
+                    Integer.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
+        }
+
+        return new PvMetadataQueryResult(documents, nextPageToken);
+    }
+
+    @Override
+    public PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) {
+
+        final List<PvMetadataDocument> matchingDocuments = new ArrayList<>();
+
+        try {
+            final Bson filter = or(
+                    eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, pvNameOrAlias),
+                    eq("aliases", pvNameOrAlias));
+            mongoCollectionPvMetadata.find(filter).into(matchingDocuments);
+        } catch (Exception ex) {
+            final String errorMsg = "findPvMetadataByNameOrAlias: mongo exception: " + ex.getMessage();
+            logger.error(errorMsg);
+            throw new RuntimeException(errorMsg, ex);
+        }
+
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
+    }
+
+    @Override
+    public MongoDeleteResult deletePvMetadata(String pvNameOrAlias) {
+
+        final PvMetadataDocument existingDocument = findPvMetadataByNameOrAlias(pvNameOrAlias);
+        if (existingDocument == null) {
+            return new MongoDeleteResult(false, "", null);
+        }
+
+        final String canonicalPvName = existingDocument.getPvName();
+
+        try {
+            final Bson filter = eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, canonicalPvName);
+            final DeleteResult result = mongoCollectionPvMetadata.deleteOne(filter);
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "deleteOne not acknowledged for pvName: " + canonicalPvName;
+                logger.error(errorMsg);
+                return new MongoDeleteResult(true, errorMsg, null);
+            }
+            return new MongoDeleteResult(false, "", canonicalPvName);
+        } catch (MongoException ex) {
+            final String errorMsg = "MongoException deleting PvMetadataDocument: " + ex.getMessage();
+            logger.error(errorMsg);
+            return new MongoDeleteResult(true, errorMsg, null);
         }
     }
 

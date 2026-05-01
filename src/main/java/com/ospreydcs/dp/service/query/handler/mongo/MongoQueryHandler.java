@@ -151,14 +151,14 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryPvMetadata(
-            QueryPvMetadataRequest request,
-            StreamObserver<QueryPvMetadataResponse> responseObserver
+    public void handleQueryPvStats(
+            QueryPvStatsRequest request,
+            StreamObserver<QueryPvStatsResponse> responseObserver
     ) {
-        final QueryPvMetadataJob job =
-                new QueryPvMetadataJob(request, responseObserver, mongoQueryClient);
+        final QueryPvStatsJob job =
+                new QueryPvStatsJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding queryMetadata job id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding QueryPvStatsJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
@@ -187,14 +187,14 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     }
 
     @Override
-    public void handleQueryProviderMetadata(
-            QueryProviderMetadataRequest request, 
-            StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public void handleQueryProviderStats(
+            QueryProviderStatsRequest request,
+            StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
-        final QueryProviderMetadataJob job =
-                new QueryProviderMetadataJob(request, responseObserver, mongoQueryClient);
+        final QueryProviderStatsJob job =
+                new QueryProviderStatsJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding QueryProviderMetadataJob id: {} to queue", responseObserver.hashCode());
+        logger.debug("adding QueryProviderStatsJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

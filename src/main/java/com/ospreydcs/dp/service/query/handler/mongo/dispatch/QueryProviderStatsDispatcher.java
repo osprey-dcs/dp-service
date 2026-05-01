@@ -1,9 +1,9 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataRequest;
-import com.ospreydcs.dp.grpc.v1.query.QueryProviderMetadataResponse;
-import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
+import com.ospreydcs.dp.grpc.v1.query.QueryProviderStatsRequest;
+import com.ospreydcs.dp.grpc.v1.query.QueryProviderStatsResponse;
+import com.ospreydcs.dp.grpc.v1.query.ProviderStats;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -14,45 +14,45 @@ import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 
-public class QueryProviderMetadataDispatcher extends Dispatcher {
+public class QueryProviderStatsDispatcher extends Dispatcher {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryProviderMetadataRequest request;
-    private final StreamObserver<QueryProviderMetadataResponse> responseObserver;
+    private final QueryProviderStatsRequest request;
+    private final StreamObserver<QueryProviderStatsResponse> responseObserver;
 
-    public QueryProviderMetadataDispatcher(
-            StreamObserver<QueryProviderMetadataResponse> responseObserver, QueryProviderMetadataRequest request
+    public QueryProviderStatsDispatcher(
+            StreamObserver<QueryProviderStatsResponse> responseObserver, QueryProviderStatsRequest request
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
     }
 
-    public static ProviderMetadata providerMetadataFromDocument(
+    public static ProviderStats providerStatsFromDocument(
             ProviderMetadataQueryResultDocument providerMetadataDocument
     ) {
-        final ProviderMetadata.Builder providerMetadataBuilder =
-                ProviderMetadata.newBuilder();
+        final ProviderStats.Builder providerStatsBuilder =
+                ProviderStats.newBuilder();
 
-        providerMetadataBuilder.setId(providerMetadataDocument.getId());
+        providerStatsBuilder.setId(providerMetadataDocument.getId());
 
-        providerMetadataBuilder.addAllPvNames(providerMetadataDocument.getPvNames());
+        providerStatsBuilder.addAllPvNames(providerMetadataDocument.getPvNames());
 
         final Instant firstTimeInstant = providerMetadataDocument.getFirstBucketTimestamp().toInstant();
-        providerMetadataBuilder.setFirstBucketTime(
+        providerStatsBuilder.setFirstBucketTime(
                 TimestampUtility.timestampFromSeconds(
                         firstTimeInstant.getEpochSecond(), firstTimeInstant.getNano()));
 
         final Instant lastTimeInstant = providerMetadataDocument.getLastBucketTimestamp().toInstant();
-        providerMetadataBuilder.setLastBucketTime(
+        providerStatsBuilder.setLastBucketTime(
                 TimestampUtility.timestampFromSeconds(
                         lastTimeInstant.getEpochSecond(), lastTimeInstant.getNano()));
 
-        providerMetadataBuilder.setNumBuckets(providerMetadataDocument.getNumBuckets());
+        providerStatsBuilder.setNumBuckets(providerMetadataDocument.getNumBuckets());
 
-        return providerMetadataBuilder.build();
+        return providerStatsBuilder.build();
     }
 
     public void handleResult(MongoCursor<ProviderMetadataQueryResultDocument> cursor) {
@@ -60,24 +60,24 @@ public class QueryProviderMetadataDispatcher extends Dispatcher {
         // validate cursor
         if (cursor == null) {
             // send error response and close response stream if cursor is null
-            final String msg = "providerMetadata query returned null cursor";
+            final String msg = "providerStats query returned null cursor";
             logger.error(msg);
-            QueryServiceImpl.sendQueryProviderMetadataResponseError(msg, this.responseObserver);
+            QueryServiceImpl.sendQueryProviderStatsResponseError(msg, this.responseObserver);
             return;
         }
 
-        QueryProviderMetadataResponse.MetadataResult.Builder providerMetadataResultBuilder =
-                QueryProviderMetadataResponse.MetadataResult.newBuilder();
+        QueryProviderStatsResponse.StatsResult.Builder providerStatsResultBuilder =
+                QueryProviderStatsResponse.StatsResult.newBuilder();
 
         while (cursor.hasNext()) {
             // add protobuf object for each document in result cursor
             final ProviderMetadataQueryResultDocument providerMetadataDocument = cursor.next();
-            providerMetadataResultBuilder.addProviderMetadatas(providerMetadataFromDocument(providerMetadataDocument));
+            providerStatsResultBuilder.addProviderStats(providerStatsFromDocument(providerMetadataDocument));
         }
-        
+
         // send response and close response stream
-        final QueryProviderMetadataResponse.MetadataResult metadataResult = providerMetadataResultBuilder.build();
-        QueryServiceImpl.sendQueryProviderMetadataResponse(metadataResult, this.responseObserver);
+        final QueryProviderStatsResponse.StatsResult statsResult = providerStatsResultBuilder.build();
+        QueryServiceImpl.sendQueryProviderStatsResponse(statsResult, this.responseObserver);
     }
 
 }

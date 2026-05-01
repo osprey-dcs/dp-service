@@ -214,24 +214,24 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Collection<String> pvNameList) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(Collection<String> pvNameList) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
         return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(String pvNamePatternString) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(String pvNamePatternString) {
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
         final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
         return executeQueryPvMetadata(pvNameFilter);
     }
 
     @Override
-    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(QueryPvMetadataRequest request) {
+    public MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(QueryPvStatsRequest request) {
         if (request.hasPvNameList()) {
-            return executeQueryPvMetadata(request.getPvNameList().getPvNamesList());
+            return executeQueryPvStats(request.getPvNameList().getPvNamesList());
         } else {
-            return executeQueryPvMetadata(request.getPvNamePattern().getPattern());
+            return executeQueryPvStats(request.getPvNamePattern().getPattern());
         }
     }
 
@@ -327,20 +327,20 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(
-            QueryProviderMetadataRequest request
+    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(
+            QueryProviderStatsRequest request
     ) {
         if (request.getProviderId().isBlank()) {
             // this has already been validated but just in case...
-            logger.error("executeQueryProviderMetadata unexpected error providerId not specified");
+            logger.error("executeQueryProviderStats unexpected error providerId not specified");
             return null;
         }
 
-        return executeQueryProviderMetadata(request.getProviderId());
+        return executeQueryProviderStats(request.getProviderId());
     }
 
     @Override
-    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderMetadata(String providerid) {
+    public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String providerid) {
 
         // generate filter for buckets query by providerId
         final Bson providerIdFilter = eq(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID, providerid);
@@ -359,7 +359,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         // This is used to sort the result of the final aggregated result.
         Bson metadataSort = ascending(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID);
 
-        logger.debug("executeQueryProviderMetadata query: {}", providerIdFilter.toString());
+        logger.debug("executeQueryProviderStats query: {}", providerIdFilter.toString());
 
         var aggregateIterable = mongoCollectionBuckets.withDocumentClass(ProviderMetadataQueryResultDocument.class)
                 .aggregate(

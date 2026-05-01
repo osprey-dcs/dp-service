@@ -1,6 +1,6 @@
 package com.ospreydcs.dp.service.common.bson;
 
-import com.ospreydcs.dp.grpc.v1.query.ProviderMetadata;
+import com.ospreydcs.dp.grpc.v1.query.ProviderStats;
 import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import org.bson.types.ObjectId;
@@ -39,7 +39,7 @@ public class ProviderDocument extends DpBsonDocumentBase {
         this.description = description;
     }
 
-    public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo(ProviderMetadata providerMetadata) {
+    public QueryProvidersResponse.ProvidersResult.ProviderInfo toProviderInfo(ProviderStats providerStats) {
 
         QueryProvidersResponse.ProvidersResult.ProviderInfo.Builder providerInfoBuilder =
                 QueryProvidersResponse.ProvidersResult.ProviderInfo.newBuilder();
@@ -64,8 +64,8 @@ public class ProviderDocument extends DpBsonDocumentBase {
             providerInfoBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
         }
 
-        if (providerMetadata != null) {
-            providerInfoBuilder.setProviderMetadata(providerMetadata);
+        if (providerStats != null) {
+            providerInfoBuilder.setProviderStats(providerStats);
         }
 
         return providerInfoBuilder.build();

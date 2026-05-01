@@ -178,7 +178,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    private static QueryPvMetadataResponse QueryPvMetadataResponseExceptionalResult(
+    private static QueryPvStatsResponse QueryPvStatsResponseExceptionalResult(
             String msg,
             ExceptionalResult.ExceptionalResultStatus status
     ) {
@@ -187,7 +187,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .setMessage(msg)
                 .build();
 
-        final QueryPvMetadataResponse response = QueryPvMetadataResponse.newBuilder()
+        final QueryPvStatsResponse response = QueryPvStatsResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -195,46 +195,46 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public static QueryPvMetadataResponse QueryPvMetadataResponseReject(String msg) {
-        return QueryPvMetadataResponseExceptionalResult(
+    public static QueryPvStatsResponse QueryPvStatsResponseReject(String msg) {
+        return QueryPvStatsResponseExceptionalResult(
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
-    public static QueryPvMetadataResponse QueryPvMetadataResponseError(String msg) {
-        return QueryPvMetadataResponseExceptionalResult(
+    public static QueryPvStatsResponse QueryPvStatsResponseError(String msg) {
+        return QueryPvStatsResponseExceptionalResult(
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryPvMetadataResponse QueryPvMetadataResponse(
-            QueryPvMetadataResponse.MetadataResult metadataResult
+    public static QueryPvStatsResponse QueryPvStatsResponse(
+            QueryPvStatsResponse.StatsResult statsResult
     ) {
-        return QueryPvMetadataResponse.newBuilder()
+        return QueryPvStatsResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setMetadataResult(metadataResult)
+                .setStatsResult(statsResult)
                 .build();
     }
 
-    public static void sendQueryPvMetadataResponseReject(
-            String msg, StreamObserver<QueryPvMetadataResponse> responseObserver) {
+    public static void sendQueryPvStatsResponseReject(
+            String msg, StreamObserver<QueryPvStatsResponse> responseObserver) {
 
-        final QueryPvMetadataResponse response = QueryPvMetadataResponseReject(msg);
+        final QueryPvStatsResponse response = QueryPvStatsResponseReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryPvMetadataResponseError(
-            String msg, StreamObserver<QueryPvMetadataResponse> responseObserver
+    public static void sendQueryPvStatsResponseError(
+            String msg, StreamObserver<QueryPvStatsResponse> responseObserver
     ) {
-        final QueryPvMetadataResponse response = QueryPvMetadataResponseError(msg);
+        final QueryPvStatsResponse response = QueryPvStatsResponseError(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryPvMetadataResponse(
-            QueryPvMetadataResponse.MetadataResult metadataResult,
-            StreamObserver<QueryPvMetadataResponse> responseObserver
+    public static void sendQueryPvStatsResponse(
+            QueryPvStatsResponse.StatsResult statsResult,
+            StreamObserver<QueryPvStatsResponse> responseObserver
     ) {
-        final QueryPvMetadataResponse response  = QueryPvMetadataResponse(metadataResult);
+        final QueryPvStatsResponse response  = QueryPvStatsResponse(statsResult);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -332,33 +332,33 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     @Override
-    public void queryPvMetadata(
-            QueryPvMetadataRequest request,
-            StreamObserver<QueryPvMetadataResponse> responseObserver
+    public void queryPvStats(
+            QueryPvStatsRequest request,
+            StreamObserver<QueryPvStatsResponse> responseObserver
     ) {
-        logger.debug("id: {} queryPvMetadata request received", responseObserver.hashCode());
+        logger.debug("id: {} queryPvStats request received", responseObserver.hashCode());
 
         // validate query
         if (request.hasPvNameList()) {
             if (request.getPvNameList().getPvNamesCount() == 0) {
-                final String errorMsg = "QueryPvMetadataRequest.pvNameList.pvNames must not be empty";
-                sendQueryPvMetadataResponseReject(errorMsg, responseObserver);
+                final String errorMsg = "QueryPvStatsRequest.pvNameList.pvNames must not be empty";
+                sendQueryPvStatsResponseReject(errorMsg, responseObserver);
                 return;
             }
 
         } else if (request.hasPvNamePattern()) {
             if (request.getPvNamePattern().getPattern().isBlank()) {
-                final String errorMsg = "QueryPvMetadataRequest.pvNamePattern.pattern must not be empty";
-                sendQueryPvMetadataResponseReject(errorMsg, responseObserver);
+                final String errorMsg = "QueryPvStatsRequest.pvNamePattern.pattern must not be empty";
+                sendQueryPvStatsResponseReject(errorMsg, responseObserver);
                 return;
             }
         } else {
-            final String errorMsg = "QueryPvMetadataRequest must specify either pvNameList or pvNamePattern";
-            sendQueryPvMetadataResponseReject(errorMsg, responseObserver);
+            final String errorMsg = "QueryPvStatsRequest must specify either pvNameList or pvNamePattern";
+            sendQueryPvStatsResponseReject(errorMsg, responseObserver);
             return;
         }
 
-        handler.handleQueryPvMetadata(request, responseObserver);
+        handler.handleQueryPvStats(request, responseObserver);
     }
 
     private static QueryProvidersResponse queryProvidersResponseExceptionalResult(
@@ -509,7 +509,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         handler.handleQueryProviders(request, responseObserver);
     }
 
-    private static QueryProviderMetadataResponse queryProviderMetadataResponseExceptionalResult(
+    private static QueryProviderStatsResponse queryProviderStatsResponseExceptionalResult(
             String msg,
             ExceptionalResult.ExceptionalResultStatus status
     ) {
@@ -518,7 +518,7 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
                 .setMessage(msg)
                 .build();
 
-        final QueryProviderMetadataResponse response = QueryProviderMetadataResponse.newBuilder()
+        final QueryProviderStatsResponse response = QueryProviderStatsResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setExceptionalResult(exceptionalResult)
                 .build();
@@ -526,62 +526,62 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         return response;
     }
 
-    public static QueryProviderMetadataResponse queryProviderMetadataResponseReject(String msg) {
-        return queryProviderMetadataResponseExceptionalResult(
+    public static QueryProviderStatsResponse queryProviderStatsResponseReject(String msg) {
+        return queryProviderStatsResponseExceptionalResult(
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
     }
 
-    public static QueryProviderMetadataResponse queryProviderMetadataResponseError(String msg) {
-        return queryProviderMetadataResponseExceptionalResult(
+    public static QueryProviderStatsResponse queryProviderStatsResponseError(String msg) {
+        return queryProviderStatsResponseExceptionalResult(
                 msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
     }
 
-    public static QueryProviderMetadataResponse queryProviderMetadataResponse(
-            QueryProviderMetadataResponse.MetadataResult metadataResult
+    public static QueryProviderStatsResponse queryProviderStatsResponse(
+            QueryProviderStatsResponse.StatsResult statsResult
     ) {
-        return QueryProviderMetadataResponse.newBuilder()
+        return QueryProviderStatsResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
-                .setMetadataResult(metadataResult)
+                .setStatsResult(statsResult)
                 .build();
     }
 
-    public static void sendQueryProviderMetadataResponseReject(
-            String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver) {
+    public static void sendQueryProviderStatsResponseReject(
+            String msg, StreamObserver<QueryProviderStatsResponse> responseObserver) {
 
-        final QueryProviderMetadataResponse response = queryProviderMetadataResponseReject(msg);
+        final QueryProviderStatsResponse response = queryProviderStatsResponseReject(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryProviderMetadataResponseError(
-            String msg, StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public static void sendQueryProviderStatsResponseError(
+            String msg, StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
-        final QueryProviderMetadataResponse response = queryProviderMetadataResponseError(msg);
+        final QueryProviderStatsResponse response = queryProviderStatsResponseError(msg);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryProviderMetadataResponse(
-            QueryProviderMetadataResponse.MetadataResult metadataResult,
-            StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public static void sendQueryProviderStatsResponse(
+            QueryProviderStatsResponse.StatsResult statsResult,
+            StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
-        final QueryProviderMetadataResponse response  = queryProviderMetadataResponse(metadataResult);
+        final QueryProviderStatsResponse response  = queryProviderStatsResponse(statsResult);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
-    
+
     @Override
-    public void queryProviderMetadata(
-            QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver
+    public void queryProviderStats(
+            QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver
     ) {
         // check that request contains non-empty providerId
         if (request.getProviderId().isBlank()) {
-            final String errorMsg = "QueryProviderMetadataRequest.providerId must be specified";
-            sendQueryProviderMetadataResponseReject(errorMsg, responseObserver);
+            final String errorMsg = "QueryProviderStatsRequest.providerId must be specified";
+            sendQueryProviderStatsResponseReject(errorMsg, responseObserver);
             return;
         }
 
-        handler.handleQueryProviderMetadata(request, responseObserver);
+        handler.handleQueryProviderStats(request, responseObserver);
     }
 
 }

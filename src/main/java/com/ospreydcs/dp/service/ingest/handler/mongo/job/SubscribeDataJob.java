@@ -69,7 +69,7 @@ public class SubscribeDataJob extends HandlerJob {
         if (getConfigValidatePvs()) {
             // validate that request PVs exist in archive
             final Set<String> uniquePvNames = new HashSet<>(request.getNewSubscription().getPvNamesList());
-            final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
+            final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvStats(uniquePvNames);
 
             // check for error executing mongo query
             if (pvMetadata == null) {

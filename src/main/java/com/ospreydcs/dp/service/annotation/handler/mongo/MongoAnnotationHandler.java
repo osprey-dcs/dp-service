@@ -136,7 +136,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
 
         // execute metadata query for list of pv names
-        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvMetadata(uniquePvNames);
+        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvStats(uniquePvNames);
         if (pvMetadata == null) {
             return new ResultStatus(true, "error executing pv metadata query to validate request");
         }
@@ -265,6 +265,74 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         Objects.requireNonNull(job);
 
         logger.debug("adding ExportDataJobBase id: {} to queue", handlerRequest.responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleSavePvMetadata(
+            SavePvMetadataRequest request,
+            StreamObserver<SavePvMetadataResponse> responseObserver
+    ) {
+        final SavePvMetadataJob job = new SavePvMetadataJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding SavePvMetadataJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQueryPvMetadata(
+            QueryPvMetadataRequest request,
+            StreamObserver<QueryPvMetadataResponse> responseObserver
+    ) {
+        final QueryPvMetadataJob job = new QueryPvMetadataJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding QueryPvMetadataJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleGetPvMetadata(
+            GetPvMetadataRequest request,
+            StreamObserver<GetPvMetadataResponse> responseObserver
+    ) {
+        final GetPvMetadataJob job = new GetPvMetadataJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding GetPvMetadataJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleDeletePvMetadata(
+            DeletePvMetadataRequest request,
+            StreamObserver<DeletePvMetadataResponse> responseObserver
+    ) {
+        final DeletePvMetadataJob job = new DeletePvMetadataJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding DeletePvMetadataJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

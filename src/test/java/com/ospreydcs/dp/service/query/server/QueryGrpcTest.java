@@ -95,8 +95,8 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
-        public void handleQueryPvMetadata(
-                QueryPvMetadataRequest request, StreamObserver<QueryPvMetadataResponse> responseObserver
+        public void handleQueryPvStats(
+                QueryPvStatsRequest request, StreamObserver<QueryPvStatsResponse> responseObserver
         ) {
         }
 
@@ -105,7 +105,7 @@ public class QueryGrpcTest extends QueryTestBase {
         }
 
         @Override
-        public void handleQueryProviderMetadata(QueryProviderMetadataRequest request, StreamObserver<QueryProviderMetadataResponse> responseObserver) {
+        public void handleQueryProviderStats(QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver) {
         }
 
     }

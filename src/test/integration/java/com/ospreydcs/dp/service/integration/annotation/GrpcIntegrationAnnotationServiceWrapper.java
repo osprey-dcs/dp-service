@@ -13,6 +13,8 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.grpc.v1.common.PvMetadata;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -787,6 +789,118 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return exportResult;
     }
 
+    // =========================================================================
+    // PvMetadata helper methods
+    // =========================================================================
+
+    public String sendAndVerifySavePvMetadata(
+            AnnotationTestBase.SavePvMetadataParams params,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final SavePvMetadataRequest request = AnnotationTestBase.buildSavePvMetadataRequest(params);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.SavePvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.SavePvMetadataResponseObserver();
+
+        new Thread(() -> asyncStub.savePvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            assertNull(responseObserver.getPvName());
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final String pvName = responseObserver.getPvName();
+        assertNotNull(pvName);
+        assertFalse(pvName.isBlank());
+
+        return pvName;
+    }
+
+    public List<PvMetadata> sendAndVerifyQueryPvMetadata(
+            List<QueryPvMetadataRequest.QueryPvMetadataCriterion> criteria,
+            int limit,
+            String pageToken,
+            boolean expectReject,
+            String expectedRejectMessage,
+            int expectedResultCount
+    ) {
+        final QueryPvMetadataRequest request =
+                AnnotationTestBase.buildQueryPvMetadataRequest(criteria, limit, pageToken);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.QueryPvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.QueryPvMetadataResponseObserver();
+
+        new Thread(() -> asyncStub.queryPvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return new ArrayList<>();
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final List<PvMetadata> pvMetadataList = responseObserver.getPvMetadataList();
+        assertEquals(expectedResultCount, pvMetadataList.size());
+        return pvMetadataList;
+    }
+
+    public PvMetadata sendAndVerifyGetPvMetadata(
+            String pvNameOrAlias,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final GetPvMetadataRequest request = AnnotationTestBase.buildGetPvMetadataRequest(pvNameOrAlias);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.GetPvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.GetPvMetadataResponseObserver();
+
+        new Thread(() -> asyncStub.getPvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final PvMetadata pvMetadata = responseObserver.getPvMetadata();
+        assertNotNull(pvMetadata);
+        return pvMetadata;
+    }
+
+    public String sendAndVerifyDeletePvMetadata(
+            String pvNameOrAlias,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DeletePvMetadataRequest request = AnnotationTestBase.buildDeletePvMetadataRequest(pvNameOrAlias);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.DeletePvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.DeletePvMetadataResponseObserver();
+
+        new Thread(() -> asyncStub.deletePvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final String deletedPvName = responseObserver.getDeletedPvName();
+        assertNotNull(deletedPvName);
+        assertFalse(deletedPvName.isBlank());
+        return deletedPvName;
+    }
+
     public void verifyExportTabularCsv(
             ExportDataResponse.ExportDataResult exportResult,
             Set<String> expectedPvColumnNames,
@@ -1060,6 +1174,32 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
                             + exportResult.getFilePath() + ": "
                             + e.getMessage());;
         }
+    }
+
+    public void sendAndVerifyPatchPvMetadataStub(String pvName) {
+        final PatchPvMetadataRequest request = PatchPvMetadataRequest.newBuilder()
+                .setPvName(pvName)
+                .build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.PatchPvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.PatchPvMetadataResponseObserver();
+        new Thread(() -> asyncStub.patchPvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
+    public void sendAndVerifyBulkSavePvMetadataStub() {
+        final BulkSavePvMetadataRequest request = BulkSavePvMetadataRequest.newBuilder().build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.BulkSavePvMetadataResponseObserver responseObserver =
+                new AnnotationTestBase.BulkSavePvMetadataResponseObserver();
+        new Thread(() -> asyncStub.bulkSavePvMetadata(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
 }
