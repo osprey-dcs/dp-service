@@ -231,6 +231,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     @Override
     public Collection<String> executeQueryPvExistence(Collection<String> pvNameList) {
 
+        // An empty (or null) list has no existing PVs by definition; short-circuit to avoid a
+        // round-trip to MongoDB and a null $in filter (which would throw).
+        if (pvNameList == null || pvNameList.isEmpty()) {
+            return new HashSet<>();
+        }
+
         // Cheap existence check: a distinct on the pvName index restricted to the requested names.
         // Unlike executeQueryPvStats(), this does not sort or group over every bucket for each PV -
         // it only needs to know which of the requested names appear at all in the archive.
@@ -248,7 +254,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return existingPvNames;
 
         } catch (Exception ex) {
-            logger.error("executeQueryPvExistence database error: {}", ex.getMessage());
+            logger.error("executeQueryPvExistence database error for {} pv name(s): {}",
+                    pvNameList.size(), ex.getMessage(), ex);
             return null;
         }
     }
