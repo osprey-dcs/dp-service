@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
@@ -8,7 +7,6 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoSyncAnnotationClient;
 import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
-import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
@@ -135,23 +133,18 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             uniquePvNames.addAll(blockPvNames);
         }
 
-        // execute metadata query for list of pv names
-        final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvStats(uniquePvNames);
-        if (pvMetadata == null) {
+        // validate that each pv exists in the archive using a cheap existence check (distinct on
+        // the pvName index) rather than the full stat aggregation, which sorts and groups over
+        // every bucket for each PV and grows expensive as the archive grows.
+        final Collection<String> existingPvNames = mongoQueryClient.executeQueryPvExistence(uniquePvNames);
+        if (existingPvNames == null) {
             return new ResultStatus(true, "error executing pv metadata query to validate request");
         }
 
-        // check that metadata is returned for each pv (try to remove each metadata from the set,
-        // and make sure set end up empty)
-        while (pvMetadata.hasNext()) {
-            final PvMetadataQueryResultDocument pvMetadataDocument = pvMetadata.next();
-            final String pvName = pvMetadataDocument.getPvName();
-            if (pvName != null) {
-                uniquePvNames.remove(pvName);
-            }
-        }
+        // remove each existing pv from the set, and make sure the set ends up empty
+        uniquePvNames.removeAll(existingPvNames);
 
-        // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
+        // we should have removed all the pv names from the set of unique names, e.g., each one exists
         if (uniquePvNames.isEmpty()) {
             return new ResultStatus(false, "");
         } else {

@@ -1,9 +1,7 @@
 package com.ospreydcs.dp.service.ingest.handler.mongo.job;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.SubscribeDataResponse;
-import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.ingest.handler.mongo.SourceMonitorManager;
@@ -15,6 +13,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -67,29 +66,24 @@ public class SubscribeDataJob extends HandlerJob {
         logger.debug("executing SubscribeDataJob id: {}", this.responseObserver.hashCode());
 
         if (getConfigValidatePvs()) {
-            // validate that request PVs exist in archive
+            // validate that request PVs exist in archive using a cheap existence check (distinct on
+            // the pvName index) rather than the full stat aggregation, which sorts and groups over
+            // every bucket for each PV and grows expensive as the archive grows.
             final Set<String> uniquePvNames = new HashSet<>(request.getNewSubscription().getPvNamesList());
-            final MongoCursor<PvMetadataQueryResultDocument> pvMetadata = mongoQueryClient.executeQueryPvStats(uniquePvNames);
+            final Collection<String> existingPvNames = mongoQueryClient.executeQueryPvExistence(uniquePvNames);
 
             // check for error executing mongo query
-            if (pvMetadata == null) {
+            if (existingPvNames == null) {
                 final String errorMsg = "database error looking up metadata for PV names: " + uniquePvNames.toString();
                 logger.debug(errorMsg + " sending error response id: " + this.responseObserver.hashCode());
                 dispatcher.sendError(errorMsg);
                 return;
             }
 
-            // check that metadata is returned for each pv (try to remove each metadata from the set,
-            // and make sure set ends up empty)
-            while (pvMetadata.hasNext()) {
-                final PvMetadataQueryResultDocument pvMetadataDocument = pvMetadata.next();
-                final String pvName = pvMetadataDocument.getPvName();
-                if (pvName != null) {
-                    uniquePvNames.remove(pvName);
-                }
-            }
+            // remove each existing pv from the set, and make sure the set ends up empty
+            uniquePvNames.removeAll(existingPvNames);
 
-            // we should have removed all the pv names from the set of unique names, e.g., we received metadata for each
+            // we should have removed all the pv names from the set of unique names, e.g., each one exists
             if (!uniquePvNames.isEmpty()) {
                 final String errorMsg = "PV names not found in archive: " + uniquePvNames.toString();
                 logger.debug(errorMsg + " sending reject response id: " + this.responseObserver.hashCode());
