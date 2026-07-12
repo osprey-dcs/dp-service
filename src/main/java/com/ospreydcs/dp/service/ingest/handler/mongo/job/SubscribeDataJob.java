@@ -74,7 +74,7 @@ public class SubscribeDataJob extends HandlerJob {
 
             // check for error executing mongo query
             if (existingPvNames == null) {
-                final String errorMsg = "database error looking up metadata for PV names: " + uniquePvNames.toString();
+                final String errorMsg = "database error checking existence of PV names: " + uniquePvNames.toString();
                 logger.debug(errorMsg + " sending error response id: " + this.responseObserver.hashCode());
                 dispatcher.sendError(errorMsg);
                 return;

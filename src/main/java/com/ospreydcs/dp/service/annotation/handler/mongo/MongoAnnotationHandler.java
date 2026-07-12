@@ -138,7 +138,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         // every bucket for each PV and grows expensive as the archive grows.
         final Collection<String> existingPvNames = mongoQueryClient.executeQueryPvExistence(uniquePvNames);
         if (existingPvNames == null) {
-            return new ResultStatus(true, "error executing pv metadata query to validate request");
+            return new ResultStatus(true, "database error checking existence of PV names to validate request");
         }
 
         // remove each existing pv from the set, and make sure the set ends up empty
