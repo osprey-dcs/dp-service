@@ -21,7 +21,9 @@ import org.bson.types.ObjectId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.*;
@@ -224,6 +226,38 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final Pattern pvNamePattern = Pattern.compile(pvNamePatternString, Pattern.CASE_INSENSITIVE);
         final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
         return executeQueryPvMetadata(pvNameFilter);
+    }
+
+    @Override
+    public Collection<String> executeQueryPvExistence(Collection<String> pvNameList) {
+
+        // An empty (or null) list has no existing PVs by definition; short-circuit to avoid a
+        // round-trip to MongoDB and a null $in filter (which would throw).
+        if (pvNameList == null || pvNameList.isEmpty()) {
+            return new HashSet<>();
+        }
+
+        // Cheap existence check: a distinct on the pvName index restricted to the requested names.
+        // Unlike executeQueryPvStats(), this does not sort or group over every bucket for each PV -
+        // it only needs to know which of the requested names appear at all in the archive.
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNameList);
+
+        try {
+            final Set<String> existingPvNames = new HashSet<>();
+            try (final MongoCursor<String> cursor = mongoCollectionBuckets
+                    .distinct(BsonConstants.BSON_KEY_PV_NAME, pvNameFilter, String.class)
+                    .iterator()) {
+                while (cursor.hasNext()) {
+                    existingPvNames.add(cursor.next());
+                }
+            }
+            return existingPvNames;
+
+        } catch (Exception ex) {
+            logger.error("executeQueryPvExistence database error for {} pv name(s): {}",
+                    pvNameList.size(), ex.getMessage(), ex);
+            return null;
+        }
     }
 
     @Override

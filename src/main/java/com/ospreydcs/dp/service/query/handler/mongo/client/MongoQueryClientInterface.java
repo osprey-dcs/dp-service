@@ -27,6 +27,20 @@ public interface MongoQueryClientInterface {
 
     MongoCursor<PvMetadataQueryResultDocument> executeQueryPvStats(String pvNamePatternString);
 
+    /**
+     * Returns the subset of the specified PV names that exist in the archive. This is a cheap
+     * existence check backed by a {@code distinct} on the pvName index, avoiding the full stat
+     * aggregation (sort + group over all buckets for each PV) performed by executeQueryPvStats().
+     * Returns an empty collection if pvNameList is null or empty, and null if a database error
+     * occurs.
+     * <p>
+     * The result is bounded by the size of the input {@code pvNameList} (a matched-names subset),
+     * so it is safe for the small name sets passed by subscription/dataset validation. It is NOT
+     * suitable for unbounded name sets: {@code distinct} materializes its result into a single
+     * 16MB BSON document, which a very large result could exceed.
+     */
+    Collection<String> executeQueryPvExistence(Collection<String> pvNameList);
+
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 
     MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest request);
