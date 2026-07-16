@@ -153,6 +153,49 @@ public class QueryTestBase {
         return requestBuilder.build();
     }
 
+    // ---- Query API V2 request builders ----
+
+    /** Builds a V2 QuerySpec with a pvNameList selector and a half-open time range. */
+    public static QuerySpec buildV2QuerySpecPvNameList(
+            List<String> pvNames, long beginSecs, long beginNanos, long endSecs, long endNanos) {
+        return QuerySpec.newBuilder()
+                .setTimeRange(com.ospreydcs.dp.grpc.v1.common.TimeRange.newBuilder()
+                        .setBeginTime(Timestamp.newBuilder().setEpochSeconds(beginSecs).setNanoseconds(beginNanos))
+                        .setEndTime(Timestamp.newBuilder().setEpochSeconds(endSecs).setNanoseconds(endNanos)))
+                .setPvSelector(PvSelector.newBuilder()
+                        .setPvNameList(PvNameList.newBuilder().addAllPvNames(pvNames)))
+                .build();
+    }
+
+    public static QueryBucketsRequest buildQueryBucketsRequest(
+            QuerySpec querySpec, int limit, String pageToken, boolean useSerialized, boolean excludeMetadata) {
+        final ExecutionOptions.Builder opts = ExecutionOptions.newBuilder().setLimit(limit);
+        if (pageToken != null) {
+            opts.setPageToken(pageToken);
+        }
+        return QueryBucketsRequest.newBuilder()
+                .setQuerySpec(querySpec)
+                .setExecutionOptions(opts)
+                .setResultRepresentation(ResultRepresentation.newBuilder()
+                        .setUseSerializedColumns(useSerialized)
+                        .setExcludeColumnMetadata(excludeMetadata))
+                .build();
+    }
+
+    public static QuerySamplesRequest buildQuerySamplesRequest(
+            QuerySpec querySpec, int limit, String pageToken, boolean useSerialized) {
+        final ExecutionOptions.Builder opts = ExecutionOptions.newBuilder().setLimit(limit);
+        if (pageToken != null) {
+            opts.setPageToken(pageToken);
+        }
+        return QuerySamplesRequest.newBuilder()
+                .setQuerySpec(querySpec)
+                .setExecutionOptions(opts)
+                .setResultRepresentation(ResultRepresentation.newBuilder()
+                        .setUseSerializedColumns(useSerialized))
+                .build();
+    }
+
     public static QueryPvStatsRequest buildQueryPvStatsRequest(String columnNamePattern) {
 
         QueryPvStatsRequest.Builder requestBuilder = QueryPvStatsRequest.newBuilder();
@@ -253,6 +296,124 @@ public class QueryTestBase {
 
         @Override
         public void onCompleted() {
+        }
+    }
+
+    /**
+     * Response observer for the Query API V2 queryBuckets / queryBucketsStream RPCs. In UNARY mode it
+     * latches after the first response; in STREAM mode it accumulates messages until onCompleted.
+     */
+    public static class QueryBucketsResponseObserver implements StreamObserver<QueryBucketsResponse> {
+
+        public enum Mode { UNARY, STREAM }
+
+        private final Mode mode;
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QueryBucketsResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+
+        public QueryBucketsResponseObserver(Mode mode) {
+            this.mode = mode;
+        }
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                isError.set(true);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public List<QueryBucketsResponse> getResponseList() { return responseList; }
+
+        @Override
+        public void onNext(QueryBucketsResponse response) {
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+            }
+            responseList.add(response);
+            if (mode == Mode.UNARY) {
+                finishLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            isError.set(true);
+            errorMessageList.add(Status.fromThrowable(t).getDescription());
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {
+            finishLatch.countDown();
+        }
+    }
+
+    /**
+     * Response observer for the Query API V2 querySamples / querySamplesStream RPCs. In UNARY mode it
+     * latches after the first response; in STREAM mode it accumulates messages until onCompleted.
+     */
+    public static class QuerySamplesResponseObserver implements StreamObserver<QuerySamplesResponse> {
+
+        public enum Mode { UNARY, STREAM }
+
+        private final Mode mode;
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<QuerySamplesResponse> responseList = Collections.synchronizedList(new ArrayList<>());
+
+        public QuerySamplesResponseObserver(Mode mode) {
+            this.mode = mode;
+        }
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                isError.set(true);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public List<QuerySamplesResponse> getResponseList() { return responseList; }
+
+        @Override
+        public void onNext(QuerySamplesResponse response) {
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+            }
+            responseList.add(response);
+            if (mode == Mode.UNARY) {
+                finishLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            isError.set(true);
+            errorMessageList.add(Status.fromThrowable(t).getDescription());
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onCompleted() {
+            finishLatch.countDown();
         }
     }
 

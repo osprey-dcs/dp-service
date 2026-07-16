@@ -869,6 +869,102 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
         return responseObserver.getProviderStatsList();
     }
 
+    // ---- Query API V2: queryBuckets / queryBucketsStream ----
+
+    /** Sends a single queryBuckets (unary) request through the gRPC channel and returns the response. */
+    public QueryBucketsResponse sendQueryBuckets(QueryBucketsRequest request) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
+        final QueryTestBase.QueryBucketsResponseObserver responseObserver =
+                new QueryTestBase.QueryBucketsResponseObserver(
+                        QueryTestBase.QueryBucketsResponseObserver.Mode.UNARY);
+        new Thread(() -> asyncStub.queryBuckets(request, responseObserver)).start();
+        responseObserver.await();
+        assertEquals(1, responseObserver.getResponseList().size());
+        return responseObserver.getResponseList().get(0);
+    }
+
+    /** Sends a queryBucketsStream request and returns all streamed responses (in order). */
+    public List<QueryBucketsResponse> sendQueryBucketsStream(QueryBucketsRequest request) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
+        final QueryTestBase.QueryBucketsResponseObserver responseObserver =
+                new QueryTestBase.QueryBucketsResponseObserver(
+                        QueryTestBase.QueryBucketsResponseObserver.Mode.STREAM);
+        new Thread(() -> asyncStub.queryBucketsStream(request, responseObserver)).start();
+        responseObserver.await();
+        return responseObserver.getResponseList();
+    }
+
+    /**
+     * Pages through queryBuckets to exhaustion via the gRPC channel, returning all buckets across all
+     * pages. Asserts each non-final page's token is non-empty and the last page's token is empty.
+     */
+    public List<DataBucket> queryBucketsAllPages(QuerySpec querySpec, int limit) {
+        final List<DataBucket> all = new ArrayList<>();
+        String token = null;
+        int pages = 0;
+        while (true) {
+            final QueryBucketsRequest request =
+                    QueryTestBase.buildQueryBucketsRequest(querySpec, limit, token, false, false);
+            final QueryBucketsResponse response = sendQueryBuckets(request);
+            assertTrue("unexpected exceptional result: "
+                    + response.getExceptionalResult().getMessage(), response.hasBucketQueryResult());
+            all.addAll(response.getBucketQueryResult().getDataBucketsList());
+            token = response.getBucketQueryResult().getNextPageToken();
+            pages++;
+            if (token.isEmpty() || pages >= 1000) {
+                break;
+            }
+        }
+        return all;
+    }
+
+    // ---- Query API V2: querySamples / querySamplesStream ----
+
+    public QuerySamplesResponse sendQuerySamples(QuerySamplesRequest request) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
+        final QueryTestBase.QuerySamplesResponseObserver responseObserver =
+                new QueryTestBase.QuerySamplesResponseObserver(
+                        QueryTestBase.QuerySamplesResponseObserver.Mode.UNARY);
+        new Thread(() -> asyncStub.querySamples(request, responseObserver)).start();
+        responseObserver.await();
+        assertEquals(1, responseObserver.getResponseList().size());
+        return responseObserver.getResponseList().get(0);
+    }
+
+    public List<QuerySamplesResponse> sendQuerySamplesStream(QuerySamplesRequest request) {
+        final DpQueryServiceGrpc.DpQueryServiceStub asyncStub = DpQueryServiceGrpc.newStub(channel);
+        final QueryTestBase.QuerySamplesResponseObserver responseObserver =
+                new QueryTestBase.QuerySamplesResponseObserver(
+                        QueryTestBase.QuerySamplesResponseObserver.Mode.STREAM);
+        new Thread(() -> asyncStub.querySamplesStream(request, responseObserver)).start();
+        responseObserver.await();
+        return responseObserver.getResponseList();
+    }
+
+    /**
+     * Pages through querySamples to exhaustion via the gRPC channel, returning the concatenated
+     * timestamp list across all pages (for seam verification).
+     */
+    public List<Timestamp> querySamplesAllPageTimestamps(QuerySpec querySpec, int limit) {
+        final List<Timestamp> all = new ArrayList<>();
+        String token = null;
+        int pages = 0;
+        while (true) {
+            final QuerySamplesRequest request =
+                    QueryTestBase.buildQuerySamplesRequest(querySpec, limit, token, false);
+            final QuerySamplesResponse response = sendQuerySamples(request);
+            assertTrue("unexpected exceptional result: "
+                    + response.getExceptionalResult().getMessage(), response.hasSampleQueryResult());
+            all.addAll(response.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsList());
+            token = response.getSampleQueryResult().getNextPageToken();
+            pages++;
+            if (token.isEmpty() || pages >= 1000) {
+                break;
+            }
+        }
+        return all;
+    }
+
     protected void sendAndVerifyQueryProviderStats(
             String providerId,
             GrpcIntegrationIngestionServiceWrapper.IngestionProviderInfo providerInfo,
