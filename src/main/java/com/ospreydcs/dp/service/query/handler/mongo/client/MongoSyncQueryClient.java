@@ -11,13 +11,17 @@ import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -256,6 +260,104 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         } catch (Exception ex) {
             logger.error("executeQueryPvExistence database error for {} pv name(s): {}",
                     pvNameList.size(), ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> resolvePvNamesByPattern(String pvNamePattern) {
+
+        // Compile the pattern up front so an invalid regex surfaces as a PatternSyntaxException the
+        // caller can turn into a clean reject (Q10), rather than failing deep in the driver.
+        final Pattern compiled = Pattern.compile(pvNamePattern, Pattern.CASE_INSENSITIVE);
+        final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, compiled);
+
+        try {
+            final List<String> pvNames = new ArrayList<>();
+            try (final MongoCursor<String> cursor = mongoCollectionBuckets
+                    .distinct(BsonConstants.BSON_KEY_PV_NAME, pvNameFilter, String.class)
+                    .iterator()) {
+                while (cursor.hasNext()) {
+                    pvNames.add(cursor.next());
+                }
+            }
+            return pvNames;
+        } catch (Exception ex) {
+            logger.error("resolvePvNamesByPattern database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> resolvePvNamesByMetadata(List<Bson> criteriaFilters) {
+
+        // An empty criteria list matches all metadata records.
+        final Bson metadataFilter = (criteriaFilters == null || criteriaFilters.isEmpty())
+                ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
+                : and(criteriaFilters);
+
+        try {
+            // Collect the pvName of every matching metadata record.
+            final Set<String> matchedNames = new HashSet<>();
+            try (final MongoCursor<PvMetadataDocument> cursor =
+                         mongoCollectionPvMetadata.find(metadataFilter).iterator()) {
+                while (cursor.hasNext()) {
+                    matchedNames.add(cursor.next().getPvName());
+                }
+            }
+
+            if (matchedNames.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            // Intersect with archive existence (Q11 b): drop names that have no buckets at all.
+            final List<String> existing = new ArrayList<>();
+            final Bson existenceFilter = in(BsonConstants.BSON_KEY_PV_NAME, matchedNames);
+            try (final MongoCursor<String> cursor = mongoCollectionBuckets
+                    .distinct(BsonConstants.BSON_KEY_PV_NAME, existenceFilter, String.class)
+                    .iterator()) {
+                while (cursor.hasNext()) {
+                    existing.add(cursor.next());
+                }
+            }
+            return existing;
+
+        } catch (Exception ex) {
+            logger.error("resolvePvNamesByMetadata database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public List<TimeInterval> resolveConfigurationIntervals(List<Bson> criteriaFilters) {
+
+        // A configuration selector with no criteria matches nothing (empty result); the caller
+        // handles that case before calling. Here an empty list is treated as match-all for safety.
+        final Bson activationFilter = (criteriaFilters == null || criteriaFilters.isEmpty())
+                ? new org.bson.Document()
+                : and(criteriaFilters);
+
+        try {
+            final List<TimeInterval> intervals = new ArrayList<>();
+            try (final MongoCursor<ConfigurationActivationDocument> cursor =
+                         mongoCollectionConfigurationActivations.find(activationFilter).iterator()) {
+                while (cursor.hasNext()) {
+                    final ConfigurationActivationDocument activation = cursor.next();
+                    final Instant start = activation.getStartTime();
+                    if (start == null) {
+                        continue; // an activation with no start time cannot bound a retrieval range
+                    }
+                    final Instant end = activation.getEndTime(); // null = open-ended
+                    final long endSecs = (end == null) ? Long.MAX_VALUE : end.getEpochSecond();
+                    final long endNanos = (end == null) ? 0L : end.getNano();
+                    intervals.add(new TimeInterval(
+                            start.getEpochSecond(), start.getNano(), endSecs, endNanos));
+                }
+            }
+            return intervals;
+
+        } catch (Exception ex) {
+            logger.error("resolveConfigurationIntervals database error: {}", ex.getMessage(), ex);
             return null;
         }
     }
