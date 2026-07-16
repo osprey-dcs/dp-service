@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import org.bson.conversions.Bson;
 
@@ -69,6 +70,17 @@ public interface MongoQueryClientInterface {
      * (un-unioned), or null on database error.
      */
     List<TimeInterval> resolveConfigurationIntervals(List<Bson> criteriaFilters);
+
+    /**
+     * Retrieves one page of buckets for a Query API V2 bucket query. Builds a bounded, resumable
+     * cursor: AND of the resolved PV-name filter, an {@code $or} of the per-fragment bucket-overlap
+     * predicates (Q3), and — when the resolved query carries a bucket keyset position — a seek
+     * strictly after that {@code (pvName, firstTimeSecs, firstTimeNanos)} tuple (Q2). Sorted by the
+     * compound {@code (pvName, firstTimeSecs, firstTimeNanos)} key and limited to
+     * {@code pageSize + 1} (the extra probe row lets the caller detect a following page). Returns
+     * null on a null/empty resolution.
+     */
+    MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery resolvedQuery);
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

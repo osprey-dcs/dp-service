@@ -104,6 +104,77 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onNext(response);
     }
 
+    // ---- Query API V2: queryBuckets response helpers ----
+
+    private static QueryBucketsResponse queryBucketsResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        return QueryBucketsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static QueryBucketsResponse queryBucketsResponseReject(String msg) {
+        return queryBucketsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryBucketsResponse queryBucketsResponseError(String msg) {
+        return queryBucketsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryBucketsResponse queryBucketsResponse(
+            QueryBucketsResponse.BucketQueryResult bucketQueryResult
+    ) {
+        return QueryBucketsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setBucketQueryResult(bucketQueryResult)
+                .build();
+    }
+
+    public static void sendQueryBucketsResponseReject(
+            String msg, StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponseReject(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryBucketsResponseError(
+            String msg, StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponseError(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryBucketsResponse(
+            QueryBucketsResponse.BucketQueryResult bucketQueryResult,
+            StreamObserver<QueryBucketsResponse> responseObserver
+    ) {
+        responseObserver.onNext(queryBucketsResponse(bucketQueryResult));
+        responseObserver.onCompleted();
+    }
+
+    /** Empty result is a normal (empty) payload, NOT an ExceptionalResult. */
+    public static void sendQueryBucketsResponseEmpty(
+            StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponse(
+                QueryBucketsResponse.BucketQueryResult.getDefaultInstance()));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryBuckets(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        logger.debug("queryBuckets request received id: {}", responseObserver.hashCode());
+        // validation + resolution happens in the handler (it owns the resolver and mongo client);
+        // an invalid request is answered there with an ExceptionalResult reject.
+        handler.handleQueryBuckets(request, responseObserver);
+    }
+
     private static QueryTableResponse queryTableResponseExceptionalResult(
             String msg, ExceptionalResult.ExceptionalResultStatus status
     ) {

@@ -91,7 +91,9 @@ public class MongoQueryFilterBuilder {
      * half-open range {@code [rangeStart, rangeEnd)}:
      * {@code startTime < rangeEnd AND (endTime absent OR endTime > rangeStart)}.
      *
-     * <p>Also the natural building block for a Query API V2 configuration-fragment overlap predicate.
+     * <p>Operates on the {@code configurationActivations} time fields. This is NOT the bucket overlap
+     * predicate — see {@link #bucketOverlapsRangeFilter} for that (different fields, different
+     * collection, {@code lastTime >=} inclusive semantics).
      */
     public static Bson activationOverlapsRangeFilter(Instant rangeStart, Instant rangeEnd) {
         return Filters.and(
@@ -99,5 +101,37 @@ public class MongoQueryFilterBuilder {
                 Filters.or(
                         Filters.exists(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, false),
                         Filters.gt(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, rangeStart)));
+    }
+
+    /**
+     * Builds the bucket overlap predicate selecting buckets whose {@code [firstTime, lastTime]} data
+     * span intersects the half-open query range {@code [begin, end)}:
+     * {@code firstTime < end AND lastTime >= begin} (with {@code (seconds, nanos)} lexicographic
+     * comparison). This is the single source for the overlap condition shared by the V1 data/table
+     * retrieval path ({@code executeBucketDocumentQuery}) and the Query API V2 {@code $or}
+     * configuration-fragment retrieval, so the two cannot drift.
+     *
+     * <p>Distinct from {@link #activationOverlapsRangeFilter}: this operates on the buckets
+     * collection's {@code dataTimestamps.firstTime}/{@code lastTime} fields, and the lower bound is
+     * inclusive ({@code lastTime >= begin}) matching the long-standing V1 semantics.
+     */
+    public static Bson bucketOverlapsRangeFilter(
+            long beginSeconds, long beginNanos, long endSeconds, long endNanos) {
+
+        // firstTime < end : firstSecs < endSecs OR (firstSecs == endSecs AND firstNanos < endNanos)
+        final Bson endTimeFilter = Filters.or(
+                Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSeconds),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSeconds),
+                        Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
+
+        // lastTime >= begin : lastSecs > beginSecs OR (lastSecs == beginSecs AND lastNanos >= beginNanos)
+        final Bson startTimeFilter = Filters.or(
+                Filters.gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSeconds),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSeconds),
+                        Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
+
+        return Filters.and(endTimeFilter, startTimeFilter);
     }
 }

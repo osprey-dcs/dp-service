@@ -4,11 +4,15 @@ import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
+import com.ospreydcs.dp.service.query.handler.QueryV2Resolver;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
+import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
 import com.ospreydcs.dp.service.query.handler.mongo.job.*;
+import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -24,11 +28,26 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     private static final String CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES = "GrpcServer.incomingMessageSizeLimitBytes";
     private static final int DEFAULT_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES = 4_096_000;
 
+    // Query API V2 paging / resolution limits (Q7/Q10)
+    private static final String CFG_KEY_QUERY_V2_DEFAULT_PAGE_SIZE = "QueryHandler.queryV2DefaultPageSize";
+    private static final int DEFAULT_QUERY_V2_DEFAULT_PAGE_SIZE = 10_000;
+    private static final String CFG_KEY_QUERY_V2_MAX_PAGE_SIZE = "QueryHandler.queryV2MaxPageSize";
+    private static final int DEFAULT_QUERY_V2_MAX_PAGE_SIZE = 100_000;
+    private static final String CFG_KEY_QUERY_V2_MAX_RESOLVED_PV_COUNT = "QueryHandler.queryV2MaxResolvedPvCount";
+    private static final int DEFAULT_QUERY_V2_MAX_RESOLVED_PV_COUNT = 10_000;
+
     // instance variables
     private final MongoQueryClientInterface mongoQueryClient;
+    private final QueryV2Resolver queryV2Resolver;
 
     public MongoQueryHandler(MongoQueryClientInterface clientInterface) {
         this.mongoQueryClient = clientInterface;
+        this.queryV2Resolver = new QueryV2Resolver(
+                clientInterface,
+                configMgr().getConfigInteger(CFG_KEY_QUERY_V2_DEFAULT_PAGE_SIZE, DEFAULT_QUERY_V2_DEFAULT_PAGE_SIZE),
+                configMgr().getConfigInteger(CFG_KEY_QUERY_V2_MAX_PAGE_SIZE, DEFAULT_QUERY_V2_MAX_PAGE_SIZE),
+                configMgr().getConfigInteger(
+                        CFG_KEY_QUERY_V2_MAX_RESOLVED_PV_COUNT, DEFAULT_QUERY_V2_MAX_RESOLVED_PV_COUNT));
     }
 
     public static MongoQueryHandler newMongoSyncQueryHandler() {
@@ -195,6 +214,38 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
                 new QueryProviderStatsJob(request, responseObserver, mongoQueryClient);
 
         logger.debug("adding QueryProviderStatsJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQueryBuckets(
+            QueryBucketsRequest request,
+            StreamObserver<QueryBucketsResponse> responseObserver
+    ) {
+        // validate + resolve the request (§6 invariants, PV/config resolution, paging normalization)
+        final ResolutionResult resolution = queryV2Resolver.resolve(
+                request.getQuerySpec(),
+                request.getExecutionOptions(),
+                request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET,
+                false /* not streaming */);
+
+        if (resolution.isError()) {
+            QueryServiceImpl.sendQueryBucketsResponseReject(
+                    resolution.getErrorStatus().msg, responseObserver);
+            return;
+        }
+
+        final QueryBucketsUnaryDispatcher dispatcher = new QueryBucketsUnaryDispatcher(responseObserver);
+        final QueryV2Job job = new QueryV2Job(resolution.getResolvedQuery(), dispatcher, mongoQueryClient);
+
+        logger.debug("adding QueryV2Job (queryBuckets) id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);
