@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler;
 import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.TimeRange;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.ConfigurationSelector;
 import com.ospreydcs.dp.grpc.v1.query.ExecutionOptions;
 import com.ospreydcs.dp.grpc.v1.query.PvNameList;
 import com.ospreydcs.dp.grpc.v1.query.PvSelector;
@@ -68,6 +69,24 @@ public class QueryV2ResolverTest {
 
     private QueryV2Resolver resolver() {
         return new QueryV2Resolver(new StubClient(), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESOLVED_PVS);
+    }
+
+    private QueryV2Resolver resolver(MongoQueryClientInterface client) {
+        return new QueryV2Resolver(client, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESOLVED_PVS);
+    }
+
+    /** Stub variant returning a fixed set of activation intervals for configuration resolution. */
+    private static class IntervalStubClient extends StubClient {
+        private final List<TimeInterval> intervals;
+        IntervalStubClient(List<TimeInterval> intervals) { this.intervals = intervals; }
+        @Override public List<TimeInterval> resolveConfigurationIntervals(List<Bson> f) { return intervals; }
+    }
+
+    private static ConfigurationSelector.Criterion configNameCriterion(String... names) {
+        return ConfigurationSelector.Criterion.newBuilder()
+                .setConfigurationNameCriterion(ConfigurationSelector.Criterion.ConfigurationNameCriterion
+                        .newBuilder().addAllValues(List.of(names)))
+                .build();
     }
 
     private static Timestamp ts(long secs, long nanos) {
@@ -246,5 +265,74 @@ public class QueryV2ResolverTest {
                 spec, ExecutionOptions.newBuilder().setPageToken(token).build(), false);
         assertFalse(r.isError());
         assertEquals(pos, r.getResolvedQuery().getPageStart());
+    }
+
+    // -----------------------------------------------------------------------
+    // ConfigurationSelector resolution (Q3): malformed rejects; well-formed
+    // matching nothing is an empty result, not an error
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testConfigSelectorEmptyCriteriaListRejected() {
+        // a present ConfigurationSelector with no criteria is a malformed request (mirrors
+        // queryProviders "criteria list must not be empty"), NOT a silent "match nothing"
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setConfigurationSelector(ConfigurationSelector.getDefaultInstance())
+                .build();
+        final ResolutionResult r = resolve(spec, ExecutionOptions.getDefaultInstance(), false);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("criteria list must not be empty"));
+    }
+
+    @Test
+    public void testConfigSelectorUnsetCriterionArmRejected() {
+        // a criterion with no arm set violates exactly-one-criterion → reject (client build error),
+        // rather than being silently skipped and collapsing to an empty result
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setConfigurationSelector(ConfigurationSelector.newBuilder()
+                        .addCriteria(ConfigurationSelector.Criterion.getDefaultInstance()))
+                .build();
+        final ResolutionResult r = resolve(spec, ExecutionOptions.getDefaultInstance(), false);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("must set exactly one arm"));
+    }
+
+    @Test
+    public void testConfigSelectorWellFormedMatchingNothingIsEmptyNotError() {
+        // a well-formed selector that matches no activations in range → empty result, NOT a reject
+        // (distinct from the malformed cases above). Stub returns no intervals.
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setConfigurationSelector(ConfigurationSelector.newBuilder()
+                        .addCriteria(configNameCriterion("no-such-config")))
+                .build();
+        final ResolutionResult r = resolver(new IntervalStubClient(List.of())).resolve(
+                spec, ExecutionOptions.getDefaultInstance(), ResultRepresentation.getDefaultInstance(),
+                ResolvedQuery.ResultMode.BUCKET, false);
+        assertFalse("well-formed selector matching nothing must not be an error", r.isError());
+        final ResolvedQuery rq = r.getResolvedQuery();
+        assertTrue(rq.getRetrievalIntervals().isEmpty());
+        assertTrue(rq.isEmptyResult()); // no intervals → empty (empty payload, not exceptional)
+    }
+
+    @Test
+    public void testConfigSelectorWellFormedMatchingIntervalsResolves() {
+        // a well-formed selector matching activations → intervals intersected with the query range
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setConfigurationSelector(ConfigurationSelector.newBuilder()
+                        .addCriteria(configNameCriterion("cfgA")))
+                .build();
+        // activation [10,50) lies within the query range [0,100) → the effective interval
+        final ResolutionResult r = resolver(new IntervalStubClient(List.of(new TimeInterval(10, 0, 50, 0))))
+                .resolve(spec, ExecutionOptions.getDefaultInstance(), ResultRepresentation.getDefaultInstance(),
+                        ResolvedQuery.ResultMode.BUCKET, false);
+        assertFalse(r.isError());
+        final ResolvedQuery rq = r.getResolvedQuery();
+        assertEquals(1, rq.getRetrievalIntervals().size());
+        assertEquals(new TimeInterval(10, 0, 50, 0), rq.getRetrievalIntervals().get(0));
+        assertFalse(rq.isEmptyResult());
     }
 }

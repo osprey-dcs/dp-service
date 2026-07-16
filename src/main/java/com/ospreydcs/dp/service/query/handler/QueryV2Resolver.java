@@ -147,10 +147,11 @@ public class QueryV2Resolver {
         }
 
         // ---- Q3: resolve ConfigurationSelector to effective retrieval intervals ----
-        final List<TimeInterval> intervals = resolveIntervals(querySpec, queryRange);
-        if (intervals == null) {
-            return ResolutionResult.reject("configuration selector resolution failed (database error)");
+        final ResolvedIntervals resolvedIntervals = resolveIntervals(querySpec, queryRange);
+        if (resolvedIntervals.error != null) {
+            return ResolutionResult.reject(resolvedIntervals.error);
         }
+        final List<TimeInterval> intervals = resolvedIntervals.intervals;
 
         final boolean useSerialized = resultRepresentation.getUseSerializedColumns();
         final boolean excludeMetadata = resultRepresentation.getExcludeColumnMetadata();
@@ -294,45 +295,69 @@ public class QueryV2Resolver {
 
     /**
      * @return the effective retrieval intervals, or null on database error. An empty list means the
-     *     selector matched nothing inside the query range (caller yields an empty result).
+     *     selector matched nothing inside the query range (caller yields an empty result). A
+     *     malformed selector (empty criteria list, or a criterion with no arm set) is a client error
+     *     and rejects — distinct from a well-formed selector that simply matches no activations, so a
+     *     mis-built request is not silently indistinguishable from "no data" (mirrors the PvSelector
+     *     metadata path and V1 {@code queryProviders}, both of which reject malformed criteria).
      */
-    private List<TimeInterval> resolveIntervals(QuerySpec querySpec, TimeInterval queryRange) {
+    private ResolvedIntervals resolveIntervals(QuerySpec querySpec, TimeInterval queryRange) {
 
         if (!querySpec.hasConfigurationSelector()) {
             // no selector → the whole query range is the single retrieval interval
             final List<TimeInterval> single = new ArrayList<>();
             single.add(queryRange);
-            return single;
+            return ResolvedIntervals.ok(single);
         }
 
         final ConfigurationSelector selector = querySpec.getConfigurationSelector();
         if (selector.getCriteriaList().isEmpty()) {
-            // selector present but no criteria → matches nothing → empty result
-            return new ArrayList<>();
+            // selector present but no criteria → malformed request (cf. queryProviders "criteria list
+            // must not be empty"), not a "match nothing" intent → reject
+            return ResolvedIntervals.reject("configurationSelector.criteria list must not be empty");
         }
 
         final List<Bson> criteriaFilters = new ArrayList<>();
         for (ConfigurationSelector.Criterion criterion : selector.getCriteriaList()) {
             final Bson f = configCriterionToFilter(criterion);
             if (f == null) {
-                // exactly-one-criterion violation surfaces as an empty (no-match) selector rather than
-                // a hard reject here; the request-level validator can reject earlier if desired.
-                logger.warn("configuration selector criterion has no arm set; ignoring");
-                continue;
+                // exactly-one-criterion violation → reject (a client build error, not "no match")
+                return ResolvedIntervals.reject("configurationSelector criterion must set exactly one arm");
             }
             criteriaFilters.add(f);
-        }
-        if (criteriaFilters.isEmpty()) {
-            return new ArrayList<>();
         }
 
         final List<TimeInterval> activationIntervals = mongoClient.resolveConfigurationIntervals(criteriaFilters);
         if (activationIntervals == null) {
-            return null; // database error
+            return ResolvedIntervals.reject("configuration selector resolution failed (database error)");
         }
 
         // union the activation intervals, then intersect with the query range → fragmented result
-        return TimeInterval.intersectAll(activationIntervals, queryRange);
+        // (an empty result here is a valid "selector matched no activations in range" outcome)
+        return ResolvedIntervals.ok(TimeInterval.intersectAll(activationIntervals, queryRange));
+    }
+
+    /**
+     * Result of resolving the {@link ConfigurationSelector}: either the effective retrieval intervals
+     * (possibly empty = well-formed selector matched nothing in range) or a reject message (malformed
+     * selector or database error). Exactly one of the two is non-null.
+     */
+    private static final class ResolvedIntervals {
+        final List<TimeInterval> intervals;
+        final String error;
+
+        private ResolvedIntervals(List<TimeInterval> intervals, String error) {
+            this.intervals = intervals;
+            this.error = error;
+        }
+
+        static ResolvedIntervals ok(List<TimeInterval> intervals) {
+            return new ResolvedIntervals(intervals, null);
+        }
+
+        static ResolvedIntervals reject(String error) {
+            return new ResolvedIntervals(null, error);
+        }
     }
 
     private static Bson configCriterionToFilter(ConfigurationSelector.Criterion criterion) {
