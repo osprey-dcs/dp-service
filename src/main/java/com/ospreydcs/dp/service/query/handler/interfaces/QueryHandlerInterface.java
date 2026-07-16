@@ -45,4 +45,7 @@ public interface QueryHandlerInterface {
     void handleQuerySamples(
             QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver);
 
+    void handleQuerySamplesStream(
+            QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver);
+
 }

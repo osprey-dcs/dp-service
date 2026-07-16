@@ -120,6 +120,10 @@ public class QueryGrpcTest extends QueryTestBase {
         public void handleQuerySamples(QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
         }
 
+        @Override
+        public void handleQuerySamplesStream(QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
+        }
+
     }
 
     protected static class TestQueryClient {

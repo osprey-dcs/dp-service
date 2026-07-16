@@ -278,21 +278,49 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QuerySamplesRequest request,
             StreamObserver<QuerySamplesResponse> responseObserver
     ) {
+        final ResolvedQuery resolvedQuery = resolveSamplesOrReject(request, false, responseObserver);
+        if (resolvedQuery == null) {
+            return; // reject already sent
+        }
+        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(responseObserver);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, "querySamples", responseObserver.hashCode());
+    }
+
+    @Override
+    public void handleQuerySamplesStream(
+            QuerySamplesRequest request,
+            StreamObserver<QuerySamplesResponse> responseObserver
+    ) {
+        final ResolvedQuery resolvedQuery = resolveSamplesOrReject(request, true, responseObserver);
+        if (resolvedQuery == null) {
+            return; // reject already sent (includes the non-empty-pageToken streaming rule)
+        }
+        final QuerySamplesStreamDispatcher dispatcher = new QuerySamplesStreamDispatcher(responseObserver);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, "querySamplesStream", responseObserver.hashCode());
+    }
+
+    /**
+     * Validates + resolves a sample request (mode=SAMPLE). On error, sends an ExceptionalResult
+     * reject and returns null; otherwise returns the ResolvedQuery. The {@code streaming} flag drives
+     * the paging-token rule (Q7).
+     */
+    private ResolvedQuery resolveSamplesOrReject(
+            QuerySamplesRequest request, boolean streaming,
+            StreamObserver<QuerySamplesResponse> responseObserver) {
+
         final ResolutionResult resolution = queryV2Resolver.resolve(
                 request.getQuerySpec(),
                 request.getExecutionOptions(),
                 request.getResultRepresentation(),
                 ResolvedQuery.ResultMode.SAMPLE,
-                false /* not streaming */);
+                streaming);
 
         if (resolution.isError()) {
             QueryServiceImpl.sendQuerySamplesResponseReject(
                     resolution.getErrorStatus().msg, responseObserver);
-            return;
+            return null;
         }
-
-        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(responseObserver);
-        enqueueQueryV2Job(resolution.getResolvedQuery(), dispatcher, "querySamples", responseObserver.hashCode());
+        return resolution.getResolvedQuery();
     }
 
     private void enqueueQueryV2Job(

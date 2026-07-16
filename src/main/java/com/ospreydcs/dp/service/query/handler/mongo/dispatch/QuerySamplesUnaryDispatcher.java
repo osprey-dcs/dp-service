@@ -1,11 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
 import com.mongodb.client.MongoCursor;
-import com.ospreydcs.dp.grpc.v1.common.DataColumn;
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
-import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
-import com.ospreydcs.dp.grpc.v1.common.Timestamp;
-import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -15,7 +10,6 @@ import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
-import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.paging.PageToken;
@@ -24,9 +18,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Unary {@code querySamples} formatter (Q1/Q4/Q5/Q7/Q8/Q9). Assembles one bounded page of aligned
@@ -41,20 +33,19 @@ import java.util.Map;
  * last (possibly incomplete) timestamp is dropped and becomes the resume point, so no partial row is
  * emitted.
  *
- * <p><b>Column seeding (Q9):</b> every resolved PV gets a column (sorted by name), all-unset where it
- * has no sample at a given row, by pre-seeding the column index map from the resolved PV list.
+ * <p><b>Column seeding (Q9)</b> and the V2 {@link ColumnTable} build (incl. useSerializedColumns, Q5)
+ * are shared with the streaming dispatcher via {@link AbstractQuerySamplesDispatcher}.
  *
  * <p><b>Non-scalar reject (Q4):</b> a {@link NonScalarColumnException} during assembly becomes a
  * clean {@code querySamples}-specific reject naming the PV and pointing at {@code queryBuckets}.
  *
  * <p><b>excludeColumnMetadata (Q8)</b> is inert — the tabular path carries no column metadata.
  */
-public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
+public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
     private final StreamObserver<QuerySamplesResponse> responseObserver;
-    private final long byteBudget;
 
     public QuerySamplesUnaryDispatcher(StreamObserver<QuerySamplesResponse> responseObserver) {
         this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes());
@@ -62,8 +53,8 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
 
     /** Package/test constructor allowing the outgoing message-size budget to be injected. */
     public QuerySamplesUnaryDispatcher(StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget) {
+        super(byteBudget);
         this.responseObserver = responseObserver;
-        this.byteBudget = byteBudget;
     }
 
     @Override
@@ -74,28 +65,11 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
             return;
         }
 
-        // Page window: begin = resume timestamp (from token) or the earliest fragment begin; end =
-        // the latest fragment end. Fragments are disjoint and sorted, so the union window is
-        // [min begin, max end); executeQuerySamplesV2 re-applies the exact per-fragment overlap.
-        final List<TimeInterval> intervals = resolvedQuery.getRetrievalIntervals();
-        final KeysetPosition pageStart = resolvedQuery.getPageStart();
-        final long windowBeginSecs;
-        final long windowBeginNanos;
-        if (pageStart != null) {
-            windowBeginSecs = pageStart.getSeconds();
-            windowBeginNanos = pageStart.getNanos();
-        } else {
-            windowBeginSecs = intervals.get(0).getBeginSeconds();
-            windowBeginNanos = intervals.get(0).getBeginNanos();
-        }
-        long windowEndSecs = intervals.get(0).getEndSeconds();
-        long windowEndNanos = intervals.get(0).getEndNanos();
-        for (TimeInterval iv : intervals) {
-            if (TimeInterval.compareInstant(iv.getEndSeconds(), iv.getEndNanos(), windowEndSecs, windowEndNanos) > 0) {
-                windowEndSecs = iv.getEndSeconds();
-                windowEndNanos = iv.getEndNanos();
-            }
-        }
+        final long[] window = computeWindow(resolvedQuery);
+        final long windowBeginSecs = window[0];
+        final long windowBeginNanos = window[1];
+        final long windowEndSecs = window[2];
+        final long windowEndNanos = window[3];
 
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
@@ -106,12 +80,7 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
             return;
         }
 
-        // Seed the column set from the resolved PV list (sorted) so every resolved PV gets a column
-        // in a stable order, even if it has no sample in this page (Q9).
-        final TimestampDataMap tableValueMap = new TimestampDataMap();
-        for (String pvName : resolvedQuery.getPvNames()) {
-            tableValueMap.getColumnIndex(pvName);
-        }
+        final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
 
         final boolean byteBudgetHit;
         try (cursor) {
@@ -149,17 +118,8 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
     private void emitPage(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap, boolean byteBudgetHit) {
 
         final int pageSize = resolvedQuery.getPageSize();
+        final List<long[]> allTimestamps = collectTimestamps(tableValueMap);
 
-        // Collect distinct (second, nano) timestamps in sorted order.
-        final List<long[]> allTimestamps = new ArrayList<>();
-        for (Map.Entry<Long, Map<Long, Map<Integer, DataValue>>> secondEntry : tableValueMap.entrySet()) {
-            final long second = secondEntry.getKey();
-            for (Long nano : secondEntry.getValue().keySet()) {
-                allTimestamps.add(new long[]{second, nano});
-            }
-        }
-
-        // Determine how many rows to keep and the resume point.
         int keepCount = allTimestamps.size();
         long[] resumeAt = null;
 
@@ -169,55 +129,13 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
             resumeAt = allTimestamps.get(pageSize);
         } else if (byteBudgetHit && !allTimestamps.isEmpty()) {
             // byte-driven boundary: the last assembled timestamp may be incomplete (later buckets
-            // that would contribute to it were not drained), so drop it and resume there. Keep >= 1
-            // row (zero-progress guard): if only one timestamp assembled under the byte cap, we still
-            // drop it and resume — the next page re-queries from it with a fresh budget.
+            // that would contribute to it were not drained), so drop it and resume there.
             keepCount = allTimestamps.size() - 1;
             resumeAt = allTimestamps.get(allTimestamps.size() - 1);
         }
 
-        // Build the V2 ColumnTable from the kept rows.
-        final List<String> columnNames = tableValueMap.getColumnNameList();
-        final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
-        final List<DataColumn.Builder> columnBuilders = new ArrayList<>(columnNames.size());
-        for (String name : columnNames) {
-            columnBuilders.add(DataColumn.newBuilder().setName(name));
-        }
-
-        for (int rowIndex = 0; rowIndex < keepCount; rowIndex++) {
-            final long second = allTimestamps.get(rowIndex)[0];
-            final long nano = allTimestamps.get(rowIndex)[1];
-            timestampListBuilder.addTimestamps(
-                    Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build());
-            final Map<Integer, DataValue> rowValues = tableValueMap.get(second, nano);
-            for (int columnIndex = 0; columnIndex < columnBuilders.size(); columnIndex++) {
-                DataValue value = rowValues.get(columnIndex);
-                if (value == null) {
-                    value = DataValue.newBuilder().build(); // unset => missing sample (Q9)
-                }
-                columnBuilders.get(columnIndex).addDataValues(value);
-            }
-        }
-
-        final ColumnTable.Builder columnTableBuilder = ColumnTable.newBuilder()
-                .setTimestampList(timestampListBuilder.build());
-
-        if (resolvedQuery.isUseSerializedColumns()) {
-            // Q5: serialize each assembled column into serializedDataColumns; populate exactly one of
-            // the two lists. Empty encoding — no meaningful per-column encoding for a synthesized
-            // sample column; present for API symmetry with the bucket path, not as a perf optimization.
-            for (DataColumn.Builder columnBuilder : columnBuilders) {
-                final DataColumn column = columnBuilder.build();
-                columnTableBuilder.addSerializedDataColumns(SerializedDataColumn.newBuilder()
-                        .setName(column.getName())
-                        .setPayload(column.toByteString())
-                        .build());
-            }
-        } else {
-            for (DataColumn.Builder columnBuilder : columnBuilders) {
-                columnTableBuilder.addDataColumns(columnBuilder.build());
-            }
-        }
+        final ColumnTable columnTable = buildColumnTable(
+                tableValueMap, allTimestamps, 0, keepCount, resolvedQuery.isUseSerializedColumns());
 
         final String nextPageToken = (resumeAt != null)
                 ? PageToken.encode(KeysetPosition.ofSample(resumeAt[0], resumeAt[1]))
@@ -225,7 +143,7 @@ public class QuerySamplesUnaryDispatcher extends QueryV2Dispatcher {
 
         final QuerySamplesResponse.SampleQueryResult result =
                 QuerySamplesResponse.SampleQueryResult.newBuilder()
-                        .setColumnTable(columnTableBuilder.build())
+                        .setColumnTable(columnTable)
                         .setNextPageToken(nextPageToken)
                         .build();
 

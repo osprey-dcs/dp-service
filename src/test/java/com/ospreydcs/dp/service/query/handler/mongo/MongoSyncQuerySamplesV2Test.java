@@ -205,6 +205,34 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         return responses.get(0);
     }
 
+    // ---- streaming helpers ----
+
+    private static final class StreamOutcome {
+        final List<QuerySamplesResponse> messages = new ArrayList<>();
+        boolean completed = false;
+        boolean errored = false;
+    }
+
+    private StreamOutcome runSamplesStream(QuerySamplesRequest request, long byteBudget) {
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true /* streaming */);
+        assertFalse("unexpected streaming resolution error: "
+                + (resolution.isError() ? resolution.getErrorStatus().msg : ""), resolution.isError());
+
+        final StreamOutcome outcome = new StreamOutcome();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { outcome.messages.add(r); }
+            @Override public void onError(Throwable t) { outcome.errored = true; }
+            @Override public void onCompleted() { outcome.completed = true; }
+        };
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, byteBudget);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+        return outcome;
+    }
+
     private static DataColumn columnByName(ColumnTable table, String pvName) {
         for (DataColumn c : table.getDataColumnsList()) {
             if (c.getName().equals(pvName)) {
@@ -412,5 +440,112 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertTrue(response.hasSampleQueryResult());
         assertEquals(0, response.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsCount());
         assertTrue(response.getSampleQueryResult().getNextPageToken().isEmpty());
+    }
+
+    // -----------------------------------------------------------------------
+    // streaming (step 6) — querySamplesStream
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testStreamRowChunkingAlignedAcrossChunks() {
+        // 3-second spv_a window = 30 rows; chunk (limit) 7 => messages of 7,7,7,7,2
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 7, null, false), Long.MAX_VALUE);
+
+        assertTrue(outcome.completed);
+        assertFalse(outcome.errored);
+        assertEquals(5, outcome.messages.size());
+
+        int totalRows = 0;
+        long prevNanoTotal = -1;
+        for (QuerySamplesResponse r : outcome.messages) {
+            assertTrue(r.hasSampleQueryResult());
+            final QuerySamplesResponse.SampleQueryResult result = r.getSampleQueryResult();
+            assertTrue("streamed token must be empty", result.getNextPageToken().isEmpty());
+            final ColumnTable table = result.getColumnTable();
+            // column set stable across chunks: both PVs, sorted, timestamp/column row counts aligned
+            assertEquals(2, table.getDataColumnsCount());
+            assertEquals(PV_A, table.getDataColumns(0).getName());
+            assertEquals(PV_B, table.getDataColumns(1).getName());
+            final int rows = table.getTimestampList().getTimestampsCount();
+            assertTrue(rows <= 7);
+            assertEquals(rows, table.getDataColumns(0).getDataValuesCount());
+            assertEquals(rows, table.getDataColumns(1).getDataValuesCount());
+            totalRows += rows;
+            // seam: timestamps strictly increasing across chunk boundaries
+            for (Timestamp t : table.getTimestampList().getTimestampsList()) {
+                final long nanoTotal = t.getEpochSeconds() * 1_000_000_000L + t.getNanoseconds();
+                assertTrue("timestamps strictly increasing across chunks", nanoTotal > prevNanoTotal);
+                prevNanoTotal = nanoTotal;
+            }
+        }
+        assertEquals(30, totalRows);
+    }
+
+    @Test
+    public void testStreamSingleFullChunk() {
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A), B, 0, B + 1, 0, 1000, null, false), Long.MAX_VALUE);
+        assertTrue(outcome.completed);
+        assertEquals(1, outcome.messages.size());
+        assertEquals(10, outcome.messages.get(0).getSampleQueryResult().getColumnTable()
+                .getTimestampList().getTimestampsCount());
+    }
+
+    @Test
+    public void testStreamEmptyResultSingleEmptyMessage() {
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A), B - 1000, 0, B - 900, 0, 10, null, false), Long.MAX_VALUE);
+        assertTrue(outcome.completed);
+        assertEquals(1, outcome.messages.size());
+        assertFalse(outcome.messages.get(0).hasExceptionalResult());
+        assertEquals(0, outcome.messages.get(0).getSampleQueryResult().getColumnTable()
+                .getTimestampList().getTimestampsCount());
+    }
+
+    @Test
+    public void testStreamRejectsNonEmptyPageToken() {
+        final String token = com.ospreydcs.dp.service.query.handler.paging.PageToken.encode(
+                com.ospreydcs.dp.service.query.handler.model.KeysetPosition.ofSample(B, 0));
+        final QuerySamplesRequest request =
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 5, token, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertTrue(resolution.isError());
+        assertTrue(resolution.getErrorStatus().msg.contains("streaming"));
+    }
+
+    @Test
+    public void testStreamByteBudgetChunkFlush() {
+        // tiny budget forces multiple chunks even though limit is huge; verify every row delivered once
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 40);
+        assertTrue(outcome.completed);
+        assertTrue("byte budget should force multiple chunks", outcome.messages.size() > 1);
+        int totalRows = 0;
+        long prevNanoTotal = -1;
+        for (QuerySamplesResponse r : outcome.messages) {
+            final ColumnTable table = r.getSampleQueryResult().getColumnTable();
+            totalRows += table.getTimestampList().getTimestampsCount();
+            for (Timestamp t : table.getTimestampList().getTimestampsList()) {
+                final long nanoTotal = t.getEpochSeconds() * 1_000_000_000L + t.getNanoseconds();
+                assertTrue(nanoTotal > prevNanoTotal); // no dup / no gap-reorder across byte-flushed chunks
+                prevNanoTotal = nanoTotal;
+            }
+        }
+        assertEquals(30, totalRows);
+    }
+
+    @Test
+    public void testStreamNonScalarRejected() {
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_ARR), B, 0, B + 1, 0, 10, null, false), Long.MAX_VALUE);
+        assertFalse(outcome.messages.isEmpty());
+        final QuerySamplesResponse last = outcome.messages.get(outcome.messages.size() - 1);
+        assertTrue(last.hasExceptionalResult());
+        assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                last.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(last.getExceptionalResult().getMessage().contains(PV_ARR));
     }
 }
