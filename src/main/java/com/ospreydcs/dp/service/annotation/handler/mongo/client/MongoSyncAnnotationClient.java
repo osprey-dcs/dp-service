@@ -26,6 +26,7 @@ import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
+import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -564,58 +565,35 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 case PVNAMECRITERION -> {
                     final QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion c =
                             criterion.getPvNameCriterion();
-                    final List<Bson> nameFilters = new ArrayList<>();
-                    if (!c.getExactList().isEmpty()) {
-                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, c.getExactList()));
-                    }
-                    for (String prefix : c.getPrefixList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
-                                "^" + java.util.regex.Pattern.quote(prefix)));
-                    }
-                    for (String contains : c.getContainsList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
-                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
-                    }
-                    if (!nameFilters.isEmpty()) {
-                        filterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
+                    final Bson f = MongoQueryFilterBuilder.nameMatchFilter(
+                            BsonConstants.BSON_KEY_PV_METADATA_PV_NAME,
+                            c.getExactList(), c.getPrefixList(), c.getContainsList());
+                    if (f != null) {
+                        filterList.add(f);
                     }
                 }
 
                 case ALIASESCRITERION -> {
                     final QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion c =
                             criterion.getAliasesCriterion();
-                    final List<Bson> aliasFilters = new ArrayList<>();
-                    if (!c.getExactList().isEmpty()) {
-                        aliasFilters.add(Filters.in("aliases", c.getExactList()));
-                    }
-                    for (String prefix : c.getPrefixList()) {
-                        aliasFilters.add(Filters.regex("aliases",
-                                "^" + java.util.regex.Pattern.quote(prefix)));
-                    }
-                    for (String contains : c.getContainsList()) {
-                        aliasFilters.add(Filters.regex("aliases",
-                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
-                    }
-                    if (!aliasFilters.isEmpty()) {
-                        filterList.add(aliasFilters.size() == 1 ? aliasFilters.get(0) : or(aliasFilters));
+                    final Bson f = MongoQueryFilterBuilder.nameMatchFilter(
+                            BsonConstants.BSON_KEY_PV_METADATA_ALIASES,
+                            c.getExactList(), c.getPrefixList(), c.getContainsList());
+                    if (f != null) {
+                        filterList.add(f);
                     }
                 }
 
                 case TAGSCRITERION -> {
                     final QueryPvMetadataRequest.QueryPvMetadataCriterion.TagsCriterion c =
                             criterion.getTagsCriterion();
-                    filterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, c.getValuesList()));
+                    filterList.add(MongoQueryFilterBuilder.tagsFilter(c.getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
                     final QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion c =
                             criterion.getAttributesCriterion();
-                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
-                    if (c.getValuesList().isEmpty()) {
-                        filterList.add(Filters.exists(mapKey));
-                    } else {
-                        filterList.add(Filters.in(mapKey, c.getValuesList()));
-                    }
+                    filterList.add(MongoQueryFilterBuilder.attributeFilter(c.getKey(), c.getValuesList()));
                 }
 
                 default -> {
@@ -678,7 +656,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         try {
             final Bson filter = or(
                     eq(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME, pvNameOrAlias),
-                    eq("aliases", pvNameOrAlias));
+                    eq(BsonConstants.BSON_KEY_PV_METADATA_ALIASES, pvNameOrAlias));
             mongoCollectionPvMetadata.find(filter).into(matchingDocuments);
         } catch (Exception ex) {
             final String errorMsg = "findPvMetadataByNameOrAlias: mongo exception: " + ex.getMessage();
@@ -1110,26 +1088,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 case TIMESTAMPCRITERION -> {
                     final Instant ts = com.ospreydcs.dp.service.common.protobuf.TimestampUtility
                             .instantFromTimestamp(criterion.getTimestampCriterion().getTimestamp());
-                    filterList.add(and(
-                            lte(BsonConstants.BSON_KEY_ACTIVATION_START_TIME, ts),
-                            or(
-                                    exists(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, false),
-                                    gt(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, ts)
-                            )
-                    ));
+                    filterList.add(MongoQueryFilterBuilder.activationContainsInstantFilter(ts));
                 }
                 case TIMERANGECRITERION -> {
                     final Instant rangeStart = com.ospreydcs.dp.service.common.protobuf.TimestampUtility
                             .instantFromTimestamp(criterion.getTimeRangeCriterion().getStartTime());
                     final Instant rangeEnd = com.ospreydcs.dp.service.common.protobuf.TimestampUtility
                             .instantFromTimestamp(criterion.getTimeRangeCriterion().getEndTime());
-                    filterList.add(and(
-                            lt(BsonConstants.BSON_KEY_ACTIVATION_START_TIME, rangeEnd),
-                            or(
-                                    exists(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, false),
-                                    gt(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, rangeStart)
-                            )
-                    ));
+                    filterList.add(MongoQueryFilterBuilder.activationOverlapsRangeFilter(rangeStart, rangeEnd));
                 }
                 case CONFIGURATIONNAMECRITERION -> {
                     filterList.add(in(BsonConstants.BSON_KEY_ACTIVATION_CONFIGURATION_NAME,
@@ -1144,16 +1110,12 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                             criterion.getCategoryCriterion().getValuesList()));
                 }
                 case TAGSCRITERION -> {
-                    filterList.add(in(BsonConstants.BSON_KEY_TAGS,
+                    filterList.add(MongoQueryFilterBuilder.tagsFilter(
                             criterion.getTagsCriterion().getValuesList()));
                 }
                 case ATTRIBUTESCRITERION -> {
                     final var ac = criterion.getAttributesCriterion();
-                    if (ac.getValuesList().isEmpty()) {
-                        filterList.add(exists("attributes." + ac.getKey()));
-                    } else {
-                        filterList.add(in("attributes." + ac.getKey(), ac.getValuesList()));
-                    }
+                    filterList.add(MongoQueryFilterBuilder.attributeFilter(ac.getKey(), ac.getValuesList()));
                 }
                 default -> {
                     // unknown criterion — ignored
