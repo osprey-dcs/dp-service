@@ -90,6 +90,20 @@ public interface MongoQueryClientInterface {
      */
     MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
 
+    /**
+     * Retrieves buckets for a Query API V2 sample (column-table) query, over the page window
+     * {@code [windowBeginSecs.windowBeginNanos, endTime)} intersected with the resolved config
+     * fragments (Q3), for the resolved PV list. The window begin is the resume timestamp
+     * ({@code pageStart}) on a continuation page, or each fragment's own begin on the first page;
+     * the caller passes the effective window-begin so the same overlap machinery is reused. Sorted
+     * by {@code (pvName, firstTimeSecs, firstTimeNanos)}. Unlike the bucket path there is no keyset
+     * seek and no {@code pageSize+1} probe — the sample page is bounded by distinct-timestamp count
+     * and the byte budget during assembly, not by a bucket-count limit. Returns null on a null/empty
+     * resolution.
+     */
+    MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);
+
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 
     MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest request);

@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 
@@ -70,9 +71,10 @@ public class TabularDataUtility {
             // Legacy DataColumn documents can be converted directly
             bucketColumn = ((DataColumnDocument) columnDocument).toDataColumn();
         } else {
-            // Binary columns (arrays, images, structs) cannot be converted to tabular format
-            throw new DpException("Column type " + columnDocument.getClass().getSimpleName() + 
-                                " cannot be exported to tabular format (CSV/Excel/etc). Binary column types require specialized export formats.");
+            // Non-scalar columns (arrays, images, structs) have no tabular (row/column) representation.
+            // Throw a neutral, PV-named exception; each caller phrases its own guidance (the export
+            // framework and querySamples both catch this and translate for their context, Q4).
+            throw new NonScalarColumnException(bucket.getPvName(), columnDocument.getClass().getSimpleName());
         }
 
         return addColumnsToTable(

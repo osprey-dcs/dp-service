@@ -411,6 +411,63 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         }
     }
 
+    @Override
+    public MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+
+        if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
+            return null;
+        }
+
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
+
+        // Per-fragment overlap predicates with each fragment's lower bound clamped to the page window
+        // begin (windowBegin = resume timestamp on a continuation page, or timeRange begin on page 1).
+        // Fragments that end at or before the window begin contribute nothing to this page.
+        final List<Bson> fragmentFilters = new ArrayList<>();
+        for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
+            final long clampedBeginSecs;
+            final long clampedBeginNanos;
+            if (TimeInterval.compareInstant(
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
+                    windowBeginSecs, windowBeginNanos) >= 0) {
+                clampedBeginSecs = interval.getBeginSeconds();
+                clampedBeginNanos = interval.getBeginNanos();
+            } else {
+                clampedBeginSecs = windowBeginSecs;
+                clampedBeginNanos = windowBeginNanos;
+            }
+            // drop fragments entirely before the window begin (clamped begin >= fragment end)
+            if (TimeInterval.compareInstant(
+                    clampedBeginSecs, clampedBeginNanos,
+                    interval.getEndSeconds(), interval.getEndNanos()) >= 0) {
+                continue;
+            }
+            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    clampedBeginSecs, clampedBeginNanos,
+                    interval.getEndSeconds(), interval.getEndNanos()));
+        }
+
+        if (fragmentFilters.isEmpty()) {
+            // nothing overlaps the page window
+            return null;
+        }
+
+        final Bson overlapFilter = (fragmentFilters.size() == 1)
+                ? fragmentFilters.get(0)
+                : or(fragmentFilters);
+
+        try {
+            return mongoCollectionBuckets
+                    .find(and(pvNameFilter, overlapFilter))
+                    .sort(bucketV2Sort())
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
     /**
      * Base V2 bucket filter shared by the unary and streaming retrieval paths: the resolved PV-name
      * {@code in(...)} filter AND the {@code $or} of the per-fragment bucket-overlap predicates

@@ -273,6 +273,28 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return resolution.getResolvedQuery();
     }
 
+    @Override
+    public void handleQuerySamples(
+            QuerySamplesRequest request,
+            StreamObserver<QuerySamplesResponse> responseObserver
+    ) {
+        final ResolutionResult resolution = queryV2Resolver.resolve(
+                request.getQuerySpec(),
+                request.getExecutionOptions(),
+                request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE,
+                false /* not streaming */);
+
+        if (resolution.isError()) {
+            QueryServiceImpl.sendQuerySamplesResponseReject(
+                    resolution.getErrorStatus().msg, responseObserver);
+            return;
+        }
+
+        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(responseObserver);
+        enqueueQueryV2Job(resolution.getResolvedQuery(), dispatcher, "querySamples", responseObserver.hashCode());
+    }
+
     private void enqueueQueryV2Job(
             ResolvedQuery resolvedQuery,
             com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryV2Dispatcher dispatcher,
