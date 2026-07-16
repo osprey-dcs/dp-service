@@ -368,11 +368,58 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // PV-name filter over the resolved concrete name list
+        // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
+        final List<Bson> andParts = new ArrayList<>();
+        andParts.add(bucketBaseFilterV2(resolvedQuery));
+
+        // Keyset seek (unary paging) is ANDed at top level, NOT distributed into the $or branches
+        // (Q3 correctness note). Absent on the first page and on streaming queries.
+        final KeysetPosition pageStart = resolvedQuery.getPageStart();
+        if (pageStart != null) {
+            andParts.add(bucketKeysetSeekFilter(pageStart));
+        }
+
+        try {
+            return mongoCollectionBuckets
+                    .find(and(andParts))
+                    .sort(bucketV2Sort())
+                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery) {
+
+        if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
+            return null;
+        }
+
+        // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
+        // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
+        try {
+            return mongoCollectionBuckets
+                    .find(bucketBaseFilterV2(resolvedQuery))
+                    .sort(bucketV2Sort())
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    /**
+     * Base V2 bucket filter shared by the unary and streaming retrieval paths: the resolved PV-name
+     * {@code in(...)} filter AND the {@code $or} of the per-fragment bucket-overlap predicates
+     * (single fragment → no {@code $or} wrapper). Built from the shared filter builder so V1 and V2
+     * overlap semantics cannot drift.
+     */
+    private static Bson bucketBaseFilterV2(ResolvedQuery resolvedQuery) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
 
-        // Per-fragment bucket-overlap predicates, combined with $or (single fragment → no wrapper).
-        // Built from the shared filter builder so V1 and V2 overlap semantics cannot drift.
         final List<Bson> fragmentFilters = new ArrayList<>();
         for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
             fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
@@ -383,32 +430,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 ? fragmentFilters.get(0)
                 : or(fragmentFilters);
 
-        // Assemble the top-level filter. The keyset seek is ANDed at top level, NOT distributed into
-        // the $or branches (Q3 correctness note).
-        final List<Bson> andParts = new ArrayList<>();
-        andParts.add(pvNameFilter);
-        andParts.add(overlapFilter);
+        return and(pvNameFilter, overlapFilter);
+    }
 
-        final KeysetPosition pageStart = resolvedQuery.getPageStart();
-        if (pageStart != null) {
-            andParts.add(bucketKeysetSeekFilter(pageStart));
-        }
-
-        final Bson filter = and(andParts);
-
-        try {
-            return mongoCollectionBuckets
-                    .find(filter)
-                    .sort(ascending(
-                            BsonConstants.BSON_KEY_PV_NAME,
-                            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS))
-                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
-                    .cursor();
-        } catch (Exception ex) {
-            logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
-            return null;
-        }
+    /** Compound V2 bucket sort {@code (pvName, firstTimeSecs, firstTimeNanos)}. */
+    private static Bson bucketV2Sort() {
+        return ascending(
+                BsonConstants.BSON_KEY_PV_NAME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
     }
 
     /**

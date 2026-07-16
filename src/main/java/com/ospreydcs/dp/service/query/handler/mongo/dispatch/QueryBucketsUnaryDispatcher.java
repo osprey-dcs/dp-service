@@ -28,12 +28,11 @@ import java.util.List;
  * whole budget is an indivisible-oversized error. Empty result is an empty payload, not an
  * ExceptionalResult.
  */
-public class QueryBucketsUnaryDispatcher extends QueryV2Dispatcher {
+public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher {
 
     private static final Logger logger = LogManager.getLogger();
 
     private final StreamObserver<QueryBucketsResponse> responseObserver;
-    private final long byteBudget;
 
     public QueryBucketsUnaryDispatcher(StreamObserver<QueryBucketsResponse> responseObserver) {
         this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes());
@@ -44,8 +43,8 @@ public class QueryBucketsUnaryDispatcher extends QueryV2Dispatcher {
      * byte-budget page-split and indivisible-oversized paths can be exercised deterministically.
      */
     public QueryBucketsUnaryDispatcher(StreamObserver<QueryBucketsResponse> responseObserver, long byteBudget) {
+        super(byteBudget);
         this.responseObserver = responseObserver;
-        this.byteBudget = byteBudget;
     }
 
     @Override
@@ -89,10 +88,7 @@ public class QueryBucketsUnaryDispatcher extends QueryV2Dispatcher {
 
                 final DataBucket bucket;
                 try {
-                    bucket = BucketDocument.dataBucketFromDocumentV2(
-                            document,
-                            resolvedQuery.isUseSerializedColumns(),
-                            resolvedQuery.isExcludeColumnMetadata());
+                    bucket = buildBucket(document, resolvedQuery);
                 } catch (DpException e) {
                     final String msg = "exception building bucket result: " + e.getMessage();
                     logger.error(msg, e);
@@ -112,7 +108,7 @@ public class QueryBucketsUnaryDispatcher extends QueryV2Dispatcher {
                 }
 
                 // indivisible-oversized: a single bucket bigger than the whole budget cannot be paged.
-                if (pageBuckets.isEmpty() && bucketBytes > byteBudget) {
+                if (pageBuckets.isEmpty() && isIndivisibleOversized(bucketBytes)) {
                     final String msg = "single bucket for pv " + document.getPvName()
                             + " exceeds the outgoing message size limit (" + bucketBytes + " > "
                             + byteBudget + " bytes)";

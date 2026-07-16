@@ -59,6 +59,7 @@ public class QueryV2ResolverTest {
         @Override public List<String> resolvePvNamesByMetadata(List<Bson> f) { return List.of(); }
         @Override public List<TimeInterval> resolveConfigurationIntervals(List<Bson> f) { return List.of(); }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery q) { return null; }
+        @Override public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery q) { return null; }
         @Override public MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id) { return null; }

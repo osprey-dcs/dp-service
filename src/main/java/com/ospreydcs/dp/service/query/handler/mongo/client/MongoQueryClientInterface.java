@@ -82,6 +82,14 @@ public interface MongoQueryClientInterface {
      */
     MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery resolvedQuery);
 
+    /**
+     * Retrieves the full, unbounded bucket cursor for a Query API V2 streaming bucket query. Same
+     * PV-name filter and {@code $or} fragment overlap as {@link #executeQueryBucketsV2}, but with no
+     * keyset seek and no limit — the entire result is streamed to exhaustion and chunked into
+     * messages downstream (fire-and-consume). Returns null on a null/empty resolution.
+     */
+    MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
+
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 
     MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest request);

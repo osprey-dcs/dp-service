@@ -175,6 +175,15 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         handler.handleQueryBuckets(request, responseObserver);
     }
 
+    @Override
+    public void queryBucketsStream(
+            QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        logger.debug("queryBucketsStream request received id: {}", responseObserver.hashCode());
+        // server-streaming (single request → response stream); validation/resolution in the handler.
+        // a non-empty pageToken on a streaming call is rejected there (Q7/§6).
+        handler.handleQueryBucketsStream(request, responseObserver);
+    }
+
     private static QueryTableResponse queryTableResponseExceptionalResult(
             String msg, ExceptionalResult.ExceptionalResultStatus status
     ) {

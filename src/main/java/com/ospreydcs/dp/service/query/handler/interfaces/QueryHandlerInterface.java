@@ -39,4 +39,7 @@ public interface QueryHandlerInterface {
     void handleQueryBuckets(
             QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver);
 
+    void handleQueryBucketsStream(
+            QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver);
+
 }

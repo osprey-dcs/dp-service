@@ -198,6 +198,48 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
     }
 
     // -----------------------------------------------------------------------
+    // streaming helpers
+    // -----------------------------------------------------------------------
+
+    /** Collected outcome of a streaming run: all messages plus completion/error flags. */
+    private static final class StreamOutcome {
+        final List<QueryBucketsResponse> messages = new ArrayList<>();
+        boolean completed = false;
+        boolean errored = false;
+    }
+
+    private StreamOutcome runStream(QueryBucketsRequest request, long byteBudget) {
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true /* streaming */);
+        assertFalse("unexpected streaming resolution error: "
+                + (resolution.isError() ? resolution.getErrorStatus().msg : ""), resolution.isError());
+
+        final StreamOutcome outcome = new StreamOutcome();
+        final StreamObserver<QueryBucketsResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QueryBucketsResponse r) { outcome.messages.add(r); }
+            @Override public void onError(Throwable t) { outcome.errored = true; }
+            @Override public void onCompleted() { outcome.completed = true; }
+        };
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, byteBudget);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+        return outcome;
+    }
+
+    private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {
+        final List<DataBucket> all = new ArrayList<>();
+        for (QueryBucketsResponse r : outcome.messages) {
+            assertTrue("streamed message must be a BucketQueryResult", r.hasBucketQueryResult());
+            assertTrue("streamed message nextPageToken must be empty",
+                    r.getBucketQueryResult().getNextPageToken().isEmpty());
+            all.addAll(r.getBucketQueryResult().getDataBucketsList());
+        }
+        return all;
+    }
+
+    // -----------------------------------------------------------------------
     // happy path
     // -----------------------------------------------------------------------
 
@@ -433,6 +475,104 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
         final ResolvedQuery resolved = resolvedForPv(pvName, 100, null);
         final QueryBucketsResponse response = runResolvedWithBudget(resolved, Long.MAX_VALUE);
         return response.getBucketQueryResult().getDataBuckets(0).getSerializedSize();
+    }
+
+    // -----------------------------------------------------------------------
+    // streaming (step 4) — queryBucketsStream
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testStreamChunkingByLimit() {
+        // 2 PVs x 10 buckets = 20; chunk size (limit) 6 => messages of 6,6,6,2
+        final StreamOutcome outcome = runStream(
+                bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 6, null, false),
+                Long.MAX_VALUE);
+
+        assertTrue("stream must complete", outcome.completed);
+        assertFalse(outcome.errored);
+        assertEquals(4, outcome.messages.size());
+        // each message respects the count limit
+        for (QueryBucketsResponse r : outcome.messages) {
+            assertTrue(r.getBucketQueryResult().getDataBucketsCount() <= 6);
+        }
+        final List<DataBucket> all = allStreamedBuckets(outcome);
+        assertEquals(20, all.size());
+        // ordering preserved across chunks: 10 testpv_1 then 10 testpv_2
+        for (int i = 0; i < 10; i++) {
+            assertEquals(COL_1_NAME, all.get(i).getPvName());
+        }
+        for (int i = 10; i < 20; i++) {
+            assertEquals(COL_2_NAME, all.get(i).getPvName());
+        }
+    }
+
+    @Test
+    public void testStreamSingleFullChunk() {
+        // limit larger than result => a single message with all buckets, then complete
+        final StreamOutcome outcome = runStream(
+                bucketsRequest(List.of(COL_1_NAME), startSeconds, startSeconds + 10, 1000, null, false),
+                Long.MAX_VALUE);
+        assertTrue(outcome.completed);
+        assertEquals(1, outcome.messages.size());
+        assertEquals(10, outcome.messages.get(0).getBucketQueryResult().getDataBucketsCount());
+    }
+
+    @Test
+    public void testStreamEmptyResultSingleEmptyMessage() {
+        final StreamOutcome outcome = runStream(
+                bucketsRequest(List.of(COL_1_NAME), startSeconds - 1000, startSeconds - 900, 10, null, false),
+                Long.MAX_VALUE);
+        assertTrue(outcome.completed);
+        assertEquals("empty streaming result => one empty message", 1, outcome.messages.size());
+        assertFalse(outcome.messages.get(0).hasExceptionalResult());
+        assertEquals(0, outcome.messages.get(0).getBucketQueryResult().getDataBucketsCount());
+    }
+
+    @Test
+    public void testStreamRejectsNonEmptyPageToken() {
+        // a non-empty pageToken on a streaming call must be rejected (Q7/§6) — enforced in the resolver
+        final String token = com.ospreydcs.dp.service.query.handler.paging.PageToken.encode(
+                com.ospreydcs.dp.service.query.handler.model.KeysetPosition.ofBucket(COL_1_NAME, startSeconds, 0));
+        final QueryBucketsRequest request =
+                bucketsRequest(List.of(COL_1_NAME), startSeconds, startSeconds + 10, 5, token, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true /* streaming */);
+        assertTrue(resolution.isError());
+        assertTrue(resolution.getErrorStatus().msg.contains("streaming"));
+    }
+
+    @Test
+    public void testStreamByteBudgetFlush() {
+        // budget fits ~1 bucket => each message carries one bucket, count limit high so byte guard drives
+        final long oneBucketBytes = firstBucketSerializedSize(COL_1_NAME);
+        final long budget = oneBucketBytes + (oneBucketBytes / 2);
+
+        final StreamOutcome outcome = runStream(
+                bucketsRequest(List.of(COL_1_NAME), startSeconds, startSeconds + 10, 100, null, false),
+                budget);
+        assertTrue(outcome.completed);
+        assertEquals("byte budget => 10 one-bucket messages", 10, outcome.messages.size());
+        for (QueryBucketsResponse r : outcome.messages) {
+            assertEquals(1, r.getBucketQueryResult().getDataBucketsCount());
+        }
+        assertEquals(10, allStreamedBuckets(outcome).size());
+    }
+
+    @Test
+    public void testStreamIndivisibleOversizedErrors() {
+        final long oneBucketBytes = firstBucketSerializedSize(COL_1_NAME);
+        final long tinyBudget = Math.max(1, oneBucketBytes - 1);
+
+        final StreamOutcome outcome = runStream(
+                bucketsRequest(List.of(COL_1_NAME), startSeconds, startSeconds + 10, 100, null, false),
+                tinyBudget);
+        // the dispatcher sends an ExceptionalResult (does not call onCompleted after the error)
+        assertFalse(outcome.messages.isEmpty());
+        final QueryBucketsResponse last = outcome.messages.get(outcome.messages.size() - 1);
+        assertTrue("oversized bucket must yield an ExceptionalResult", last.hasExceptionalResult());
+        assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                last.getExceptionalResult().getExceptionalResultStatus());
     }
 
     // -----------------------------------------------------------------------

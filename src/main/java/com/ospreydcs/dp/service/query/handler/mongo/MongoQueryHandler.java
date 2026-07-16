@@ -228,25 +228,58 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryBucketsRequest request,
             StreamObserver<QueryBucketsResponse> responseObserver
     ) {
-        // validate + resolve the request (§6 invariants, PV/config resolution, paging normalization)
+        final ResolvedQuery resolvedQuery = resolveBucketsOrReject(request, false, responseObserver);
+        if (resolvedQuery == null) {
+            return; // reject already sent
+        }
+        final QueryBucketsUnaryDispatcher dispatcher = new QueryBucketsUnaryDispatcher(responseObserver);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, "queryBuckets", responseObserver.hashCode());
+    }
+
+    @Override
+    public void handleQueryBucketsStream(
+            QueryBucketsRequest request,
+            StreamObserver<QueryBucketsResponse> responseObserver
+    ) {
+        final ResolvedQuery resolvedQuery = resolveBucketsOrReject(request, true, responseObserver);
+        if (resolvedQuery == null) {
+            return; // reject already sent (includes the non-empty-pageToken streaming rule)
+        }
+        final QueryBucketsStreamDispatcher dispatcher = new QueryBucketsStreamDispatcher(responseObserver);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, "queryBucketsStream", responseObserver.hashCode());
+    }
+
+    /**
+     * Validates + resolves a bucket request (§6 invariants, PV/config resolution, paging
+     * normalization). On error, sends an ExceptionalResult reject and returns null; otherwise returns
+     * the ResolvedQuery. The {@code streaming} flag drives the paging-token rule (Q7).
+     */
+    private ResolvedQuery resolveBucketsOrReject(
+            QueryBucketsRequest request, boolean streaming,
+            StreamObserver<QueryBucketsResponse> responseObserver) {
+
         final ResolutionResult resolution = queryV2Resolver.resolve(
                 request.getQuerySpec(),
                 request.getExecutionOptions(),
                 request.getResultRepresentation(),
                 ResolvedQuery.ResultMode.BUCKET,
-                false /* not streaming */);
+                streaming);
 
         if (resolution.isError()) {
             QueryServiceImpl.sendQueryBucketsResponseReject(
                     resolution.getErrorStatus().msg, responseObserver);
-            return;
+            return null;
         }
+        return resolution.getResolvedQuery();
+    }
 
-        final QueryBucketsUnaryDispatcher dispatcher = new QueryBucketsUnaryDispatcher(responseObserver);
-        final QueryV2Job job = new QueryV2Job(resolution.getResolvedQuery(), dispatcher, mongoQueryClient);
+    private void enqueueQueryV2Job(
+            ResolvedQuery resolvedQuery,
+            com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryV2Dispatcher dispatcher,
+            String label, int observerId) {
 
-        logger.debug("adding QueryV2Job (queryBuckets) id: {} to queue", responseObserver.hashCode());
-
+        final QueryV2Job job = new QueryV2Job(resolvedQuery, dispatcher, mongoQueryClient);
+        logger.debug("adding QueryV2Job ({}) id: {} to queue", label, observerId);
         try {
             requestQueue.put(job);
         } catch (InterruptedException e) {

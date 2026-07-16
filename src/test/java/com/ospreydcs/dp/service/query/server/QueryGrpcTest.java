@@ -112,6 +112,10 @@ public class QueryGrpcTest extends QueryTestBase {
         public void handleQueryBuckets(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
         }
 
+        @Override
+        public void handleQueryBucketsStream(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        }
+
     }
 
     protected static class TestQueryClient {
