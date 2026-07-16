@@ -518,9 +518,11 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
     @Test
     public void testStreamByteBudgetChunkFlush() {
-        // tiny budget forces multiple chunks even though limit is huge; verify every row delivered once
+        // small budget forces multiple chunks even though limit is huge; verify every row delivered
+        // once. The budget must clear the conservative single-row estimate (timestamp + one labeled
+        // double column + framing, ~52 bytes) but not two rows, so each chunk carries ~one row.
         final StreamOutcome outcome = runSamplesStream(
-                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 40);
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 60);
         assertTrue(outcome.completed);
         assertTrue("byte budget should force multiple chunks", outcome.messages.size() > 1);
         int totalRows = 0;
@@ -547,5 +549,39 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
                 last.getExceptionalResult().getExceptionalResultStatus());
         assertTrue(last.getExceptionalResult().getMessage().contains(PV_ARR));
+    }
+
+    // -----------------------------------------------------------------------
+    // indivisible-oversized single row (byte budget below one row's cost)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testUnaryOversizedSingleTimestampErrors() {
+        // When the byte-driven boundary would drop the ONLY assembled timestamp (a bucket that clips
+        // to a single distinct timestamp in the window, tripping the size limit), keepCount becomes 0.
+        // Dropping it and resuming there would re-assemble the identical row on the next page and hit
+        // the same boundary forever (zero-progress infinite loop of empty pages). The dispatcher must
+        // ERROR instead. Window [B, B+1@1ns) clips spv_a to its single first sample at B.0.
+        final QuerySamplesResponse response = runSamplesWithBudget(
+                samplesRequest(List.of(PV_A), B, 0, B, 1, 10_000, null, false), 1);
+        assertTrue(response.hasExceptionalResult());
+        assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                response.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(response.getExceptionalResult().getMessage().contains("exceeds the outgoing message size limit"));
+    }
+
+    @Test
+    public void testStreamIndivisibleOversizedRowErrors() {
+        // Streaming analog: a single row larger than the whole budget cannot be chunked. Rather than
+        // emit an over-limit message that gRPC would abort the stream on, the dispatcher errors out
+        // naming the timestamp (mirrors the buckets streaming isIndivisibleOversized guard).
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 1);
+        assertFalse(outcome.messages.isEmpty());
+        final QuerySamplesResponse last = outcome.messages.get(outcome.messages.size() - 1);
+        assertTrue(last.hasExceptionalResult());
+        assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                last.getExceptionalResult().getExceptionalResultStatus());
+        assertTrue(last.getExceptionalResult().getMessage().contains("exceeds the outgoing message size limit"));
     }
 }

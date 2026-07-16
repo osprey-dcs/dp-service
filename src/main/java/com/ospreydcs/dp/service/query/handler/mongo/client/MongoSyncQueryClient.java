@@ -330,11 +330,13 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     @Override
     public List<TimeInterval> resolveConfigurationIntervals(List<Bson> criteriaFilters) {
 
-        // A configuration selector with no criteria matches nothing (empty result); the caller
-        // handles that case before calling. Here an empty list is treated as match-all for safety.
-        final Bson activationFilter = (criteriaFilters == null || criteriaFilters.isEmpty())
-                ? new org.bson.Document()
-                : and(criteriaFilters);
+        // A configuration selector with no criteria matches nothing (the resolver short-circuits this
+        // case before calling). Defensively honor that contract here too: an empty filter list yields
+        // no intervals rather than scanning and unioning every activation in the collection.
+        if (criteriaFilters == null || criteriaFilters.isEmpty()) {
+            return new ArrayList<>();
+        }
+        final Bson activationFilter = and(criteriaFilters);
 
         try {
             final List<TimeInterval> intervals = new ArrayList<>();

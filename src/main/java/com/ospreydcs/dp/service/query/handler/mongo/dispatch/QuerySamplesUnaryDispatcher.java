@@ -132,6 +132,21 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             // that would contribute to it were not drained), so drop it and resume there.
             keepCount = allTimestamps.size() - 1;
             resumeAt = allTimestamps.get(allTimestamps.size() - 1);
+
+            // Indivisible-oversized guard (mirrors the buckets dispatchers' isIndivisibleOversized):
+            // if dropping the last timestamp leaves nothing to emit, this single row is larger than
+            // the whole byte budget. Dropping it and resuming there would re-assemble the identical
+            // oversized row on the next page and hit the same boundary forever (zero forward
+            // progress). Error out instead, naming the timestamp, rather than loop empty pages.
+            if (keepCount == 0) {
+                final String msg = "single querySamples row at timestamp "
+                        + resumeAt[0] + "." + resumeAt[1]
+                        + " exceeds the outgoing message size limit (" + byteBudget
+                        + " bytes); narrow the PV set or time range";
+                logger.error(msg);
+                QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+                return;
+            }
         }
 
         final ColumnTable columnTable = buildColumnTable(
