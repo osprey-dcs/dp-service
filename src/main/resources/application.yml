@@ -103,6 +103,18 @@ QueryHandler:
   # control the size of messages for query responses.
   outgoingMessageSizeLimitBytes: ${DP_QUERY_HANDLER_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES:4096000}
 
+  # QueryHandler.queryV2DefaultPageSize: Default page size (result objects per page) for Query API V2
+  # unary methods when the request's ExecutionOptions.limit is 0/unset.
+  queryV2DefaultPageSize: ${DP_QUERY_HANDLER_QUERY_V2_DEFAULT_PAGE_SIZE:10000}
+
+  # QueryHandler.queryV2MaxPageSize: Maximum page size for Query API V2 unary methods. A larger
+  # requested limit is silently clamped to this value to keep page sizes predictable.
+  queryV2MaxPageSize: ${DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE:100000}
+
+  # QueryHandler.queryV2MaxResolvedPvCount: Maximum number of PVs a Query API V2 selector may resolve
+  # to. A selector resolving to more PVs is rejected, directing the caller to narrow the selector.
+  queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
+
 # QueryBenchmark: Settings for the Query Service performance benchmark applications.
 QueryBenchmark:
 

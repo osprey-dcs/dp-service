@@ -36,4 +36,16 @@ public interface QueryHandlerInterface {
     void handleQueryProviderStats(
             QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver);
 
+    void handleQueryBuckets(
+            QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver);
+
+    void handleQueryBucketsStream(
+            QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver);
+
+    void handleQuerySamples(
+            QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver);
+
+    void handleQuerySamplesStream(
+            QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver);
+
 }

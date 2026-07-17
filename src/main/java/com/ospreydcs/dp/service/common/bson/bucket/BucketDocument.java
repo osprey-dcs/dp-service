@@ -255,4 +255,81 @@ public class BucketDocument extends DpBsonDocumentBase {
         return bucketBuilder.build();
     }
 
+    /**
+     * Builds a Query API V2 {@link DataBucket} from a stored bucket document, honoring the V2
+     * representation flags.
+     *
+     * <p><b>excludeColumnMetadata</b> (Q8): the default (false) includes column metadata, which
+     * {@code addColumnToBucket}/{@code applyMetadataToProto} already restores; when true, the
+     * {@code metadata} field is cleared on the emitted column.
+     *
+     * <p><b>useSerializedColumns</b> (Q5, pass-through-only per plan 11.2.4(ii)): columns that were
+     * stored serialized are emitted as {@code SerializedDataColumn} (already the behavior of
+     * {@code addColumnToBucket} for {@code SerializedDataColumnDocument}); typed/scalar-stored columns
+     * are emitted in their typed form regardless of this flag — no typed-to-serialized conversion and
+     * no fabricated {@code encoding} contract in this phase. The flag is accepted for API symmetry and
+     * has no effect on typed columns.
+     */
+    public static DataBucket dataBucketFromDocumentV2(
+            BucketDocument document,
+            boolean useSerializedColumns,
+            boolean excludeColumnMetadata
+    ) throws DpException {
+
+        final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
+
+        bucketBuilder.setPvName(document.getPvName());
+        bucketBuilder.setDataTimestamps(document.getDataTimestamps().toDataTimestamps());
+
+        // add data values (polymorphic: serialized-stored columns pass through as SerializedDataColumn,
+        // typed/legacy columns emit their typed form) — useSerializedColumns is pass-through-only here.
+        document.getDataColumn().addColumnToBucket(bucketBuilder);
+
+        if (excludeColumnMetadata && bucketBuilder.hasDataValues()) {
+            bucketBuilder.setDataValues(clearColumnMetadata(bucketBuilder.getDataValues()));
+        }
+
+        if (document.getProviderId() != null) {
+            bucketBuilder.setProviderId(document.getProviderId());
+        }
+        if (document.getProviderName() != null) {
+            bucketBuilder.setProviderName(document.getProviderName());
+        }
+
+        return bucketBuilder.build();
+    }
+
+    /**
+     * Returns a copy of the given {@link DataValues} with the {@code metadata} field cleared on
+     * whichever column type is set in the oneof. Uses reflection to invoke {@code clearMetadata()} on
+     * the set column's builder, mirroring the reflective approach used to set metadata on ingest, so
+     * all column types are handled uniformly without an 18-arm switch.
+     */
+    private static DataValues clearColumnMetadata(DataValues dataValues) {
+        final DataValues.ValuesCase valuesCase = dataValues.getValuesCase();
+        if (valuesCase == DataValues.ValuesCase.VALUES_NOT_SET) {
+            return dataValues;
+        }
+        try {
+            final DataValues.Builder dataValuesBuilder = dataValues.toBuilder();
+            // find the getter for the set column, clear metadata on it, set it back
+            final com.google.protobuf.Descriptors.FieldDescriptor fieldDescriptor =
+                    dataValues.getDescriptorForType().findFieldByNumber(valuesCase.getNumber());
+            final com.google.protobuf.Message columnMessage =
+                    (com.google.protobuf.Message) dataValues.getField(fieldDescriptor);
+            final com.google.protobuf.Message.Builder columnBuilder = columnMessage.toBuilder();
+            final com.google.protobuf.Descriptors.FieldDescriptor metadataField =
+                    columnBuilder.getDescriptorForType().findFieldByName("metadata");
+            if (metadataField != null && columnBuilder.hasField(metadataField)) {
+                columnBuilder.clearField(metadataField);
+                dataValuesBuilder.setField(fieldDescriptor, columnBuilder.build());
+                return dataValuesBuilder.build();
+            }
+            return dataValues;
+        } catch (Exception ex) {
+            // metadata suppression is best-effort formatting, not correctness — never fail the query.
+            return dataValues;
+        }
+    }
+
 }

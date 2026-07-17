@@ -104,6 +104,165 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onNext(response);
     }
 
+    // ---- Query API V2: queryBuckets response helpers ----
+
+    private static QueryBucketsResponse queryBucketsResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        return QueryBucketsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static QueryBucketsResponse queryBucketsResponseReject(String msg) {
+        return queryBucketsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QueryBucketsResponse queryBucketsResponseError(String msg) {
+        return queryBucketsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QueryBucketsResponse queryBucketsResponse(
+            QueryBucketsResponse.BucketQueryResult bucketQueryResult
+    ) {
+        return QueryBucketsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setBucketQueryResult(bucketQueryResult)
+                .build();
+    }
+
+    public static void sendQueryBucketsResponseReject(
+            String msg, StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponseReject(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryBucketsResponseError(
+            String msg, StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponseError(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQueryBucketsResponse(
+            QueryBucketsResponse.BucketQueryResult bucketQueryResult,
+            StreamObserver<QueryBucketsResponse> responseObserver
+    ) {
+        responseObserver.onNext(queryBucketsResponse(bucketQueryResult));
+        responseObserver.onCompleted();
+    }
+
+    /** Empty result is a normal (empty) payload, NOT an ExceptionalResult. */
+    public static void sendQueryBucketsResponseEmpty(
+            StreamObserver<QueryBucketsResponse> responseObserver) {
+        responseObserver.onNext(queryBucketsResponse(
+                QueryBucketsResponse.BucketQueryResult.getDefaultInstance()));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void queryBuckets(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        logger.debug("queryBuckets request received id: {}", responseObserver.hashCode());
+        // validation + resolution happens in the handler (it owns the resolver and mongo client);
+        // an invalid request is answered there with an ExceptionalResult reject.
+        handler.handleQueryBuckets(request, responseObserver);
+    }
+
+    @Override
+    public void queryBucketsStream(
+            QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        logger.debug("queryBucketsStream request received id: {}", responseObserver.hashCode());
+        // server-streaming (single request → response stream); validation/resolution in the handler.
+        // a non-empty pageToken on a streaming call is rejected there (Q7/§6).
+        handler.handleQueryBucketsStream(request, responseObserver);
+    }
+
+    // ---- Query API V2: querySamples response helpers ----
+
+    private static QuerySamplesResponse querySamplesResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status
+    ) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+
+        return QuerySamplesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static QuerySamplesResponse querySamplesResponseReject(String msg) {
+        return querySamplesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public static QuerySamplesResponse querySamplesResponseError(String msg) {
+        return querySamplesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
+    }
+
+    public static QuerySamplesResponse querySamplesResponse(
+            QuerySamplesResponse.SampleQueryResult sampleQueryResult
+    ) {
+        return QuerySamplesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setSampleQueryResult(sampleQueryResult)
+                .build();
+    }
+
+    public static void sendQuerySamplesResponseReject(
+            String msg, StreamObserver<QuerySamplesResponse> responseObserver) {
+        responseObserver.onNext(querySamplesResponseReject(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQuerySamplesResponseError(
+            String msg, StreamObserver<QuerySamplesResponse> responseObserver) {
+        responseObserver.onNext(querySamplesResponseError(msg));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQuerySamplesResponse(
+            QuerySamplesResponse.SampleQueryResult sampleQueryResult,
+            StreamObserver<QuerySamplesResponse> responseObserver
+    ) {
+        responseObserver.onNext(querySamplesResponse(sampleQueryResult));
+        responseObserver.onCompleted();
+    }
+
+    /** Empty result is a normal (empty) ColumnTable payload, NOT an ExceptionalResult. */
+    public static void sendQuerySamplesResponseEmpty(
+            StreamObserver<QuerySamplesResponse> responseObserver) {
+        responseObserver.onNext(querySamplesResponse(
+                QuerySamplesResponse.SampleQueryResult.getDefaultInstance()));
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void querySamples(QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
+        logger.debug("querySamples request received id: {}", responseObserver.hashCode());
+        // validation + resolution happens in the handler (it owns the resolver and mongo client).
+        handler.handleQuerySamples(request, responseObserver);
+    }
+
+    @Override
+    public void querySamplesStream(
+            QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
+        logger.debug("querySamplesStream request received id: {}", responseObserver.hashCode());
+        // server-streaming (single request → response stream); validation/resolution in the handler.
+        // a non-empty pageToken on a streaming call is rejected there (Q7/§6).
+        handler.handleQuerySamplesStream(request, responseObserver);
+    }
+
     private static QueryTableResponse queryTableResponseExceptionalResult(
             String msg, ExceptionalResult.ExceptionalResultStatus status
     ) {

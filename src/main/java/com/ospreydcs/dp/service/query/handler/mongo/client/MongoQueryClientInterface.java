@@ -7,8 +7,12 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
+import org.bson.conversions.Bson;
 
 import java.util.Collection;
+import java.util.List;
 
 public interface MongoQueryClientInterface {
 
@@ -40,6 +44,65 @@ public interface MongoQueryClientInterface {
      * 16MB BSON document, which a very large result could exceed.
      */
     Collection<String> executeQueryPvExistence(Collection<String> pvNameList);
+
+    /**
+     * Resolves a PV-name regex pattern to the concrete set of PV names present in the buckets
+     * collection ({@code distinct} on the indexed pvName restricted by the pattern). Query API V2
+     * uses this so pattern selectors materialize a concrete name list (Q9). Returns the matched
+     * names, or null on database error. Throws {@link java.util.regex.PatternSyntaxException} if the
+     * pattern does not compile (caller catches → reject, Q10).
+     */
+    List<String> resolvePvNamesByPattern(String pvNamePattern);
+
+    /**
+     * Resolves a set of PV-metadata criterion filters (built from the shared filter helpers) to the
+     * concrete set of PV names, then intersects with archive existence — dropping names that have no
+     * buckets at all (Q11 decision b). Returns the intersected names, or null on database error.
+     * An empty {@code criteriaFilters} matches all metadata records.
+     */
+    List<String> resolvePvNamesByMetadata(List<Bson> criteriaFilters);
+
+    /**
+     * Resolves a set of configuration-activation criterion filters (built from the shared filter
+     * helpers, non-temporal arms only) to the matching activations' {@code [startTime, endTime)}
+     * intervals. Open-ended activations (absent endTime) use {@code Long.MAX_VALUE} seconds as the
+     * end sentinel; the caller intersects with the query timeRange (Q3). Returns the intervals
+     * (un-unioned), or null on database error.
+     */
+    List<TimeInterval> resolveConfigurationIntervals(List<Bson> criteriaFilters);
+
+    /**
+     * Retrieves one page of buckets for a Query API V2 bucket query. Builds a bounded, resumable
+     * cursor: AND of the resolved PV-name filter, an {@code $or} of the per-fragment bucket-overlap
+     * predicates (Q3), and — when the resolved query carries a bucket keyset position — a seek
+     * strictly after that {@code (pvName, firstTimeSecs, firstTimeNanos)} tuple (Q2). Sorted by the
+     * compound {@code (pvName, firstTimeSecs, firstTimeNanos)} key and limited to
+     * {@code pageSize + 1} (the extra probe row lets the caller detect a following page). Returns
+     * null on a null/empty resolution.
+     */
+    MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery resolvedQuery);
+
+    /**
+     * Retrieves the full, unbounded bucket cursor for a Query API V2 streaming bucket query. Same
+     * PV-name filter and {@code $or} fragment overlap as {@link #executeQueryBucketsV2}, but with no
+     * keyset seek and no limit — the entire result is streamed to exhaustion and chunked into
+     * messages downstream (fire-and-consume). Returns null on a null/empty resolution.
+     */
+    MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
+
+    /**
+     * Retrieves buckets for a Query API V2 sample (column-table) query, over the page window
+     * {@code [windowBeginSecs.windowBeginNanos, endTime)} intersected with the resolved config
+     * fragments (Q3), for the resolved PV list. The window begin is the resume timestamp
+     * ({@code pageStart}) on a continuation page, or each fragment's own begin on the first page;
+     * the caller passes the effective window-begin so the same overlap machinery is reused. Sorted
+     * by {@code (pvName, firstTimeSecs, firstTimeNanos)}. Unlike the bucket path there is no keyset
+     * seek and no {@code pageSize+1} probe — the sample page is bounded by distinct-timestamp count
+     * and the byte budget during assembly, not by a bucket-count limit. Returns null on a null/empty
+     * resolution.
+     */
+    MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

@@ -9,6 +9,13 @@
 MongoClient:
   testDatabaseName: ${DP_MONGO_TEST_DB_NAME:dp-test}
 
+# QueryHandler: Query Service request handler settings (Query API V2 paging/resolution limits).
+# Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.
+QueryHandler:
+  queryV2DefaultPageSize: ${DP_QUERY_HANDLER_QUERY_V2_DEFAULT_PAGE_SIZE:10000}
+  queryV2MaxPageSize: ${DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE:100000}
+  queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
+
 Level1:
   Level2:
     intValue: 60

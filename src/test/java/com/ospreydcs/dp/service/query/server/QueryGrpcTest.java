@@ -108,6 +108,22 @@ public class QueryGrpcTest extends QueryTestBase {
         public void handleQueryProviderStats(QueryProviderStatsRequest request, StreamObserver<QueryProviderStatsResponse> responseObserver) {
         }
 
+        @Override
+        public void handleQueryBuckets(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        }
+
+        @Override
+        public void handleQueryBucketsStream(QueryBucketsRequest request, StreamObserver<QueryBucketsResponse> responseObserver) {
+        }
+
+        @Override
+        public void handleQuerySamples(QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
+        }
+
+        @Override
+        public void handleQuerySamplesStream(QuerySamplesRequest request, StreamObserver<QuerySamplesResponse> responseObserver) {
+        }
+
     }
 
     protected static class TestQueryClient {

@@ -56,6 +56,7 @@ public class BsonConstants {
     public static final String BSON_KEY_CALCULATIONS_ID = "_id";
 
     public static final String BSON_KEY_PV_METADATA_PV_NAME = "pvName";
+    public static final String BSON_KEY_PV_METADATA_ALIASES = "aliases";
     public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_ID = "lastBucketId";
     public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE_CASE = "lastBucketDataTypeCase";
     public static final String BSON_KEY_PV_METADATA_LAST_BUCKET_DATA_TYPE = "lastBucketDataType";

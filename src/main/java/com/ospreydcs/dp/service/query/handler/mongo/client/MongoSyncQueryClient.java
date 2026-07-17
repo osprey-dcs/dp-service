@@ -11,13 +11,20 @@ import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -40,15 +47,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeSeconds,
             long endTimeNanos
     ) {
-        final Bson endTimeFilter =
-                or(lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                        and(eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endTimeSeconds),
-                                lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endTimeNanos)));
-        final Bson startTimeFilter =
-                or(gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-                        and(eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, startTimeSeconds),
-                                gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, startTimeNanos)));
-        final Bson filter = and(columnNameFilter, endTimeFilter, startTimeFilter);
+        // Bucket overlap predicate (firstTime < end AND lastTime >= begin) built from the shared
+        // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift.
+        final Bson overlapFilter = MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+        final Bson filter = and(columnNameFilter, overlapFilter);
 
         logger.debug("executing query columns: " + columnNameFilter
                 + " startSeconds: " + startTimeSeconds
@@ -258,6 +261,263 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                     pvNameList.size(), ex.getMessage(), ex);
             return null;
         }
+    }
+
+    @Override
+    public List<String> resolvePvNamesByPattern(String pvNamePattern) {
+
+        // Compile the pattern up front so an invalid regex surfaces as a PatternSyntaxException the
+        // caller can turn into a clean reject (Q10), rather than failing deep in the driver.
+        final Pattern compiled = Pattern.compile(pvNamePattern, Pattern.CASE_INSENSITIVE);
+        final Bson pvNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, compiled);
+
+        try {
+            final List<String> pvNames = new ArrayList<>();
+            try (final MongoCursor<String> cursor = mongoCollectionBuckets
+                    .distinct(BsonConstants.BSON_KEY_PV_NAME, pvNameFilter, String.class)
+                    .iterator()) {
+                while (cursor.hasNext()) {
+                    pvNames.add(cursor.next());
+                }
+            }
+            return pvNames;
+        } catch (Exception ex) {
+            logger.error("resolvePvNamesByPattern database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public List<String> resolvePvNamesByMetadata(List<Bson> criteriaFilters) {
+
+        // An empty criteria list matches all metadata records.
+        final Bson metadataFilter = (criteriaFilters == null || criteriaFilters.isEmpty())
+                ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
+                : and(criteriaFilters);
+
+        try {
+            // Collect the pvName of every matching metadata record.
+            final Set<String> matchedNames = new HashSet<>();
+            try (final MongoCursor<PvMetadataDocument> cursor =
+                         mongoCollectionPvMetadata.find(metadataFilter).iterator()) {
+                while (cursor.hasNext()) {
+                    matchedNames.add(cursor.next().getPvName());
+                }
+            }
+
+            if (matchedNames.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            // Intersect with archive existence (Q11 b): drop names that have no buckets at all.
+            final List<String> existing = new ArrayList<>();
+            final Bson existenceFilter = in(BsonConstants.BSON_KEY_PV_NAME, matchedNames);
+            try (final MongoCursor<String> cursor = mongoCollectionBuckets
+                    .distinct(BsonConstants.BSON_KEY_PV_NAME, existenceFilter, String.class)
+                    .iterator()) {
+                while (cursor.hasNext()) {
+                    existing.add(cursor.next());
+                }
+            }
+            return existing;
+
+        } catch (Exception ex) {
+            logger.error("resolvePvNamesByMetadata database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public List<TimeInterval> resolveConfigurationIntervals(List<Bson> criteriaFilters) {
+
+        // A configuration selector with no criteria matches nothing (the resolver short-circuits this
+        // case before calling). Defensively honor that contract here too: an empty filter list yields
+        // no intervals rather than scanning and unioning every activation in the collection.
+        if (criteriaFilters == null || criteriaFilters.isEmpty()) {
+            return new ArrayList<>();
+        }
+        final Bson activationFilter = and(criteriaFilters);
+
+        try {
+            final List<TimeInterval> intervals = new ArrayList<>();
+            try (final MongoCursor<ConfigurationActivationDocument> cursor =
+                         mongoCollectionConfigurationActivations.find(activationFilter).iterator()) {
+                while (cursor.hasNext()) {
+                    final ConfigurationActivationDocument activation = cursor.next();
+                    final Instant start = activation.getStartTime();
+                    if (start == null) {
+                        continue; // an activation with no start time cannot bound a retrieval range
+                    }
+                    final Instant end = activation.getEndTime(); // null = open-ended
+                    final long endSecs = (end == null) ? Long.MAX_VALUE : end.getEpochSecond();
+                    final long endNanos = (end == null) ? 0L : end.getNano();
+                    intervals.add(new TimeInterval(
+                            start.getEpochSecond(), start.getNano(), endSecs, endNanos));
+                }
+            }
+            return intervals;
+
+        } catch (Exception ex) {
+            logger.error("resolveConfigurationIntervals database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery resolvedQuery) {
+
+        if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
+            return null;
+        }
+
+        // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
+        final List<Bson> andParts = new ArrayList<>();
+        andParts.add(bucketBaseFilterV2(resolvedQuery));
+
+        // Keyset seek (unary paging) is ANDed at top level, NOT distributed into the $or branches
+        // (Q3 correctness note). Absent on the first page and on streaming queries.
+        final KeysetPosition pageStart = resolvedQuery.getPageStart();
+        if (pageStart != null) {
+            andParts.add(bucketKeysetSeekFilter(pageStart));
+        }
+
+        try {
+            return mongoCollectionBuckets
+                    .find(and(andParts))
+                    .sort(bucketV2Sort())
+                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery) {
+
+        if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
+            return null;
+        }
+
+        // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
+        // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
+        try {
+            return mongoCollectionBuckets
+                    .find(bucketBaseFilterV2(resolvedQuery))
+                    .sort(bucketV2Sort())
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    @Override
+    public MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+
+        if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
+            return null;
+        }
+
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
+
+        // Per-fragment overlap predicates with each fragment's lower bound clamped to the page window
+        // begin (windowBegin = resume timestamp on a continuation page, or timeRange begin on page 1).
+        // Fragments that end at or before the window begin contribute nothing to this page.
+        final List<Bson> fragmentFilters = new ArrayList<>();
+        for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
+            final long clampedBeginSecs;
+            final long clampedBeginNanos;
+            if (TimeInterval.compareInstant(
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
+                    windowBeginSecs, windowBeginNanos) >= 0) {
+                clampedBeginSecs = interval.getBeginSeconds();
+                clampedBeginNanos = interval.getBeginNanos();
+            } else {
+                clampedBeginSecs = windowBeginSecs;
+                clampedBeginNanos = windowBeginNanos;
+            }
+            // drop fragments entirely before the window begin (clamped begin >= fragment end)
+            if (TimeInterval.compareInstant(
+                    clampedBeginSecs, clampedBeginNanos,
+                    interval.getEndSeconds(), interval.getEndNanos()) >= 0) {
+                continue;
+            }
+            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    clampedBeginSecs, clampedBeginNanos,
+                    interval.getEndSeconds(), interval.getEndNanos()));
+        }
+
+        if (fragmentFilters.isEmpty()) {
+            // nothing overlaps the page window
+            return null;
+        }
+
+        final Bson overlapFilter = (fragmentFilters.size() == 1)
+                ? fragmentFilters.get(0)
+                : or(fragmentFilters);
+
+        try {
+            return mongoCollectionBuckets
+                    .find(and(pvNameFilter, overlapFilter))
+                    .sort(bucketV2Sort())
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    /**
+     * Base V2 bucket filter shared by the unary and streaming retrieval paths: the resolved PV-name
+     * {@code in(...)} filter AND the {@code $or} of the per-fragment bucket-overlap predicates
+     * (single fragment → no {@code $or} wrapper). Built from the shared filter builder so V1 and V2
+     * overlap semantics cannot drift.
+     */
+    private static Bson bucketBaseFilterV2(ResolvedQuery resolvedQuery) {
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
+
+        final List<Bson> fragmentFilters = new ArrayList<>();
+        for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
+            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
+                    interval.getEndSeconds(), interval.getEndNanos()));
+        }
+        final Bson overlapFilter = (fragmentFilters.size() == 1)
+                ? fragmentFilters.get(0)
+                : or(fragmentFilters);
+
+        return and(pvNameFilter, overlapFilter);
+    }
+
+    /** Compound V2 bucket sort {@code (pvName, firstTimeSecs, firstTimeNanos)}. */
+    private static Bson bucketV2Sort() {
+        return ascending(
+                BsonConstants.BSON_KEY_PV_NAME,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
+    }
+
+    /**
+     * Keyset seek predicate selecting buckets strictly after {@code (pvName, firstTimeSecs,
+     * firstTimeNanos)} in the compound sort order (Q2). Lexicographic tuple {@code >}. No tiebreaker
+     * needed — the composite bucket {@code _id} proves {@code (pvName, firstTime)} uniqueness.
+     */
+    private static Bson bucketKeysetSeekFilter(KeysetPosition pos) {
+        final String p = pos.getPvName();
+        final long s = pos.getSeconds();
+        final long n = pos.getNanos();
+        return or(
+                gt(BsonConstants.BSON_KEY_PV_NAME, p),
+                and(
+                        eq(BsonConstants.BSON_KEY_PV_NAME, p),
+                        gt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, s)),
+                and(
+                        eq(BsonConstants.BSON_KEY_PV_NAME, p),
+                        eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, s),
+                        gt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, n)));
     }
 
     @Override

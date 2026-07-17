@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 
@@ -38,6 +39,17 @@ public class TabularDataUtility {
             int bucketDataSize = addBucketToTable(
                     bucket, tableValueMap, beginSeconds, beginNanos, endSeconds, endNanos);
             currentDataSize = currentDataSize + bucketDataSize;
+            // Size accounting is per-BUCKET, not per-timestamp: a whole bucket is added to the table
+            // before the limit is checked, so currentDataSize can overshoot sizeLimit by up to one
+            // bucket's worth of data. This is intentional and benign for the callers that pass a
+            // sizeLimit as a HARD ceiling (queryTable and the export job both discard the result and
+            // return an error when sizeLimitExceeded() is true — overshooting by one bucket vs. one
+            // byte yields the same error outcome). The V2 querySamples unary dispatcher instead uses
+            // the flag as a PAGING boundary (drain-then-truncate) and owns the zero-progress guard for
+            // the case where the overshoot collapses to a single indivisible timestamp. Do NOT tighten
+            // this to per-timestamp granularity without revisiting those callers — for the hard-ceiling
+            // callers it would change nothing observable, and V2's boundary handling already accounts
+            // for the overshoot.
             if (sizeLimit != null && currentDataSize > sizeLimit) {
                 cursor.close();
                 return new TimestampDataMapSizeStats(currentDataSize, true);
@@ -70,9 +82,10 @@ public class TabularDataUtility {
             // Legacy DataColumn documents can be converted directly
             bucketColumn = ((DataColumnDocument) columnDocument).toDataColumn();
         } else {
-            // Binary columns (arrays, images, structs) cannot be converted to tabular format
-            throw new DpException("Column type " + columnDocument.getClass().getSimpleName() + 
-                                " cannot be exported to tabular format (CSV/Excel/etc). Binary column types require specialized export formats.");
+            // Non-scalar columns (arrays, images, structs) have no tabular (row/column) representation.
+            // Throw a neutral, PV-named exception; each caller phrases its own guidance (the export
+            // framework and querySamples both catch this and translate for their context, Q4).
+            throw new NonScalarColumnException(bucket.getPvName(), columnDocument.getClass().getSimpleName());
         }
 
         return addColumnsToTable(
