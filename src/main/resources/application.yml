@@ -57,6 +57,17 @@ GrpcServer:
   # GrpcServer.permitKeepAliveWithoutCalls: If true, allows clients to send keepalive pings even when there are no active RPCs on the connection.
   permitKeepAliveWithoutCalls: ${DP_GRPC_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS:true}
 
+# Buckets: Invariants of the buckets collection shared by the ingestion and query services.
+Buckets:
+
+  # Buckets.maxBucketSpanSeconds: Maximum time span (lastTime - firstTime) a single bucket may cover.
+  # Ingestion rejects data frames whose timestamps span more than this limit. The query service relies
+  # on this invariant to add a lower bound to bucket time-range queries (issue #197); without it, query
+  # cost scales with each PV's total archive history instead of the query range.
+  # WARNING: on an archive with pre-existing data, this value must be at least the largest bucket span
+  # already stored, or time-range queries may silently miss older long-span buckets.
+  maxBucketSpanSeconds: ${DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS:86400}
+
 # IngestionServer: Settings for the Ingestion server process.
 IngestionServer:
 

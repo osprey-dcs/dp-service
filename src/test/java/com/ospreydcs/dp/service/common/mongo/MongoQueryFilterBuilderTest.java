@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import org.bson.BsonDocument;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.conversions.Bson;
@@ -167,5 +168,37 @@ public class MongoQueryFilterBuilderTest {
                         Filters.exists(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, false),
                         Filters.gt(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, start)));
         assertSameBson(expected, MongoQueryFilterBuilder.activationOverlapsRangeFilter(start, end));
+    }
+
+    // -----------------------------------------------------------------------
+    // bucketOverlapsRangeFilter
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testBucketOverlapsRangeFilter_includesSpanLowerBound() {
+        final long beginSecs = 1_781_701_200L;
+        final long beginNanos = 0L;
+        final long endSecs = 1_781_701_201L;
+        final long endNanos = 0L;
+
+        final Bson endTimeFilter = Filters.or(
+                Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                        Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
+        final Bson startTimeFilter = Filters.or(
+                Filters.gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                        Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
+        // The #197 lower bound keeps the compound index scan from starting at the beginning of
+        // each PV's history: firstTime.seconds >= beginSeconds - maxBucketSpanSeconds.
+        final Bson spanLowerBoundFilter = Filters.gte(
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                beginSecs - BucketSpanLimits.getMaxBucketSpanSeconds());
+        final Bson expected = Filters.and(spanLowerBoundFilter, endTimeFilter, startTimeFilter);
+
+        assertSameBson(expected, MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                beginSecs, beginNanos, endSecs, endNanos));
     }
 }
