@@ -75,6 +75,15 @@ public class MongoTestClient extends MongoSyncClient {
         return getMongoDatabaseName();
     }
 
+    /**
+     * Writes a bucket document straight to the collection, bypassing the ingestion service and its
+     * validation. Lets a test create a bucket that ingestion would reject — notably one exceeding
+     * the max bucket span limit, standing in for data ingested before that limit existed (#197).
+     */
+    public void insertBucketDocument(BucketDocument bucketDocument) {
+        mongoCollectionBuckets.insertOne(bucketDocument);
+    }
+
     public ProviderDocument findProvider(String providerId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
             List<ProviderDocument> matchingDocuments = new ArrayList<>();
