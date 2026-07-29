@@ -11,8 +11,6 @@ import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanVerifier;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
@@ -41,50 +39,6 @@ import static com.mongodb.client.model.Indexes.ascending;
 public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryClientInterface {
 
     private static final Logger logger = LogManager.getLogger();
-
-    private static final String CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP =
-            "Buckets.verifyBucketSpansOnStartup";
-    private static final boolean DEFAULT_VERIFY_BUCKET_SPANS_ON_STARTUP = true;
-
-    /**
-     * Confirms that the stored archive satisfies the configured maximum bucket span before the
-     * query-side time-range lower bound (#197) is applied to it. Ingestion enforces the limit for
-     * new data only, so data ingested before the limit existed could otherwise be silently excluded
-     * from query results.
-     *
-     * <p>Runs at startup and blocks, because a query service that has not established this cannot
-     * safely apply the bound. The result is recorded so the scan happens once per limit value
-     * rather than on every restart; see {@link BucketSpanVerifier}. On violation or error the bound
-     * is disabled for the process and queries fall back to the slower unbounded scan, so the
-     * service still returns correct results.
-     *
-     * @return true — verification never blocks startup; a failure disables the optimization instead
-     */
-    @Override
-    public boolean verifyBucketSpans() {
-
-        if (!configMgr().getConfigBoolean(
-                CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP, DEFAULT_VERIFY_BUCKET_SPANS_ON_STARTUP)) {
-            logger.info(
-                    "bucket span verification disabled by configuration ({}); the query time-range "
-                            + "lower bound is applied without verifying the stored archive",
-                    CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP);
-            return true;
-        }
-
-        final long limitSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
-
-        final BucketSpanVerifier.VerificationResult result = BucketSpanVerifier.verify(
-                mongoDatabase.getCollection(getCollectionNameBuckets()),
-                mongoDatabase.getCollection(BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION),
-                limitSeconds);
-
-        if (!result.boundIsSafe()) {
-            BucketSpanLimits.disableQueryLowerBound();
-        }
-
-        return true;
-    }
 
     public MongoCursor<BucketDocument> executeBucketDocumentQuery(
             Bson columnNameFilter,
