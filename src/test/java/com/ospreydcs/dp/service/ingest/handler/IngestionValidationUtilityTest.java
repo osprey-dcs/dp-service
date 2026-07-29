@@ -1093,8 +1093,8 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
         final long maxSpanNanos = BucketSpanLimits.getMaxBucketSpanNanos();
         SamplingClock clock = SamplingClock.newBuilder()
                 .setStartTime(startTime)
-                .setPeriodNanos(maxSpanNanos) // 2 samples, one full max-span apart -> span == 1 * maxSpanNanos
-                .setCount(3)                  // span = 2 * maxSpanNanos, exceeds limit
+                .setPeriodNanos(maxSpanNanos)
+                .setCount(3) // span = (count - 1) * periodNanos = 2 * maxSpanNanos, exceeds limit
                 .build();
         DataTimestamps timestamps = DataTimestamps.newBuilder()
                 .setSamplingClock(clock)

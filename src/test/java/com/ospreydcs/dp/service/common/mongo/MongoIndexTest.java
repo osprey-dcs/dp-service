@@ -51,7 +51,6 @@ public class MongoIndexTest {
                 final List<String> expectedIndexNames =
                         List.of(
                                 "_id_",
-                                "pvName_1",
                                 "pvName_1_dataTimestamps.firstTime.seconds_1_dataTimestamps.firstTime.nanos_1_dataTimestamps.lastTime.seconds_1_dataTimestamps.lastTime.nanos_1",
                                 "providerId_1"
                         );
