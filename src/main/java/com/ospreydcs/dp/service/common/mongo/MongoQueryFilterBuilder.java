@@ -141,6 +141,15 @@ public class MongoQueryFilterBuilder {
         // by ingestion validation), so any bucket with lastTime >= begin must have
         // firstTime.seconds >= beginSeconds - maxBucketSpanSeconds. Without this bound the compound
         // index scan has no lower limit and covers each PV's entire history up to the query window.
+        //
+        // The bound is omitted when startup verification could not confirm that the stored archive
+        // satisfies the limit (see BucketSpanVerifier). Applying it to an archive containing an
+        // over-long bucket would silently exclude that bucket from results, so an unbounded scan --
+        // slow but correct -- is the safer degradation.
+        if (!BucketSpanLimits.isQueryLowerBoundEnabled()) {
+            return Filters.and(endTimeFilter, startTimeFilter);
+        }
+
         final Bson spanLowerBoundFilter = Filters.gte(
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                 beginSeconds - BucketSpanLimits.getMaxBucketSpanSeconds());

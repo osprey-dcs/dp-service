@@ -13,6 +13,9 @@ MongoClient:
 # Mirrors the main application.yml key so tests exercise the same defaults; see that file for docs.
 Buckets:
   maxBucketSpanSeconds: ${DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS:86400}
+  # Off by default under test: the buckets collection is cleaned and repopulated between tests, so a
+  # startup scan would verify an empty collection. BucketSpanVerifierTest exercises the check directly.
+  verifyBucketSpansOnStartup: ${DP_BUCKETS_VERIFY_SPANS_ON_STARTUP:false}
 
 # QueryHandler: Query Service request handler settings (Query API V2 paging/resolution limits).
 # Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.

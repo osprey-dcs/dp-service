@@ -262,6 +262,14 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 
 **Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB; timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
 
+### Max Bucket Span Invariant (issue #197)
+`Buckets.maxBucketSpanSeconds` is a shared invariant between ingestion and query, and both of its failure modes are *silent wrong answers* rather than errors — treat it accordingly:
+- **`BucketSpanLimits`** — single source for the limit. Value is validated once (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos conversion would overflow) and cached; invalid config throws `DpRuntimeException`.
+- **Ingestion** enforces the limit for *new* data only, via `IngestionValidationUtility`.
+- **Query** adds the `firstTime` lower bound only when the stored archive is known to comply. `BucketSpanVerifier` checks this at query-service startup and records the outcome in the `bucketSpanVerification` collection, so the scan runs once per limit value rather than every restart. On violation or error the bound is disabled process-wide (`BucketSpanLimits.disableQueryLowerBound()`) and queries degrade to the slower unbounded scan — correct but slow, never fast but wrong.
+- Disable the check with `Buckets.verifyBucketSpansOnStartup: false` only when compliance has been confirmed independently. Off by default under test.
+- **Never sample** as a shortcut for this check: over-long buckets are typically rare, so a sample that misses them reports a false all-clear.
+
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 - **`BenchmarkIngestDataStream`** / **`BenchmarkIngestDataBidiStream`**: compare `DATA_COLUMN` (legacy), `DOUBLE_COLUMN`, and `SERIALIZED_DATA_COLUMN` strategies

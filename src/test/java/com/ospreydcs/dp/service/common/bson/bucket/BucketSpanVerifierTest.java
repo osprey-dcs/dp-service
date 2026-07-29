@@ -1,0 +1,164 @@
+package com.ospreydcs.dp.service.common.bson.bucket;
+
+import com.mongodb.client.MongoCollection;
+import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import org.bson.Document;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Covers the startup archive verification for the max bucket span invariant (#197). The scenarios
+ * that matter are the ones where the archive predates the limit, since applying the query lower
+ * bound to such an archive silently drops buckets rather than raising an error.
+ */
+public class BucketSpanVerifierTest {
+
+    private static final long LIMIT_SECONDS = 86_400L;
+
+    private VerifierTestClient testClient;
+    private MongoCollection<Document> bucketsCollection;
+    private MongoCollection<Document> verificationCollection;
+
+    /** Exposes raw Document-typed collection handles, which is what the verifier operates on. */
+    private static class VerifierTestClient extends MongoTestClient {
+
+        MongoCollection<Document> bucketsAsDocuments() {
+            return mongoDatabase.getCollection(getCollectionNameBuckets());
+        }
+
+        MongoCollection<Document> verificationAsDocuments() {
+            return mongoDatabase.getCollection(
+                    BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION);
+        }
+    }
+
+    @Before
+    public void setUp() {
+        testClient = new VerifierTestClient();
+        testClient.init();
+        bucketsCollection = testClient.bucketsAsDocuments();
+        verificationCollection = testClient.verificationAsDocuments();
+        bucketsCollection.deleteMany(new Document());
+        verificationCollection.deleteMany(new Document());
+        BucketSpanLimits.resetCachedLimitForTesting();
+    }
+
+    @After
+    public void tearDown() {
+        bucketsCollection.deleteMany(new Document());
+        verificationCollection.deleteMany(new Document());
+        testClient.fini();
+        BucketSpanLimits.resetCachedLimitForTesting();
+    }
+
+    /** Inserts a bucket document carrying only the fields the verifier reads. */
+    private void insertBucket(String pvName, long firstSeconds, long spanSeconds) {
+        bucketsCollection.insertOne(new Document()
+                .append(BsonConstants.BSON_KEY_PV_NAME, pvName)
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document()
+                                .append("seconds", firstSeconds).append("nanos", 0))
+                        .append("lastTime", new Document()
+                                .append("seconds", firstSeconds + spanSeconds).append("nanos", 0))));
+    }
+
+    private BucketSpanVerifier.VerificationResult verify() {
+        return BucketSpanVerifier.verify(bucketsCollection, verificationCollection, LIMIT_SECONDS);
+    }
+
+    @Test
+    public void testEmptyArchiveVerifiesClean() {
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VERIFIED_CLEAN, result.outcome());
+        assertTrue(result.boundIsSafe());
+    }
+
+    @Test
+    public void testCompliantArchiveVerifiesClean() {
+        insertBucket("pv_1", 1_700_000_000L, 1);
+        insertBucket("pv_2", 1_700_000_100L, 3_600);
+        insertBucket("pv_3", 1_700_000_200L, LIMIT_SECONDS); // exactly at the limit is compliant
+
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VERIFIED_CLEAN, result.outcome());
+        assertTrue(result.boundIsSafe());
+        assertNull(result.violatingPvName());
+    }
+
+    /**
+     * The case the check exists for: a bucket ingested before the limit was enforced, which the
+     * query lower bound would exclude from results without reporting anything.
+     */
+    @Test
+    public void testOverlongBucketDetected() {
+        insertBucket("pv_compliant", 1_700_000_000L, 60);
+        insertBucket("pv_overlong", 1_700_000_000L, LIMIT_SECONDS + 1);
+
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VIOLATION_FOUND, result.outcome());
+        assertFalse(result.boundIsSafe());
+        assertEquals("pv_overlong", result.violatingPvName());
+        assertEquals(LIMIT_SECONDS + 1, result.violatingSpanSeconds());
+    }
+
+    /** A violation must not be recorded as verified, so the next startup re-checks. */
+    @Test
+    public void testViolationDoesNotRecordMarker() {
+        insertBucket("pv_overlong", 1_700_000_000L, LIMIT_SECONDS * 2);
+        verify();
+        assertEquals(0, verificationCollection.countDocuments());
+    }
+
+    @Test
+    public void testSecondRunSkipsScanAfterCleanVerification() {
+        insertBucket("pv_1", 1_700_000_000L, 1);
+
+        assertEquals(
+                BucketSpanVerifier.VerificationOutcome.VERIFIED_CLEAN, verify().outcome());
+        assertEquals(1, verificationCollection.countDocuments());
+
+        final BucketSpanVerifier.VerificationResult second = verify();
+        assertEquals(
+                BucketSpanVerifier.VerificationOutcome.SKIPPED_ALREADY_VERIFIED, second.outcome());
+        assertTrue(second.boundIsSafe());
+    }
+
+    /**
+     * A marker recorded at a smaller limit still implies compliance with a larger one, since every
+     * bucket fitting the smaller span also fits the larger.
+     */
+    @Test
+    public void testMarkerFromSmallerLimitSatisfiesLargerLimit() {
+        insertBucket("pv_1", 1_700_000_000L, 1);
+        BucketSpanVerifier.verify(bucketsCollection, verificationCollection, 3_600L);
+
+        final BucketSpanVerifier.VerificationResult result =
+                BucketSpanVerifier.verify(bucketsCollection, verificationCollection, LIMIT_SECONDS);
+        assertEquals(
+                BucketSpanVerifier.VerificationOutcome.SKIPPED_ALREADY_VERIFIED, result.outcome());
+    }
+
+    /**
+     * Lowering the limit is a stronger claim than the recorded one, so the archive must be
+     * re-scanned rather than trusting the existing marker.
+     */
+    @Test
+    public void testMarkerFromLargerLimitTriggersRescan() {
+        insertBucket("pv_overlong", 1_700_000_000L, 7_200);
+        BucketSpanVerifier.verify(bucketsCollection, verificationCollection, LIMIT_SECONDS);
+        assertEquals(1, verificationCollection.countDocuments());
+
+        // Re-verify at a limit the stored bucket violates; the old marker must not mask it.
+        final BucketSpanVerifier.VerificationResult result =
+                BucketSpanVerifier.verify(bucketsCollection, verificationCollection, 3_600L);
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VIOLATION_FOUND, result.outcome());
+        assertEquals("pv_overlong", result.violatingPvName());
+    }
+}

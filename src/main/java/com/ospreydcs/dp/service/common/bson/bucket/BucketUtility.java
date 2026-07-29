@@ -10,6 +10,15 @@ import java.util.List;
 
 import static java.lang.Math.round;
 
+/**
+ * Builds BucketDocuments directly for tests and benchmarks, bypassing the ingestion service.
+ *
+ * <p>NOTE (#197): because this path skips {@code IngestionValidationUtility}, it also skips
+ * enforcement of the maximum bucket span invariant (see {@link BucketSpanLimits}). Callers must
+ * keep {@code numSecondsPerBucket} within {@code Buckets.maxBucketSpanSeconds}; a bucket generated
+ * beyond that span is excluded by the query-side time-range lower bound and simply will not be
+ * found, with no error to indicate why.
+ */
 public class BucketUtility {
     public static List<BucketDocument> createBucketDocuments(
             long firstSeconds,
