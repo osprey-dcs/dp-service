@@ -150,9 +150,21 @@ public class MongoQueryFilterBuilder {
             return Filters.and(endTimeFilter, startTimeFilter);
         }
 
+        // Saturate rather than wrap. Query time ranges are not validated for a lower bound, so a
+        // begin time near Long.MIN_VALUE reaches this subtraction; wrapping would produce a large
+        // POSITIVE lower bound that excludes every bucket, turning an over-wide query into a silent
+        // empty result. Clamping to Long.MIN_VALUE makes the bound a no-op instead, which is the
+        // correct meaning: a query starting at the dawn of time has no useful lower bound.
+        final long maxBucketSpanSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
+        final long spanLowerBoundSeconds;
+        try {
+            spanLowerBoundSeconds = Math.subtractExact(beginSeconds, maxBucketSpanSeconds);
+        } catch (ArithmeticException ex) {
+            return Filters.and(endTimeFilter, startTimeFilter);
+        }
+
         final Bson spanLowerBoundFilter = Filters.gte(
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                beginSeconds - BucketSpanLimits.getMaxBucketSpanSeconds());
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, spanLowerBoundSeconds);
 
         return Filters.and(spanLowerBoundFilter, endTimeFilter, startTimeFilter);
     }
