@@ -271,6 +271,11 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 - Disable the check with `Buckets.verifyBucketSpansOnStartup: false` only when compliance has been confirmed independently. Off by default under test.
 - **Never sample** as a shortcut for this check: over-long buckets are typically rare, so a sample that misses them reports a false all-clear.
 
+### Bucket Deserialization Must Fail as `DpException`
+The query dispatchers (`QueryDataDispatcher`, `QueryDataStreamDispatcher`, `QueryDataBidiStreamDispatcher`, `QueryBuckets*Dispatcher`) catch **only `DpException`** around bucket deserialization. Any other exception escapes the dispatch loop and terminates the response stream, so the client receives **zero buckets instead of an error** — indistinguishable from "no data in range."
+
+`BucketDocument.dataBucketFromDocument()` / `dataBucketFromDocumentV2()` therefore validate required fields up front and wrap any `RuntimeException` as `DpException`. Preserve that contract when adding deserialization logic: a malformed stored document must produce a reportable error, never an unchecked throw. In tests, insert fully-populated `BucketDocument`s (see `MongoTestClient.insertBucketDocument()`) rather than hand-rolled partial BSON.
+
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 - **`BenchmarkIngestDataStream`** / **`BenchmarkIngestDataBidiStream`**: compare `DATA_COLUMN` (legacy), `DOUBLE_COLUMN`, and `SERIALIZED_DATA_COLUMN` strategies
