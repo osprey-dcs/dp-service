@@ -19,6 +19,22 @@ public interface MongoQueryClientInterface {
     boolean init();
     boolean fini();
 
+    /**
+     * Verifies that stored buckets satisfy the configured maximum bucket span before the query-side
+     * time-range lower bound is applied (#197). Called at startup by every service that issues
+     * bucket time-range queries — the query service directly, and the annotation service through
+     * dataset export — since the flag it controls is process-wide.
+     *
+     * <p>Implemented by {@code MongoSyncClient}; defaults to a no-op for clients backed by
+     * something other than the buckets collection, such as test stubs.
+     *
+     * @return true if startup may proceed; verification failure disables the bound rather than
+     *         failing startup, so this does not return false in the default implementation
+     */
+    default boolean verifyBucketSpans() {
+        return true;
+    }
+
     MongoCursor<BucketDocument> executeDataBlockQuery(DataBlockDocument dataBlock);
 
     MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec);

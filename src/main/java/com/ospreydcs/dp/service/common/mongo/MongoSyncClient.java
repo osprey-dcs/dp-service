@@ -9,6 +9,8 @@ import com.mongodb.client.MongoDatabase;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanVerifier;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -25,6 +27,10 @@ public class MongoSyncClient extends MongoClientBase {
 
     // static variables
     private static final Logger logger = LogManager.getLogger();
+
+    private static final String CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP =
+            "Buckets.verifyBucketSpansOnStartup";
+    private static final boolean DEFAULT_VERIFY_BUCKET_SPANS_ON_STARTUP = true;
 
     // instance variables
     protected MongoClient mongoClient = null;
@@ -199,6 +205,49 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean createMongoIndexConfigurationActivationsWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions) {
         mongoCollectionConfigurationActivations.createIndex(fieldNamesBson, indexOptions);
+        return true;
+    }
+
+    /**
+     * Confirms that the stored archive satisfies the configured maximum bucket span before the
+     * query-side time-range lower bound (#197) is applied to it. Ingestion enforces the limit for
+     * new data only, so data ingested before the limit existed could otherwise be silently excluded
+     * from query results.
+     *
+     * <p>Lives on the shared sync client because every service that issues bucket time-range
+     * queries must establish this before relying on the bound, not just the query service: the
+     * annotation service reaches the same filter through dataset export. The flag it controls is
+     * process-wide, so each service process must verify independently.
+     *
+     * <p>Runs at startup and blocks. The result is recorded so the scan happens once per limit
+     * value rather than on every restart; see {@link BucketSpanVerifier}. On violation or error the
+     * bound is disabled for the process and queries fall back to the slower unbounded scan, so the
+     * service still returns correct results.
+     *
+     * @return true — verification never blocks startup; a failure disables the optimization instead
+     */
+    public boolean verifyBucketSpans() {
+
+        if (!configMgr().getConfigBoolean(
+                CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP, DEFAULT_VERIFY_BUCKET_SPANS_ON_STARTUP)) {
+            logger.info(
+                    "bucket span verification disabled by configuration ({}); the query time-range "
+                            + "lower bound is applied without verifying the stored archive",
+                    CFG_KEY_VERIFY_BUCKET_SPANS_ON_STARTUP);
+            return true;
+        }
+
+        final long limitSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
+
+        final BucketSpanVerifier.VerificationResult result = BucketSpanVerifier.verify(
+                mongoDatabase.getCollection(getCollectionNameBuckets()),
+                mongoDatabase.getCollection(BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION),
+                limitSeconds);
+
+        if (!result.boundIsSafe()) {
+            BucketSpanLimits.disableQueryLowerBound();
+        }
+
         return true;
     }
 

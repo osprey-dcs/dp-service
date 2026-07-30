@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import org.bson.BsonDocument;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.conversions.Bson;
@@ -167,5 +168,117 @@ public class MongoQueryFilterBuilderTest {
                         Filters.exists(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, false),
                         Filters.gt(BsonConstants.BSON_KEY_ACTIVATION_END_TIME, start)));
         assertSameBson(expected, MongoQueryFilterBuilder.activationOverlapsRangeFilter(start, end));
+    }
+
+    // -----------------------------------------------------------------------
+    // bucketOverlapsRangeFilter
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testBucketOverlapsRangeFilter_includesSpanLowerBound() {
+        final long beginSecs = 1_781_701_200L;
+        final long beginNanos = 0L;
+        final long endSecs = 1_781_701_201L;
+        final long endNanos = 0L;
+
+        final Bson endTimeFilter = Filters.or(
+                Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                        Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
+        final Bson startTimeFilter = Filters.or(
+                Filters.gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                        Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
+        // The #197 lower bound keeps the compound index scan from starting at the beginning of
+        // each PV's history: firstTime.seconds >= beginSeconds - maxBucketSpanSeconds.
+        final Bson spanLowerBoundFilter = Filters.gte(
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                beginSecs - BucketSpanLimits.getMaxBucketSpanSeconds());
+        final Bson expected = Filters.and(spanLowerBoundFilter, endTimeFilter, startTimeFilter);
+
+        assertSameBson(expected, MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                beginSecs, beginNanos, endSecs, endNanos));
+    }
+
+    /**
+     * When startup verification cannot confirm the archive satisfies the span limit, the lower
+     * bound must be omitted entirely: keeping it would silently exclude any over-long bucket from
+     * results, whereas omitting it only costs query performance.
+     */
+    @Test
+    public void testBucketOverlapsRangeFilter_omitsSpanLowerBoundWhenDisabled() {
+        final long beginSecs = 1_781_701_200L;
+        final long beginNanos = 0L;
+        final long endSecs = 1_781_701_201L;
+        final long endNanos = 0L;
+
+        final Bson endTimeFilter = Filters.or(
+                Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                        Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
+        final Bson startTimeFilter = Filters.or(
+                Filters.gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                        Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
+        final Bson expected = Filters.and(endTimeFilter, startTimeFilter);
+
+        try {
+            BucketSpanLimits.disableQueryLowerBound();
+            assertSameBson(expected, MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    beginSecs, beginNanos, endSecs, endNanos));
+        } finally {
+            BucketSpanLimits.resetCachedLimitForTesting();
+        }
+    }
+
+    /**
+     * Query time ranges carry no validated lower bound, so a begin time near {@code Long.MIN_VALUE}
+     * reaches the {@code beginSeconds - maxBucketSpanSeconds} subtraction. Wrapping would yield a
+     * large POSITIVE lower bound that excludes every stored bucket, turning an over-wide query into
+     * a silent empty result; the bound must be omitted instead.
+     */
+    @Test
+    public void testBucketOverlapsRangeFilter_omitsSpanLowerBoundOnUnderflow() {
+        final long beginSecs = Long.MIN_VALUE;
+        final long beginNanos = 0L;
+        final long endSecs = 1_781_701_201L;
+        final long endNanos = 0L;
+
+        final Bson endTimeFilter = Filters.or(
+                Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs),
+                        Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
+        final Bson startTimeFilter = Filters.or(
+                Filters.gt(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                Filters.and(
+                        Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSecs),
+                        Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
+        final Bson expected = Filters.and(endTimeFilter, startTimeFilter);
+
+        assertSameBson(expected, MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                beginSecs, beginNanos, endSecs, endNanos));
+    }
+
+    /**
+     * A begin time just above the underflow threshold still gets the bound, so the guard does not
+     * disable the optimization for ordinary queries.
+     */
+    @Test
+    public void testBucketOverlapsRangeFilter_keepsSpanLowerBoundJustAboveUnderflow() {
+        final long beginSecs = Long.MIN_VALUE + BucketSpanLimits.getMaxBucketSpanSeconds();
+        final long beginNanos = 0L;
+        final long endSecs = 1_781_701_201L;
+        final long endNanos = 0L;
+
+        final Bson actual = MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                beginSecs, beginNanos, endSecs, endNanos);
+
+        // The bound survives, and its value is the exact (non-wrapped) difference.
+        assertTrue(render(actual).toJson().contains(String.valueOf(Long.MIN_VALUE)));
     }
 }

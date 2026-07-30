@@ -167,8 +167,10 @@ public abstract class MongoClientBase {
 
     private boolean createMongoIndexesBuckets() {
 
-        // regular index by name
-        createMongoIndexBuckets(Indexes.ascending(BsonConstants.BSON_KEY_PV_NAME));
+        // NOTE (#197): no standalone pvName index — it is a redundant prefix of the compound index
+        // below, and extra pvName-prefixed indexes widen the query planner's candidate set (making
+        // plan selection measurably expensive for the $or-heavy time filters) while adding write
+        // overhead. Existing deployments that already have pvName_1 should drop it manually.
 
         // compound index by name and time fields (used in bucket data queries)
         createMongoIndexBuckets(Indexes.ascending(

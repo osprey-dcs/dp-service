@@ -57,6 +57,32 @@ GrpcServer:
   # GrpcServer.permitKeepAliveWithoutCalls: If true, allows clients to send keepalive pings even when there are no active RPCs on the connection.
   permitKeepAliveWithoutCalls: ${DP_GRPC_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS:true}
 
+# Buckets: Invariants of the buckets collection shared by the ingestion and query services.
+Buckets:
+
+  # Buckets.maxBucketSpanSeconds: Maximum time span (lastTime - firstTime) a single bucket may cover.
+  # Ingestion rejects data frames whose timestamps span more than this limit. The query service relies
+  # on this invariant to add a lower bound to bucket time-range queries (issue #197); without it, query
+  # cost scales with each PV's total archive history instead of the query range.
+  # On an archive with pre-existing data, this value must be at least the largest bucket span already
+  # stored, or time-range queries would silently miss older long-span buckets. The query service
+  # verifies this at startup (see verifyBucketSpansOnStartup below) rather than assuming it.
+  # Must be positive, and at most 9223372036 (above which the conversion to nanoseconds overflows);
+  # the service refuses to start with a value outside that range.
+  maxBucketSpanSeconds: ${DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS:86400}
+
+  # Buckets.verifyBucketSpansOnStartup: Whether the query service confirms at startup that no stored
+  # bucket exceeds maxBucketSpanSeconds. Ingestion enforces the limit for new data only, so data
+  # ingested before the limit was introduced could otherwise be silently excluded from query results.
+  # If a violation is found, the query lower bound is disabled for that process and queries fall back
+  # to the slower unbounded scan, so results stay correct; startup is never blocked.
+  # The scan short-circuits at the first violating bucket, so a non-compliant archive is detected
+  # almost immediately. A compliant archive costs a full scan (roughly 25 seconds per 35 million
+  # buckets on an idle server), and the outcome is recorded so this is paid once per limit value
+  # rather than on every restart. Raising the limit triggers a re-scan.
+  # Disable only if you have independently confirmed that every stored bucket satisfies the limit.
+  verifyBucketSpansOnStartup: ${DP_BUCKETS_VERIFY_SPANS_ON_STARTUP:true}
+
 # IngestionServer: Settings for the Ingestion server process.
 IngestionServer:
 

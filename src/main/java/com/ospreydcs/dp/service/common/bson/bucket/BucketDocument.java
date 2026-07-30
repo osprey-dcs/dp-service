@@ -7,6 +7,8 @@ import com.ospreydcs.dp.service.common.bson.column.*;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +19,9 @@ import java.util.List;
  * NOTE: DATABASE CODE LIKE insertMany SILENTLY FAILS IF AN INSTANCE VARIABLE IS ADDED WITHOUT ACCESSOR METHODS!!!
  */
 public class BucketDocument extends DpBsonDocumentBase {
+
+    // static variables
+    private static final Logger logger = LogManager.getLogger();
 
     // instance variables
     private String id;
@@ -232,27 +237,74 @@ public class BucketDocument extends DpBsonDocumentBase {
             QueryDataRequest.QuerySpec querySpec
     ) throws DpException {
 
-        final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
+        requireDeserializableBucket(document);
 
-        // set name
-        bucketBuilder.setPvName(document.getPvName());
+        try {
+            final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
 
-        // add data timestamps
-        DataTimestamps dataTimestamps = document.getDataTimestamps().toDataTimestamps();
-        bucketBuilder.setDataTimestamps(dataTimestamps);
+            // set name
+            bucketBuilder.setPvName(document.getPvName());
 
-        // add data values
-        document.getDataColumn().addColumnToBucket(bucketBuilder);
+            // add data timestamps
+            DataTimestamps dataTimestamps = document.getDataTimestamps().toDataTimestamps();
+            bucketBuilder.setDataTimestamps(dataTimestamps);
 
-        // add provider details
-        if (document.getProviderId() != null) {
-            bucketBuilder.setProviderId(document.getProviderId());
+            // add data values
+            document.getDataColumn().addColumnToBucket(bucketBuilder);
+
+            // add provider details
+            if (document.getProviderId() != null) {
+                bucketBuilder.setProviderId(document.getProviderId());
+            }
+            if (document.getProviderName() != null) {
+                bucketBuilder.setProviderName(document.getProviderName());
+            }
+
+            return bucketBuilder.build();
+
+        } catch (RuntimeException ex) {
+            throw deserializationFailure(document, ex);
         }
-        if (document.getProviderName() != null) {
-            bucketBuilder.setProviderName(document.getProviderName());
-        }
+    }
 
-        return bucketBuilder.build();
+    /**
+     * Rejects a stored bucket that is missing the fields deserialization dereferences, so the caller
+     * sees a {@link DpException} it can turn into an error response.
+     *
+     * <p>Without this, a malformed or partially-written document produces a NullPointerException,
+     * which the query dispatchers do not catch (they handle only DpException). That escapes the
+     * dispatcher loop, terminates the response stream, and leaves the client unable to distinguish
+     * a deserialization failure from an empty result — a silent wrong answer rather than an error.
+     */
+    private static void requireDeserializableBucket(BucketDocument document) throws DpException {
+
+        if (document == null) {
+            throw new DpException("cannot build DataBucket from null BucketDocument");
+        }
+        if (document.getDataTimestamps() == null) {
+            throw new DpException(
+                    "BucketDocument id: " + document.getId() + " pvName: " + document.getPvName()
+                            + " has no dataTimestamps");
+        }
+        if (document.getDataColumn() == null) {
+            throw new DpException(
+                    "BucketDocument id: " + document.getId() + " pvName: " + document.getPvName()
+                            + " has no dataColumn");
+        }
+    }
+
+    /**
+     * Wraps an unexpected runtime failure during deserialization as a {@link DpException}, for the
+     * same reason as {@link #requireDeserializableBucket}: the dispatchers can report a DpException
+     * to the client, whereas an escaping RuntimeException silently truncates the response.
+     */
+    private static DpException deserializationFailure(BucketDocument document, RuntimeException ex) {
+        final String message =
+                "error deserializing BucketDocument id: " + document.getId()
+                        + " pvName: " + document.getPvName()
+                        + " exception: " + ex;
+        logger.error(message, ex);
+        return new DpException(message);
     }
 
     /**
@@ -276,27 +328,34 @@ public class BucketDocument extends DpBsonDocumentBase {
             boolean excludeColumnMetadata
     ) throws DpException {
 
-        final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
+        requireDeserializableBucket(document);
 
-        bucketBuilder.setPvName(document.getPvName());
-        bucketBuilder.setDataTimestamps(document.getDataTimestamps().toDataTimestamps());
+        try {
+            final DataBucket.Builder bucketBuilder = DataBucket.newBuilder();
 
-        // add data values (polymorphic: serialized-stored columns pass through as SerializedDataColumn,
-        // typed/legacy columns emit their typed form) — useSerializedColumns is pass-through-only here.
-        document.getDataColumn().addColumnToBucket(bucketBuilder);
+            bucketBuilder.setPvName(document.getPvName());
+            bucketBuilder.setDataTimestamps(document.getDataTimestamps().toDataTimestamps());
 
-        if (excludeColumnMetadata && bucketBuilder.hasDataValues()) {
-            bucketBuilder.setDataValues(clearColumnMetadata(bucketBuilder.getDataValues()));
+            // add data values (polymorphic: serialized-stored columns pass through as SerializedDataColumn,
+            // typed/legacy columns emit their typed form) — useSerializedColumns is pass-through-only here.
+            document.getDataColumn().addColumnToBucket(bucketBuilder);
+
+            if (excludeColumnMetadata && bucketBuilder.hasDataValues()) {
+                bucketBuilder.setDataValues(clearColumnMetadata(bucketBuilder.getDataValues()));
+            }
+
+            if (document.getProviderId() != null) {
+                bucketBuilder.setProviderId(document.getProviderId());
+            }
+            if (document.getProviderName() != null) {
+                bucketBuilder.setProviderName(document.getProviderName());
+            }
+
+            return bucketBuilder.build();
+
+        } catch (RuntimeException ex) {
+            throw deserializationFailure(document, ex);
         }
-
-        if (document.getProviderId() != null) {
-            bucketBuilder.setProviderId(document.getProviderId());
-        }
-        if (document.getProviderName() != null) {
-            bucketBuilder.setProviderName(document.getProviderName());
-        }
-
-        return bucketBuilder.build();
     }
 
     /**

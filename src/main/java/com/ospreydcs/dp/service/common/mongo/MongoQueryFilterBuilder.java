@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import org.bson.conversions.Bson;
 
 import java.time.Instant;
@@ -107,7 +108,11 @@ public class MongoQueryFilterBuilder {
      * Builds the bucket overlap predicate selecting buckets whose {@code [firstTime, lastTime]} data
      * span intersects the half-open query range {@code [begin, end)}:
      * {@code firstTime < end AND lastTime >= begin} (with {@code (seconds, nanos)} lexicographic
-     * comparison). This is the single source for the overlap condition shared by the V1 data/table
+     * comparison), plus the index-enabling lower bound
+     * {@code firstTime.seconds >= beginSeconds - maxBucketSpanSeconds} (#197) which is implied by
+     * the ingestion-enforced cap on bucket span and bounds the compound index scan that the
+     * overlap predicate alone leaves open-ended. This is the single source for the overlap
+     * condition shared by the V1 data/table
      * retrieval path ({@code executeBucketDocumentQuery}) and the Query API V2 {@code $or}
      * configuration-fragment retrieval, so the two cannot drift.
      *
@@ -132,6 +137,35 @@ public class MongoQueryFilterBuilder {
                         Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSeconds),
                         Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
 
-        return Filters.and(endTimeFilter, startTimeFilter);
+        // firstTime lower bound (#197): a bucket's span is capped at maxBucketSpanSeconds (enforced
+        // by ingestion validation), so any bucket with lastTime >= begin must have
+        // firstTime.seconds >= beginSeconds - maxBucketSpanSeconds. Without this bound the compound
+        // index scan has no lower limit and covers each PV's entire history up to the query window.
+        //
+        // The bound is omitted when startup verification could not confirm that the stored archive
+        // satisfies the limit (see BucketSpanVerifier). Applying it to an archive containing an
+        // over-long bucket would silently exclude that bucket from results, so an unbounded scan --
+        // slow but correct -- is the safer degradation.
+        if (!BucketSpanLimits.isQueryLowerBoundEnabled()) {
+            return Filters.and(endTimeFilter, startTimeFilter);
+        }
+
+        // Saturate rather than wrap. Query time ranges are not validated for a lower bound, so a
+        // begin time near Long.MIN_VALUE reaches this subtraction; wrapping would produce a large
+        // POSITIVE lower bound that excludes every bucket, turning an over-wide query into a silent
+        // empty result. Clamping to Long.MIN_VALUE makes the bound a no-op instead, which is the
+        // correct meaning: a query starting at the dawn of time has no useful lower bound.
+        final long maxBucketSpanSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
+        final long spanLowerBoundSeconds;
+        try {
+            spanLowerBoundSeconds = Math.subtractExact(beginSeconds, maxBucketSpanSeconds);
+        } catch (ArithmeticException ex) {
+            return Filters.and(endTimeFilter, startTimeFilter);
+        }
+
+        final Bson spanLowerBoundFilter = Filters.gte(
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, spanLowerBoundSeconds);
+
+        return Filters.and(spanLowerBoundFilter, endTimeFilter, startTimeFilter);
     }
 }

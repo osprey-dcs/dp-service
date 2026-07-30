@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.IngestDataRequest;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.ingest.IngestionTestBase;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
@@ -1080,6 +1081,123 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
         ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
         assertFalse(result.isError);
         assertEquals("", result.msg);
+    }
+
+    /**
+     * Test bucket span limit (#197) - SamplingClock spanning more than the configured maximum
+     * bucket span is rejected. Span is (count - 1) * periodNanos.
+     */
+    @Test
+    public void testValidateSamplingClockExceedsMaxBucketSpan() {
+        Timestamp startTime = TimestampUtility.getTimestampNow();
+        final long maxSpanNanos = BucketSpanLimits.getMaxBucketSpanNanos();
+        SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(startTime)
+                .setPeriodNanos(maxSpanNanos)
+                .setCount(3) // span = (count - 1) * periodNanos = 2 * maxSpanNanos, exceeds limit
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder()
+                .setSamplingClock(clock)
+                .build();
+
+        DoubleColumn column = DoubleColumn.newBuilder()
+                .setName("sensor_01")
+                .addAllValues(Arrays.asList(1.0, 2.0, 3.0))
+                .build();
+
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addDoubleColumns(column)
+                .build();
+
+        IngestDataRequest request = IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("samplingClock time span exceeds maximum bucket span"));
+    }
+
+    /**
+     * Test bucket span limit (#197) - SamplingClock spanning exactly the configured maximum is
+     * accepted (limit is inclusive).
+     */
+    @Test
+    public void testValidateSamplingClockAtMaxBucketSpanAccepted() {
+        Timestamp startTime = TimestampUtility.getTimestampNow();
+        final long maxSpanNanos = BucketSpanLimits.getMaxBucketSpanNanos();
+        SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(startTime)
+                .setPeriodNanos(maxSpanNanos)
+                .setCount(2) // span = 1 * maxSpanNanos, exactly at the limit
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder()
+                .setSamplingClock(clock)
+                .build();
+
+        DoubleColumn column = DoubleColumn.newBuilder()
+                .setName("sensor_01")
+                .addAllValues(Arrays.asList(1.0, 2.0))
+                .build();
+
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addDoubleColumns(column)
+                .build();
+
+        IngestDataRequest request = IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
+        assertFalse(result.isError);
+    }
+
+    /**
+     * Test bucket span limit (#197) - TimestampList whose first-to-last distance exceeds the
+     * configured maximum bucket span is rejected.
+     */
+    @Test
+    public void testValidateTimestampListExceedsMaxBucketSpan() {
+        final long maxSpanSecs = BucketSpanLimits.getMaxBucketSpanSeconds();
+        final long baseSecs = Instant.now().getEpochSecond();
+        Timestamp first = Timestamp.newBuilder().setEpochSeconds(baseSecs).setNanoseconds(0).build();
+        Timestamp last = Timestamp.newBuilder()
+                .setEpochSeconds(baseSecs + maxSpanSecs)
+                .setNanoseconds(1) // one nano beyond the limit
+                .build();
+        TimestampList timestampList = TimestampList.newBuilder()
+                .addTimestamps(first)
+                .addTimestamps(last)
+                .build();
+        DataTimestamps timestamps = DataTimestamps.newBuilder()
+                .setTimestampList(timestampList)
+                .build();
+
+        DoubleColumn column = DoubleColumn.newBuilder()
+                .setName("sensor_01")
+                .addAllValues(Arrays.asList(1.0, 2.0))
+                .build();
+
+        DataFrame frame = DataFrame.newBuilder()
+                .setDataTimestamps(timestamps)
+                .addDoubleColumns(column)
+                .build();
+
+        IngestDataRequest request = IngestDataRequest.newBuilder()
+                .setProviderId("provider-1")
+                .setClientRequestId("request-1")
+                .setIngestionDataFrame(frame)
+                .build();
+
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(request);
+        assertTrue(result.isError);
+        assertTrue(result.msg.contains("timestampList time span exceeds maximum bucket span"));
     }
 
 }

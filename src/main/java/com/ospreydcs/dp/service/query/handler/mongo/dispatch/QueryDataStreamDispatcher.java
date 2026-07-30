@@ -48,12 +48,12 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             try {
                 bucket = BucketDocument.dataBucketFromDocument(document, querySpec);
             } catch (DpException e) {
-                // exception deserialzing BucketDocument contents, so send error response
+                // exception deserializing BucketDocument contents, so send error response.
+                // e.getMessage() identifies the offending document by id and pvName, which is what
+                // an operator needs to locate and repair it.
                 isError = true;
-                errorMsg =
-                        "exception deserializing protobuf data for BucketDocument id: " + getResponseObserver().hashCode()
-                                + " exception: " + e.getMessage();
-                logger.error(errorMsg);
+                errorMsg = "exception deserializing protobuf data for bucket: " + e.getMessage();
+                logger.error(errorMsg, e);
                 break;
             }
             Objects.requireNonNull(bucket);

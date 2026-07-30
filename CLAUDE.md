@@ -260,7 +260,23 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 4. New columns (all column-oriented types)
 5. Cross-cutting (unique PV names across all column types in a frame)
 
-**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB; timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count.
+**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB; timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
+
+### Max Bucket Span Invariant (issue #197)
+`Buckets.maxBucketSpanSeconds` is a shared invariant between ingestion and query, and both of its failure modes are *silent wrong answers* rather than errors — treat it accordingly:
+- **`BucketSpanLimits`** — single source for the limit. Value is validated once (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos conversion would overflow) and cached; invalid config throws `DpRuntimeException`.
+- **Ingestion** enforces the limit for *new* data only, via `IngestionValidationUtility`.
+- **Query** adds the `firstTime` lower bound only when the stored archive is known to comply. `BucketSpanVerifier` checks this and records the outcome in the `bucketSpanVerification` collection, so the scan runs once per limit value rather than every restart. On violation or error the bound is disabled process-wide (`BucketSpanLimits.disableQueryLowerBound()`) and queries degrade to the slower unbounded scan — correct but slow, never fast but wrong.
+- `verifyBucketSpans()` lives on `MongoSyncClient` because the flag it controls is **process-wide** and more than one service issues bucket time-range queries: the query service directly, and the annotation service through dataset export (`executeDataBlockQuery`). Any new service that queries buckets must call it from its handler's `init_()`, or that process will apply the bound unverified.
+- Disable the check with `Buckets.verifyBucketSpansOnStartup: false` only when compliance has been confirmed independently. Off by default under test.
+- **Never sample** as a shortcut for this check: over-long buckets are typically rare, so a sample that misses them reports a false all-clear.
+
+### Bucket Deserialization Must Fail as `DpException`
+The query dispatchers (`QueryDataDispatcher`, `QueryDataStreamDispatcher`, `QueryDataBidiStreamDispatcher`, `QueryBuckets*Dispatcher`) catch **only `DpException`** around bucket deserialization. Any other exception escapes the dispatch loop and terminates the response stream, so the client receives **zero buckets instead of an error** — indistinguishable from "no data in range."
+
+`BucketDocument.dataBucketFromDocument()` / `dataBucketFromDocumentV2()` therefore validate required fields up front and wrap any `RuntimeException` as `DpException`. Preserve that contract when adding deserialization logic: a malformed stored document must produce a reportable error, never an unchecked throw. In tests, insert fully-populated `BucketDocument`s (see `MongoTestClient.insertBucketDocument()`) rather than hand-rolled partial BSON.
+
+Because a malformed bucket blocks every query covering it, `BucketSpanVerifier` also scans for buckets missing `dataColumn`/`dataTimestamps` — in the same pass as the span check, since both must visit stored buckets (measured ~20% over the span check alone). A corrupt bucket is reported with its id, PV, and missing field, but does **not** disable the query lower bound: corruption and the span invariant are independent. The verification marker is not recorded while corruption exists, so an unrepaired bucket keeps being reported on each startup rather than going quiet after the first.
 
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:

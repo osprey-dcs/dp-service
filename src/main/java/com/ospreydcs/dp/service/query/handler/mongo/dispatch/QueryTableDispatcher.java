@@ -179,8 +179,9 @@ public class QueryTableDispatcher extends Dispatcher {
 
         } catch (DpException e) {
             final String msg = "exception building tabular result: " + e.getMessage();
-            logger.error(msg);
+            logger.error(msg, e);
             QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
+            return;
         }
 
         if (sizeStats.sizeLimitExceeded()) {

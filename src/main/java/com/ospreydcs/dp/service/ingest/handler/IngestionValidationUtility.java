@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.ingest.handler;
 
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 
 import java.util.HashSet;
@@ -121,8 +122,25 @@ public class IngestionValidationUtility {
                 
                 Timestamp startTime = clock.getStartTime();
                 if (startTime.getEpochSeconds() < 0 || startTime.getNanoseconds() < 0 || startTime.getNanoseconds() >= 1_000_000_000) {
-                    return new ResultStatus(true, "ingestionDataFrame.dataTimestamps.samplingClock.startTime has invalid values: seconds=" + 
+                    return new ResultStatus(true, "ingestionDataFrame.dataTimestamps.samplingClock.startTime has invalid values: seconds=" +
                             startTime.getEpochSeconds() + ", nanos=" + startTime.getNanoseconds());
+                }
+
+                // Bucket span cap (#197): the query-side overlap filter's firstTime lower bound is
+                // only correct if no bucket spans more than the configured maximum. Span for a
+                // sampling clock is (count - 1) * periodNanos (first to last sample).
+                final long maxSpanNanos = BucketSpanLimits.getMaxBucketSpanNanos();
+                long spanNanos;
+                try {
+                    spanNanos = Math.multiplyExact(clock.getCount() - 1, clock.getPeriodNanos());
+                } catch (ArithmeticException ex) {
+                    spanNanos = Long.MAX_VALUE;
+                }
+                if (spanNanos > maxSpanNanos) {
+                    return new ResultStatus(true,
+                            "ingestionDataFrame.dataTimestamps.samplingClock time span exceeds maximum bucket span: "
+                                    + "spanNanos=" + spanNanos + ", maxNanos=" + maxSpanNanos
+                                    + " (" + BucketSpanLimits.CFG_KEY_MAX_BUCKET_SPAN_SECONDS + ")");
                 }
             }
             case TIMESTAMPLIST -> {
@@ -157,6 +175,27 @@ public class IngestionValidationUtility {
                         }
                     }
                     previous = current;
+                }
+
+                // Bucket span cap (#197): same invariant as the sampling-clock case, using the
+                // first-to-last timestamp distance (list is validated non-decreasing above).
+                final Timestamp first = timestamps.get(0);
+                final Timestamp last = timestamps.get(timestamps.size() - 1);
+                long spanNanos;
+                try {
+                    spanNanos = Math.addExact(
+                            Math.multiplyExact(
+                                    last.getEpochSeconds() - first.getEpochSeconds(), 1_000_000_000L),
+                            last.getNanoseconds() - first.getNanoseconds());
+                } catch (ArithmeticException ex) {
+                    spanNanos = Long.MAX_VALUE;
+                }
+                final long maxSpanNanos = BucketSpanLimits.getMaxBucketSpanNanos();
+                if (spanNanos > maxSpanNanos) {
+                    return new ResultStatus(true,
+                            "ingestionDataFrame.dataTimestamps.timestampList time span exceeds maximum bucket span: "
+                                    + "spanNanos=" + spanNanos + ", maxNanos=" + maxSpanNanos
+                                    + " (" + BucketSpanLimits.CFG_KEY_MAX_BUCKET_SPAN_SECONDS + ")");
                 }
             }
             case VALUE_NOT_SET -> {
