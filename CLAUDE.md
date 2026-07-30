@@ -276,6 +276,8 @@ The query dispatchers (`QueryDataDispatcher`, `QueryDataStreamDispatcher`, `Quer
 
 `BucketDocument.dataBucketFromDocument()` / `dataBucketFromDocumentV2()` therefore validate required fields up front and wrap any `RuntimeException` as `DpException`. Preserve that contract when adding deserialization logic: a malformed stored document must produce a reportable error, never an unchecked throw. In tests, insert fully-populated `BucketDocument`s (see `MongoTestClient.insertBucketDocument()`) rather than hand-rolled partial BSON.
 
+Because a malformed bucket blocks every query covering it, `BucketSpanVerifier` also scans for buckets missing `dataColumn`/`dataTimestamps` — in the same pass as the span check, since both must visit stored buckets (measured ~20% over the span check alone). A corrupt bucket is reported with its id, PV, and missing field, but does **not** disable the query lower bound: corruption and the span invariant are independent. The verification marker is not recorded while corruption exists, so an unrepaired bucket keeps being reported on each startup rather than going quiet after the first.
+
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 - **`BenchmarkIngestDataStream`** / **`BenchmarkIngestDataBidiStream`**: compare `DATA_COLUMN` (legacy), `DOUBLE_COLUMN`, and `SERIALIZED_DATA_COLUMN` strategies

@@ -58,15 +58,37 @@ public class BucketSpanVerifierTest {
         BucketSpanLimits.resetCachedLimitForTesting();
     }
 
-    /** Inserts a bucket document carrying only the fields the verifier reads. */
+    /** Inserts a well-formed bucket document carrying the fields the verifier reads. */
     private void insertBucket(String pvName, long firstSeconds, long spanSeconds) {
         bucketsCollection.insertOne(new Document()
+                .append("_id", pvName + "-" + firstSeconds)
                 .append(BsonConstants.BSON_KEY_PV_NAME, pvName)
+                .append("dataColumn", new Document("_t", "DataColumnDocument"))
                 .append("dataTimestamps", new Document()
                         .append("firstTime", new Document()
                                 .append("seconds", firstSeconds).append("nanos", 0))
                         .append("lastTime", new Document()
                                 .append("seconds", firstSeconds + spanSeconds).append("nanos", 0))));
+    }
+
+    /** Inserts a bucket missing dataColumn, which deserialization requires. */
+    private void insertBucketMissingDataColumn(String pvName, long firstSeconds) {
+        bucketsCollection.insertOne(new Document()
+                .append("_id", pvName + "-no-column")
+                .append(BsonConstants.BSON_KEY_PV_NAME, pvName)
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document()
+                                .append("seconds", firstSeconds).append("nanos", 0))
+                        .append("lastTime", new Document()
+                                .append("seconds", firstSeconds + 1).append("nanos", 0))));
+    }
+
+    /** Inserts a bucket missing dataTimestamps, which deserialization requires. */
+    private void insertBucketMissingDataTimestamps(String pvName) {
+        bucketsCollection.insertOne(new Document()
+                .append("_id", pvName + "-no-timestamps")
+                .append(BsonConstants.BSON_KEY_PV_NAME, pvName)
+                .append("dataColumn", new Document("_t", "DataColumnDocument")));
     }
 
     private BucketSpanVerifier.VerificationResult verify() {
@@ -143,6 +165,65 @@ public class BucketSpanVerifierTest {
                 BucketSpanVerifier.verify(bucketsCollection, verificationCollection, LIMIT_SECONDS);
         assertEquals(
                 BucketSpanVerifier.VerificationOutcome.SKIPPED_ALREADY_VERIFIED, result.outcome());
+    }
+
+    /**
+     * A bucket missing dataColumn cannot be deserialized, so every query covering it fails. The
+     * scan reports it for repair but leaves the span bound enabled, since corruption and the span
+     * invariant are unrelated.
+     */
+    @Test
+    public void testMissingDataColumnReported() {
+        insertBucket("pv_ok", 1_700_000_000L, 1);
+        insertBucketMissingDataColumn("pv_broken", 1_700_000_100L);
+
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertTrue(result.foundCorruptBucket());
+        assertEquals("pv_broken", result.corruptBucket().pvName());
+        assertEquals("pv_broken-no-column", result.corruptBucket().bucketId());
+        assertEquals("dataColumn", result.corruptBucket().missingField());
+
+        // Corruption does not make the span bound unsafe.
+        assertTrue(result.boundIsSafe());
+    }
+
+    @Test
+    public void testMissingDataTimestampsReported() {
+        insertBucketMissingDataTimestamps("pv_broken");
+
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertTrue(result.foundCorruptBucket());
+        assertEquals("dataTimestamps", result.corruptBucket().missingField());
+        assertTrue(result.boundIsSafe());
+    }
+
+    /**
+     * An unrepaired bucket must keep being reported: recording the marker would silence the scan on
+     * the next startup while the problem persists.
+     */
+    @Test
+    public void testCorruptBucketDoesNotRecordMarker() {
+        insertBucketMissingDataColumn("pv_broken", 1_700_000_000L);
+
+        assertTrue(verify().foundCorruptBucket());
+        assertEquals(0, verificationCollection.countDocuments());
+
+        // Still reported on a subsequent run rather than skipped as already verified.
+        final BucketSpanVerifier.VerificationResult second = verify();
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VERIFIED_CLEAN, second.outcome());
+        assertTrue(second.foundCorruptBucket());
+    }
+
+    /** A clean archive reports no corruption, so well-formed buckets are not false positives. */
+    @Test
+    public void testWellFormedArchiveReportsNoCorruption() {
+        insertBucket("pv_1", 1_700_000_000L, 1);
+        insertBucket("pv_2", 1_700_000_100L, 3_600);
+
+        final BucketSpanVerifier.VerificationResult result = verify();
+        assertEquals(BucketSpanVerifier.VerificationOutcome.VERIFIED_CLEAN, result.outcome());
+        assertFalse(result.foundCorruptBucket());
+        assertNull(result.corruptBucket());
     }
 
     /**
