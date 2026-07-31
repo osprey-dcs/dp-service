@@ -92,7 +92,10 @@ public class DataExportCsvFile implements TabularDataExportFileInterface {
 
     @Override
     public void writeData(TimestampDataMap tableValueMap) {
-        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.dataRowIterator();
+        // Draining iteration (#199): rows are released as they are written to the file, so the map
+        // shrinks instead of being held whole until the export completes. The caller writes the
+        // header from getColumnNameList() before this and does not reuse the map afterward.
+        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.drainingDataRowIterator();
         while (dataRowIterator.hasNext()) {
             final TimestampDataMap.DataRow dataRow = dataRowIterator.next();
             final List<String> rowDataValues = new ArrayList<>();

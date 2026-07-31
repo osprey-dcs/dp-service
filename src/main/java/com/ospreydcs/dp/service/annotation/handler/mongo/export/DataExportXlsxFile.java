@@ -111,7 +111,10 @@ public class DataExportXlsxFile implements TabularDataExportFileInterface {
             logger.warn("TimestampDataMap is null, skipping data write");
             return;
         }
-        final TimestampDataMap.DataRowIterator dataRowIterator = timestampDataMap.dataRowIterator();
+        // Draining iteration (#199): rows are released as they are added to the workbook. Note the
+        // XSSFWorkbook itself holds the whole sheet in memory, so this bounds only the source-side
+        // copy; the workbook remains the dominant cost for large exports.
+        final TimestampDataMap.DataRowIterator dataRowIterator = timestampDataMap.drainingDataRowIterator();
         while (dataRowIterator.hasNext()) {
             final TimestampDataMap.DataRow sourceDataRow = dataRowIterator.next();
             final Row fileDataRow = dataSheet.createRow(currentDataRowIndex);

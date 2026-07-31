@@ -28,6 +28,33 @@ public class TimestampMap<T> {
         return timestampMap.entrySet();
     }
 
+    /**
+     * Removes the value at the given timestamp, dropping the enclosing per-second map once it is
+     * empty.
+     *
+     * <p>Exists so a consumer that materializes this map into another representation can release
+     * each entry as it is consumed, rather than holding the whole map live until the second copy is
+     * complete (issue #199). Callers that need the map afterward must not use this.
+     *
+     * @return the removed value, or null if nothing was stored at that timestamp
+     */
+    public T remove(long seconds, long nanos) {
+        final Map<Long, T> secondMap = timestampMap.get(seconds);
+        if (secondMap == null) {
+            return null;
+        }
+        final T removed = secondMap.remove(nanos);
+        if (secondMap.isEmpty()) {
+            timestampMap.remove(seconds);
+        }
+        return removed;
+    }
+
+    /** True when no values remain. */
+    public boolean isEmpty() {
+        return timestampMap.isEmpty();
+    }
+
     public int size() {
         int entryCount = 0;
         for (Map.Entry<Long, Map<Long, T>> entry : timestampMap.entrySet()) {
