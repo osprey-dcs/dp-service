@@ -168,8 +168,16 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         // ORDERING (#199): buildColumnTable drains each row it emits, so this must run before the
         // row is emitted. The chunk loop guarantees that -- a row is always estimated at index
         // rowIndex before any emitChunk whose range reaches it -- but a future change that emits
-        // ahead of estimating would read a drained row here.
+        // ahead of estimating would read a drained row here. Fail loudly rather than under-count:
+        // this estimate bounds the chunk against the gRPC wire limit, so silently treating a
+        // missing row as zero bytes would produce an over-limit message that aborts the stream.
         final Map<Integer, DataValue> rowValues = tableValueMap.get(second, nano);
+        if (rowValues == null) {
+            throw new IllegalStateException(
+                    "querySamples row at timestamp " + second + "." + nano
+                            + " was drained before its size was estimated; rowByteEstimate must run"
+                            + " before the emitChunk that consumes the row (#199)");
+        }
         for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
             final DataValue value = rowValues.get(columnIndex);
             // value payload + repeated DataValue tag+length framing (a few bytes); unset value is one

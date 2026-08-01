@@ -114,9 +114,19 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             // while the builders grow instead of both being held at full size. Safe because the
             // caller discards the map after this call: rows deferred to a later page are re-queried
             // from the resume token rather than read from here.
+            //
+            // A null here means this row was already drained -- the same row range was built twice,
+            // or the streaming path emitted ahead of estimating. Fail loudly: sparse-filling would
+            // emit a row of unset values that is indistinguishable from a legitimate all-missing
+            // sample row, turning a logic error into a silently wrong query result.
             final Map<Integer, DataValue> rowValues = tableValueMap.remove(second, nano);
+            if (rowValues == null) {
+                throw new IllegalStateException(
+                        "querySamples row at timestamp " + second + "." + nano
+                                + " was already drained; each row range must be built exactly once (#199)");
+            }
             for (int columnIndex = 0; columnIndex < columnBuilders.size(); columnIndex++) {
-                DataValue value = (rowValues == null) ? null : rowValues.get(columnIndex);
+                DataValue value = rowValues.get(columnIndex);
                 if (value == null) {
                     value = DataValue.newBuilder().build(); // unset => missing sample (Q9)
                 }

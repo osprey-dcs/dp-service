@@ -15,8 +15,9 @@ import static org.junit.Assert.assertTrue;
  *
  * <p>The acceptance criterion for #199 is a reduction in peak heap while a table result is
  * materialized into a second representation. This test approximates that by holding a consumer-side
- * copy of every row (standing in for protobuf builder state) and sampling retained heap at the
- * midpoint of iteration: without draining both copies are live, with draining only one is.
+ * copy of every row (standing in for protobuf builder state) and sampling retained heap after every
+ * row is consumed, with those copies still retained — the moment of peak footprint. At that point,
+ * without draining both representations are live; with draining only the consumer-side copies are.
  *
  * <p>Heap measurement is inherently noisy, so the assertion is deliberately loose — it checks the
  * direction and rough magnitude of the effect, not an exact figure. The precise per-row saving is

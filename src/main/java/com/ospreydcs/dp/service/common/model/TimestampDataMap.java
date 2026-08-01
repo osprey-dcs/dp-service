@@ -18,7 +18,13 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
         private Long currentSecond = null;
         private Iterator<Map.Entry<Long, Map<Integer, DataValue>>> currentNanoEntryIterator = null;
         private final boolean draining;
-        private boolean lastSecondRemoved = false;
+        /**
+         * When draining, true while the second-level entry most recently returned by
+         * {@code currentSecondEntryIterator} is still present in the backing map. Drives a single
+         * remove-once-drained rule in {@link #hasNext()} that applies uniformly to every second --
+         * the last one, and any that is empty when reached -- rather than special-casing the tail.
+         */
+        private boolean currentSecondPending = false;
 
         public DataRowIterator() {
             this(false);
@@ -42,6 +48,7 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
                     this.currentSecondEntryIterator.next();
             this.currentSecond = currentSecondEntry.getKey();
             this.currentNanoEntryIterator = currentSecondEntry.getValue().entrySet().iterator();
+            this.currentSecondPending = draining;
         }
 
         @Override
@@ -49,20 +56,22 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
             if (currentNanoEntryIterator == null) {
                 return false;
             }
-            while (!this.currentNanoEntryIterator.hasNext() && this.currentSecondEntryIterator.hasNext()) {
-                if (draining) {
-                    // this second is fully consumed; drop its (now empty) map before advancing
+            // Single rule when draining: a second whose nano entries are exhausted is dropped, then
+            // we advance. currentSecondPending makes the removal idempotent, so this is safe both
+            // for the final second (no advance follows, and hasNext() may be called repeatedly after
+            // exhaustion) and for a second that was already empty when reached. Removal always
+            // targets the entry currentSecondEntryIterator last returned, satisfying its contract.
+            while (!this.currentNanoEntryIterator.hasNext()) {
+                if (this.currentSecondPending) {
                     this.currentSecondEntryIterator.remove();
+                    this.currentSecondPending = false;
+                }
+                if (!this.currentSecondEntryIterator.hasNext()) {
+                    return false;
                 }
                 updateCurrentSecond();
             }
-            if (draining && !this.currentNanoEntryIterator.hasNext() && !lastSecondRemoved) {
-                // last second drained and no more seconds follow; guard against repeated hasNext()
-                // calls after exhaustion, which would fail the iterator's remove() contract
-                this.currentSecondEntryIterator.remove();
-                lastSecondRemoved = true;
-            }
-            return this.currentNanoEntryIterator.hasNext();
+            return true;
         }
 
         @Override

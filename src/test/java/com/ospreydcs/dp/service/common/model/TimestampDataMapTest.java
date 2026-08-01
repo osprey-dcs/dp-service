@@ -10,6 +10,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -157,5 +158,77 @@ public class TimestampDataMapTest {
         assertEquals(2, rows.get(0).dataValues().size());
         assertEquals(doubleValue(1.0), rows.get(0).dataValues().get(0));
         assertEquals(DataValue.newBuilder().build(), rows.get(0).dataValues().get(1));
+    }
+
+    /**
+     * A second whose nano map is already empty when the iterator reaches it must be skipped and
+     * dropped, not treated as a row. Reachable because {@link TimestampMap#remove} is public, so a
+     * caller can empty a second out from under a later iteration.
+     */
+    @Test
+    public void testDrainingSkipsEmptySecondMap() {
+        final TimestampDataMap map = mapWithRows(timestamps(100L, 0L, 200L, 0L, 300L, 0L), 2);
+
+        // empty out the middle second directly, leaving its (now empty) per-second map in place
+        // only if remove() failed to drop it -- which is itself asserted below
+        map.remove(200L, 0L);
+
+        final List<TimestampDataMap.DataRow> rows = drain(map.drainingDataRowIterator());
+
+        assertEquals(2, rows.size());
+        assertEquals(100L, rows.get(0).seconds());
+        assertEquals(300L, rows.get(1).seconds());
+        assertTrue(map.isEmpty());
+    }
+
+    /** remove() returns the stored row and drops the enclosing per-second map once it is empty. */
+    @Test
+    public void testRemoveDropsEmptySecondMap() {
+        final TimestampDataMap map = mapWithRows(timestamps(100L, 0L, 100L, 500L, 200L, 0L), 1);
+        assertFalse(map.isEmpty());
+
+        // removing one of two entries in second 100 keeps that second alive
+        final Map<Integer, DataValue> removed = map.remove(100L, 0L);
+        assertEquals(doubleValue(0), removed.get(0));
+        assertEquals(2, map.size());
+        assertEquals(2, drain(map.dataRowIterator()).size());
+
+        // removing the last entry in second 100 drops the second itself
+        assertEquals(doubleValue(100), map.remove(100L, 500L).get(0));
+        assertEquals(1, map.size());
+        assertEquals(200L, drain(map.dataRowIterator()).get(0).seconds());
+
+        // removing the final entry empties the map
+        assertEquals(doubleValue(200), map.remove(200L, 0L).get(0));
+        assertEquals(0, map.size());
+        assertTrue(map.isEmpty());
+    }
+
+    /** remove() of a timestamp that was never stored returns null and changes nothing. */
+    @Test
+    public void testRemoveMissingTimestampReturnsNull() {
+        final TimestampDataMap map = mapWithRows(timestamps(100L, 0L), 1);
+
+        assertNull(map.remove(999L, 0L));      // no such second
+        assertNull(map.remove(100L, 999L));    // second exists, no such nano
+        assertEquals(1, map.size());
+        assertFalse(map.isEmpty());
+
+        // the surviving row is untouched
+        assertEquals(1, drain(map.dataRowIterator()).size());
+    }
+
+    /** isEmpty() tracks the map through a full draining pass. */
+    @Test
+    public void testIsEmptyReflectsDraining() {
+        final TimestampDataMap map = mapWithRows(timestamps(100L, 0L, 200L, 0L), 1);
+        assertFalse(map.isEmpty());
+
+        final TimestampDataMap.DataRowIterator it = map.drainingDataRowIterator();
+        it.next();
+        assertFalse(map.isEmpty()); // one row still held
+
+        drain(it);
+        assertTrue(map.isEmpty());
     }
 }

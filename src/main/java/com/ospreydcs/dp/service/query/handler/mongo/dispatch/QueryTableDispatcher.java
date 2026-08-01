@@ -58,6 +58,10 @@ public class QueryTableDispatcher extends Dispatcher {
         //
         // DataRow already sparse-fills missing cells with an unset DataValue, matching the previous
         // inline behavior here.
+        //
+        // Indexing rowDataValues by the columnBuilderMap key relies on both being dense over
+        // [0, columnNames.size()): the builder map is keyed by loop index above, and DataRow holds
+        // one entry per name in getColumnNameList(). Callers derive columnNames from that same list.
         final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.drainingDataRowIterator();
         while (dataRowIterator.hasNext()) {
             final TimestampDataMap.DataRow dataRow = dataRowIterator.next();
