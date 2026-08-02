@@ -110,7 +110,21 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             final long nano = timestamps.get(rowIndex)[1];
             timestampListBuilder.addTimestamps(
                     Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build());
-            final Map<Integer, DataValue> rowValues = tableValueMap.get(second, nano);
+            // Release each row as it is copied into the column builders (#199), so the map shrinks
+            // while the builders grow instead of both being held at full size. Safe because the
+            // caller discards the map after this call: rows deferred to a later page are re-queried
+            // from the resume token rather than read from here.
+            //
+            // A null here means this row was already drained -- the same row range was built twice,
+            // or the streaming path emitted ahead of estimating. Fail loudly: sparse-filling would
+            // emit a row of unset values that is indistinguishable from a legitimate all-missing
+            // sample row, turning a logic error into a silently wrong query result.
+            final Map<Integer, DataValue> rowValues = tableValueMap.remove(second, nano);
+            if (rowValues == null) {
+                throw new IllegalStateException(
+                        "querySamples row at timestamp " + second + "." + nano
+                                + " was already drained; each row range must be built exactly once (#199)");
+            }
             for (int columnIndex = 0; columnIndex < columnBuilders.size(); columnIndex++) {
                 DataValue value = rowValues.get(columnIndex);
                 if (value == null) {

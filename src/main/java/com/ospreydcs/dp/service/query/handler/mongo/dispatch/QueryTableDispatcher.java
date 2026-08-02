@@ -52,24 +52,27 @@ public class QueryTableDispatcher extends Dispatcher {
         }
         final TimestampList.Builder timestampListBuilder = TimestampList.newBuilder();
 
-        // add data values to column builders
-        for (var secondEntry : tableValueMap.entrySet()) {
-            final long second = secondEntry.getKey();
-            final Map<Long, Map<Integer, DataValue>> secondValueMap = secondEntry.getValue();
-            for (var nanoEntry : secondValueMap.entrySet()) {
-                final long nano = nanoEntry.getKey();
-                final Map<Integer, DataValue> nanoValueMap = nanoEntry.getValue();
-                final Timestamp timestamp = Timestamp.newBuilder().setEpochSeconds(second).setNanoseconds(nano).build();
-                timestampListBuilder.addTimestamps(timestamp);
-                for (var columnBuilderMapEntry : columnBuilderMap.entrySet()) {
-                    final int columnIndex = columnBuilderMapEntry.getKey();
-                    final DataColumn.Builder dataColumnBuilder = columnBuilderMapEntry.getValue();
-                    DataValue columnDataValue = nanoValueMap.get(columnIndex);
-                    if (columnDataValue == null) {
-                        columnDataValue = DataValue.newBuilder().build();
-                    }
-                    dataColumnBuilder.addDataValues(columnDataValue);
-                }
+        // Add data values to column builders, draining the map as we go (#199): each row is released
+        // once its values are held by the builders, so peak memory is not both representations at
+        // full size. tableValueMap is not used after this point.
+        //
+        // DataRow already sparse-fills missing cells with an unset DataValue, matching the previous
+        // inline behavior here.
+        //
+        // Indexing rowDataValues by the columnBuilderMap key relies on both being dense over
+        // [0, columnNames.size()): the builder map is keyed by loop index above, and DataRow holds
+        // one entry per name in getColumnNameList(). Callers derive columnNames from that same list.
+        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.drainingDataRowIterator();
+        while (dataRowIterator.hasNext()) {
+            final TimestampDataMap.DataRow dataRow = dataRowIterator.next();
+            timestampListBuilder.addTimestamps(Timestamp.newBuilder()
+                    .setEpochSeconds(dataRow.seconds())
+                    .setNanoseconds(dataRow.nanos())
+                    .build());
+            final List<DataValue> rowDataValues = dataRow.dataValues();
+            for (var columnBuilderMapEntry : columnBuilderMap.entrySet()) {
+                final int columnIndex = columnBuilderMapEntry.getKey();
+                columnBuilderMapEntry.getValue().addDataValues(rowDataValues.get(columnIndex));
             }
         }
 
@@ -98,7 +101,10 @@ public class QueryTableDispatcher extends Dispatcher {
         columnNamesWithTimestamp.addAll(columnNames);
         rowMapTableBuilder.addAllColumnNames(columnNamesWithTimestamp);
 
-        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.dataRowIterator();
+        // Draining iteration (#199): each row is released from the map as it is copied into the
+        // response builder, so peak memory is not both representations at full size. tableValueMap
+        // is not used after this point.
+        final TimestampDataMap.DataRowIterator dataRowIterator = tableValueMap.drainingDataRowIterator();
         while (dataRowIterator.hasNext()) {
 
             // read next data row

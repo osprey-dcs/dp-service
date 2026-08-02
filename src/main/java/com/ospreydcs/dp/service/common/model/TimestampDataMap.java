@@ -17,8 +17,26 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
         private final Iterator<Map.Entry<Long, Map<Long, Map<Integer, DataValue>>>> currentSecondEntryIterator;
         private Long currentSecond = null;
         private Iterator<Map.Entry<Long, Map<Integer, DataValue>>> currentNanoEntryIterator = null;
+        private final boolean draining;
+        /**
+         * When draining, true while the second-level entry most recently returned by
+         * {@code currentSecondEntryIterator} is still present in the backing map. Drives a single
+         * remove-once-drained rule in {@link #hasNext()} that applies uniformly to every second --
+         * the last one, and any that is empty when reached -- rather than special-casing the tail.
+         */
+        private boolean currentSecondPending = false;
 
         public DataRowIterator() {
+            this(false);
+        }
+
+        /**
+         * @param draining when true, each row is removed from the backing map as it is returned, so
+         *                 the map shrinks while the caller's output representation grows (#199).
+         *                 The map is unusable for anything else afterward.
+         */
+        public DataRowIterator(boolean draining) {
+            this.draining = draining;
             this.currentSecondEntryIterator = timestampMap.entrySet().iterator();
             if (this.currentSecondEntryIterator.hasNext()) {
                 updateCurrentSecond();
@@ -30,6 +48,7 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
                     this.currentSecondEntryIterator.next();
             this.currentSecond = currentSecondEntry.getKey();
             this.currentNanoEntryIterator = currentSecondEntry.getValue().entrySet().iterator();
+            this.currentSecondPending = draining;
         }
 
         @Override
@@ -37,10 +56,22 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
             if (currentNanoEntryIterator == null) {
                 return false;
             }
-            while (!this.currentNanoEntryIterator.hasNext() && this.currentSecondEntryIterator.hasNext()) {
+            // Single rule when draining: a second whose nano entries are exhausted is dropped, then
+            // we advance. currentSecondPending makes the removal idempotent, so this is safe both
+            // for the final second (no advance follows, and hasNext() may be called repeatedly after
+            // exhaustion) and for a second that was already empty when reached. Removal always
+            // targets the entry currentSecondEntryIterator last returned, satisfying its contract.
+            while (!this.currentNanoEntryIterator.hasNext()) {
+                if (this.currentSecondPending) {
+                    this.currentSecondEntryIterator.remove();
+                    this.currentSecondPending = false;
+                }
+                if (!this.currentSecondEntryIterator.hasNext()) {
+                    return false;
+                }
                 updateCurrentSecond();
             }
-            return this.currentNanoEntryIterator.hasNext();
+            return true;
         }
 
         @Override
@@ -62,6 +93,13 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
                 rowDataValues.add(columnDataValue);
 
                 columnIndex = columnIndex + 1;
+            }
+
+            if (draining) {
+                // Release this row's cell map now that its values are held by the returned DataRow.
+                // Removal goes through the iterator rather than the map so the in-progress traversal
+                // stays valid; the enclosing per-second map is dropped by hasNext() once drained.
+                this.currentNanoEntryIterator.remove();
             }
 
             return new DataRow(rowSecond, rowNano, rowDataValues);
@@ -86,6 +124,15 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
 
     public DataRowIterator dataRowIterator() {
         return new DataRowIterator();
+    }
+
+    /**
+     * Row iterator that removes each row from this map as it is returned (#199), so a consumer
+     * building another representation does not hold both at full size. This map is left empty and
+     * must not be used afterward.
+     */
+    public DataRowIterator drainingDataRowIterator() {
+        return new DataRowIterator(true);
     }
 
 }
