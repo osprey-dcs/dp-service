@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
+import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
@@ -59,6 +60,44 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             }
         }
         return new long[]{beginSecs, beginNanos, endSecs, endNanos};
+    }
+
+    /**
+     * The sample-retention windows for the resolved query: one {@link TabularDataUtility.RetentionInterval}
+     * per resolved retrieval fragment, each clamped on the left to the page window begin (the resume
+     * timestamp on a continuation page), mirroring the clamping
+     * {@code MongoSyncQueryClient.executeQuerySamplesV2} applies to its per-fragment database filters.
+     *
+     * <p>Assembly must trim against this full list rather than the single collapsed window returned by
+     * {@link #computeWindow} (issue #207). The database filters fragments only at <em>bucket</em>
+     * granularity, so a bucket spanning the gap between two fragments is retrieved with its in-gap
+     * samples intact; trimming against the collapsed window would leave them in the result.
+     */
+    protected static List<TabularDataUtility.RetentionInterval> retentionIntervals(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+
+        final List<TabularDataUtility.RetentionInterval> intervals = new ArrayList<>();
+        for (TimeInterval fragment : resolvedQuery.getRetrievalIntervals()) {
+            final long beginSecs;
+            final long beginNanos;
+            if (TimeInterval.compareInstant(
+                    fragment.getBeginSeconds(), fragment.getBeginNanos(),
+                    windowBeginSecs, windowBeginNanos) >= 0) {
+                beginSecs = fragment.getBeginSeconds();
+                beginNanos = fragment.getBeginNanos();
+            } else {
+                beginSecs = windowBeginSecs;
+                beginNanos = windowBeginNanos;
+            }
+            // drop fragments entirely at or before the window begin (they contribute nothing here)
+            if (TimeInterval.compareInstant(
+                    beginSecs, beginNanos, fragment.getEndSeconds(), fragment.getEndNanos()) >= 0) {
+                continue;
+            }
+            intervals.add(new TabularDataUtility.RetentionInterval(
+                    beginSecs, beginNanos, fragment.getEndSeconds(), fragment.getEndNanos()));
+        }
+        return intervals;
     }
 
     /**

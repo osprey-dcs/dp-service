@@ -65,11 +65,11 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             return;
         }
 
+        // Only the window begin is needed here: it bounds the database retrieval (and the resume
+        // point on a continuation page). Sample trimming uses the per-fragment intervals below (#207).
         final long[] window = computeWindow(resolvedQuery);
         final long windowBeginSecs = window[0];
         final long windowBeginNanos = window[1];
-        final long windowEndSecs = window[2];
-        final long windowEndNanos = window[3];
 
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
@@ -84,15 +84,15 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
 
         final boolean byteBudgetHit;
         try (cursor) {
+            // Trim against every resolved fragment, not the collapsed window (#207): the database
+            // filters fragments only per-bucket, so a bucket spanning a gap arrives with its in-gap
+            // samples intact.
             final TabularDataUtility.TimestampDataMapSizeStats sizeStats = TabularDataUtility.addBucketsToTable(
                     tableValueMap,
                     cursor,
                     0,
                     (int) Math.min(Integer.MAX_VALUE, byteBudget),
-                    windowBeginSecs,
-                    windowBeginNanos,
-                    windowEndSecs,
-                    windowEndNanos);
+                    retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos));
             byteBudgetHit = sizeStats.sizeLimitExceeded();
         } catch (NonScalarColumnException e) {
             // Q4: scalar-only. Translate the neutral shared exception into querySamples guidance.
