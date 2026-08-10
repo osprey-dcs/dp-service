@@ -20,6 +20,17 @@ public class TabularDataUtility {
 
     public static record TimestampDataMapSizeStats(int currentDataSize, boolean sizeLimitExceeded) {}
 
+    /**
+     * A half-open {@code [begin, end)} sample-retention window, expressed as epoch seconds + nanos.
+     *
+     * <p>Deliberately a local value type rather than the query package's {@code TimeInterval}: this
+     * utility is shared by the query service, the annotation export job, and the integration test
+     * wrapper, and must not depend on Query API V2 model classes. Callers holding a {@code TimeInterval}
+     * convert at the call site.
+     */
+    public static record RetentionInterval(
+            long beginSeconds, long beginNanos, long endSeconds, long endNanos) {}
+
     public static TimestampDataMapSizeStats addBucketsToTable(
             TimestampDataMap tableValueMap,
             MongoCursor<BucketDocument> cursor,
@@ -38,17 +49,6 @@ public class TabularDataUtility {
                 sizeLimit,
                 List.of(new RetentionInterval(beginSeconds, beginNanos, endSeconds, endNanos)));
     }
-
-    /**
-     * A half-open {@code [begin, end)} sample-retention window, expressed as epoch seconds + nanos.
-     *
-     * <p>Deliberately a local value type rather than the query package's {@code TimeInterval}: this
-     * utility is shared by the query service, the annotation export job, and the integration test
-     * wrapper, and must not depend on Query API V2 model classes. Callers holding a {@code TimeInterval}
-     * convert at the call site.
-     */
-    public static record RetentionInterval(
-            long beginSeconds, long beginNanos, long endSeconds, long endNanos) {}
 
     /**
      * Multi-interval form: a sample is retained when it falls inside <em>any</em> of the given
@@ -74,7 +74,13 @@ public class TabularDataUtility {
         while (cursor.hasNext()) {
             // add buckets to table data structure
             final BucketDocument bucket = cursor.next();
-            int columnIndex = tableValueMap.getColumnIndex(bucket.getPvName());
+            // Register the bucket's PV name. getColumnIndex() is a mutator (it appends unseen names to
+            // the map's column list) and the returned index is deliberately unused here: the call is
+            // made for the registration alone, so a PV whose buckets contribute no in-range samples
+            // still gets a column slot -- an all-empty column rather than a missing one. The column is
+            // normally also registered under the same name inside addColumnsToTable below; this keeps
+            // the slot even if a bucket's PV name and its column name ever diverge.
+            tableValueMap.getColumnIndex(bucket.getPvName());
             int bucketDataSize = addBucketToTable(bucket, tableValueMap, retentionIntervals);
             currentDataSize = currentDataSize + bucketDataSize;
             // Size accounting is per-BUCKET, not per-timestamp: a whole bucket is added to the table

@@ -142,6 +142,50 @@ public final class TimeInterval {
         return result;
     }
 
+    /**
+     * Clamps each interval's lower bound up to {@code (windowBeginSecs, windowBeginNanos)} and drops
+     * any interval left empty by the clamp (one ending at or before the window begin). The result
+     * preserves input order and is the set of fragments that can contribute to the page starting at
+     * that window begin.
+     *
+     * <p><b>Single source for the querySamples fragment clamp (issue #207).</b> The page's bucket
+     * retrieval filter and its sample-level retention trim must be derived from the <em>same</em>
+     * interval set, or the database and the assembly disagree about which samples belong to the page
+     * — the exact class of defect #207 fixed. {@code MongoSyncQueryClient.executeQuerySamplesV2}
+     * builds its per-fragment {@code $or} of bucket-overlap predicates from this, and
+     * {@code AbstractQuerySamplesDispatcher.retentionIntervals} builds its retention windows from it.
+     * Do not reimplement the clamp at either call site.
+     *
+     * <p>An empty result means nothing overlaps the page window; callers treat that as an empty page
+     * rather than an unfiltered query.
+     */
+    public static List<TimeInterval> clampToWindowBegin(
+            List<TimeInterval> intervals, long windowBeginSecs, long windowBeginNanos) {
+
+        final List<TimeInterval> clamped = new ArrayList<>();
+        for (TimeInterval iv : intervals) {
+            // begin = max(fragment.begin, windowBegin)
+            final long beginSecs;
+            final long beginNanos;
+            if (compareInstant(
+                    iv.beginSeconds, iv.beginNanos, windowBeginSecs, windowBeginNanos) >= 0) {
+                beginSecs = iv.beginSeconds;
+                beginNanos = iv.beginNanos;
+            } else {
+                beginSecs = windowBeginSecs;
+                beginNanos = windowBeginNanos;
+            }
+            final TimeInterval result =
+                    new TimeInterval(beginSecs, beginNanos, iv.endSeconds, iv.endNanos);
+            // drop fragments entirely at or before the window begin (they contribute nothing here)
+            if (result.isEmpty()) {
+                continue;
+            }
+            clamped.add(result);
+        }
+        return clamped;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

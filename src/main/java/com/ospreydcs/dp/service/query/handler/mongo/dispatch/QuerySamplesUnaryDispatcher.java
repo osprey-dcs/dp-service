@@ -65,11 +65,11 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             return;
         }
 
-        // Only the window begin is needed here: it bounds the database retrieval (and the resume
-        // point on a continuation page). Sample trimming uses the per-fragment intervals below (#207).
-        final long[] window = computeWindow(resolvedQuery);
-        final long windowBeginSecs = window[0];
-        final long windowBeginNanos = window[1];
+        // Only the window begin exists: it bounds the database retrieval (and is the resume point on a
+        // continuation page). The upper bound is per-fragment, applied by retentionIntervals() (#207).
+        final long[] windowBegin = computeWindowBegin(resolvedQuery);
+        final long windowBeginSecs = windowBegin[0];
+        final long windowBeginNanos = windowBegin[1];
 
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
