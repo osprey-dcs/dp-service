@@ -65,11 +65,11 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             return;
         }
 
-        final long[] window = computeWindow(resolvedQuery);
-        final long windowBeginSecs = window[0];
-        final long windowBeginNanos = window[1];
-        final long windowEndSecs = window[2];
-        final long windowEndNanos = window[3];
+        // Only the window begin exists: it bounds the database retrieval (and is the resume point on a
+        // continuation page). The upper bound is per-fragment, applied by retentionIntervals() (#207).
+        final long[] windowBegin = computeWindowBegin(resolvedQuery);
+        final long windowBeginSecs = windowBegin[0];
+        final long windowBeginNanos = windowBegin[1];
 
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
@@ -84,15 +84,15 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
 
         final boolean byteBudgetHit;
         try (cursor) {
+            // Trim against every resolved fragment, not the collapsed window (#207): the database
+            // filters fragments only per-bucket, so a bucket spanning a gap arrives with its in-gap
+            // samples intact.
             final TabularDataUtility.TimestampDataMapSizeStats sizeStats = TabularDataUtility.addBucketsToTable(
                     tableValueMap,
                     cursor,
                     0,
                     (int) Math.min(Integer.MAX_VALUE, byteBudget),
-                    windowBeginSecs,
-                    windowBeginNanos,
-                    windowEndSecs,
-                    windowEndNanos);
+                    retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos));
             byteBudgetHit = sizeStats.sizeLimitExceeded();
         } catch (NonScalarColumnException e) {
             // Q4: scalar-only. Translate the neutral shared exception into querySamples guidance.

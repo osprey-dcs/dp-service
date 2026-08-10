@@ -119,4 +119,55 @@ public class TimeIntervalTest {
         assertEquals(List.of(iv(50, 100)),
                 TimeInterval.intersectAll(List.of(openEnded), bound));
     }
+
+    // -----------------------------------------------------------------------
+    // clampToWindowBegin
+    //
+    // The single source for the querySamples page clamp (#207): both the bucket
+    // retrieval filter (MongoSyncQueryClient.executeQuerySamplesV2) and the sample
+    // retention trim (AbstractQuerySamplesDispatcher.retentionIntervals) are built
+    // from this, so a divergence here is a divergence between what the database
+    // returns and what assembly keeps.
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testClampToWindowBegin_firstPageLeavesFragmentsUntouched() {
+        // window begin == earliest fragment begin (the page-1 case): nothing is clamped or dropped
+        final List<TimeInterval> fragments = List.of(iv(10, 20), iv(30, 40));
+        assertEquals(fragments, TimeInterval.clampToWindowBegin(fragments, 10, 0));
+    }
+
+    @Test
+    public void testClampToWindowBegin_clampsStraddlingFragmentAndDropsEarlierOnes() {
+        // resume at 35, mid-way through the second fragment: the first is entirely behind the
+        // window and drops; the second is clamped up to the resume point; the third is untouched.
+        final List<TimeInterval> fragments = List.of(iv(10, 20), iv(30, 40), iv(50, 60));
+        assertEquals(List.of(iv(35, 40), iv(50, 60)),
+                TimeInterval.clampToWindowBegin(fragments, 35, 0));
+    }
+
+    @Test
+    public void testClampToWindowBegin_dropsFragmentEndingExactlyAtWindowBegin() {
+        // half-open: a fragment ending exactly at the window begin contributes no samples
+        assertEquals(List.of(iv(30, 40)),
+                TimeInterval.clampToWindowBegin(List.of(iv(10, 20), iv(30, 40)), 20, 0));
+    }
+
+    @Test
+    public void testClampToWindowBegin_windowPastEverythingYieldsEmpty() {
+        // an empty result means nothing overlaps the page; callers must treat this as an empty
+        // page rather than an unfiltered query.
+        assertTrue(TimeInterval.clampToWindowBegin(List.of(iv(10, 20), iv(30, 40)), 99, 0).isEmpty());
+    }
+
+    @Test
+    public void testClampToWindowBegin_comparesNanosNotJustSeconds() {
+        // fragment begins at 10.500; a window begin of 10.250 is earlier, so no clamp applies
+        final TimeInterval fragment = new TimeInterval(10, 500, 20, 0);
+        assertEquals(List.of(fragment),
+                TimeInterval.clampToWindowBegin(List.of(fragment), 10, 250));
+        // a window begin of 10.750 is later, so the fragment is clamped up to it
+        assertEquals(List.of(new TimeInterval(10, 750, 20, 0)),
+                TimeInterval.clampToWindowBegin(List.of(fragment), 10, 750));
+    }
 }

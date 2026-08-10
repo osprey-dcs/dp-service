@@ -20,6 +20,17 @@ public class TabularDataUtility {
 
     public static record TimestampDataMapSizeStats(int currentDataSize, boolean sizeLimitExceeded) {}
 
+    /**
+     * A half-open {@code [begin, end)} sample-retention window, expressed as epoch seconds + nanos.
+     *
+     * <p>Deliberately a local value type rather than the query package's {@code TimeInterval}: this
+     * utility is shared by the query service, the annotation export job, and the integration test
+     * wrapper, and must not depend on Query API V2 model classes. Callers holding a {@code TimeInterval}
+     * convert at the call site.
+     */
+    public static record RetentionInterval(
+            long beginSeconds, long beginNanos, long endSeconds, long endNanos) {}
+
     public static TimestampDataMapSizeStats addBucketsToTable(
             TimestampDataMap tableValueMap,
             MongoCursor<BucketDocument> cursor,
@@ -31,13 +42,46 @@ public class TabularDataUtility {
             long endNanos
     ) throws DpException {
 
+        return addBucketsToTable(
+                tableValueMap,
+                cursor,
+                previousDataSize,
+                sizeLimit,
+                List.of(new RetentionInterval(beginSeconds, beginNanos, endSeconds, endNanos)));
+    }
+
+    /**
+     * Multi-interval form: a sample is retained when it falls inside <em>any</em> of the given
+     * half-open intervals.
+     *
+     * <p>Exists for Query API V2 {@code querySamples} with a {@code ConfigurationSelector}, which
+     * resolves to a set of <b>disjoint</b> retrieval intervals (issue #207). The MongoDB query filters
+     * those fragments only at <em>bucket</em> granularity, so a single bucket spanning the gap between
+     * two fragments passes the database filter with its in-gap samples intact. Trimming here against
+     * the full fragment list — rather than a single collapsed {@code [min begin, max end)} window — is
+     * what keeps gap samples out of the result. Single-interval callers ({@code queryTable}, the export
+     * job) are unaffected and reach this through the overload above.
+     */
+    public static TimestampDataMapSizeStats addBucketsToTable(
+            TimestampDataMap tableValueMap,
+            MongoCursor<BucketDocument> cursor,
+            int previousDataSize,
+            Integer sizeLimit, // if null, no limit is applied
+            List<RetentionInterval> retentionIntervals
+    ) throws DpException {
+
         int currentDataSize = previousDataSize;
         while (cursor.hasNext()) {
             // add buckets to table data structure
             final BucketDocument bucket = cursor.next();
-            int columnIndex = tableValueMap.getColumnIndex(bucket.getPvName());
-            int bucketDataSize = addBucketToTable(
-                    bucket, tableValueMap, beginSeconds, beginNanos, endSeconds, endNanos);
+            // Register the bucket's PV name. getColumnIndex() is a mutator (it appends unseen names to
+            // the map's column list) and the returned index is deliberately unused here: the call is
+            // made for the registration alone, so a PV whose buckets contribute no in-range samples
+            // still gets a column slot -- an all-empty column rather than a missing one. The column is
+            // normally also registered under the same name inside addColumnsToTable below; this keeps
+            // the slot even if a bucket's PV name and its column name ever diverge.
+            tableValueMap.getColumnIndex(bucket.getPvName());
+            int bucketDataSize = addBucketToTable(bucket, tableValueMap, retentionIntervals);
             currentDataSize = currentDataSize + bucketDataSize;
             // Size accounting is per-BUCKET, not per-timestamp: a whole bucket is added to the table
             // before the limit is checked, so currentDataSize can overshoot sizeLimit by up to one
@@ -63,10 +107,7 @@ public class TabularDataUtility {
     private static int addBucketToTable(
             BucketDocument bucket,
             TimestampDataMap tableValueMap,
-            long beginSeconds,
-            long beginNanos,
-            long endSeconds,
-            long endNanos
+            List<RetentionInterval> retentionIntervals
     ) throws DpException {
 
         final DataTimestamps bucketDataTimestamps = bucket.getDataTimestamps().toDataTimestamps();
@@ -92,10 +133,25 @@ public class TabularDataUtility {
                 bucketDataTimestamps,
                 List.of(bucketColumn),
                 tableValueMap,
-                beginSeconds,
-                beginNanos,
-                endSeconds,
-                endNanos);
+                retentionIntervals);
+    }
+
+    /**
+     * True when {@code (second, nano)} falls inside any half-open interval in {@code intervals}.
+     * A sample exactly at an interval's end belongs to the next interval, not this one.
+     */
+    private static boolean isRetained(long second, long nano, List<RetentionInterval> intervals) {
+        for (RetentionInterval interval : intervals) {
+            if (second < interval.beginSeconds() || second > interval.endSeconds()) {
+                continue;
+            }
+            if ((second == interval.beginSeconds() && nano < interval.beginNanos())
+                    || (second == interval.endSeconds() && nano >= interval.endNanos())) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     private static int addColumnsToTable(
@@ -108,10 +164,35 @@ public class TabularDataUtility {
             long endNanos
     ) throws DpException {
 
+        return addColumnsToTable(
+                dataTimestamps,
+                dataColumns,
+                tableValueMap,
+                List.of(new RetentionInterval(beginSeconds, beginNanos, endSeconds, endNanos)));
+    }
+
+    private static int addColumnsToTable(
+            DataTimestamps dataTimestamps,
+            List<DataColumn> dataColumns,
+            TimestampDataMap tableValueMap,
+            List<RetentionInterval> retentionIntervals
+    ) throws DpException {
+
         int dataValueSize = 0;
         final DataTimestampsUtility.DataTimestampsIterator dataTimestampsIterator =
                 DataTimestampsUtility.dataTimestampsIterator(dataTimestamps);
 
+
+        // Register every column up front. getColumnIndex() is a mutator -- it appends unseen names to
+        // the map's column name list, which is what determines the exported/emitted column set. The
+        // pre-#207 code got this incidentally, by calling it inside the per-column loop before the
+        // range test skipped a value, so a column whose samples all fall outside the range still got
+        // a slot (an all-empty column, not a missing one). Hoisting the range test above that loop
+        // would silently drop such columns, so the registration is now explicit rather than a side
+        // effect of the skipped path.
+        for (DataColumn dataColumn : dataColumns) {
+            tableValueMap.getColumnIndex(dataColumn.getName());
+        }
 
         // derserialize DataColumn content from document and the iterate DataValues in column
         int valueIndex = 0;
@@ -121,17 +202,17 @@ public class TabularDataUtility {
             final long second = timestamp.getEpochSeconds();
             final long nano = timestamp.getNanoseconds();
 
+            // skip values outside every retention interval (hoisted: the test depends only on the
+            // timestamp, so it is the same verdict for every column at this row)
+            if (!isRetained(second, nano, retentionIntervals)) {
+                valueIndex = valueIndex + 1;
+                continue;
+            }
+
             // add next value for each column to tableValueMap
             for (DataColumn dataColumn : dataColumns) {
                 final DataValue dataValue = dataColumn.getDataValues(valueIndex);
                 final int columnIndex = tableValueMap.getColumnIndex(dataColumn.getName());
-
-                // skip values outside query time range
-                if (second < beginSeconds || second > endSeconds) {
-                    continue;
-                } else if ((second == beginSeconds && nano < beginNanos) || (second == endSeconds && nano >= endNanos)) {
-                    continue;
-                }
 
                 // keep track of data size
                 dataValueSize = dataValueSize + dataValue.getSerializedSize();

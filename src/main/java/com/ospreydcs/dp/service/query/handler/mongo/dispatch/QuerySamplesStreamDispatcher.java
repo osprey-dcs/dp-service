@@ -61,10 +61,10 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             return;
         }
 
-        final long[] window = computeWindow(resolvedQuery);
+        final long[] windowBegin = computeWindowBegin(resolvedQuery);
 
         final MongoCursor<BucketDocument> cursor =
-                mongoClient.executeQuerySamplesV2(resolvedQuery, window[0], window[1]);
+                mongoClient.executeQuerySamplesV2(resolvedQuery, windowBegin[0], windowBegin[1]);
 
         if (cursor == null) {
             emitEmptyChunkAndComplete();
@@ -76,8 +76,10 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         try (cursor) {
             // Assemble the full window once. No sizeLimit: streaming materializes the whole table
             // (memory-bounded, per the class note); the byte budget bounds each emitted chunk, below.
+            // Trimming uses every resolved fragment rather than a collapsed window (#207).
             TabularDataUtility.addBucketsToTable(
-                    tableValueMap, cursor, 0, null, window[0], window[1], window[2], window[3]);
+                    tableValueMap, cursor, 0, null,
+                    retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]));
         } catch (NonScalarColumnException e) {
             final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
                     + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";

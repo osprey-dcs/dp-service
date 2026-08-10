@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
+import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
@@ -32,33 +33,51 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
     }
 
     /**
-     * Computes the page/stream window {@code [begin, end)} for the resolved query: begin = the resume
-     * timestamp (from a continuation token) or the earliest fragment begin; end = the latest fragment
-     * end. Returns {@code {beginSecs, beginNanos, endSecs, endNanos}}.
+     * The page/stream window <em>begin</em> for the resolved query: the resume timestamp (from a
+     * continuation token) or, on the first page, the earliest fragment begin. Returns
+     * {@code {beginSecs, beginNanos}}.
+     *
+     * <p>Deliberately begin-only. There is no corresponding window <em>end</em>, because there is no
+     * single upper bound that is correct to filter on: the resolved fragments may be disjoint, and a
+     * collapsed {@code [min begin, max end)} window spans the gaps between them. Filtering samples
+     * against such a window is precisely the #207 defect. The upper bound is applied per fragment, by
+     * {@link #retentionIntervals}; do not reintroduce a window end here.
      */
-    protected static long[] computeWindow(ResolvedQuery resolvedQuery) {
+    protected static long[] computeWindowBegin(ResolvedQuery resolvedQuery) {
         final List<TimeInterval> intervals = resolvedQuery.getRetrievalIntervals();
         final KeysetPosition pageStart = resolvedQuery.getPageStart();
 
-        final long beginSecs;
-        final long beginNanos;
         if (pageStart != null) {
-            beginSecs = pageStart.getSeconds();
-            beginNanos = pageStart.getNanos();
-        } else {
-            beginSecs = intervals.get(0).getBeginSeconds();
-            beginNanos = intervals.get(0).getBeginNanos();
+            return new long[]{pageStart.getSeconds(), pageStart.getNanos()};
         }
+        return new long[]{intervals.get(0).getBeginSeconds(), intervals.get(0).getBeginNanos()};
+    }
 
-        long endSecs = intervals.get(0).getEndSeconds();
-        long endNanos = intervals.get(0).getEndNanos();
-        for (TimeInterval iv : intervals) {
-            if (TimeInterval.compareInstant(iv.getEndSeconds(), iv.getEndNanos(), endSecs, endNanos) > 0) {
-                endSecs = iv.getEndSeconds();
-                endNanos = iv.getEndNanos();
-            }
+    /**
+     * The sample-retention windows for the resolved query: one {@link TabularDataUtility.RetentionInterval}
+     * per resolved retrieval fragment, each clamped on the left to the page window begin (the resume
+     * timestamp on a continuation page).
+     *
+     * <p>Assembly must trim against this full list rather than a single collapsed
+     * {@code [min begin, max end)} window (issue #207). The database filters fragments only at
+     * <em>bucket</em> granularity, so a bucket spanning the gap between two fragments is retrieved with
+     * its in-gap samples intact; trimming against a collapsed window would leave them in the result.
+     *
+     * <p>The clamp itself comes from {@link TimeInterval#clampToWindowBegin}, the same call
+     * {@code MongoSyncQueryClient.executeQuerySamplesV2} uses to build its per-fragment database
+     * filters — so the retrieval filter and this trim cannot drift apart.
+     */
+    protected static List<TabularDataUtility.RetentionInterval> retentionIntervals(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+
+        final List<TabularDataUtility.RetentionInterval> intervals = new ArrayList<>();
+        for (TimeInterval fragment : TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos)) {
+            intervals.add(new TabularDataUtility.RetentionInterval(
+                    fragment.getBeginSeconds(), fragment.getBeginNanos(),
+                    fragment.getEndSeconds(), fragment.getEndNanos()));
         }
-        return new long[]{beginSecs, beginNanos, endSecs, endNanos};
+        return intervals;
     }
 
     /**

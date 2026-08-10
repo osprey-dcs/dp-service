@@ -425,28 +425,13 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
         // Per-fragment overlap predicates with each fragment's lower bound clamped to the page window
         // begin (windowBegin = resume timestamp on a continuation page, or timeRange begin on page 1).
-        // Fragments that end at or before the window begin contribute nothing to this page.
+        // The clamp lives on TimeInterval so this filter and the dispatcher's sample-level retention
+        // trim are derived from the same interval set (#207) — see clampToWindowBegin.
         final List<Bson> fragmentFilters = new ArrayList<>();
-        for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
-            final long clampedBeginSecs;
-            final long clampedBeginNanos;
-            if (TimeInterval.compareInstant(
-                    interval.getBeginSeconds(), interval.getBeginNanos(),
-                    windowBeginSecs, windowBeginNanos) >= 0) {
-                clampedBeginSecs = interval.getBeginSeconds();
-                clampedBeginNanos = interval.getBeginNanos();
-            } else {
-                clampedBeginSecs = windowBeginSecs;
-                clampedBeginNanos = windowBeginNanos;
-            }
-            // drop fragments entirely before the window begin (clamped begin >= fragment end)
-            if (TimeInterval.compareInstant(
-                    clampedBeginSecs, clampedBeginNanos,
-                    interval.getEndSeconds(), interval.getEndNanos()) >= 0) {
-                continue;
-            }
+        for (TimeInterval interval : TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos)) {
             fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
-                    clampedBeginSecs, clampedBeginNanos,
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
                     interval.getEndSeconds(), interval.getEndNanos()));
         }
 

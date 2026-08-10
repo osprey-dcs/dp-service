@@ -27,6 +27,7 @@ import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.query.handler.QueryV2Resolver;
 import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesUnaryDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryV2Job;
@@ -65,6 +66,11 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     private static final String PV_B = "spv_b"; // 5 Hz
     private static final String PV_ARR = "sarr"; // non-scalar
 
+    // #207 fragment-gap fixture, on its own time base clear of the other PVs
+    private static final String PV_SPAN = "spanpv";
+    private static final long SPAN_B = startSeconds + 200_000L;
+    private static final int SPAN_SECONDS = 10;
+
     protected static class TestSyncClient extends MongoSyncQueryClient implements TestClientInterface {
         @Override protected String getCollectionNameBuckets() { return getTestCollectionNameBuckets(); }
         @Override protected String getCollectionNameRequestStatus() { return getTestCollectionNameRequestStatus(); }
@@ -87,6 +93,10 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             buckets.add(scalarBucket(PV_B, B + s, 200_000_000L, 5));  // 5 Hz
         }
         buckets.add(arrayBucket(PV_ARR, B));
+        // #207 fixture: ONE bucket covering the whole span, at 1 Hz. Deliberately a single bucket --
+        // the same data stored as per-second buckets is filtered correctly by the database alone and
+        // would not exercise the sample-level fragment trim.
+        buckets.add(spanningBucket(PV_SPAN, SPAN_B, SPAN_SECONDS));
         assertEquals(buckets.size(),
                 ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
     }
@@ -138,6 +148,28 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 .setStartTime(TimestampUtility.timestampFromSeconds(second, 0))
                 .setPeriodNanos(100_000_000L)
                 .setCount(1)
+                .build();
+        bucket.setDataTimestamps(DataTimestampsDocument.fromDataTimestamps(
+                DataTimestamps.newBuilder().setSamplingClock(clock).build()));
+        return bucket;
+    }
+
+    /** A single bucket holding {@code count} 1 Hz samples starting at {@code startSecond}. */
+    private static BucketDocument spanningBucket(String pvName, long startSecond, int count) {
+        final BucketDocument bucket = new BucketDocument();
+        bucket.setId(pvName + "-span-" + startSecond);
+        bucket.setPvName(pvName);
+
+        final DataColumn.Builder columnBuilder = DataColumn.newBuilder().setName(pvName);
+        for (int i = 0; i < count; i++) {
+            columnBuilder.addDataValues(DataValue.newBuilder().setDoubleValue(i).build());
+        }
+        bucket.setDataColumn(DataColumnDocument.fromDataColumn(columnBuilder.build()));
+
+        final SamplingClock clock = SamplingClock.newBuilder()
+                .setStartTime(TimestampUtility.timestampFromSeconds(startSecond, 0))
+                .setPeriodNanos(1_000_000_000L)
+                .setCount(count)
                 .build();
         bucket.setDataTimestamps(DataTimestampsDocument.fromDataTimestamps(
                 DataTimestamps.newBuilder().setSamplingClock(clock).build()));
@@ -583,5 +615,120 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertEquals(com.ospreydcs.dp.grpc.v1.common.ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
                 last.getExceptionalResult().getExceptionalResultStatus());
         assertTrue(last.getExceptionalResult().getMessage().contains("exceeds the outgoing message size limit"));
+    }
+
+    // -----------------------------------------------------------------------
+    // #207: fragmented retrieval intervals (ConfigurationSelector) must be enforced at SAMPLE
+    // granularity, not just per-bucket by the database query.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Two disjoint fragments [SPAN_B, SPAN_B+2) and [SPAN_B+8, SPAN_B+10); seconds +2..+7 are the gap.
+     * Builds the ResolvedQuery directly rather than going through the resolver, so the fragmented
+     * shape is exercised without seeding configuration activations.
+     */
+    private static ResolvedQuery fragmentedSpanQuery(boolean streaming) {
+        final List<TimeInterval> intervals = new ArrayList<>();
+        intervals.add(new TimeInterval(SPAN_B, 0, SPAN_B + 2, 0));
+        intervals.add(new TimeInterval(SPAN_B + 8, 0, SPAN_B + 10, 0));
+        return new ResolvedQuery(
+                List.of(PV_SPAN), intervals, DEFAULT_PAGE_SIZE, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, streaming);
+    }
+
+    /** Offsets from SPAN_B of every timestamp in the table. */
+    private static List<Long> spanOffsets(ColumnTable table) {
+        final List<Long> offsets = new ArrayList<>();
+        for (Timestamp t : table.getTimestampList().getTimestampsList()) {
+            offsets.add(t.getEpochSeconds() - SPAN_B);
+        }
+        return offsets;
+    }
+
+    @Test
+    public void testFragmentGapExcludedUnary() {
+        final List<QuerySamplesResponse> responses = new ArrayList<>();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
+            @Override public void onError(Throwable t) { }
+            @Override public void onCompleted() { }
+        };
+        new QueryV2Job(
+                fragmentedSpanQuery(false),
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
+                clientTestInterface).execute();
+
+        assertEquals(1, responses.size());
+        final ColumnTable table = responses.get(0).getSampleQueryResult().getColumnTable();
+        assertEquals("only in-fragment samples expected", List.of(0L, 1L, 8L, 9L), spanOffsets(table));
+
+        // values must stay aligned with their timestamps after the gap is dropped
+        final DataColumn column = columnByName(table, PV_SPAN);
+        assertEquals(4, column.getDataValuesCount());
+        assertEquals(0.0, column.getDataValues(0).getDoubleValue(), 0.0);
+        assertEquals(1.0, column.getDataValues(1).getDoubleValue(), 0.0);
+        assertEquals(8.0, column.getDataValues(2).getDoubleValue(), 0.0);
+        assertEquals(9.0, column.getDataValues(3).getDoubleValue(), 0.0);
+    }
+
+    @Test
+    public void testFragmentGapExcludedStreaming() {
+        final StreamOutcome outcome = new StreamOutcome();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { outcome.messages.add(r); }
+            @Override public void onError(Throwable t) { outcome.errored = true; }
+            @Override public void onCompleted() { outcome.completed = true; }
+        };
+        new QueryV2Job(
+                fragmentedSpanQuery(true),
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, Long.MAX_VALUE),
+                clientTestInterface).execute();
+
+        assertFalse(outcome.errored);
+        assertTrue(outcome.completed);
+
+        final List<Long> allOffsets = new ArrayList<>();
+        for (QuerySamplesResponse r : outcome.messages) {
+            allOffsets.addAll(spanOffsets(r.getSampleQueryResult().getColumnTable()));
+        }
+        assertEquals("only in-fragment samples expected", List.of(0L, 1L, 8L, 9L), allOffsets);
+    }
+
+    @Test
+    public void testFragmentGapExcludedAcrossPages() throws Exception {
+        // pageSize=1 forces a page boundary at every row, including across the gap seam, so the
+        // resume-clamped retention intervals are exercised on each continuation page (#207).
+        final List<Long> collected = new ArrayList<>();
+        String pageToken = null;
+        for (int page = 0; page < 20; page++) {
+            final List<TimeInterval> intervals = new ArrayList<>();
+            intervals.add(new TimeInterval(SPAN_B, 0, SPAN_B + 2, 0));
+            intervals.add(new TimeInterval(SPAN_B + 8, 0, SPAN_B + 10, 0));
+            final ResolvedQuery rq = new ResolvedQuery(
+                    List.of(PV_SPAN), intervals, 1,
+                    (pageToken == null || pageToken.isEmpty())
+                            ? null
+                            : com.ospreydcs.dp.service.query.handler.paging.PageToken.decode(pageToken),
+                    false, false, ResolvedQuery.ResultMode.SAMPLE, false);
+
+            final List<QuerySamplesResponse> responses = new ArrayList<>();
+            final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+                @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
+                @Override public void onError(Throwable t) { }
+                @Override public void onCompleted() { }
+            };
+            new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
+                    clientTestInterface).execute();
+            assertEquals(1, responses.size());
+            final QuerySamplesResponse.SampleQueryResult result = responses.get(0).getSampleQueryResult();
+            collected.addAll(spanOffsets(result.getColumnTable()));
+            pageToken = result.getNextPageToken();
+            if (pageToken == null || pageToken.isEmpty()) {
+                break;
+            }
+        }
+        assertEquals("paged traversal must visit each in-fragment sample exactly once",
+                List.of(0L, 1L, 8L, 9L), collected);
     }
 }
