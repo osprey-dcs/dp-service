@@ -278,6 +278,19 @@ The query dispatchers (`QueryDataDispatcher`, `QueryDataStreamDispatcher`, `Quer
 
 Because a malformed bucket blocks every query covering it, `BucketSpanVerifier` also scans for buckets missing `dataColumn`/`dataTimestamps` — in the same pass as the span check, since both must visit stored buckets (measured ~20% over the span check alone). A corrupt bucket is reported with its id, PV, and missing field, but does **not** disable the query lower bound: corruption and the span invariant are independent. The verification marker is not recorded while corruption exists, so an unrepaired bucket keeps being reported on each startup rather than going quiet after the first.
 
+### querySamples Fragment Clamp Invariant (issue #207)
+A `querySamples` request with a `ConfigurationSelector` resolves to a set of **disjoint** retrieval fragments. Two filters must agree on that fragment set, and they run at different granularities:
+
+- **Database (bucket granularity)** — `MongoSyncQueryClient.executeQuerySamplesV2()` builds a per-fragment `$or` of bucket-overlap predicates.
+- **Assembly (sample granularity)** — `TabularDataUtility.addBucketsToTable()` retains a sample only when it falls inside *some* fragment.
+
+**Both must derive their fragments from `TimeInterval.clampToWindowBegin()`** — the single source for clamping each fragment to the page window begin. Do not reimplement the clamp at either call site. When the two disagree, the database returns buckets the assembly then keeps samples from incorrectly, which is exactly issue #207: a bucket spanning the gap between two fragments passes the bucket-level filter, and its in-gap samples were never trimmed.
+
+Like the max-bucket-span invariant, the failure mode is a **silent wrong answer** — out-of-interval data in an otherwise normal-looking result, not an error. Two related traps:
+
+- **Never collapse the fragments** into a single `[min begin, max end)` window for sample filtering; that window spans the gaps. `computeWindowBegin()` deliberately returns only a begin — there is no correct single upper bound. Do not reintroduce a window end.
+- **`TimestampDataMap.getColumnIndex()` is a mutator.** It appends unseen names to the list that determines the emitted/exported column set, so it must be called for every column regardless of whether any sample survives trimming — otherwise a PV with no in-range samples is silently dropped instead of emitted as an all-empty column. `addColumnsToTable()` registers columns up front for this reason; `AnnotationCalculationsIT` (16 columns expected) is the regression guard.
+
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 - **`BenchmarkIngestDataStream`** / **`BenchmarkIngestDataBidiStream`**: compare `DATA_COLUMN` (legacy), `DOUBLE_COLUMN`, and `SERIALIZED_DATA_COLUMN` strategies
