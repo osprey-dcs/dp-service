@@ -187,11 +187,22 @@ public class IngestionClient extends ServiceApiClientBase {
          * Sets the column metadata applied to each column in the request, and returns this params
          * object so the call can be chained to a constructor invocation.  The supplied message is
          * used as-is with no normalization; unlike the convenience overload below, blank provenance
-         * fields are not omitted, and an empty message is not treated as "no metadata".  Pass null
-         * to clear.
+         * fields are not omitted, and an empty message is not treated as "no metadata".  Use
+         * clearColumnMetadata() rather than passing null, which is ambiguous between this method
+         * and the overload below and so requires an explicit cast at the call site.
          */
         public IngestionRequestParams setColumnMetadata(ColumnMetadata columnMetadata) {
             this.columnMetadata = columnMetadata;
+            return this;
+        }
+
+        /*
+         * Clears any column metadata previously set, so that the request's columns are built
+         * without a metadata field.  Returns this params object so the call can be chained to a
+         * constructor invocation.
+         */
+        public IngestionRequestParams clearColumnMetadata() {
+            this.columnMetadata = null;
             return this;
         }
 
@@ -319,6 +330,28 @@ public class IngestionClient extends ServiceApiClientBase {
             this.dataType = dataType;
             this.values = values;
             this.valuesStatus = valuesStatus;
+
+            // buildIngestionRequest() indexes valuesStatus by the values dimensions, so a mismatch
+            // would otherwise surface as an IndexOutOfBoundsException from inside the builder,
+            // far from the call site that supplied the mismatched lists
+            if (valuesStatus != null && values != null) {
+                if (valuesStatus.size() != values.size()) {
+                    throw new IllegalArgumentException(
+                            "valuesStatus size does not match values size: "
+                                    + "valuesStatus: " + valuesStatus.size()
+                                    + ", values: " + values.size());
+                }
+                for (int i = 0; i < values.size(); i++) {
+                    final List<DataValue.ValueStatus> columnStatus = valuesStatus.get(i);
+                    if (columnStatus == null || columnStatus.size() != values.get(i).size()) {
+                        throw new IllegalArgumentException(
+                                "valuesStatus[" + i + "] size does not match values[" + i + "] size: "
+                                        + "valuesStatus: "
+                                        + (columnStatus == null ? "null" : columnStatus.size())
+                                        + ", values: " + values.get(i).size());
+                    }
+                }
+            }
         }
     }
 

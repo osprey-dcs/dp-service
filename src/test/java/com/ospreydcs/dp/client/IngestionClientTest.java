@@ -19,6 +19,7 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -311,8 +312,42 @@ public class IngestionClientTest {
     }
 
     /**
+     * Verifies that a valuesStatus whose dimensions do not match values is rejected at construction
+     * with a clear message, rather than surfacing later as an IndexOutOfBoundsException from inside
+     * buildIngestionRequest().
+     */
+    @Test
+    public void testMismatchedValuesStatusDimensionsRejected() {
+
+        final DataValue.ValueStatus status = DataValue.ValueStatus.newBuilder()
+                .setMessage("status")
+                .build();
+
+        // outer dimension too short: one status column for two value columns
+        final IllegalArgumentException outerException = assertThrows(
+                IllegalArgumentException.class,
+                () -> buildParams(List.of(List.of(status, status))));
+        assertTrue(
+                outerException.getMessage(),
+                outerException.getMessage().contains("valuesStatus size does not match values size"));
+
+        // inner dimension too short: one status for a column with two values
+        final IllegalArgumentException innerException = assertThrows(
+                IllegalArgumentException.class,
+                () -> buildParams(List.of(List.of(status), List.of(status, status))));
+        assertTrue(
+                innerException.getMessage(),
+                innerException.getMessage().contains("valuesStatus[0] size does not match values[0] size"));
+
+        // matching dimensions are accepted
+        buildParams(Arrays.asList(
+                Arrays.asList(status, status),
+                Arrays.asList(status, status)));
+    }
+
+    /**
      * Verifies that the raw setter overload applies the supplied message as is, with no
-     * normalization, and that passing null clears any metadata previously set.
+     * normalization, and that clearColumnMetadata() removes any metadata previously set.
      */
     @Test
     public void testRawSetterAppliesMessageAsIs() {
@@ -327,8 +362,9 @@ public class IngestionClientTest {
             assertTrue(column.hasMetadata());
         }
 
-        // passing null clears it
-        params.setColumnMetadata((ColumnMetadata) null);
+        // clearColumnMetadata() removes it, avoiding the ambiguity of passing null to the
+        // overloaded setColumnMetadata()
+        params.clearColumnMetadata();
         assertNull(params.columnMetadata);
         for (DataColumn column : buildRequestColumns(params)) {
             assertFalse(column.hasMetadata());
