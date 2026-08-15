@@ -166,9 +166,12 @@ public class IngestionClient extends ServiceApiClientBase {
         public List<List<DataValue.ValueStatus>> valuesStatus = null;
 
         /*
-         * Optional column-level metadata (provenance, tags, attributes) applied uniformly to every
-         * column in the request's DataFrame.  Left null when no metadata is supplied, in which case
-         * the columns are built without a metadata field.
+         * Optional column-level metadata (provenance, tags, attributes) applied to each DataColumn
+         * that buildIngestionRequest() adds to the request's DataFrame.  The other column types
+         * defined by DataFrame also carry a metadata field, but buildIngestionRequest() does not
+         * build them, so this field does not apply to them.  A column that already carries its own
+         * metadata keeps it; this field is only applied to columns without one.  Left null when no
+         * metadata is supplied, in which case the columns are built without a metadata field.
          */
         public ColumnMetadata columnMetadata = null;
 
@@ -182,7 +185,10 @@ public class IngestionClient extends ServiceApiClientBase {
 
         /*
          * Sets the column metadata applied to each column in the request, and returns this params
-         * object so the call can be chained to a constructor invocation.
+         * object so the call can be chained to a constructor invocation.  The supplied message is
+         * used as-is with no normalization; unlike the convenience overload below, blank provenance
+         * fields are not omitted, and an empty message is not treated as "no metadata".  Pass null
+         * to clear.
          */
         public IngestionRequestParams setColumnMetadata(ColumnMetadata columnMetadata) {
             this.columnMetadata = columnMetadata;
@@ -191,10 +197,16 @@ public class IngestionClient extends ServiceApiClientBase {
 
         /*
          * Convenience method building ColumnMetadata from its constituent parts, applied to each
-         * column in the request.  Provenance is only set if at least one of source/process is
-         * specified, and individual provenance fields are omitted rather than set to empty strings,
-         * per the ColumnProvenance contract in common.proto.  Returns this params object so the
-         * call can be chained to a constructor invocation.
+         * column in the request.  The provenance message is only set if at least one of
+         * source/process is supplied, and a blank argument is treated the same as null.  Note that
+         * ColumnProvenance.source and .process are plain proto3 strings with no field presence, so
+         * an unsupplied one is indistinguishable from an empty one on the wire and reads back as
+         * the empty string; the blank checking here determines whether the enclosing provenance
+         * message, which does have presence, is set at all.  If none of the arguments supply a
+         * value, columnMetadata is left null rather than set to an empty message, so that the
+         * columns are built without a metadata field instead of carrying an empty one.  Attribute
+         * entries with a null name or value are skipped.  Returns this params object so the call
+         * can be chained to a constructor invocation.
          */
         public IngestionRequestParams setColumnMetadata(
                 String provenanceSource,
@@ -222,10 +234,26 @@ public class IngestionClient extends ServiceApiClientBase {
             }
 
             if (attributes != null && !attributes.isEmpty()) {
-                metadataBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(attributes));
+                for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                    // skip incomplete entries, since the protobuf setters reject null
+                    if (entry.getKey() == null || entry.getValue() == null) {
+                        continue;
+                    }
+                    metadataBuilder.addAttributes(
+                            Attribute.newBuilder()
+                                    .setName(entry.getKey())
+                                    .setValue(entry.getValue())
+                                    .build());
+                }
             }
 
-            this.columnMetadata = metadataBuilder.build();
+            final ColumnMetadata metadata = metadataBuilder.build();
+
+            // leave columnMetadata null when nothing was actually supplied, so that the columns are
+            // built without a metadata field rather than carrying an empty one
+            this.columnMetadata =
+                    metadata.equals(ColumnMetadata.getDefaultInstance()) ? null : metadata;
+
             return this;
         }
 
@@ -554,13 +582,20 @@ public class IngestionClient extends ServiceApiClientBase {
             }
         }
 
-        // apply optional column metadata uniformly to each column in the frame, covering both the
-        // caller-supplied column list and the columns built from params above
+        // apply optional column metadata to each column in the frame, covering both the
+        // caller-supplied column list and the columns built from params above.  A column that
+        // already carries its own metadata keeps it, since per-column metadata is the more specific
+        // intent than the request-wide default in params.
         final List<DataColumn> metadataColumns;
         if (params.columnMetadata != null) {
             metadataColumns = new ArrayList<>(frameColumns.size());
             for (DataColumn frameColumn : frameColumns) {
-                metadataColumns.add(frameColumn.toBuilder().setMetadata(params.columnMetadata).build());
+                if (frameColumn.hasMetadata()) {
+                    metadataColumns.add(frameColumn);
+                } else {
+                    metadataColumns.add(
+                            frameColumn.toBuilder().setMetadata(params.columnMetadata).build());
+                }
             }
         } else {
             metadataColumns = frameColumns;
