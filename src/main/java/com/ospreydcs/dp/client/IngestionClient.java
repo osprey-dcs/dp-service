@@ -165,12 +165,107 @@ public class IngestionClient extends ServiceApiClientBase {
         public List<List<Object>> values = null;
         public List<List<DataValue.ValueStatus>> valuesStatus = null;
 
+        /*
+         * Optional column-level metadata (provenance, tags, attributes) applied to each DataColumn
+         * that buildIngestionRequest() adds to the request's DataFrame.  The other column types
+         * defined by DataFrame also carry a metadata field, but buildIngestionRequest() does not
+         * build them, so this field does not apply to them.  A column that already carries its own
+         * metadata keeps it; this field is only applied to columns without one.  Left null when no
+         * metadata is supplied, in which case the columns are built without a metadata field.
+         */
+        public ColumnMetadata columnMetadata = null;
+
         public IngestionRequestParams(
                 String providerId,
                 String requestId
         ) {
             this.providerId = providerId;
             this.requestId = requestId;
+        }
+
+        /*
+         * Sets the column metadata applied to each column in the request, and returns this params
+         * object so the call can be chained to a constructor invocation.  The supplied message is
+         * used as-is with no normalization; unlike the convenience overload below, blank provenance
+         * fields are not omitted, and an empty message is not treated as "no metadata".  Use
+         * clearColumnMetadata() rather than passing null, which is ambiguous between this method
+         * and the overload below and so requires an explicit cast at the call site.
+         */
+        public IngestionRequestParams setColumnMetadata(ColumnMetadata columnMetadata) {
+            this.columnMetadata = columnMetadata;
+            return this;
+        }
+
+        /*
+         * Clears any column metadata previously set, so that the request's columns are built
+         * without a metadata field.  Returns this params object so the call can be chained to a
+         * constructor invocation.
+         */
+        public IngestionRequestParams clearColumnMetadata() {
+            this.columnMetadata = null;
+            return this;
+        }
+
+        /*
+         * Convenience method building ColumnMetadata from its constituent parts, applied to each
+         * column in the request.  The provenance message is only set if at least one of
+         * source/process is supplied, and a blank argument is treated the same as null.  Note that
+         * ColumnProvenance.source and .process are plain proto3 strings with no field presence, so
+         * an unsupplied one is indistinguishable from an empty one on the wire and reads back as
+         * the empty string; the blank checking here determines whether the enclosing provenance
+         * message, which does have presence, is set at all.  If none of the arguments supply a
+         * value, columnMetadata is left null rather than set to an empty message, so that the
+         * columns are built without a metadata field instead of carrying an empty one.  Attribute
+         * entries with a null name or value are skipped.  Returns this params object so the call
+         * can be chained to a constructor invocation.
+         */
+        public IngestionRequestParams setColumnMetadata(
+                String provenanceSource,
+                String provenanceProcess,
+                List<String> tags,
+                Map<String, String> attributes
+        ) {
+            final ColumnMetadata.Builder metadataBuilder = ColumnMetadata.newBuilder();
+
+            final boolean hasSource = provenanceSource != null && !provenanceSource.isBlank();
+            final boolean hasProcess = provenanceProcess != null && !provenanceProcess.isBlank();
+            if (hasSource || hasProcess) {
+                final ColumnProvenance.Builder provenanceBuilder = ColumnProvenance.newBuilder();
+                if (hasSource) {
+                    provenanceBuilder.setSource(provenanceSource);
+                }
+                if (hasProcess) {
+                    provenanceBuilder.setProcess(provenanceProcess);
+                }
+                metadataBuilder.setProvenance(provenanceBuilder.build());
+            }
+
+            if (tags != null && !tags.isEmpty()) {
+                metadataBuilder.addAllTags(tags);
+            }
+
+            if (attributes != null && !attributes.isEmpty()) {
+                for (Map.Entry<String, String> entry : attributes.entrySet()) {
+                    // skip incomplete entries, since the protobuf setters reject null
+                    if (entry.getKey() == null || entry.getValue() == null) {
+                        continue;
+                    }
+                    metadataBuilder.addAttributes(
+                            Attribute.newBuilder()
+                                    .setName(entry.getKey())
+                                    .setValue(entry.getValue())
+                                    .build());
+                }
+            }
+
+            final ColumnMetadata metadata = metadataBuilder.build();
+
+            // leave columnMetadata null when nothing was actually supplied, so that the columns are
+            // built without a metadata field rather than carrying an empty one
+            this.columnMetadata =
+                    metadata.equals(ColumnMetadata.getDefaultInstance()) ? null : metadata;
+
+            return this;
         }
 
         public IngestionRequestParams(
@@ -188,6 +283,39 @@ public class IngestionClient extends ServiceApiClientBase {
                 IngestionDataType dataType,
                 List<List<Object>> values
         ) {
+            this(
+                    providerId,
+                    requestId,
+                    snapshotStartTimestampSeconds,
+                    snapshotStartTimestampNanos,
+                    timestampsSecondsList,
+                    timestampNanosList,
+                    samplingClockStartSeconds,
+                    samplingClockStartNanos,
+                    samplingClockPeriodNanos,
+                    samplingClockCount,
+                    columnNames,
+                    dataType,
+                    values,
+                    null);
+        }
+
+        public IngestionRequestParams(
+                String providerId,
+                String requestId,
+                Long snapshotStartTimestampSeconds,
+                Long snapshotStartTimestampNanos,
+                List<Long> timestampsSecondsList,
+                List<Long> timestampNanosList,
+                Long samplingClockStartSeconds,
+                Long samplingClockStartNanos,
+                Long samplingClockPeriodNanos,
+                Integer samplingClockCount,
+                List<String> columnNames,
+                IngestionDataType dataType,
+                List<List<Object>> values,
+                List<List<DataValue.ValueStatus>> valuesStatus
+        ) {
             this(providerId, requestId);
 
             this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
@@ -202,6 +330,28 @@ public class IngestionClient extends ServiceApiClientBase {
             this.dataType = dataType;
             this.values = values;
             this.valuesStatus = valuesStatus;
+
+            // buildIngestionRequest() indexes valuesStatus by the values dimensions, so a mismatch
+            // would otherwise surface as an IndexOutOfBoundsException from inside the builder,
+            // far from the call site that supplied the mismatched lists
+            if (valuesStatus != null && values != null) {
+                if (valuesStatus.size() != values.size()) {
+                    throw new IllegalArgumentException(
+                            "valuesStatus size does not match values size: "
+                                    + "valuesStatus: " + valuesStatus.size()
+                                    + ", values: " + values.size());
+                }
+                for (int i = 0; i < values.size(); i++) {
+                    final List<DataValue.ValueStatus> columnStatus = valuesStatus.get(i);
+                    if (columnStatus == null || columnStatus.size() != values.get(i).size()) {
+                        throw new IllegalArgumentException(
+                                "valuesStatus[" + i + "] size does not match values[" + i + "] size: "
+                                        + "valuesStatus: "
+                                        + (columnStatus == null ? "null" : columnStatus.size())
+                                        + ", values: " + values.get(i).size());
+                    }
+                }
+            }
         }
     }
 
@@ -464,8 +614,28 @@ public class IngestionClient extends ServiceApiClientBase {
                 frameColumns.add(dataColumnBuilder.build());
             }
         }
+
+        // apply optional column metadata to each column in the frame, covering both the
+        // caller-supplied column list and the columns built from params above.  A column that
+        // already carries its own metadata keeps it, since per-column metadata is the more specific
+        // intent than the request-wide default in params.
+        final List<DataColumn> metadataColumns;
+        if (params.columnMetadata != null) {
+            metadataColumns = new ArrayList<>(frameColumns.size());
+            for (DataColumn frameColumn : frameColumns) {
+                if (frameColumn.hasMetadata()) {
+                    metadataColumns.add(frameColumn);
+                } else {
+                    metadataColumns.add(
+                            frameColumn.toBuilder().setMetadata(params.columnMetadata).build());
+                }
+            }
+        } else {
+            metadataColumns = frameColumns;
+        }
+
         // add regular DataColumns
-        dataFrameBuilder.addAllDataColumns(frameColumns);
+        dataFrameBuilder.addAllDataColumns(metadataColumns);
 
         dataFrameBuilder.build();
         requestBuilder.setIngestionDataFrame(dataFrameBuilder);
