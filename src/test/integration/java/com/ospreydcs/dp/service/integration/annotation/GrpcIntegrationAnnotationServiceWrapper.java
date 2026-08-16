@@ -33,6 +33,7 @@ import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
+import io.grpc.ManagedChannel;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -95,6 +96,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     @Override
     protected void finiService() {
         service.fini();
+    }
+
+    public ManagedChannel getAnnotationChannel() {
+        return this.channel;
     }
 
     @Override

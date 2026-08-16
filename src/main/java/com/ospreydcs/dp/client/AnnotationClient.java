@@ -1029,4 +1029,188 @@ public class AnnotationClient extends ServiceApiClientBase {
         return sendExportData(request);
     }
 
+    /*
+     * Parameters for savePvMetadata().  Only pvName is required; the remaining fields are optional
+     * and are omitted from the request when null or empty.  Attributes are supplied as a map, to
+     * match how the rest of this client layer accepts them, and are converted to the repeated
+     * Attribute field by buildSavePvMetadataRequest().
+     *
+     * Because savePvMetadata() is a full-replace upsert, this record must express the complete
+     * desired state of the record, not just the fields being changed.  See savePvMetadata().
+     */
+    public record SavePvMetadataParams(
+            String pvName,
+            List<String> aliases,
+            List<String> tags,
+            Map<String, String> attributeMap,
+            String description,
+            String modifiedBy
+    ) {
+    }
+
+    public static class SavePvMetadataResponseObserver implements StreamObserver<SavePvMetadataResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public String getPvName() {
+            if (!pvNameList.isEmpty()) {
+                return pvNameList.get(0);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void onNext(SavePvMetadataResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                final SavePvMetadataResponse.SavePvMetadataResult result = response.getSavePvMetadataResult();
+
+                // flag error if already received a response
+                if (!pvNameList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    pvNameList.add(result.getPvName());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static SavePvMetadataRequest buildSavePvMetadataRequest(SavePvMetadataParams params) {
+
+        final SavePvMetadataRequest.Builder requestBuilder = SavePvMetadataRequest.newBuilder();
+
+        // handle required field
+        if (params.pvName() != null) {
+            requestBuilder.setPvName(params.pvName());
+        }
+
+        // handle optional fields, leaving them unset when not supplied.  The server does not
+        // distinguish an unset repeated or string field from an empty one, but leaving them unset
+        // keeps the request minimal and matches the other builders in this class.
+        if (params.aliases() != null) {
+            requestBuilder.addAllAliases(params.aliases());
+        }
+        if (params.tags() != null) {
+            // tags are lowercased, deduplicated and sorted server-side; no client normalization
+            requestBuilder.addAllTags(params.tags());
+        }
+        if (params.attributeMap() != null) {
+            requestBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(params.attributeMap()));
+        }
+        if (params.description() != null) {
+            requestBuilder.setDescription(params.description());
+        }
+        if (params.modifiedBy() != null) {
+            requestBuilder.setModifiedBy(params.modifiedBy());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public SavePvMetadataApiResult sendSavePvMetadata(
+            SavePvMetadataRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final SavePvMetadataResponseObserver responseObserver = new SavePvMetadataResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.savePvMetadata(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new SavePvMetadataApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SavePvMetadataApiResult(responseObserver.getPvName());
+        }
+    }
+
+    /**
+     * Creates or updates the PV metadata record for the specified canonical PV name.
+     *
+     * This is a full-replace upsert: aliases, tags, attributes, description and modifiedBy are all
+     * replaced by the values in params on every save, and fields omitted from params are not
+     * preserved from an existing record.  Callers updating an existing record must therefore supply
+     * the complete desired state rather than only the fields being changed.
+     *
+     * Server-side rejections (a blank pvName, duplicate attribute keys, a pvName already registered
+     * as another record's alias, or an alias already used by another record) are returned via
+     * resultStatus.isError and resultStatus.msg rather than thrown.  On success, the result carries
+     * the canonical pvName of the saved record.
+     */
+    public SavePvMetadataApiResult savePvMetadata(
+            SavePvMetadataParams params
+    ) {
+        final SavePvMetadataRequest request = buildSavePvMetadataRequest(params);
+        return sendSavePvMetadata(request);
+    }
+
 }
