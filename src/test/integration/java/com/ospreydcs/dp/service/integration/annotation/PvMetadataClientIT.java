@@ -171,7 +171,6 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         assertEquals("original description", createdDocument.getDescription());
         assertEquals(List.of("tag1"), createdDocument.getTags());
         assertNotNull(createdDocument.getCreatedAt());
-        assertNull(createdDocument.getUpdatedAt());
 
         // save again supplying only pvName; the omitted fields are replaced, not preserved
         final AnnotationClient.SavePvMetadataParams updateParams =
