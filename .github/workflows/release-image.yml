@@ -39,8 +39,6 @@ jobs:
     env:
       JAVA_VERSION: '21'
       DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
-      # Use provided dp_grpc_ref when set, otherwise default to 'main'
-      DP_GRPC_REF: ${{ inputs.dp_grpc_ref != '' && inputs.dp_grpc_ref || 'main' }}
       # IMAGE_TAG resolution priority:
       # 1) explicit inputs.image_tag (manual override)
       # 2) if workflow is triggered on a tag, use the tag name
@@ -82,12 +80,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
+      - name: Resolve dp-grpc ref
+        id: grpc
+        env:
+          CANDIDATE: ${{ inputs.dp_grpc_ref != '' && inputs.dp_grpc_ref || (github.ref_type == 'tag' && github.ref_name) || inputs.tag }}
+        run: |
+          WANT=$(sed -n 's:.*<dp-grpc.version>\(.*\)</dp-grpc.version>.*:\1:p' pom.xml)
+          if [ -n "$CANDIDATE" ] && git ls-remote --exit-code "$DP_GRPC_REPO" "refs/tags/$CANDIDATE" "refs/heads/$CANDIDATE" >/dev/null 2>&1; then
+            REF="$CANDIDATE"
+          elif [ -n "${{ inputs.dp_grpc_ref }}" ]; then
+            echo "ERROR: requested dp_grpc_ref '$CANDIDATE' does not exist in $DP_GRPC_REPO" >&2
+            exit 1
+          elif git ls-remote --exit-code "$DP_GRPC_REPO" "refs/tags/rel-$WANT" >/dev/null 2>&1; then
+            REF="rel-$WANT"
+          else
+            REF="main"
+          fi
+          echo "dp-grpc ref: $REF (candidate '$CANDIDATE', pom requires $WANT)"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - name: Checkout dp-grpc dependency
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: 'osprey-dcs/dp-grpc'
           path: dp-grpc
-          ref: ${{ env.DP_GRPC_REF }}
+          ref: ${{ steps.grpc.outputs.ref }}
           fetch-depth: 0
 
       - name: Build and install dp-grpc to local Maven repo
@@ -174,7 +191,7 @@ jobs:
             ${{ github.ref_type == 'tag' && format('ghcr.io/{0}/dp-service:latest', github.repository_owner) || '' }}
           build-args: |
             DP_GRPC_REPO=${{ env.DP_GRPC_REPO }}
-            DP_GRPC_REF=${{ env.DP_GRPC_REF }}
+            DP_GRPC_REF=${{ steps.grpc.outputs.ref }}
 
       - name: Tear down services
         if: always()
