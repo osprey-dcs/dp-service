@@ -1213,4 +1213,563 @@ public class AnnotationClient extends ServiceApiClientBase {
         return sendSavePvMetadata(request);
     }
 
+    /*
+     * Parameters for saveConfiguration().  configurationName and category are required; the
+     * remaining fields are optional and are omitted from the request when null.  Attributes are
+     * supplied as a map, to match how the rest of this client layer accepts them, and are converted
+     * to the repeated Attribute field by buildSaveConfigurationRequest().
+     *
+     * Because saveConfiguration() is a full-replace upsert, this record must express the complete
+     * desired state of the record, not just the fields being changed.  See saveConfiguration().
+     */
+    public record SaveConfigurationParams(
+            String configurationName,
+            String category,
+            String description,
+            String parentConfigurationName,
+            List<String> tags,
+            Map<String, String> attributeMap,
+            String modifiedBy
+    ) {
+    }
+
+    /*
+     * Parameters for saveConfigurationActivation().  configurationName and startTime are required;
+     * the remaining fields are optional and are omitted from the request when null.
+     *
+     * clientActivationId is optional: when null or blank, the server generates an identifier and
+     * returns it in the result.  endTime is optional and nullable, and omitting it produces an
+     * open-ended activation interval.  Note that these two fields are "optional" by different
+     * protobuf mechanisms: clientActivationId is a plain string with no field presence, so unset
+     * and empty are indistinguishable on the wire, while endTime is a message field with real
+     * presence.  buildSaveConfigurationActivationRequest() must therefore leave endTime entirely
+     * unset rather than setting a zero-valued Timestamp, which would mark the field present and
+     * describe an activation ending at the epoch.
+     *
+     * Because saveConfigurationActivation() is a full-replace upsert, this record must express the
+     * complete desired state of the record.  See saveConfigurationActivation().
+     */
+    public record SaveConfigurationActivationParams(
+            String clientActivationId,
+            String configurationName,
+            Timestamp startTime,
+            Timestamp endTime,
+            String description,
+            List<String> tags,
+            Map<String, String> attributeMap,
+            String modifiedBy
+    ) {
+    }
+
+    public static class SaveConfigurationResponseObserver
+            implements StreamObserver<SaveConfigurationResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> configurationNameList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public String getConfigurationName() {
+            if (!configurationNameList.isEmpty()) {
+                return configurationNameList.get(0);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void onNext(SaveConfigurationResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                final SaveConfigurationResponse.SaveConfigurationResult result =
+                        response.getSaveConfigurationResult();
+
+                // flag error if already received a response
+                if (!configurationNameList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    configurationNameList.add(result.getConfigurationName());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static class SaveConfigurationActivationResponseObserver
+            implements StreamObserver<SaveConfigurationActivationResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> clientActivationIdList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public String getClientActivationId() {
+            if (!clientActivationIdList.isEmpty()) {
+                return clientActivationIdList.get(0);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void onNext(SaveConfigurationActivationResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                final SaveConfigurationActivationResponse.SaveConfigurationActivationResult result =
+                        response.getSaveConfigurationActivationResult();
+
+                // flag error if already received a response
+                if (!clientActivationIdList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    clientActivationIdList.add(result.getClientActivationId());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static class GetConfigurationResponseObserver
+            implements StreamObserver<GetConfigurationResponse> {
+
+        // instance variables
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.ospreydcs.dp.grpc.v1.common.Configuration> configurationList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                finishLatch.await(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+            }
+        }
+
+        public boolean isError() { return isError.get(); }
+
+        public String getErrorMessage() {
+            if (!errorMessageList.isEmpty()) {
+                return errorMessageList.get(0);
+            } else {
+                return "";
+            }
+        }
+
+        public com.ospreydcs.dp.grpc.v1.common.Configuration getConfiguration() {
+            if (!configurationList.isEmpty()) {
+                return configurationList.get(0);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void onNext(GetConfigurationResponse response) {
+
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+
+                if (response.hasExceptionalResult()) {
+                    final String errorMsg = "onNext received exceptional response: "
+                            + response.getExceptionalResult().getMessage();
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                    finishLatch.countDown();
+                    return;
+                }
+
+                final GetConfigurationResponse.GetConfigurationResult result =
+                        response.getGetConfigurationResult();
+
+                // flag error if already received a response
+                if (!configurationList.isEmpty()) {
+                    final String errorMsg = "onNext received more than one response";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+
+                } else {
+                    configurationList.add(result.getConfiguration());
+                    finishLatch.countDown();
+                }
+            }).start();
+
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            // handle response in separate thread to better simulate out of process grpc,
+            // otherwise response is handled in same thread as service handler that sent it
+            new Thread(() -> {
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "onError error: " + status;
+                System.err.println(errorMsg);
+                isError.set(true);
+                errorMessageList.add(errorMsg);
+                finishLatch.countDown();
+            }).start();
+        }
+
+        @Override
+        public void onCompleted() {
+        }
+    }
+
+    public static SaveConfigurationRequest buildSaveConfigurationRequest(SaveConfigurationParams params) {
+
+        final SaveConfigurationRequest.Builder requestBuilder = SaveConfigurationRequest.newBuilder();
+
+        // handle required fields
+        if (params.configurationName() != null) {
+            requestBuilder.setConfigurationName(params.configurationName());
+        }
+        if (params.category() != null) {
+            requestBuilder.setCategory(params.category());
+        }
+
+        // handle optional fields, leaving them unset when not supplied.  The server does not
+        // distinguish an unset repeated or string field from an empty one, but leaving them unset
+        // keeps the request minimal and matches the other builders in this class.
+        if (params.description() != null) {
+            requestBuilder.setDescription(params.description());
+        }
+        if (params.parentConfigurationName() != null) {
+            // note that the server does not validate that the parent configuration exists
+            requestBuilder.setParentConfigurationName(params.parentConfigurationName());
+        }
+        if (params.tags() != null) {
+            // tags are lowercased, deduplicated and sorted server-side; no client normalization
+            requestBuilder.addAllTags(params.tags());
+        }
+        if (params.attributeMap() != null) {
+            requestBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(params.attributeMap()));
+        }
+        if (params.modifiedBy() != null) {
+            requestBuilder.setModifiedBy(params.modifiedBy());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static SaveConfigurationActivationRequest buildSaveConfigurationActivationRequest(
+            SaveConfigurationActivationParams params
+    ) {
+        final SaveConfigurationActivationRequest.Builder requestBuilder =
+                SaveConfigurationActivationRequest.newBuilder();
+
+        // handle required fields
+        if (params.configurationName() != null) {
+            requestBuilder.setConfigurationName(params.configurationName());
+        }
+        if (params.startTime() != null) {
+            requestBuilder.setStartTime(params.startTime());
+        }
+
+        // handle optional fields, leaving them unset when not supplied.
+        if (params.clientActivationId() != null) {
+            // the server generates an identifier when this is absent or blank
+            requestBuilder.setClientActivationId(params.clientActivationId());
+        }
+        if (params.endTime() != null) {
+            // endTime is a message field with real field presence, so it must be left entirely
+            // unset for an open-ended activation; setting a zero-valued Timestamp here would mark
+            // the field present and describe an activation ending at the epoch
+            requestBuilder.setEndTime(params.endTime());
+        }
+        if (params.description() != null) {
+            requestBuilder.setDescription(params.description());
+        }
+        if (params.tags() != null) {
+            // tags are lowercased, deduplicated and sorted server-side; no client normalization
+            requestBuilder.addAllTags(params.tags());
+        }
+        if (params.attributeMap() != null) {
+            requestBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(params.attributeMap()));
+        }
+        if (params.modifiedBy() != null) {
+            requestBuilder.setModifiedBy(params.modifiedBy());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetConfigurationRequest buildGetConfigurationRequest(String configurationName) {
+
+        final GetConfigurationRequest.Builder requestBuilder = GetConfigurationRequest.newBuilder();
+
+        if (configurationName != null) {
+            requestBuilder.setConfigurationName(configurationName);
+        }
+
+        return requestBuilder.build();
+    }
+
+    public SaveConfigurationApiResult sendSaveConfiguration(
+            SaveConfigurationRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final SaveConfigurationResponseObserver responseObserver = new SaveConfigurationResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.saveConfiguration(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new SaveConfigurationApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SaveConfigurationApiResult(responseObserver.getConfigurationName());
+        }
+    }
+
+    /**
+     * Creates or updates the machine configuration record for the specified configuration name.
+     *
+     * This is a full-replace upsert: category, description, parentConfigurationName, tags,
+     * attributes and modifiedBy are all replaced by the values in params on every save, and fields
+     * omitted from params are not preserved from an existing record.  Callers updating an existing
+     * record must therefore supply the complete desired state rather than only the fields being
+     * changed.
+     *
+     * Server-side rejections (a blank configurationName or category, duplicate attribute keys, or a
+     * category change while activations exist for the configuration) are returned via
+     * resultStatus.isError and resultStatus.msg rather than thrown.  On success, the result carries
+     * the canonical configurationName of the saved record.
+     *
+     * Note that parentConfigurationName is stored without any existence check, so a reference to a
+     * configuration that does not exist is accepted silently.
+     */
+    public SaveConfigurationApiResult saveConfiguration(
+            SaveConfigurationParams params
+    ) {
+        final SaveConfigurationRequest request = buildSaveConfigurationRequest(params);
+        return sendSaveConfiguration(request);
+    }
+
+    public SaveConfigurationActivationApiResult sendSaveConfigurationActivation(
+            SaveConfigurationActivationRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final SaveConfigurationActivationResponseObserver responseObserver =
+                new SaveConfigurationActivationResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.saveConfigurationActivation(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new SaveConfigurationActivationApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new SaveConfigurationActivationApiResult(responseObserver.getClientActivationId());
+        }
+    }
+
+    /**
+     * Creates or updates an activation recording the time interval during which a configuration was
+     * active.
+     *
+     * This is a full-replace upsert keyed by clientActivationId: startTime, endTime, description,
+     * tags, attributes and modifiedBy are all replaced by the values in params on every save, and
+     * fields omitted from params are not preserved from an existing record.  Callers updating an
+     * existing record must therefore supply the complete desired state rather than only the fields
+     * being changed.
+     *
+     * When params supplies no clientActivationId, the server generates one and returns it in the
+     * result; that value is the caller's only handle on the new record.  An omitted endTime
+     * produces an open-ended activation.
+     *
+     * Server-side rejections are returned via resultStatus.isError and resultStatus.msg rather than
+     * thrown.  These include a blank configurationName, a missing startTime, an endTime that is not
+     * after startTime, a configurationName that does not resolve to an existing Configuration, and
+     * an activation overlapping an existing one.  Note that the overlap check rejects on a matching
+     * configurationName OR a matching category, since the configuration's category is denormalized
+     * onto each activation, so two different configurations sharing a category cannot have
+     * overlapping activations.
+     */
+    public SaveConfigurationActivationApiResult saveConfigurationActivation(
+            SaveConfigurationActivationParams params
+    ) {
+        final SaveConfigurationActivationRequest request = buildSaveConfigurationActivationRequest(params);
+        return sendSaveConfigurationActivation(request);
+    }
+
+    public GetConfigurationApiResult sendGetConfiguration(
+            GetConfigurationRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetConfigurationResponseObserver responseObserver = new GetConfigurationResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.getConfiguration(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetConfigurationApiResult(true, responseObserver.getErrorMessage());
+        } else {
+            return new GetConfigurationApiResult(responseObserver.getConfiguration());
+        }
+    }
+
+    /**
+     * Retrieves the machine configuration record for the specified configuration name.
+     *
+     * Note that a missing record is NOT reported as an empty successful result.  The server rejects
+     * the request, so a name that does not exist returns resultStatus.isError == true with the
+     * message "no Configuration record found for: <name>".  This is the established convention for
+     * all of the single-record getters in this API: an empty collection is a normal answer, but a
+     * missing singleton is a rejected request.
+     *
+     * The server does distinguish a rejection (RESULT_STATUS_REJECT) from a genuine failure
+     * (RESULT_STATUS_ERROR), but ApiResultBase currently flattens both to resultStatus.isError, so
+     * a caller using this method as an existence check cannot presently tell "does not exist" from
+     * "the service is unreachable" without inspecting resultStatus.msg.  Surfacing the underlying
+     * status is tracked separately.
+     */
+    public GetConfigurationApiResult getConfiguration(
+            String configurationName
+    ) {
+        final GetConfigurationRequest request = buildGetConfigurationRequest(configurationName);
+        return sendGetConfiguration(request);
+    }
+
 }
