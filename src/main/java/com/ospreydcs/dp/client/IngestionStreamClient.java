@@ -100,11 +100,13 @@ public class IngestionStreamClient extends ServiceApiClientBase {
         private final int eventListSizeLimit;
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
-        // response -- a transport error, an await timeout, a malformed response sequence -- is
-        // reported as locally generated.
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
         private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<SubscribeDataEventResponse.Event> eventList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
 
@@ -182,7 +184,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
                 case EXCEPTIONALRESULT -> {
                     final String errorMsg = response.getExceptionalResult().getMessage();
                     System.err.println("SubscribeDataEventResponseOberver received ExceptionalResult: " + errorMsg);
-                    apiResultStatus.set(
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
                             ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
@@ -219,6 +222,11 @@ public class IngestionStreamClient extends ServiceApiClientBase {
             System.err.println(errorMsg);
             isError.set(true);
             errorMessageList.add(errorMsg);
+            // sendSubscribeDataEvent() blocks on awaitAckLatch() before returning, and
+            // onCompleted() releases only closeLatch, so a transport failure before the ack
+            // arrives would otherwise hang until the await expires
+            ackLatch.countDown();
+            closeLatch.countDown();
         }
 
         @Override

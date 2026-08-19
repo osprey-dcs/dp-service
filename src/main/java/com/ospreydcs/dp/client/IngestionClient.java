@@ -57,11 +57,13 @@ public class IngestionClient extends ServiceApiClientBase {
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
-        // response -- a transport error, an await timeout, a malformed response sequence -- is
-        // reported as locally generated.
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
         private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<RegisterProviderResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -111,7 +113,8 @@ public class IngestionClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
-                    apiResultStatus.set(
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
                             ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
@@ -385,11 +388,13 @@ public class IngestionClient extends ServiceApiClientBase {
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
-        // response -- a transport error, an await timeout, a malformed response sequence -- is
-        // reported as locally generated.
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
         private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
+                new AtomicReference<>(ApiResultStatus.NONE);
 
         private final int expectedResponseCount;
 
@@ -443,7 +448,8 @@ public class IngestionClient extends ServiceApiClientBase {
                 final String errorMsg = "onNext received exceptional response: "
                         + response.getExceptionalResult().getMessage();
                 System.err.println(errorMsg);
-                apiResultStatus.set(
+                apiResultStatus.compareAndSet(
+                        ApiResultStatus.NONE,
                         ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                 isError.set(true);
                 errorMessageList.add(errorMsg);
@@ -457,9 +463,17 @@ public class IngestionClient extends ServiceApiClientBase {
 
         @Override
         public void onError(Throwable t) {
-            Status status = Status.fromThrowable(t);
-            System.err.println("IngestDataResponseObserver error: " + status);
+            final Status status = Status.fromThrowable(t);
+            final String errorMsg = "IngestDataResponseObserver error: " + status;
+            System.err.println(errorMsg);
             isError.set(true);
+            errorMessageList.add(errorMsg);
+            // this latch is initialized to expectedResponseCount, so a stream that fails after
+            // some responses have arrived still has counts outstanding.  Release all of them,
+            // otherwise await() expires and reports a timeout instead of the gRPC status.
+            while (finishLatch.getCount() > 0) {
+                finishLatch.countDown();
+            }
         }
 
         @Override

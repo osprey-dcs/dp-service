@@ -38,8 +38,13 @@ public enum ApiResultStatus {
     ERROR,
 
     /**
-     * The service was not ready to handle the request.  Currently used only for invalid
-     * bidirectional query cursor operations.
+     * The service was not ready to handle the request.  The protobuf enum documents this as
+     * covering invalid bidirectional query cursor operations only.
+     *
+     * <p>No client API call currently wired to this enum issues a bidirectional cursor request, so
+     * this status is not reachable through any of them today.  It is mapped by {@link #fromProto}
+     * so that a caller of a future bidirectional API, or a client talking to a service that starts
+     * returning the status elsewhere, sees the real category rather than a fallback.
      */
     NOT_READY,
 
@@ -58,6 +63,16 @@ public enum ApiResultStatus {
      * <p>An unrecognized value — which a client built against an older protobuf revision can
      * receive from a newer service — maps to {@link #ERROR} rather than throwing, so that an
      * unknown failure is still reported as a failure.
+     *
+     * <p><strong>Zero-value hazard:</strong> {@code RESULT_STATUS_REJECT} is 0, the protobuf
+     * default, so a service that builds an {@code ExceptionalResult} without calling {@code
+     * setExceptionalResultStatus()} sends a value indistinguishable from a deliberate reject, and
+     * this method maps it to {@link #REJECT}.  That matters because callers branch on {@link
+     * ApiResultBase#isReject()} to read "target record does not exist" — so a server-side omission
+     * can present as a benign not-found and, for a caller deciding whether a save would overwrite,
+     * turn into a silent clobber.  Every dispatcher must therefore set the status explicitly;
+     * {@code ApiResultBaseTest.testEveryExceptionalResultSetsStatus()} guards this by scanning the
+     * service sources for a builder that omits it.
      */
     public static ApiResultStatus fromProto(ExceptionalResult.ExceptionalResultStatus protoStatus) {
 
