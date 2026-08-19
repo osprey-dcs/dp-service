@@ -14,6 +14,11 @@ public class QueryDataSetsApiResult extends ApiResultBase {
         this.dataSets = null;
     }
 
+    public QueryDataSetsApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.dataSets = null;
+    }
+
     public QueryDataSetsApiResult(List<DataSet> dataSets) {
         super(false, "");
         this.dataSets = dataSets;

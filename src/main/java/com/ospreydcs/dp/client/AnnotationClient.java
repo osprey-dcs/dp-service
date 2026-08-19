@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class AnnotationClient extends ServiceApiClientBase {
 
@@ -55,6 +56,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<String> dataSetIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -88,6 +95,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public String getDataSetId() {
             if (!dataSetIdList.isEmpty()) {
                 return dataSetIdList.get(0);
@@ -107,6 +116,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -179,6 +190,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<DataSet> dataSetsList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -213,6 +230,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public List<DataSet> getDataSetsList() {
             return dataSetsList;
         }
@@ -228,6 +247,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -300,6 +321,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -333,6 +360,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public String getAnnotationId() {
             if (!annotationIdList.isEmpty()) {
                 return annotationIdList.get(0);
@@ -352,6 +381,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -443,6 +474,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -477,6 +514,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public List<QueryAnnotationsResponse.AnnotationsResult.Annotation> getAnnotationsList() {
             return annotationsList;
         }
@@ -492,6 +531,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -557,6 +598,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -591,6 +638,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public ExportDataResponse.ExportDataResult getResult() {
             if (!resultList.isEmpty()) {
                 return resultList.get(0);
@@ -610,6 +659,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -720,7 +771,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new SaveDataSetApiResult(true, responseObserver.getErrorMessage());
+            return new SaveDataSetApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SaveDataSetApiResult(responseObserver.getDataSetId());
         }
@@ -810,7 +862,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryDataSetsApiResult(true, responseObserver.getErrorMessage());
+            return new QueryDataSetsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new QueryDataSetsApiResult(responseObserver.getDataSetsList());
         }
@@ -873,7 +926,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new SaveAnnotationApiResult(true, responseObserver.getErrorMessage());
+            return new SaveAnnotationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SaveAnnotationApiResult(responseObserver.getAnnotationId());
         }
@@ -1004,7 +1058,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryAnnotationsApiResult(true, responseObserver.getErrorMessage());
+            return new QueryAnnotationsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new QueryAnnotationsApiResult(responseObserver.getAnnotationsList());
         }
@@ -1066,7 +1121,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         System.out.println("export format " + request.getOutputFormat().name() + " elapsed seconds: " + secondsElapsed);
 
         if (responseObserver.isError()) {
-            return new ExportDataApiResult(true, responseObserver.getErrorMessage());
+            return new ExportDataApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new ExportDataApiResult(responseObserver.getResult());
         }
@@ -1104,6 +1160,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1137,6 +1199,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public String getPvName() {
             if (!pvNameList.isEmpty()) {
                 return pvNameList.get(0);
@@ -1156,6 +1220,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -1247,7 +1313,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new SavePvMetadataApiResult(true, responseObserver.getErrorMessage());
+            return new SavePvMetadataApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SavePvMetadataApiResult(responseObserver.getPvName());
         }
@@ -1328,6 +1395,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<String> configurationNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1361,6 +1434,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public String getConfigurationName() {
             if (!configurationNameList.isEmpty()) {
                 return configurationNameList.get(0);
@@ -1380,6 +1455,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -1430,6 +1507,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<String> clientActivationIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1463,6 +1546,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public String getClientActivationId() {
             if (!clientActivationIdList.isEmpty()) {
                 return clientActivationIdList.get(0);
@@ -1482,6 +1567,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -1532,6 +1619,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<com.ospreydcs.dp.grpc.v1.common.Configuration> configurationList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -1566,6 +1659,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public com.ospreydcs.dp.grpc.v1.common.Configuration getConfiguration() {
             if (!configurationList.isEmpty()) {
                 return configurationList.get(0);
@@ -1585,6 +1680,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -1734,7 +1831,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new SaveConfigurationApiResult(true, responseObserver.getErrorMessage());
+            return new SaveConfigurationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SaveConfigurationApiResult(responseObserver.getConfigurationName());
         }
@@ -1782,7 +1880,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new SaveConfigurationActivationApiResult(true, responseObserver.getErrorMessage());
+            return new SaveConfigurationActivationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SaveConfigurationActivationApiResult(responseObserver.getClientActivationId());
         }
@@ -1834,7 +1933,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new GetConfigurationApiResult(true, responseObserver.getErrorMessage());
+            return new GetConfigurationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new GetConfigurationApiResult(responseObserver.getConfiguration());
         }

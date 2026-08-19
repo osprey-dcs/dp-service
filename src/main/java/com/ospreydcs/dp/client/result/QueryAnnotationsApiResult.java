@@ -14,6 +14,11 @@ public class QueryAnnotationsApiResult extends ApiResultBase {
         this.annotations = null;
     }
 
+    public QueryAnnotationsApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.annotations = null;
+    }
+
     public QueryAnnotationsApiResult(List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotations) {
         super(false, "");
         this.annotations = annotations;

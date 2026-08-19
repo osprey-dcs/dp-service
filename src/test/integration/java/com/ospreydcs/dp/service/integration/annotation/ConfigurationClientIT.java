@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.client.AnnotationClient;
+import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.GetConfigurationApiResult;
 import com.ospreydcs.dp.client.result.SaveConfigurationActivationApiResult;
 import com.ospreydcs.dp.client.result.SaveConfigurationApiResult;
@@ -543,6 +544,109 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
         assertTrue(result.resultStatus.msg,
                 result.resultStatus.msg.contains("no Configuration record found for: no-such-config"));
         assertNull(result.configuration);
+
+        // the rejection is categorized without matching on the message
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+    }
+
+    // =========================================================================
+    // apiResultStatus tests
+    // =========================================================================
+
+    /**
+     * Verifies that a successful call carries ApiResultStatus.NONE and is not reported as a
+     * rejection.
+     */
+    @Test
+    public void testApiResultStatusNoneOnSuccess() {
+
+        final SaveConfigurationApiResult saveResult = annotationClient.saveConfiguration(
+                new AnnotationClient.SaveConfigurationParams(
+                        "test-config-status-001", "category-status-001", null, null, null, null, null));
+
+        assertFalse(saveResult.resultStatus.msg, saveResult.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, saveResult.apiResultStatus);
+        assertFalse(saveResult.isReject());
+
+        final GetConfigurationApiResult getResult =
+                annotationClient.getConfiguration("test-config-status-001");
+
+        assertFalse(getResult.resultStatus.msg, getResult.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, getResult.apiResultStatus);
+        assertFalse(getResult.isReject());
+    }
+
+    /**
+     * Verifies that a server-side validation rejection reaches the caller as REJECT, the same
+     * status as a not-found rejection.
+     *
+     * This equivalence is the reason the client exposes isReject() rather than an isNotFound()
+     * predicate: the services report a malformed request and an absent record with the same wire
+     * status, so a not-found predicate built on the status alone would report a rejected bad
+     * request as "the record does not exist".  A caller using isReject() to decide whether a save
+     * would overwrite an existing record must validate its request first, since a rejection here
+     * does not establish that the record is absent.
+     */
+    @Test
+    public void testApiResultStatusRejectOnValidationFailure() {
+
+        final SaveConfigurationApiResult result = annotationClient.saveConfiguration(
+                new AnnotationClient.SaveConfigurationParams(
+                        null, "beamline", null, null, null, null, null));
+
+        assertTrue(result.resultStatus.isError);
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+
+        // a validation reject and a not-found reject are indistinguishable by status
+        final GetConfigurationApiResult notFoundResult =
+                annotationClient.getConfiguration("no-such-config-status");
+        assertEquals(notFoundResult.apiResultStatus, result.apiResultStatus);
+    }
+
+    /**
+     * Verifies that the overlap constraint failure arrives categorized as ERROR, not REJECT.
+     *
+     * The overlap check runs in MongoSyncAnnotationClient after the request has already passed
+     * validation, and reports through the MongoSaveResult error path, which the dispatcher sends as
+     * RESULT_STATUS_ERROR.  So although "an overlapping activation already exists" reads like a
+     * rejection of the request, it is categorized as a service error, and a caller branching on
+     * isReject() will not catch it.  This test pins that behavior: the constraint is a server-side
+     * concern, and whether it ought to be reported as a reject instead is a question about the
+     * service, not about this client status mapping.
+     */
+    @Test
+    public void testApiResultStatusErrorOnOverlapConstraint() {
+
+        final SaveConfigurationApiResult configResult = annotationClient.saveConfiguration(
+                new AnnotationClient.SaveConfigurationParams(
+                        "test-config-status-002", "category-status-002", null, null, null, null, null));
+        assertFalse(configResult.resultStatus.msg, configResult.resultStatus.isError);
+
+        final SaveConfigurationActivationApiResult firstResult =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "overlap-status-first",
+                                "test-config-status-002",
+                                timestamp(1000L),
+                                timestamp(2000L),
+                                null, null, null, null));
+        assertFalse(firstResult.resultStatus.msg, firstResult.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, firstResult.apiResultStatus);
+
+        final SaveConfigurationActivationApiResult secondResult =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "overlap-status-second",
+                                "test-config-status-002",
+                                timestamp(1500L),
+                                timestamp(2500L),
+                                null, null, null, null));
+
+        assertTrue(secondResult.resultStatus.isError);
+        assertEquals(ApiResultStatus.ERROR, secondResult.apiResultStatus);
+        assertFalse(secondResult.isReject());
     }
 
 }

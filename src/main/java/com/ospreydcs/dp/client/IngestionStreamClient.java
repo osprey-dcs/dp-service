@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.SubscribeDataEventApiResult;
 import com.ospreydcs.dp.grpc.v1.ingestionstream.*;
 import io.grpc.ManagedChannel;
@@ -12,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class IngestionStreamClient extends ServiceApiClientBase {
 
@@ -97,6 +99,12 @@ public class IngestionStreamClient extends ServiceApiClientBase {
         CountDownLatch closeLatch = null;
         private final int eventListSizeLimit;
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to LOCAL_FAILURE so that any failure recorded without a status-bearing
+        // response -- a transport error, an await timeout, a malformed response sequence -- is
+        // reported as locally generated.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.LOCAL_FAILURE);
         private final List<SubscribeDataEventResponse.Event> eventList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
 
@@ -157,6 +165,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         private void addEvent(SubscribeDataEventResponse.Event event) {
             eventList.add(event);
             while (eventList.size() > eventListSizeLimit) {
@@ -172,6 +182,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
                 case EXCEPTIONALRESULT -> {
                     final String errorMsg = response.getExceptionalResult().getMessage();
                     System.err.println("SubscribeDataEventResponseOberver received ExceptionalResult: " + errorMsg);
+                    apiResultStatus.set(
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     ackLatch.countDown();
@@ -295,7 +307,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
         responseObserver.awaitAckLatch();
 
         if (responseObserver.isError()) {
-            return new SubscribeDataEventApiResult(true, responseObserver.getErrorMessage());
+            return new SubscribeDataEventApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new SubscribeDataEventApiResult(new SubscribeDataEventCall(requestObserver, responseObserver));
         }

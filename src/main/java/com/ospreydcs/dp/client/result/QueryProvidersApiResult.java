@@ -14,6 +14,11 @@ public class QueryProvidersApiResult extends ApiResultBase {
         this.providerInfos = null;
     }
 
+    public QueryProvidersApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.providerInfos = null;
+    }
+
     public QueryProvidersApiResult(List<QueryProvidersResponse.ProvidersResult.ProviderInfo> providerInfos) {
         super(false, "");
         this.providerInfos = providerInfos;

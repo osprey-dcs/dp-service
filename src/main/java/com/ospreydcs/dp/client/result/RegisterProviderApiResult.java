@@ -12,6 +12,11 @@ public class RegisterProviderApiResult extends ApiResultBase {
         this.registerProviderResponse = null;
     }
 
+    public RegisterProviderApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.registerProviderResponse = null;
+    }
+
     public RegisterProviderApiResult(RegisterProviderResponse registerProviderResponse) {
         super(false, "");
         this.registerProviderResponse = registerProviderResponse;
