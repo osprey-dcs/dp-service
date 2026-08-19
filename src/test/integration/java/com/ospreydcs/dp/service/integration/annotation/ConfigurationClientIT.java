@@ -33,7 +33,8 @@ import static org.junit.Assert.assertTrue;
  * the client wrapper — request building from the params records, the success payloads, and the
  * surfacing of server rejections through ApiResultBase.resultStatus.  Where a rejection is
  * exercised here, the assertion is about the surfacing mechanism (that the rejection arrives as
- * resultStatus.isError rather than a thrown exception, with the server's message intact) and not
+ * resultStatus.isError rather than a thrown exception, with the server's message embedded in
+ * resultStatus.msg behind an "onNext received exceptional response: " prefix) and not
  * about the server-side rule that produced it.
  */
 public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate {

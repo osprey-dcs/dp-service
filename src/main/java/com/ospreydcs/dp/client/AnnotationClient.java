@@ -59,12 +59,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -174,12 +184,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -284,12 +304,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -418,12 +448,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -522,12 +562,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -1058,12 +1108,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -1272,12 +1332,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -1364,12 +1434,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -1457,12 +1537,22 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 

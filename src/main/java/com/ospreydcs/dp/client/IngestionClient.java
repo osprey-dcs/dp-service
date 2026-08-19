@@ -58,12 +58,22 @@ public class IngestionClient extends ServiceApiClientBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a timeout must be reported as an error: the latch is only counted down by a
+                // response or an onError, so an expired await means no result was received and
+                // the caller would otherwise see a success carrying a null payload
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -363,16 +373,32 @@ public class IngestionClient extends ServiceApiClientBase {
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
 
+        private final int expectedResponseCount;
+
         public IngestDataResponseObserver(int expectedResponseCount) {
+            this.expectedResponseCount = expectedResponseCount;
             this.finishLatch = new CountDownLatch(expectedResponseCount);
         }
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // this latch counts down once per expected response, so an expired await means
+                // fewer responses arrived than were requested; report that as an error rather
+                // than letting the caller treat a truncated responseList as complete
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timed out waiting for finishLatch, received "
+                            + responseList.size() + " of " + expectedResponseCount + " responses";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
-                System.err.println("InterruptedException waiting for finishLatch");
+                final String errorMsg = "InterruptedException waiting for finishLatch";
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
