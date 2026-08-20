@@ -90,10 +90,20 @@ public class ApiResponseObserverBaseTest {
         final QueryClient.QueryTableResponseObserver observer =
                 new QueryClient.QueryTableResponseObserver();
 
+        // deliver the first response and let it settle before sending the second.  onNext
+        // dispatches to a new thread, so firing both back to back leaves which one wins the
+        // sequence check undefined -- and await() can then return on the winner's countDown
+        // before the loser's thread has recorded anything.
         observer.onNext(QueryTableResponse.newBuilder().build());
-        observer.onNext(QueryTableResponse.newBuilder().build());
-
         assertReturnsPromptly("QueryTableResponseObserver.await()", observer::await);
+        assertFalse("the first response must not be an error", observer.isError());
+
+        // the duplicate must fail fast rather than leaving a caller to wait out the timeout.
+        // The latch is already released, so timing the duplicate's own await() is what would
+        // have caught the missing countDown: measure that it returns without expiring.
+        observer.onNext(QueryTableResponse.newBuilder().build());
+        awaitErrorRecorded(observer);
+        assertReturnsPromptly("await() after a duplicate", observer::await);
 
         assertTrue("a duplicate response must be reported as an error", observer.isError());
         assertTrue(
