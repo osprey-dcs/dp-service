@@ -1,13 +1,12 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.client.result.*;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import io.grpc.ManagedChannel;
-import io.grpc.Status;
-import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,10 +16,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class AnnotationClient extends ServiceApiClientBase {
 
@@ -50,116 +45,39 @@ public class AnnotationClient extends ServiceApiClientBase {
     public record SaveDataSetParams(AnnotationDataSet dataSet) {
     }
     
-    public static class SaveDataSetResponseObserver implements StreamObserver<SaveDataSetResponse> {
+    public static class SaveDataSetResponseObserver
+            extends ApiResponseObserverBase<SaveDataSetResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<String> dataSetIdList = Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(SaveDataSetResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(SaveDataSetResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(SaveDataSetResponse response) {
+
+            if (!response.hasSaveDataSetResult()) {
+                recordFailure(observerName() + " response does not contain SaveDataSetResult");
+                return false;
+            }
+
+            dataSetIdList.add(response.getSaveDataSetResult().getDataSetId());
+            return true;
+        }
 
         public String getDataSetId() {
-            if (!dataSetIdList.isEmpty()) {
-                return dataSetIdList.get(0);
-            } else {
+            if (dataSetIdList.isEmpty()) {
                 return null;
+            } else {
+                return dataSetIdList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(SaveDataSetResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final SaveDataSetResponse.SaveDataSetResult result = response.getSaveDataSetResult();
-
-                // flag error if already received a response
-                if (!dataSetIdList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    dataSetIdList.add(result.getDataSetId());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -187,124 +105,36 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
     }
 
-    public static class QueryDataSetsResponseObserver implements StreamObserver<QueryDataSetsResponse> {
+    public static class QueryDataSetsResponseObserver
+            extends ApiResponseObserverBase<QueryDataSetsResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<DataSet> dataSetsList =
                 Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(QueryDataSetsResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(QueryDataSetsResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(QueryDataSetsResponse response) {
+
+            if (!response.hasDataSetsResult()) {
+                recordFailure(observerName() + " response does not contain DataSetsResult");
+                return false;
+            }
+
+            dataSetsList.addAll(response.getDataSetsResult().getDataSetsList());
+            return true;
+        }
 
         public List<DataSet> getDataSetsList() {
             return dataSetsList;
-        }
-
-        @Override
-        public void onNext(QueryDataSetsResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                if ( ! response.hasDataSetsResult()) {
-                    final String errorMsg = "QueryDataSetsResponse does not contain DataSetsResult";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-
-                }
-
-                List<DataSet> responseDataSetsList =
-                        response.getDataSetsResult().getDataSetsList();
-
-                // flag error if already received a response
-                if (!dataSetsList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    dataSetsList.addAll(responseDataSetsList);
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -321,116 +151,39 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
     }
 
-    public static class SaveAnnotationResponseObserver implements StreamObserver<SaveAnnotationResponse> {
+    public static class SaveAnnotationResponseObserver
+            extends ApiResponseObserverBase<SaveAnnotationResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(SaveAnnotationResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(SaveAnnotationResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(SaveAnnotationResponse response) {
+
+            if (!response.hasSaveAnnotationResult()) {
+                recordFailure(observerName() + " response does not contain SaveAnnotationResult");
+                return false;
+            }
+
+            annotationIdList.add(response.getSaveAnnotationResult().getAnnotationId());
+            return true;
+        }
 
         public String getAnnotationId() {
-            if (!annotationIdList.isEmpty()) {
-                return annotationIdList.get(0);
-            } else {
+            if (annotationIdList.isEmpty()) {
                 return null;
+            } else {
+                return annotationIdList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(SaveAnnotationResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final SaveAnnotationResponse.SaveAnnotationResult result = response.getSaveAnnotationResult();
-
-                // flag error if already received a response
-                if (!annotationIdList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    annotationIdList.add(result.getAnnotationId());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -477,123 +230,36 @@ public class AnnotationClient extends ServiceApiClientBase {
 
     }
 
-    public static class QueryAnnotationsResponseObserver implements StreamObserver<QueryAnnotationsResponse> {
+    public static class QueryAnnotationsResponseObserver
+            extends ApiResponseObserverBase<QueryAnnotationsResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(QueryAnnotationsResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(QueryAnnotationsResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(QueryAnnotationsResponse response) {
+
+            if (!response.hasAnnotationsResult()) {
+                recordFailure(observerName() + " response does not contain AnnotationsResult");
+                return false;
+            }
+
+            annotationsList.addAll(response.getAnnotationsResult().getAnnotationsList());
+            return true;
+        }
 
         public List<QueryAnnotationsResponse.AnnotationsResult.Annotation> getAnnotationsList() {
             return annotationsList;
-        }
-
-        @Override
-        public void onNext(QueryAnnotationsResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                if ( ! response.hasAnnotationsResult()) {
-                    final String errorMsg = "QueryAnnotationsResponse does not contain AnnotationsResult";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> responseAnnotationList =
-                        response.getAnnotationsResult().getAnnotationsList();
-
-                // flag error if already received a response
-                if (!annotationsList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    annotationsList.addAll(responseAnnotationList);
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -604,126 +270,40 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
     }
 
-    public static class ExportDataResponseObserver implements StreamObserver<ExportDataResponse> {
+    public static class ExportDataResponseObserver
+            extends ApiResponseObserverBase<ExportDataResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(ExportDataResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(ExportDataResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(ExportDataResponse response) {
+
+            if (!response.hasExportDataResult()) {
+                recordFailure(observerName() + " response does not contain ExportDataResult");
+                return false;
+            }
+
+            resultList.add(response.getExportDataResult());
+            return true;
+        }
 
         public ExportDataResponse.ExportDataResult getResult() {
-            if (!resultList.isEmpty()) {
-                return resultList.get(0);
-            } else {
+            if (resultList.isEmpty()) {
                 return null;
+            } else {
+                return resultList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(ExportDataResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                if (! response.hasExportDataResult()) {
-                    final String errorMsg = "ExportDataResponse does not contain ExportDataResult";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final ExportDataResponse.ExportDataResult result = response.getExportDataResult();
-
-                // flag error if already received a response
-                if (!resultList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    resultList.add(result);
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -1169,116 +749,39 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
     }
 
-    public static class SavePvMetadataResponseObserver implements StreamObserver<SavePvMetadataResponse> {
+    public static class SavePvMetadataResponseObserver
+            extends ApiResponseObserverBase<SavePvMetadataResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(SavePvMetadataResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(SavePvMetadataResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(SavePvMetadataResponse response) {
+
+            if (!response.hasSavePvMetadataResult()) {
+                recordFailure(observerName() + " response does not contain SavePvMetadataResult");
+                return false;
+            }
+
+            pvNameList.add(response.getSavePvMetadataResult().getPvName());
+            return true;
+        }
 
         public String getPvName() {
-            if (!pvNameList.isEmpty()) {
-                return pvNameList.get(0);
-            } else {
+            if (pvNameList.isEmpty()) {
                 return null;
+            } else {
+                return pvNameList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(SavePvMetadataResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final SavePvMetadataResponse.SavePvMetadataResult result = response.getSavePvMetadataResult();
-
-                // flag error if already received a response
-                if (!pvNameList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    pvNameList.add(result.getPvName());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
@@ -1407,348 +910,111 @@ public class AnnotationClient extends ServiceApiClientBase {
     }
 
     public static class SaveConfigurationResponseObserver
-            implements StreamObserver<SaveConfigurationResponse> {
+            extends ApiResponseObserverBase<SaveConfigurationResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<String> configurationNameList = Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(SaveConfigurationResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(SaveConfigurationResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(SaveConfigurationResponse response) {
+
+            if (!response.hasSaveConfigurationResult()) {
+                recordFailure(observerName() + " response does not contain SaveConfigurationResult");
+                return false;
+            }
+
+            configurationNameList.add(response.getSaveConfigurationResult().getConfigurationName());
+            return true;
+        }
 
         public String getConfigurationName() {
-            if (!configurationNameList.isEmpty()) {
-                return configurationNameList.get(0);
-            } else {
+            if (configurationNameList.isEmpty()) {
                 return null;
+            } else {
+                return configurationNameList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(SaveConfigurationResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final SaveConfigurationResponse.SaveConfigurationResult result =
-                        response.getSaveConfigurationResult();
-
-                // flag error if already received a response
-                if (!configurationNameList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    configurationNameList.add(result.getConfigurationName());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
     public static class SaveConfigurationActivationResponseObserver
-            implements StreamObserver<SaveConfigurationActivationResponse> {
+            extends ApiResponseObserverBase<SaveConfigurationActivationResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<String> clientActivationIdList = Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(SaveConfigurationActivationResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(SaveConfigurationActivationResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(SaveConfigurationActivationResponse response) {
+
+            if (!response.hasSaveConfigurationActivationResult()) {
+                recordFailure(observerName() + " response does not contain SaveConfigurationActivationResult");
+                return false;
+            }
+
+            clientActivationIdList.add(response.getSaveConfigurationActivationResult().getClientActivationId());
+            return true;
+        }
 
         public String getClientActivationId() {
-            if (!clientActivationIdList.isEmpty()) {
-                return clientActivationIdList.get(0);
-            } else {
+            if (clientActivationIdList.isEmpty()) {
                 return null;
+            } else {
+                return clientActivationIdList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(SaveConfigurationActivationResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final SaveConfigurationActivationResponse.SaveConfigurationActivationResult result =
-                        response.getSaveConfigurationActivationResult();
-
-                // flag error if already received a response
-                if (!clientActivationIdList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    clientActivationIdList.add(result.getClientActivationId());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 
     public static class GetConfigurationResponseObserver
-            implements StreamObserver<GetConfigurationResponse> {
+            extends ApiResponseObserverBase<GetConfigurationResponse> {
 
-        // instance variables
-        private final CountDownLatch finishLatch = new CountDownLatch(1);
-        private final AtomicBoolean isError = new AtomicBoolean(false);
-        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        // categorizes a failure so callers can distinguish a service rejection from a service
-        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
-        // recorded without a status-bearing response -- a transport error, an await timeout, a
-        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
-        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
-        // that the status and the message returned by getErrorMessage() describe the same failure.
-        private final AtomicReference<ApiResultStatus> apiResultStatus =
-                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<com.ospreydcs.dp.grpc.v1.common.Configuration> configurationList =
                 Collections.synchronizedList(new ArrayList<>());
 
-        public void await() {
-            try {
-                // a timeout must be reported as an error: the latch is only counted down by a
-                // response or an onError, so an expired await means no result was received and
-                // the caller would otherwise see a success carrying a null payload
-                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
-                    final String errorMsg = "timed out waiting for finishLatch";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                }
-            } catch (InterruptedException e) {
-                final String errorMsg = "InterruptedException waiting for finishLatch";
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                // restore the interrupt flag so callers up the stack can still observe it
-                Thread.currentThread().interrupt();
-            }
+        @Override
+        protected boolean hasExceptionalResult(GetConfigurationResponse response) {
+            return response.hasExceptionalResult();
         }
 
-        public boolean isError() { return isError.get(); }
-
-        public String getErrorMessage() {
-            if (!errorMessageList.isEmpty()) {
-                return errorMessageList.get(0);
-            } else {
-                return "";
-            }
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetConfigurationResponse response) {
+            return response.getExceptionalResult();
         }
 
-        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+        @Override
+        protected boolean handleResult(GetConfigurationResponse response) {
+
+            if (!response.hasGetConfigurationResult()) {
+                recordFailure(observerName() + " response does not contain GetConfigurationResult");
+                return false;
+            }
+
+            configurationList.add(response.getGetConfigurationResult().getConfiguration());
+            return true;
+        }
 
         public com.ospreydcs.dp.grpc.v1.common.Configuration getConfiguration() {
-            if (!configurationList.isEmpty()) {
-                return configurationList.get(0);
-            } else {
+            if (configurationList.isEmpty()) {
                 return null;
+            } else {
+                return configurationList.get(0);
             }
-        }
-
-        @Override
-        public void onNext(GetConfigurationResponse response) {
-
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-
-                if (response.hasExceptionalResult()) {
-                    final String errorMsg = "onNext received exceptional response: "
-                            + response.getExceptionalResult().getMessage();
-                    System.err.println(errorMsg);
-                    apiResultStatus.compareAndSet(
-                            ApiResultStatus.NONE,
-                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-                    finishLatch.countDown();
-                    return;
-                }
-
-                final GetConfigurationResponse.GetConfigurationResult result =
-                        response.getGetConfigurationResult();
-
-                // flag error if already received a response
-                if (!configurationList.isEmpty()) {
-                    final String errorMsg = "onNext received more than one response";
-                    System.err.println(errorMsg);
-                    isError.set(true);
-                    errorMessageList.add(errorMsg);
-
-                } else {
-                    configurationList.add(result.getConfiguration());
-                    finishLatch.countDown();
-                }
-            }).start();
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
-                final Status status = Status.fromThrowable(t);
-                final String errorMsg = "onError error: " + status;
-                System.err.println(errorMsg);
-                isError.set(true);
-                errorMessageList.add(errorMsg);
-                finishLatch.countDown();
-            }).start();
-        }
-
-        @Override
-        public void onCompleted() {
         }
     }
 

@@ -131,6 +131,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -148,6 +150,8 @@ public class IngestionStreamClient extends ServiceApiClientBase {
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
+                // restore the interrupt flag so callers up the stack can still observe it
+                Thread.currentThread().interrupt();
             }
         }
 
