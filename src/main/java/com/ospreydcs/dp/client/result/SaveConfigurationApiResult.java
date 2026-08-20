@@ -10,6 +10,11 @@ public class SaveConfigurationApiResult extends ApiResultBase {
         this.configurationName = null;
     }
 
+    public SaveConfigurationApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.configurationName = null;
+    }
+
     public SaveConfigurationApiResult(String configurationName) {
         super(false, "");
         this.configurationName = configurationName;

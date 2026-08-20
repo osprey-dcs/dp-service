@@ -12,6 +12,11 @@ public class QueryPvStatsApiResult extends ApiResultBase {
         this.queryPvStatsResponse = null;
     }
 
+    public QueryPvStatsApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.queryPvStatsResponse = null;
+    }
+
     public QueryPvStatsApiResult(QueryPvStatsResponse queryPvStatsResponse) {
         super(false, "");
         this.queryPvStatsResponse = queryPvStatsResponse;

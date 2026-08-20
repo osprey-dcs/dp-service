@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.QueryProvidersApiResult;
 import com.ospreydcs.dp.client.result.QueryPvStatsApiResult;
 import com.ospreydcs.dp.client.result.QueryTableApiResult;
@@ -18,6 +19,7 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryClient extends ServiceApiClientBase {
 
@@ -37,6 +39,14 @@ public class QueryClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<QueryTableResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -70,6 +80,8 @@ public class QueryClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public QueryTableResponse getQueryResponse() {
             return responseList.get(0);
         }
@@ -84,6 +96,9 @@ public class QueryClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                 }
@@ -104,9 +119,15 @@ public class QueryClient extends ServiceApiClientBase {
             // handle response in separate thread to better simulate out of process grpc,
             // otherwise response is handled in same thread as service handler that sent it
             new Thread(() -> {
-                Status status = Status.fromThrowable(t);
-                System.err.println("QueryTableResponseObserver error: " + status);
+                final Status status = Status.fromThrowable(t);
+                final String errorMsg = "QueryTableResponseObserver error: " + status;
+                System.err.println(errorMsg);
                 isError.set(true);
+                errorMessageList.add(errorMsg);
+                // the latch must be counted down here, otherwise a transport failure leaves
+                // await() to expire and the caller sees a timeout message instead of the
+                // actual gRPC status
+                finishLatch.countDown();
             }).start();
         }
 
@@ -121,6 +142,14 @@ public class QueryClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<QueryPvStatsResponse> responseList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -154,6 +183,8 @@ public class QueryClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public QueryPvStatsResponse getResponse() {
             if (responseList.isEmpty() || responseList.size() > 1) {
                 return null;
@@ -173,6 +204,9 @@ public class QueryClient extends ServiceApiClientBase {
                     final String errorMsg = "QueryResponseColumnInfoObserver onNext received exception response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -245,6 +279,14 @@ public class QueryClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<QueryProvidersResponse.ProvidersResult.ProviderInfo> providerInfoList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -278,6 +320,8 @@ public class QueryClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public List<QueryProvidersResponse.ProvidersResult.ProviderInfo> getProviderInfoList() {
             return providerInfoList;
         }
@@ -293,6 +337,9 @@ public class QueryClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received ExceptionalResult: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -410,7 +457,8 @@ public class QueryClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryTableApiResult(true, responseObserver.getErrorMessage());
+            return new QueryTableApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new QueryTableApiResult(responseObserver.getQueryResponse());
         }
@@ -463,7 +511,8 @@ public class QueryClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryPvStatsApiResult(true, responseObserver.getErrorMessage());
+            return new QueryPvStatsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new QueryPvStatsApiResult(responseObserver.getResponse());
         }
@@ -551,7 +600,8 @@ public class QueryClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new QueryProvidersApiResult(true, responseObserver.getErrorMessage());
+            return new QueryProvidersApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new QueryProvidersApiResult(responseObserver.getProviderInfoList());
         }

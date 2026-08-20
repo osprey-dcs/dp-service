@@ -16,6 +16,11 @@ public class SaveConfigurationActivationApiResult extends ApiResultBase {
         this.clientActivationId = null;
     }
 
+    public SaveConfigurationActivationApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.clientActivationId = null;
+    }
+
     public SaveConfigurationActivationApiResult(String clientActivationId) {
         super(false, "");
         this.clientActivationId = clientActivationId;

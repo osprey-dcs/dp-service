@@ -12,6 +12,11 @@ public class SubscribeDataEventApiResult extends ApiResultBase {
         this.subscribeDataEventCall = null;
     }
 
+    public SubscribeDataEventApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.subscribeDataEventCall = null;
+    }
+
     public SubscribeDataEventApiResult(IngestionStreamClient.SubscribeDataEventCall subscribeDataEventCall) {
         super(false, "");
         this.subscribeDataEventCall = subscribeDataEventCall;

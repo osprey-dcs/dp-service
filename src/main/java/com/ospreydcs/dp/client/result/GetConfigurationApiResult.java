@@ -12,6 +12,11 @@ public class GetConfigurationApiResult extends ApiResultBase {
         this.configuration = null;
     }
 
+    public GetConfigurationApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.configuration = null;
+    }
+
     public GetConfigurationApiResult(Configuration configuration) {
         super(false, "");
         this.configuration = configuration;

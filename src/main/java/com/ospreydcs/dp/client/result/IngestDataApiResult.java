@@ -12,6 +12,11 @@ public class IngestDataApiResult extends ApiResultBase {
         this.ingestDataResponse = null;
     }
 
+    public IngestDataApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.ingestDataResponse = null;
+    }
+
     public IngestDataApiResult(IngestDataResponse ingestDataResponse) {
         super(false, "");
         this.ingestDataResponse = ingestDataResponse;

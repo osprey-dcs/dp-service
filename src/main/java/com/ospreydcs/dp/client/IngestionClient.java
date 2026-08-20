@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.client;
 
+import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.IngestDataApiResult;
 import com.ospreydcs.dp.client.result.RegisterProviderApiResult;
 import com.ospreydcs.dp.grpc.v1.common.*;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class IngestionClient extends ServiceApiClientBase {
 
@@ -54,6 +56,14 @@ public class IngestionClient extends ServiceApiClientBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
         private final List<RegisterProviderResponse> responseList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -86,6 +96,8 @@ public class IngestionClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         public List<RegisterProviderResponse> getResponseList() {
             return responseList;
         }
@@ -101,6 +113,9 @@ public class IngestionClient extends ServiceApiClientBase {
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
+                    apiResultStatus.compareAndSet(
+                            ApiResultStatus.NONE,
+                            ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                     isError.set(true);
                     errorMessageList.add(errorMsg);
                     finishLatch.countDown();
@@ -372,6 +387,14 @@ public class IngestionClient extends ServiceApiClientBase {
         private final List<IngestDataResponse> responseList = Collections.synchronizedList(new ArrayList<>());
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        // categorizes a failure so callers can distinguish a service rejection from a service
+        // error.  Defaults to NONE, which ApiResultBase maps to LOCAL_FAILURE when a failure was
+        // recorded without a status-bearing response -- a transport error, an await timeout, a
+        // malformed response sequence.  Defaulting to NONE rather than LOCAL_FAILURE keeps this
+        // getter honest for a call that succeeded.  Only the first status recorded is kept, so
+        // that the status and the message returned by getErrorMessage() describe the same failure.
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
 
         private final int expectedResponseCount;
 
@@ -416,6 +439,8 @@ public class IngestionClient extends ServiceApiClientBase {
             }
         }
 
+        public ApiResultStatus getApiResultStatus() { return apiResultStatus.get(); }
+
         @Override
         public void onNext(IngestDataResponse response) {
 
@@ -423,6 +448,9 @@ public class IngestionClient extends ServiceApiClientBase {
                 final String errorMsg = "onNext received exceptional response: "
                         + response.getExceptionalResult().getMessage();
                 System.err.println(errorMsg);
+                apiResultStatus.compareAndSet(
+                        ApiResultStatus.NONE,
+                        ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));
                 isError.set(true);
                 errorMessageList.add(errorMsg);
                 finishLatch.countDown();
@@ -435,9 +463,17 @@ public class IngestionClient extends ServiceApiClientBase {
 
         @Override
         public void onError(Throwable t) {
-            Status status = Status.fromThrowable(t);
-            System.err.println("IngestDataResponseObserver error: " + status);
+            final Status status = Status.fromThrowable(t);
+            final String errorMsg = "IngestDataResponseObserver error: " + status;
+            System.err.println(errorMsg);
             isError.set(true);
+            errorMessageList.add(errorMsg);
+            // this latch is initialized to expectedResponseCount, so a stream that fails after
+            // some responses have arrived still has counts outstanding.  Release all of them,
+            // otherwise await() expires and reports a timeout instead of the gRPC status.
+            while (finishLatch.getCount() > 0) {
+                finishLatch.countDown();
+            }
         }
 
         @Override
@@ -493,7 +529,8 @@ public class IngestionClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new RegisterProviderApiResult(true, responseObserver.getErrorMessage());
+            return new RegisterProviderApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new RegisterProviderApiResult(responseObserver.getResponseList().get(0));
         }
@@ -685,7 +722,8 @@ public class IngestionClient extends ServiceApiClientBase {
         responseObserver.await();
 
         if (responseObserver.isError()) {
-            return new IngestDataApiResult(true, responseObserver.getErrorMessage());
+            return new IngestDataApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             return new IngestDataApiResult(responseObserver.getResponseList().get(0));
         }

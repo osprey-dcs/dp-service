@@ -12,6 +12,11 @@ public class QueryTableApiResult extends ApiResultBase {
         this.queryTableResponse = null;
     }
 
+    public QueryTableApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.queryTableResponse = null;
+    }
+
     public QueryTableApiResult(QueryTableResponse queryTableResponse) {
         super(false, "");
         this.queryTableResponse = queryTableResponse;

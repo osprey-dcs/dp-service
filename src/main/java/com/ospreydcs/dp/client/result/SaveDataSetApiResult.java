@@ -10,6 +10,11 @@ public class SaveDataSetApiResult extends ApiResultBase {
         this.datasetId = null;
     }
 
+    public SaveDataSetApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.datasetId = null;
+    }
+
     public SaveDataSetApiResult(String datasetId) {
         super(false, "");
         this.datasetId = datasetId;

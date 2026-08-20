@@ -11,6 +11,11 @@ public class ExportDataApiResult extends ApiResultBase {
         this.exportDataResult = null;
     }
 
+    public ExportDataApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.exportDataResult = null;
+    }
+
     public ExportDataApiResult(ExportDataResponse.ExportDataResult exportDataResult) {
         super(false, "");
         this.exportDataResult = exportDataResult;

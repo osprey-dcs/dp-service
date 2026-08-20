@@ -10,6 +10,11 @@ public class SaveAnnotationApiResult extends ApiResultBase {
         this.annotationId = null;
     }
 
+    public SaveAnnotationApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.annotationId = null;
+    }
+
     public SaveAnnotationApiResult(String annotationId) {
         super(false, "");
         this.annotationId = annotationId;

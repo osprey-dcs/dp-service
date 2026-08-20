@@ -10,6 +10,11 @@ public class SavePvMetadataApiResult extends ApiResultBase {
         this.pvName = null;
     }
 
+    public SavePvMetadataApiResult(boolean isError, String errorMessage, ApiResultStatus apiResultStatus) {
+        super(isError, errorMessage, apiResultStatus);
+        this.pvName = null;
+    }
+
     public SavePvMetadataApiResult(String pvName) {
         super(false, "");
         this.pvName = pvName;
