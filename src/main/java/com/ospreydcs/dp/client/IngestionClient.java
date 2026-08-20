@@ -68,6 +68,12 @@ public class IngestionClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(RegisterProviderResponse response) {
+
+            if (!response.hasRegistrationResult()) {
+                recordFailure(observerName() + " response does not contain RegistrationResult");
+                return false;
+            }
+
             responseList.add(response);
             return true;
         }

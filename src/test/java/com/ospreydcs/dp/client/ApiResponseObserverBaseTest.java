@@ -2,6 +2,7 @@ package com.ospreydcs.dp.client;
 
 import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
+import com.ospreydcs.dp.grpc.v1.annotation.SaveDataSetResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryProvidersResponse;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import org.junit.Test;
@@ -273,5 +274,30 @@ public class ApiResponseObserverBaseTest {
         assertTrue(
                 "expected the timeout message, got: " + observer.getErrorMessage(),
                 observer.getErrorMessage().contains("timed out"));
+    }
+
+    /*
+     * A save response carrying neither an exceptional result nor its result field is rejected
+     * rather than reported as a success with an empty-string id.  The save observers previously
+     * read the payload unconditionally, so an unset result oneof produced a default-instance
+     * result and the caller received a successful ApiResult whose id was "" -- a silent wrong
+     * answer of the same shape as the duplicate-response defect this class was introduced to fix.
+     */
+    @Test
+    public void testSaveResponseMissingResultIsRejected() {
+
+        final AnnotationClient.SaveDataSetResponseObserver observer =
+                new AnnotationClient.SaveDataSetResponseObserver();
+
+        // neither branch of the result oneof is set
+        observer.onNext(SaveDataSetResponse.newBuilder().build());
+
+        assertReturnsPromptly("SaveDataSetResponseObserver.await()", observer::await);
+
+        assertTrue("a response with no result field must be an error", observer.isError());
+        assertTrue(
+                "expected the missing-result message, got: " + observer.getErrorMessage(),
+                observer.getErrorMessage().contains("does not contain SaveDataSetResult"));
+        assertNull("no id may be reported for a rejected response", observer.getDataSetId());
     }
 }

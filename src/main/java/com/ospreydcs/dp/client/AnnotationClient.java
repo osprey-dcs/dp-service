@@ -62,6 +62,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(SaveDataSetResponse response) {
+
+            if (!response.hasSaveDataSetResult()) {
+                recordFailure(observerName() + " response does not contain SaveDataSetResult");
+                return false;
+            }
+
             dataSetIdList.add(response.getSaveDataSetResult().getDataSetId());
             return true;
         }
@@ -162,6 +168,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(SaveAnnotationResponse response) {
+
+            if (!response.hasSaveAnnotationResult()) {
+                recordFailure(observerName() + " response does not contain SaveAnnotationResult");
+                return false;
+            }
+
             annotationIdList.add(response.getSaveAnnotationResult().getAnnotationId());
             return true;
         }
@@ -754,6 +766,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(SavePvMetadataResponse response) {
+
+            if (!response.hasSavePvMetadataResult()) {
+                recordFailure(observerName() + " response does not contain SavePvMetadataResult");
+                return false;
+            }
+
             pvNameList.add(response.getSavePvMetadataResult().getPvName());
             return true;
         }
@@ -908,6 +926,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(SaveConfigurationResponse response) {
+
+            if (!response.hasSaveConfigurationResult()) {
+                recordFailure(observerName() + " response does not contain SaveConfigurationResult");
+                return false;
+            }
+
             configurationNameList.add(response.getSaveConfigurationResult().getConfigurationName());
             return true;
         }
@@ -938,6 +962,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(SaveConfigurationActivationResponse response) {
+
+            if (!response.hasSaveConfigurationActivationResult()) {
+                recordFailure(observerName() + " response does not contain SaveConfigurationActivationResult");
+                return false;
+            }
+
             clientActivationIdList.add(response.getSaveConfigurationActivationResult().getClientActivationId());
             return true;
         }
@@ -969,6 +999,12 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         @Override
         protected boolean handleResult(GetConfigurationResponse response) {
+
+            if (!response.hasGetConfigurationResult()) {
+                recordFailure(observerName() + " response does not contain GetConfigurationResult");
+                return false;
+            }
+
             configurationList.add(response.getGetConfigurationResult().getConfiguration());
             return true;
         }
