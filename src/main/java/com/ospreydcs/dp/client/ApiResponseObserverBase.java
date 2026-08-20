@@ -86,9 +86,20 @@ public abstract class ApiResponseObserverBase<T extends Message> implements Stre
      * Names this observer in its error messages.  Defaults to the concrete class's simple name so
      * that a message identifies the RPC that produced it without each subclass repeating a
      * literal.
+     *
+     * <p>{@code getSimpleName()} is empty for an anonymous subclass, which would leave a message
+     * with no identity at all, so fall back to the nearest named ancestor in that case.
      */
     protected String observerName() {
-        return getClass().getSimpleName();
+
+        for (Class<?> c = getClass(); c != null; c = c.getSuperclass()) {
+            final String simpleName = c.getSimpleName();
+            if (!simpleName.isEmpty()) {
+                return simpleName;
+            }
+        }
+
+        return "ApiResponseObserver";
     }
 
     /**
@@ -117,9 +128,10 @@ public abstract class ApiResponseObserverBase<T extends Message> implements Stre
     /**
      * Records a failure and releases the awaiting caller.
      *
-     * <p>The message is kept only if it is the first recorded, so that {@link #getErrorMessage} and
-     * {@link #getApiResultStatus} describe the same failure -- the earliest one, which is the one
-     * that caused the call to fail.
+     * <p>Every message recorded is retained, in order, and is available from {@link
+     * #getErrorMessageList}.  It is {@link #getErrorMessage} that selects the first one, so that
+     * the message it returns and the status from {@link #getApiResultStatus} describe the same
+     * failure -- the earliest one, which is the one that caused the call to fail.
      */
     protected final void recordFailure(String errorMsg) {
         recordFailure(errorMsg, null);

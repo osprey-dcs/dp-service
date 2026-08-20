@@ -14,6 +14,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Provides test coverage for the response-sequence handling shared by the client API response
@@ -66,7 +67,15 @@ public class ApiResponseObserverBaseTest {
         final Instant deadline = Instant.now().plus(AWAIT_BOUND);
 
         while (!condition.getAsBoolean() && Instant.now().isBefore(deadline)) {
-            Thread.onSpinWait();
+            // park briefly rather than spinning: these conditions resolve in milliseconds, so the
+            // poll interval is never the limiting factor, and a bare spin would peg a core for the
+            // full bound on a machine loaded enough to actually approach it
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fail(description + " was interrupted while waiting");
+            }
         }
 
         assertTrue(
