@@ -12,6 +12,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -290,6 +291,40 @@ public class MongoTestClient extends MongoSyncClient {
             }
         }
         return null;
+    }
+
+    /**
+     * Returns all sampleStatusBuckets documents for the given identity prefix, ordered by
+     * firstTimeNanos. Follows the retry-loop pattern (worker-thread insertion): retries until at
+     * least one matching document appears, returning an empty list if none ever does — callers
+     * expecting zero documents should use findSampleStatusBucketsNoRetry().
+     */
+    public List<SampleStatusBucketDocument> findSampleStatusBuckets(String pvName, String domain, String layer) {
+        for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+            final List<SampleStatusBucketDocument> matchingDocuments =
+                    findSampleStatusBucketsNoRetry(pvName, domain, layer);
+            if (matchingDocuments.size() > 0) {
+                return matchingDocuments;
+            } else {
+                try {
+                    logger.info("findSampleStatusBuckets pvName: " + pvName + " retrying");
+                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+                } catch (InterruptedException ex) {
+                    // ignore and just retry
+                }
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    public List<SampleStatusBucketDocument> findSampleStatusBucketsNoRetry(
+            String pvName, String domain, String layer) {
+        final List<SampleStatusBucketDocument> matchingDocuments = new ArrayList<>();
+        mongoCollectionSampleStatusBuckets.find(and(
+                        eq("pvName", pvName), eq("domain", domain), eq("layer", layer)))
+                .sort(com.mongodb.client.model.Sorts.ascending("firstTimeNanos"))
+                .into(matchingDocuments);
+        return matchingDocuments;
     }
 
 }

@@ -2116,4 +2116,287 @@ public class AnnotationTestBase {
         return GetActiveConfigurationsRequest.newBuilder().setTimestamp(timestamp).build();
     }
 
+    // =========================================================================
+    // Sample Status response observers and request builders
+    // =========================================================================
+
+    public static class SaveSampleStatusesResponseObserver implements StreamObserver<SaveSampleStatusesResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<Long> savedCountList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        public Long getSavedCount() { return savedCountList.isEmpty() ? null : savedCountList.get(0); }
+
+        @Override
+        public void onNext(SaveSampleStatusesResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasSaveSampleStatusesResult());
+                savedCountList.add(response.getSaveSampleStatusesResult().getSavedCount());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class QuerySampleStatusesResponseObserver implements StreamObserver<QuerySampleStatusesResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.ospreydcs.dp.grpc.v1.common.SampleStatusBucket> bucketList =
+                Collections.synchronizedList(new ArrayList<>());
+        private String nextPageToken = "";
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        public List<com.ospreydcs.dp.grpc.v1.common.SampleStatusBucket> getSampleStatusBuckets() { return bucketList; }
+        public String getNextPageToken() { return nextPageToken; }
+
+        @Override
+        public void onNext(QuerySampleStatusesResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasQuerySampleStatusesResult());
+                bucketList.addAll(response.getQuerySampleStatusesResult().getSampleStatusBucketsList());
+                nextPageToken = response.getQuerySampleStatusesResult().getNextPageToken();
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    /**
+     * Observer for the server-streaming querySampleStatusesStream(): accumulates buckets across
+     * all streamed messages, records the per-message chunk sizes, and tracks whether any streamed
+     * message carried a non-empty nextPageToken (the contract requires all of them empty).
+     * Messages are processed inline (gRPC delivers them serially); the latch counts down at
+     * stream completion or error.
+     */
+    public static class QuerySampleStatusesStreamResponseObserver
+            implements StreamObserver<QuerySampleStatusesResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<com.ospreydcs.dp.grpc.v1.common.SampleStatusBucket> bucketList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<Integer> chunkSizeList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicBoolean nonEmptyNextPageTokenSeen = new AtomicBoolean(false);
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        public List<com.ospreydcs.dp.grpc.v1.common.SampleStatusBucket> getSampleStatusBuckets() { return bucketList; }
+        public List<Integer> getChunkSizes() { return chunkSizeList; }
+        public boolean nonEmptyNextPageTokenSeen() { return nonEmptyNextPageTokenSeen.get(); }
+
+        @Override
+        public void onNext(QuerySampleStatusesResponse response) {
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+                return;
+            }
+            assertTrue(response.hasQuerySampleStatusesResult());
+            final QuerySampleStatusesResponse.QuerySampleStatusesResult result =
+                    response.getQuerySampleStatusesResult();
+            bucketList.addAll(result.getSampleStatusBucketsList());
+            chunkSizeList.add(result.getSampleStatusBucketsCount());
+            if (!result.getNextPageToken().isEmpty()) {
+                nonEmptyNextPageTokenSeen.set(true);
+            }
+        }
+        @Override public void onError(Throwable t) {
+            isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+        }
+        @Override public void onCompleted() {
+            finishLatch.countDown();
+        }
+    }
+
+    public static class DeleteSampleStatusesResponseObserver implements StreamObserver<DeleteSampleStatusesResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<Long> deletedCountList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        public Long getDeletedCount() { return deletedCountList.isEmpty() ? null : deletedCountList.get(0); }
+
+        @Override
+        public void onNext(DeleteSampleStatusesResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasDeleteSampleStatusesResult());
+                deletedCountList.add(response.getDeleteSampleStatusesResult().getDeletedCount());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class SaveSampleStatusDomainResponseObserver
+            implements StreamObserver<SaveSampleStatusDomainResponse> {
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        @Override public void onNext(SaveSampleStatusDomainResponse response) {
+            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            finishLatch.countDown();
+        }
+        @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }
+        @Override public void onCompleted() {}
+    }
+
+    public static class QuerySampleStatusDomainsResponseObserver
+            implements StreamObserver<QuerySampleStatusDomainsResponse> {
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        @Override public void onNext(QuerySampleStatusDomainsResponse response) {
+            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            finishLatch.countDown();
+        }
+        @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }
+        @Override public void onCompleted() {}
+    }
+
+    public static com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn buildSampleStatusColumn(
+            String pvName, List<Integer> statusCodes, List<Float> confidence, List<String> reasons) {
+        final com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn.Builder builder =
+                com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn.newBuilder();
+        if (pvName != null) builder.setPvName(pvName);
+        if (statusCodes != null) builder.addAllStatusCodes(statusCodes);
+        if (confidence != null) builder.addAllConfidence(confidence);
+        if (reasons != null) builder.addAllReasons(reasons);
+        return builder.build();
+    }
+
+    public static com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame buildSampleStatusFrame(
+            String domain,
+            String layer,
+            com.ospreydcs.dp.grpc.v1.common.DataTimestamps dataTimestamps,
+            List<com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn> statusColumns) {
+        final com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame.Builder builder =
+                com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame.newBuilder();
+        if (domain != null) builder.setDomain(domain);
+        if (layer != null) builder.setLayer(layer);
+        if (dataTimestamps != null) builder.setDataTimestamps(dataTimestamps);
+        if (statusColumns != null) builder.addAllStatusColumns(statusColumns);
+        return builder.build();
+    }
+
+    public static SaveSampleStatusesRequest buildSaveSampleStatusesRequest(
+            List<com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame> frames, String source, String modifiedBy) {
+        final SaveSampleStatusesRequest.Builder builder = SaveSampleStatusesRequest.newBuilder();
+        if (frames != null) builder.addAllFrames(frames);
+        if (source != null) builder.setSource(source);
+        if (modifiedBy != null) builder.setModifiedBy(modifiedBy);
+        return builder.build();
+    }
+
+    public static QuerySampleStatusesRequest buildQuerySampleStatusesRequest(
+            Timestamp beginTime,
+            Timestamp endTime,
+            List<String> pvNames,
+            List<String> domains,
+            List<String> layers,
+            int limit,
+            String pageToken) {
+        final QuerySampleStatusesRequest.Builder builder = QuerySampleStatusesRequest.newBuilder();
+        if (beginTime != null || endTime != null) {
+            final com.ospreydcs.dp.grpc.v1.common.TimeRange.Builder timeRangeBuilder =
+                    com.ospreydcs.dp.grpc.v1.common.TimeRange.newBuilder();
+            if (beginTime != null) timeRangeBuilder.setBeginTime(beginTime);
+            if (endTime != null) timeRangeBuilder.setEndTime(endTime);
+            builder.setTimeRange(timeRangeBuilder);
+        }
+        if (pvNames != null) builder.addAllPvNames(pvNames);
+        if (domains != null) builder.addAllDomains(domains);
+        if (layers != null) builder.addAllLayers(layers);
+        if (limit > 0) builder.setLimit(limit);
+        if (pageToken != null && !pageToken.isBlank()) builder.setPageToken(pageToken);
+        return builder.build();
+    }
+
+    public static DeleteSampleStatusesRequest buildDeleteSampleStatusesRequest(
+            Timestamp beginTime, Timestamp endTime, List<String> pvNames, String domain, String layer) {
+        final DeleteSampleStatusesRequest.Builder builder = DeleteSampleStatusesRequest.newBuilder();
+        if (beginTime != null || endTime != null) {
+            final com.ospreydcs.dp.grpc.v1.common.TimeRange.Builder timeRangeBuilder =
+                    com.ospreydcs.dp.grpc.v1.common.TimeRange.newBuilder();
+            if (beginTime != null) timeRangeBuilder.setBeginTime(beginTime);
+            if (endTime != null) timeRangeBuilder.setEndTime(endTime);
+            builder.setTimeRange(timeRangeBuilder);
+        }
+        if (pvNames != null) builder.addAllPvNames(pvNames);
+        if (domain != null) builder.setDomain(domain);
+        if (layer != null) builder.setLayer(layer);
+        return builder.build();
+    }
+
 }

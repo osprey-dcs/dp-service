@@ -1566,4 +1566,143 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
+    // =========================================================================
+    // Sample Status helpers
+    // =========================================================================
+
+    public long sendAndVerifySaveSampleStatuses(
+            SaveSampleStatusesRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.SaveSampleStatusesResponseObserver responseObserver =
+                new AnnotationTestBase.SaveSampleStatusesResponseObserver();
+
+        new Thread(() -> asyncStub.saveSampleStatuses(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(
+                    "expected message containing '" + expectedRejectMessage + "' but was: "
+                            + responseObserver.getErrorMessage(),
+                    responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            assertNull(responseObserver.getSavedCount());
+            return -1;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final Long savedCount = responseObserver.getSavedCount();
+        assertNotNull(savedCount);
+        return savedCount;
+    }
+
+    public AnnotationTestBase.QuerySampleStatusesResponseObserver sendAndVerifyQuerySampleStatuses(
+            QuerySampleStatusesRequest request,
+            boolean expectReject,
+            String expectedRejectMessage,
+            int expectedBucketCount
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.QuerySampleStatusesResponseObserver responseObserver =
+                new AnnotationTestBase.QuerySampleStatusesResponseObserver();
+
+        new Thread(() -> asyncStub.querySampleStatuses(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(
+                    "expected message containing '" + expectedRejectMessage + "' but was: "
+                            + responseObserver.getErrorMessage(),
+                    responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        assertEquals(expectedBucketCount, responseObserver.getSampleStatusBuckets().size());
+        return responseObserver;
+    }
+
+    public AnnotationTestBase.QuerySampleStatusesStreamResponseObserver sendAndVerifyQuerySampleStatusesStream(
+            QuerySampleStatusesRequest request,
+            boolean expectReject,
+            String expectedRejectMessage,
+            int expectedBucketCount
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.QuerySampleStatusesStreamResponseObserver responseObserver =
+                new AnnotationTestBase.QuerySampleStatusesStreamResponseObserver();
+
+        new Thread(() -> asyncStub.querySampleStatusesStream(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(
+                    "expected message containing '" + expectedRejectMessage + "' but was: "
+                            + responseObserver.getErrorMessage(),
+                    responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        assertEquals(expectedBucketCount, responseObserver.getSampleStatusBuckets().size());
+        // streaming is fire-and-consume: nextPageToken must be empty on every streamed message
+        assertFalse(responseObserver.nonEmptyNextPageTokenSeen());
+        return responseObserver;
+    }
+
+    public long sendAndVerifyDeleteSampleStatuses(
+            DeleteSampleStatusesRequest request,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.DeleteSampleStatusesResponseObserver responseObserver =
+                new AnnotationTestBase.DeleteSampleStatusesResponseObserver();
+
+        new Thread(() -> asyncStub.deleteSampleStatuses(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertTrue(
+                    "expected message containing '" + expectedRejectMessage + "' but was: "
+                            + responseObserver.getErrorMessage(),
+                    responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            assertNull(responseObserver.getDeletedCount());
+            return -1;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final Long deletedCount = responseObserver.getDeletedCount();
+        assertNotNull(deletedCount);
+        return deletedCount;
+    }
+
+    public void sendAndVerifySaveSampleStatusDomainStub() {
+        final SaveSampleStatusDomainRequest request =
+                SaveSampleStatusDomainRequest.newBuilder().setDomainName("data_quality").build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.SaveSampleStatusDomainResponseObserver responseObserver =
+                new AnnotationTestBase.SaveSampleStatusDomainResponseObserver();
+        new Thread(() -> asyncStub.saveSampleStatusDomain(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
+    public void sendAndVerifyQuerySampleStatusDomainsStub() {
+        final QuerySampleStatusDomainsRequest request = QuerySampleStatusDomainsRequest.newBuilder().build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.QuerySampleStatusDomainsResponseObserver responseObserver =
+                new AnnotationTestBase.QuerySampleStatusDomainsResponseObserver();
+        new Thread(() -> asyncStub.querySampleStatusDomains(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
 }
