@@ -160,6 +160,19 @@ AnnotationHandler:
   # This parameter might take some tuning on deployments to get the best performance.
   numWorkers: ${DP_ANNOTATION_HANDLER_NUM_WORKERS:7}
 
+  # AnnotationHandler.sampleStatusQueryDefaultPageSize: Default page size (SampleStatusBuckets per
+  # response) for querySampleStatuses / querySampleStatusesStream when the request's limit is 0/unset.
+  sampleStatusQueryDefaultPageSize: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE:10000}
+
+  # AnnotationHandler.sampleStatusQueryMaxPageSize: Maximum page size for querySampleStatuses /
+  # querySampleStatusesStream. A larger requested limit is silently clamped to this value.
+  sampleStatusQueryMaxPageSize: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE:100000}
+
+  # AnnotationHandler.sampleStatusSaveMaxStatuses: Maximum total individual sample statuses
+  # (timestamps x columns, summed over frames) accepted in one saveSampleStatuses request.
+  # Oversized requests are rejected.
+  sampleStatusSaveMaxStatuses: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_SAVE_MAX_STATUSES:1000000}
+
 # Export: Settings for the export mechanism.
 Export:
 

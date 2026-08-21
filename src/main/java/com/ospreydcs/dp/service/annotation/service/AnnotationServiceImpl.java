@@ -1452,4 +1452,224 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 .build());
         responseObserver.onCompleted();
     }
+
+    // =========================================================
+    // saveSampleStatuses
+    // =========================================================
+
+    private static SaveSampleStatusesResponse saveSampleStatusesResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return SaveSampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendSaveSampleStatusesResponseReject(
+            String msg, StreamObserver<SaveSampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(saveSampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSaveSampleStatusesResponseError(
+            String msg, StreamObserver<SaveSampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(saveSampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendSaveSampleStatusesResponseSuccess(
+            long savedCount, StreamObserver<SaveSampleStatusesResponse> responseObserver) {
+        final SaveSampleStatusesResponse.SaveSampleStatusesResult result =
+                SaveSampleStatusesResponse.SaveSampleStatusesResult.newBuilder()
+                        .setSavedCount(savedCount)
+                        .build();
+        responseObserver.onNext(SaveSampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setSaveSampleStatusesResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void saveSampleStatuses(
+            SaveSampleStatusesRequest request,
+            StreamObserver<SaveSampleStatusesResponse> responseObserver
+    ) {
+        logger.info("id: {} saveSampleStatuses request received frames: {}",
+                responseObserver.hashCode(), request.getFramesCount());
+        handler.handleSaveSampleStatuses(request, responseObserver);
+    }
+
+    // =========================================================
+    // querySampleStatuses / querySampleStatusesStream
+    // =========================================================
+
+    private static QuerySampleStatusesResponse querySampleStatusesResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return QuerySampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendQuerySampleStatusesResponseReject(
+            String msg, StreamObserver<QuerySampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(querySampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQuerySampleStatusesResponseError(
+            String msg, StreamObserver<QuerySampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(querySampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQuerySampleStatusesResponse(
+            QuerySampleStatusesResponse.QuerySampleStatusesResult result,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(QuerySampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setQuerySampleStatusesResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    public static void sendQuerySampleStatusesResponseStreamChunk(
+            QuerySampleStatusesResponse.QuerySampleStatusesResult result,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(QuerySampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setQuerySampleStatusesResult(result)
+                .build());
+    }
+
+    public static void sendQuerySampleStatusesResponseStreamComplete(
+            StreamObserver<QuerySampleStatusesResponse> responseObserver) {
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void querySampleStatuses(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver
+    ) {
+        logger.info("id: {} querySampleStatuses request received", responseObserver.hashCode());
+        handler.handleQuerySampleStatuses(request, responseObserver);
+    }
+
+    @Override
+    public void querySampleStatusesStream(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver
+    ) {
+        logger.info("id: {} querySampleStatusesStream request received", responseObserver.hashCode());
+        handler.handleQuerySampleStatusesStream(request, responseObserver);
+    }
+
+    // =========================================================
+    // deleteSampleStatuses
+    // =========================================================
+
+    private static DeleteSampleStatusesResponse deleteSampleStatusesResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return DeleteSampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendDeleteSampleStatusesResponseReject(
+            String msg, StreamObserver<DeleteSampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(deleteSampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteSampleStatusesResponseError(
+            String msg, StreamObserver<DeleteSampleStatusesResponse> responseObserver) {
+        responseObserver.onNext(deleteSampleStatusesResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteSampleStatusesResponseSuccess(
+            long deletedCount, StreamObserver<DeleteSampleStatusesResponse> responseObserver) {
+        final DeleteSampleStatusesResponse.DeleteSampleStatusesResult result =
+                DeleteSampleStatusesResponse.DeleteSampleStatusesResult.newBuilder()
+                        .setDeletedCount(deletedCount)
+                        .build();
+        responseObserver.onNext(DeleteSampleStatusesResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setDeleteSampleStatusesResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void deleteSampleStatuses(
+            DeleteSampleStatusesRequest request,
+            StreamObserver<DeleteSampleStatusesResponse> responseObserver
+    ) {
+        logger.info("id: {} deleteSampleStatuses request received domain: {} layer: {}",
+                responseObserver.hashCode(), request.getDomain(), request.getLayer());
+        handler.handleDeleteSampleStatuses(request, responseObserver);
+    }
+
+    // =========================================================
+    // saveSampleStatusDomain (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void saveSampleStatusDomain(
+            SaveSampleStatusDomainRequest request,
+            StreamObserver<SaveSampleStatusDomainResponse> responseObserver
+    ) {
+        logger.info("id: {} saveSampleStatusDomain request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("saveSampleStatusDomain is not yet implemented")
+                .build();
+        responseObserver.onNext(SaveSampleStatusDomainResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    // =========================================================
+    // querySampleStatusDomains (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void querySampleStatusDomains(
+            QuerySampleStatusDomainsRequest request,
+            StreamObserver<QuerySampleStatusDomainsResponse> responseObserver
+    ) {
+        logger.info("id: {} querySampleStatusDomains request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("querySampleStatusDomains is not yet implemented")
+                .build();
+        responseObserver.onNext(QuerySampleStatusDomainsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
+    }
 }

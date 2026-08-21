@@ -174,4 +174,16 @@ public class MongoAsyncClient extends MongoClientBase {
         // configurationActivations indexes not used by async client
         return true;
     }
+
+    @Override
+    protected boolean initMongoCollectionSampleStatusBuckets(String collectionName) {
+        // sampleStatusBuckets collection not used by async client
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson) {
+        // sampleStatusBuckets indexes not used by async client
+        return true;
+    }
 }

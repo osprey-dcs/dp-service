@@ -24,6 +24,13 @@ QueryHandler:
   queryV2MaxPageSize: ${DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE:100000}
   queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
 
+# AnnotationHandler: Annotation Service request handler settings (sample status paging/size limits).
+# Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.
+AnnotationHandler:
+  sampleStatusQueryDefaultPageSize: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE:10000}
+  sampleStatusQueryMaxPageSize: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE:100000}
+  sampleStatusSaveMaxStatuses: ${DP_ANNOTATION_HANDLER_SAMPLE_STATUS_SAVE_MAX_STATUSES:1000000}
+
 Level1:
   Level2:
     intValue: 60
