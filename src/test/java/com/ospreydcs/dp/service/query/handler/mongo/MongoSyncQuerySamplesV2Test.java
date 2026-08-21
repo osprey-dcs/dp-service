@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.DoubleArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.TimeRange;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -21,12 +22,15 @@ import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.column.DoubleArrayColumnDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.query.handler.QueryV2Resolver;
 import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedStatusFilter;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesUnaryDispatcher;
@@ -36,6 +40,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -78,7 +83,19 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
             return result.getInsertedIds().size();
         }
+        public void insertSampleStatusBucketDocuments(List<SampleStatusBucketDocument> documentList) {
+            mongoCollectionSampleStatusBuckets.insertMany(documentList);
+        }
     }
+
+    // sampleStatusSelector fixture, on its own time base clear of the other PVs
+    private static final String PV_STATUS = "sspv";
+    private static final String PV_STATUS_2 = "sspv2";
+    private static final long STATUS_B = startSeconds + 300_000L;
+    private static final int STATUS_SECONDS = 10;
+    private static final String STATUS_DOMAIN = "dq";
+    private static final String STATUS_LAYER_1 = "l1";
+    private static final String STATUS_LAYER_2 = "l2";
 
     @BeforeClass
     public static void setUp() throws Exception {
@@ -97,8 +114,38 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         // the same data stored as per-second buckets is filtered correctly by the database alone and
         // would not exercise the sample-level fragment trim.
         buckets.add(spanningBucket(PV_SPAN, SPAN_B, SPAN_SECONDS));
+        // sampleStatusSelector fixture: two 1 Hz PVs (values 0..9), statuses seeded below
+        buckets.add(spanningBucket(PV_STATUS, STATUS_B, STATUS_SECONDS));
+        buckets.add(spanningBucket(PV_STATUS_2, STATUS_B, STATUS_SECONDS));
         assertEquals(buckets.size(),
                 ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
+
+        // status fixture (domain dq):
+        //   l1/sspv:  offsets 2 and 5 code 7, offset 8 code 3, and a NEAR-MISS at offset 3 + 1ns
+        //             code 7 (must not label the sample at offset 3 -- matching is exact-timestamp)
+        //   l1/sspv2: offset 2 code 7
+        //   l2/sspv:  offset 6 code 7 (visible only through the layers wildcard)
+        final List<SampleStatusBucketDocument> statusDocuments = new ArrayList<>();
+        statusDocuments.add(statusDocument(PV_STATUS, STATUS_LAYER_1,
+                List.of(ts(STATUS_B + 2, 0), ts(STATUS_B + 3, 1), ts(STATUS_B + 5, 0), ts(STATUS_B + 8, 0)),
+                List.of(7, 7, 7, 3)));
+        statusDocuments.add(statusDocument(PV_STATUS_2, STATUS_LAYER_1,
+                List.of(ts(STATUS_B + 2, 0)), List.of(7)));
+        statusDocuments.add(statusDocument(PV_STATUS, STATUS_LAYER_2,
+                List.of(ts(STATUS_B + 6, 0)), List.of(7)));
+        testClient.insertSampleStatusBucketDocuments(statusDocuments);
+    }
+
+    private static SampleStatusBucketDocument statusDocument(
+            String pvName, String layer, List<Timestamp> timestamps, List<Integer> statusCodes) {
+        final SampleStatusColumn column = SampleStatusColumn.newBuilder()
+                .setPvName(pvName)
+                .addAllStatusCodes(statusCodes)
+                .build();
+        return SampleStatusBucketDocument.fromSampleStatusColumn(
+                STATUS_DOMAIN, layer,
+                DataTimestampsUtility.dataTimestampsWithTimestampList(timestamps),
+                column, "test-source", "test-user", Instant.now());
     }
 
     @AfterClass
@@ -730,5 +777,191 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         }
         assertEquals("paged traversal must visit each in-fragment sample exactly once",
                 List.of(0L, 1L, 8L, 9L), collected);
+    }
+
+    // -----------------------------------------------------------------------
+    // sampleStatusSelector: per-sample filtering joined into ColumnTable assembly.
+    // Fixture: PV_STATUS/PV_STATUS_2 at 1 Hz over [STATUS_B, STATUS_B+10), values = offset;
+    // statuses per the setUp() comment.
+    // -----------------------------------------------------------------------
+
+    private static ResolvedQuery statusQuery(
+            List<String> pvNames, ResolvedStatusFilter statusFilter, List<TimeInterval> intervals) {
+        return new ResolvedQuery(
+                pvNames, intervals, DEFAULT_PAGE_SIZE, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, false, statusFilter);
+    }
+
+    private static List<TimeInterval> wholeStatusRange() {
+        final List<TimeInterval> intervals = new ArrayList<>();
+        intervals.add(new TimeInterval(STATUS_B, 0, STATUS_B + STATUS_SECONDS, 0));
+        return intervals;
+    }
+
+    private static ResolvedStatusFilter statusFilter(boolean include, List<String> layers, Integer... codes) {
+        return new ResolvedStatusFilter(STATUS_DOMAIN, layers, java.util.Set.of(codes), include);
+    }
+
+    private ColumnTable runStatusUnary(ResolvedQuery resolvedQuery) {
+        final List<QuerySamplesResponse> responses = new ArrayList<>();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
+            @Override public void onError(Throwable t) { }
+            @Override public void onCompleted() { }
+        };
+        new QueryV2Job(resolvedQuery, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
+                clientTestInterface).execute();
+        assertEquals(1, responses.size());
+        assertTrue(responses.get(0).hasSampleQueryResult());
+        return responses.get(0).getSampleQueryResult().getColumnTable();
+    }
+
+    /** Offsets from STATUS_B of every timestamp in the table. */
+    private static List<Long> statusOffsets(ColumnTable table) {
+        final List<Long> offsets = new ArrayList<>();
+        for (Timestamp t : table.getTimestampList().getTimestampsList()) {
+            offsets.add(t.getEpochSeconds() - STATUS_B);
+        }
+        return offsets;
+    }
+
+    @Test
+    public void testStatusSelectorIncludeExactMatchOnly() {
+        // INCLUDE code 7 in l1: only offsets 2 and 5 -- offset 8 has a non-matching code, offset 6's
+        // label is in a non-selected layer, and the near-miss status at offset 3 + 1ns must NOT
+        // label the sample at offset 3 (exact nanosecond matching)
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS), statusFilter(true, List.of(STATUS_LAYER_1), 7), wholeStatusRange()));
+        assertEquals(List.of(2L, 5L), statusOffsets(table));
+        final DataColumn column = columnByName(table, PV_STATUS);
+        assertEquals(2.0, column.getDataValues(0).getDoubleValue(), 0.0);
+        assertEquals(5.0, column.getDataValues(1).getDoubleValue(), 0.0);
+    }
+
+    @Test
+    public void testStatusSelectorIncludeEmptyCodesIsLabeledAtAll() {
+        // empty statusCodes = any code: offsets 2 and 5 (code 7) plus 8 (code 3); the near-miss
+        // still labels nothing
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS), statusFilter(true, List.of(STATUS_LAYER_1)), wholeStatusRange()));
+        assertEquals(List.of(2L, 5L, 8L), statusOffsets(table));
+    }
+
+    @Test
+    public void testStatusSelectorEmptyLayersMatchesAllLayers() {
+        // layers wildcard: the l2 label at offset 6 now counts as well
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS), statusFilter(true, List.of()), wholeStatusRange()));
+        assertEquals(List.of(2L, 5L, 6L, 8L), statusOffsets(table));
+    }
+
+    @Test
+    public void testStatusSelectorExcludePassesUnlabeled() {
+        // EXCLUDE any-code in l1 drops offsets 2, 5, 8; unlabeled samples pass
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS), statusFilter(false, List.of(STATUS_LAYER_1)), wholeStatusRange()));
+        assertEquals(List.of(0L, 1L, 3L, 4L, 6L, 7L, 9L), statusOffsets(table));
+    }
+
+    @Test
+    public void testStatusSelectorMissingValueAndAllFilteredRowOmission() {
+        // EXCLUDE code 7 in l1 over both PVs: at offset 2 BOTH PVs are labeled, so the whole row is
+        // omitted; at offset 5 only PV_STATUS is labeled, so the row survives with an unset
+        // DataValue in the PV_STATUS column and a real value for PV_STATUS_2
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS, PV_STATUS_2),
+                statusFilter(false, List.of(STATUS_LAYER_1), 7),
+                wholeStatusRange()));
+        assertEquals(List.of(0L, 1L, 3L, 4L, 5L, 6L, 7L, 8L, 9L), statusOffsets(table));
+
+        final DataColumn statusColumn = columnByName(table, PV_STATUS);
+        final DataColumn statusColumn2 = columnByName(table, PV_STATUS_2);
+        final int offset5Row = statusOffsets(table).indexOf(5L);
+        assertEquals(DataValue.ValueCase.VALUE_NOT_SET,
+                statusColumn.getDataValues(offset5Row).getValueCase());
+        assertEquals(5.0, statusColumn2.getDataValues(offset5Row).getDoubleValue(), 0.0);
+
+        // offset 8's label has code 3, which does not match code 7 -- the sample passes
+        final int offset8Row = statusOffsets(table).indexOf(8L);
+        assertEquals(8.0, statusColumn.getDataValues(offset8Row).getDoubleValue(), 0.0);
+    }
+
+    @Test
+    public void testStatusSelectorIncludeAllFilteredPvEmitsEmptyColumn() {
+        // INCLUDE code 7: PV_STATUS_2's only match is offset 2; PV_STATUS matches 2 and 5. Rows are
+        // the union {2, 5}; PV_STATUS_2 still gets its column with an unset value at offset 5
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS, PV_STATUS_2),
+                statusFilter(true, List.of(STATUS_LAYER_1), 7),
+                wholeStatusRange()));
+        assertEquals(List.of(2L, 5L), statusOffsets(table));
+        final DataColumn statusColumn2 = columnByName(table, PV_STATUS_2);
+        assertEquals(2.0, statusColumn2.getDataValues(0).getDoubleValue(), 0.0);
+        assertEquals(DataValue.ValueCase.VALUE_NOT_SET, statusColumn2.getDataValues(1).getValueCase());
+    }
+
+    @Test
+    public void testStatusSelectorComposesWithFragmentsByIntersection() {
+        // fragments [0,4) and [6,10) with EXCLUDE code 7 in l1: the fragment restriction applies
+        // first, so the status at offset 5 (in the gap) has no effect; the status at offset 2 drops
+        // its in-fragment sample. Expected: fragment samples {0,1,2,3,6,7,8,9} minus {2}.
+        final List<TimeInterval> fragments = new ArrayList<>();
+        fragments.add(new TimeInterval(STATUS_B, 0, STATUS_B + 4, 0));
+        fragments.add(new TimeInterval(STATUS_B + 6, 0, STATUS_B + 10, 0));
+        final ColumnTable table = runStatusUnary(statusQuery(
+                List.of(PV_STATUS), statusFilter(false, List.of(STATUS_LAYER_1), 7), fragments));
+        assertEquals(List.of(0L, 1L, 3L, 6L, 7L, 8L, 9L), statusOffsets(table));
+    }
+
+    @Test
+    public void testStatusSelectorStreaming() {
+        // streaming path shares the same join: INCLUDE code 7 in l1 streams offsets 2 and 5
+        final StreamOutcome outcome = new StreamOutcome();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { outcome.messages.add(r); }
+            @Override public void onError(Throwable t) { outcome.errored = true; }
+            @Override public void onCompleted() { outcome.completed = true; }
+        };
+        final ResolvedQuery resolvedQuery = new ResolvedQuery(
+                List.of(PV_STATUS), wholeStatusRange(), DEFAULT_PAGE_SIZE, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, true,
+                statusFilter(true, List.of(STATUS_LAYER_1), 7));
+        new QueryV2Job(
+                resolvedQuery,
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, Long.MAX_VALUE),
+                clientTestInterface).execute();
+
+        assertFalse(outcome.errored);
+        assertTrue(outcome.completed);
+        final List<Long> allOffsets = new ArrayList<>();
+        for (QuerySamplesResponse r : outcome.messages) {
+            allOffsets.addAll(statusOffsets(r.getSampleQueryResult().getColumnTable()));
+        }
+        assertEquals(List.of(2L, 5L), allOffsets);
+    }
+
+    @Test
+    public void testStatusSelectorEndToEndThroughResolver() {
+        // full path: QuerySpec with a sampleStatusSelector through the resolver, then the unary
+        // dispatcher against real MongoDB
+        final QuerySpec spec = QuerySpec.newBuilder()
+                .setTimeRange(TimeRange.newBuilder()
+                        .setBeginTime(ts(STATUS_B, 0)).setEndTime(ts(STATUS_B + STATUS_SECONDS, 0)))
+                .setPvSelector(PvSelector.newBuilder()
+                        .setPvNameList(PvNameList.newBuilder().addPvNames(PV_STATUS)))
+                .setSampleStatusSelector(com.ospreydcs.dp.grpc.v1.query.SampleStatusSelector.newBuilder()
+                        .setDomain(STATUS_DOMAIN)
+                        .addLayers(STATUS_LAYER_1)
+                        .addStatusCodes(7)
+                        .setMode(com.ospreydcs.dp.grpc.v1.query.SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING))
+                .build();
+        final ResolutionResult resolution = resolver().resolve(
+                spec, ExecutionOptions.getDefaultInstance(), ResultRepresentation.getDefaultInstance(),
+                ResolvedQuery.ResultMode.SAMPLE, false);
+        assertFalse(resolution.isError());
+
+        final ColumnTable table = runStatusUnary(resolution.getResolvedQuery());
+        assertEquals(List.of(2L, 5L), statusOffsets(table));
     }
 }

@@ -54,10 +54,11 @@ public class TabularDataUtilityTest {
             List<TabularDataUtility.RetentionInterval> intervals) throws Exception {
 
         final Method method = TabularDataUtility.class.getDeclaredMethod(
-                "addColumnsToTable", DataTimestamps.class, List.class, TimestampDataMap.class, List.class);
+                "addColumnsToTable", DataTimestamps.class, List.class, TimestampDataMap.class, List.class,
+                TabularDataUtility.SampleStatusFilter.class);
         method.setAccessible(true);
         try {
-            method.invoke(null, dataTimestamps, dataColumns, tableValueMap, intervals);
+            method.invoke(null, dataTimestamps, dataColumns, tableValueMap, intervals, null);
         } catch (InvocationTargetException e) {
             throw (Exception) e.getCause();
         }

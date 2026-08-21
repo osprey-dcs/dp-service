@@ -26,6 +26,7 @@ public final class ResolvedQuery {
     private final boolean excludeColumnMetadata;
     private final ResultMode mode;
     private final boolean streaming;
+    private final ResolvedStatusFilter statusFilter; // null when no sampleStatusSelector
 
     public ResolvedQuery(
             List<String> pvNames,
@@ -36,6 +37,20 @@ public final class ResolvedQuery {
             boolean excludeColumnMetadata,
             ResultMode mode,
             boolean streaming) {
+        this(pvNames, retrievalIntervals, pageSize, pageStart, useSerializedColumns,
+                excludeColumnMetadata, mode, streaming, null);
+    }
+
+    public ResolvedQuery(
+            List<String> pvNames,
+            List<TimeInterval> retrievalIntervals,
+            int pageSize,
+            KeysetPosition pageStart,
+            boolean useSerializedColumns,
+            boolean excludeColumnMetadata,
+            ResultMode mode,
+            boolean streaming,
+            ResolvedStatusFilter statusFilter) {
         this.pvNames = Collections.unmodifiableList(pvNames);
         this.retrievalIntervals = Collections.unmodifiableList(retrievalIntervals);
         this.pageSize = pageSize;
@@ -44,6 +59,7 @@ public final class ResolvedQuery {
         this.excludeColumnMetadata = excludeColumnMetadata;
         this.mode = mode;
         this.streaming = streaming;
+        this.statusFilter = statusFilter;
     }
 
     /** Sorted-ascending list of resolved PV names; drives Q9 column order/presence. */
@@ -79,6 +95,11 @@ public final class ResolvedQuery {
 
     public boolean isStreaming() {
         return streaming;
+    }
+
+    /** Resolved sampleStatusSelector, or {@code null} when the request carried none. */
+    public ResolvedStatusFilter getStatusFilter() {
+        return statusFilter;
     }
 
     /**

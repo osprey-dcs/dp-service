@@ -84,6 +84,10 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
 
         final boolean byteBudgetHit;
         try (cursor) {
+            // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
+            // for the assembly-time join; composes with the fragment trim by intersection.
+            final TabularDataUtility.SampleStatusFilter statusFilter =
+                    statusRetentionFilter(resolvedQuery, mongoClient, windowBeginSecs, windowBeginNanos);
             // Trim against every resolved fragment, not the collapsed window (#207): the database
             // filters fragments only per-bucket, so a bucket spanning a gap arrives with its in-gap
             // samples intact.
@@ -92,7 +96,8 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
                     cursor,
                     0,
                     (int) Math.min(Integer.MAX_VALUE, byteBudget),
-                    retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos));
+                    retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos),
+                    statusFilter);
             byteBudgetHit = sizeStats.sizeLimitExceeded();
         } catch (NonScalarColumnException e) {
             // Q4: scalar-only. Translate the neutral shared exception into querySamples guidance.

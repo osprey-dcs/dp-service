@@ -7,11 +7,13 @@ import com.ospreydcs.dp.grpc.v1.query.ExecutionOptions;
 import com.ospreydcs.dp.grpc.v1.query.PvSelector;
 import com.ospreydcs.dp.grpc.v1.query.QuerySpec;
 import com.ospreydcs.dp.grpc.v1.query.ResultRepresentation;
+import com.ospreydcs.dp.grpc.v1.query.SampleStatusSelector;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedStatusFilter;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.paging.PageToken;
@@ -22,6 +24,7 @@ import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.PatternSyntaxException;
 
@@ -153,11 +156,37 @@ public class QueryV2Resolver {
         }
         final List<TimeInterval> intervals = resolvedIntervals.intervals;
 
+        // ---- sampleStatusSelector: validate + method gating ----
+        // Bucket-oriented methods return storage buckets whole and cannot represent per-sample
+        // filtering, so the selector is supported by querySamples/querySamplesStream only.
+        ResolvedStatusFilter statusFilter = null;
+        if (querySpec.hasSampleStatusSelector()) {
+            if (mode == ResolvedQuery.ResultMode.BUCKET) {
+                return ResolutionResult.reject(
+                        "bucket-oriented methods do not support per-sample status filtering; remove "
+                                + "sampleStatusSelector or use querySamples/querySamplesStream");
+            }
+            final SampleStatusSelector selector = querySpec.getSampleStatusSelector();
+            if (selector.getDomain().isBlank()) {
+                return ResolutionResult.reject("sampleStatusSelector.domain must be specified");
+            }
+            if (selector.getMode() != SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING
+                    && selector.getMode() != SampleStatusSelector.Mode.MODE_EXCLUDE_MATCHING) {
+                return ResolutionResult.reject("sampleStatusSelector.mode must be specified");
+            }
+            statusFilter = new ResolvedStatusFilter(
+                    selector.getDomain(),
+                    List.copyOf(selector.getLayersList()),
+                    Set.copyOf(selector.getStatusCodesList()),
+                    selector.getMode() == SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING);
+        }
+
         final boolean useSerialized = resultRepresentation.getUseSerializedColumns();
         final boolean excludeMetadata = resultRepresentation.getExcludeColumnMetadata();
 
         final ResolvedQuery resolved = new ResolvedQuery(
-                pvNames, intervals, pageSize, pageStart, useSerialized, excludeMetadata, mode, streaming);
+                pvNames, intervals, pageSize, pageStart, useSerialized, excludeMetadata, mode, streaming,
+                statusFilter);
         return ResolutionResult.of(resolved);
     }
 

@@ -55,6 +55,7 @@ When modifying gRPC APIs:
 - **pvMetadata**: PV metadata records (pvName unique index, aliases index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurations**: Machine configuration records (configurationName unique index, category index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurationActivations**: Time-bounded activations of configurations (clientActivationId unique sparse index; configurationName, internalCategory, startTime, endTime indexes; tags, attributes, description, modifiedBy, createdAt, updatedAt)
+- **sampleStatusBuckets**: Sample status storage (SampleStatusBucketDocument: pvName/domain/layer identity, embedded DataTimestampsDocument, firstTimeNanos/lastTimeNanos epoch-nanos scalars, statusCodes/confidence/reasons arrays, source/modifiedBy/updatedTime; indexes on (pvName, domain, layer, firstTimeNanos) and (domain, layer, firstTimeNanos))
 
 ### Document Embedding Pattern
 MongoDB documents use embedded protobuf serialization:
@@ -290,6 +291,56 @@ Like the max-bucket-span invariant, the failure mode is a **silent wrong answer*
 
 - **Never collapse the fragments** into a single `[min begin, max end)` window for sample filtering; that window spans the gaps. `computeWindowBegin()` deliberately returns only a begin — there is no correct single upper bound. Do not reintroduce a window end.
 - **`TimestampDataMap.getColumnIndex()` is a mutator.** It appends unseen names to the list that determines the emitted/exported column set, so it must be called for every column regardless of whether any sample survives trimming — otherwise a PV with no in-range samples is silently dropped instead of emitted as an all-empty column. `addColumnsToTable()` registers columns up front for this reason; `AnnotationCalculationsIT` (16 columns expected) is the regression guard.
+
+## Sample Status API (issue #238)
+
+The Annotation Service implements the Sample Status API (`saveSampleStatuses`, `querySampleStatuses`,
+`querySampleStatusesStream`, `deleteSampleStatuses`; the two domain-registry methods are deferred
+stubs). An individual status is keyed by **(pvName, timestamp, domain, layer)** at nanosecond
+precision; storage is the `sampleStatusBuckets` collection.
+
+### Storage invariant: no duplicate identity keys
+No two documents may ever assert a status for the same identity key. The save path maintains this
+with a **carve-and-insert upsert** (`MongoSyncAnnotationClient.saveSampleStatuses()`): exactly-colliding
+timestamps are carved out of existing overlapping documents (via `SampleStatusDocumentUtility.removeTimestamps()`),
+then the incoming column is inserted whole, preserving its axis representation. Documents whose spans
+overlap but whose timestamps don't collide are left untouched, provenance intact. Carve rewrites happen
+**before** the insert so a mid-write failure can never leave duplicate keys (partial persistence on
+error is documented API behavior). Rewritten documents take the incoming save's source/modifiedBy and
+a fresh server-set updatedTime; delete-path trims keep the original provenance (deletion is not a save).
+
+### Key semantics
+- **Delete is exact at the sample axis** `[beginTime, endTime)`: boundary documents are trimmed/split
+  via `removeRange()` (an evenly spaced surviving run re-emits as a SamplingClock, so an interior
+  delete splits a clock document into two clocks); counts are individual statuses, not documents.
+- **Query returns boundary buckets whole** (span-overlap test `firstTimeNanos < end AND lastTimeNanos >= begin`),
+  ordered by (pvName, domain, layer, firstTimeNanos) — a total order under the storage invariant.
+- **Keyset paging** (`SampleStatusPageToken`): the token encodes the last-returned sort position, not a
+  skip offset (documents are rewritten in place, so offsets drift). Unparseable tokens are **rejected**
+  per the contract — unlike pvMetadata/configuration, which silently reset to page 0.
+- **No maximum document span**: sparse labeling over an arbitrarily wide range is first-class, so a
+  status frame has no `maxBucketSpanSeconds`-style cap and **no #197-style firstTime lower bound may
+  ever be added** to sampleStatusBuckets overlap queries.
+- Validation lives in `SampleStatusValidationUtility` (whole-request reject; strictly increasing
+  TimestampLists — equal timestamps would collapse identity keys).
+- Config keys (`AnnotationHandler` section, in **both** application.yml files):
+  `sampleStatusQueryDefaultPageSize` (10000), `sampleStatusQueryMaxPageSize` (100000, silent clamp),
+  `sampleStatusSaveMaxStatuses` (1000000 per-request cap).
+
+### QuerySpec.sampleStatusSelector (Query V2)
+Supported by `querySamples`/`querySamplesStream` only; `QueryV2Resolver` **rejects** it on
+bucket-oriented methods (whole storage buckets cannot represent per-sample filtering). The validated
+selector is carried as `ResolvedStatusFilter` on `ResolvedQuery`;
+`MongoSyncQueryClient.resolveSampleStatusTimestamps()` fetches per-PV matching-timestamp sets over the
+same clamped page window as bucket retrieval, and `TabularDataUtility.SampleStatusFilter` applies the
+per-sample test during assembly (INCLUDE keeps iff labeled at the **exact** timestamp; EXCLUDE drops
+iff labeled). Composition with `configurationSelector` is by intersection — both the fragment retention
+test and the status test are applied in the same per-sample retention decision. A DB error or corrupt
+status document during the join surfaces as `DpException`/error, never as "no statuses" (in EXCLUDE
+mode that would silently return filtered-out samples). Filtered samples are simply never inserted into
+the `TimestampDataMap`, so missing values and all-PVs-filtered row omission fall out of the existing
+representation; the `getColumnIndex()` registration invariant still guarantees all-filtered PVs emit
+all-empty columns.
 
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:

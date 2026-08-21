@@ -31,6 +31,29 @@ public class TabularDataUtility {
     public static record RetentionInterval(
             long beginSeconds, long beginNanos, long endSeconds, long endNanos) {}
 
+    /**
+     * Per-sample status filter for Query API V2 {@code querySamples} with a
+     * {@code sampleStatusSelector}: {@code matchingTimestampsByPv} holds, per PV, the epoch-nanos
+     * timestamps of statuses matching the selector. A sample is "labeled" only by a status at its
+     * exact timestamp (nanosecond equality). INCLUDE mode retains a sample iff labeled; EXCLUDE
+     * mode drops it iff labeled.
+     *
+     * <p>Composes with the fragment {@link RetentionInterval} test by intersection: both must pass
+     * for a sample to be retained, so a status attached to a sample outside the retrieval
+     * fragments has no effect. Like RetentionInterval, this is a local value type so the shared
+     * utility does not depend on Query API V2 model classes.
+     */
+    public static record SampleStatusFilter(
+            boolean includeMode, Map<String, Set<Long>> matchingTimestampsByPv) {
+
+        public boolean retains(String pvName, long second, long nano) {
+            final Set<Long> matchingTimestamps = matchingTimestampsByPv.get(pvName);
+            final boolean labeled = matchingTimestamps != null
+                    && matchingTimestamps.contains(second * 1_000_000_000L + nano);
+            return labeled == includeMode;
+        }
+    }
+
     public static TimestampDataMapSizeStats addBucketsToTable(
             TimestampDataMap tableValueMap,
             MongoCursor<BucketDocument> cursor,
@@ -69,6 +92,25 @@ public class TabularDataUtility {
             Integer sizeLimit, // if null, no limit is applied
             List<RetentionInterval> retentionIntervals
     ) throws DpException {
+        return addBucketsToTable(
+                tableValueMap, cursor, previousDataSize, sizeLimit, retentionIntervals, null);
+    }
+
+    /**
+     * Full form adding an optional per-sample {@link SampleStatusFilter} (null = no status
+     * filtering). A sample must pass both the fragment retention test and the status test — the
+     * selectors compose by intersection. A filtered-out sample is simply never inserted, so it
+     * surfaces as a missing value (unset DataValue) where other PVs keep the row, and a timestamp
+     * at which every PV is filtered out is omitted from the result entirely.
+     */
+    public static TimestampDataMapSizeStats addBucketsToTable(
+            TimestampDataMap tableValueMap,
+            MongoCursor<BucketDocument> cursor,
+            int previousDataSize,
+            Integer sizeLimit, // if null, no limit is applied
+            List<RetentionInterval> retentionIntervals,
+            SampleStatusFilter statusFilter // if null, no status filtering is applied
+    ) throws DpException {
 
         int currentDataSize = previousDataSize;
         while (cursor.hasNext()) {
@@ -81,7 +123,7 @@ public class TabularDataUtility {
             // normally also registered under the same name inside addColumnsToTable below; this keeps
             // the slot even if a bucket's PV name and its column name ever diverge.
             tableValueMap.getColumnIndex(bucket.getPvName());
-            int bucketDataSize = addBucketToTable(bucket, tableValueMap, retentionIntervals);
+            int bucketDataSize = addBucketToTable(bucket, tableValueMap, retentionIntervals, statusFilter);
             currentDataSize = currentDataSize + bucketDataSize;
             // Size accounting is per-BUCKET, not per-timestamp: a whole bucket is added to the table
             // before the limit is checked, so currentDataSize can overshoot sizeLimit by up to one
@@ -107,7 +149,8 @@ public class TabularDataUtility {
     private static int addBucketToTable(
             BucketDocument bucket,
             TimestampDataMap tableValueMap,
-            List<RetentionInterval> retentionIntervals
+            List<RetentionInterval> retentionIntervals,
+            SampleStatusFilter statusFilter
     ) throws DpException {
 
         final DataTimestamps bucketDataTimestamps = bucket.getDataTimestamps().toDataTimestamps();
@@ -133,7 +176,8 @@ public class TabularDataUtility {
                 bucketDataTimestamps,
                 List.of(bucketColumn),
                 tableValueMap,
-                retentionIntervals);
+                retentionIntervals,
+                statusFilter);
     }
 
     /**
@@ -168,14 +212,16 @@ public class TabularDataUtility {
                 dataTimestamps,
                 dataColumns,
                 tableValueMap,
-                List.of(new RetentionInterval(beginSeconds, beginNanos, endSeconds, endNanos)));
+                List.of(new RetentionInterval(beginSeconds, beginNanos, endSeconds, endNanos)),
+                null);
     }
 
     private static int addColumnsToTable(
             DataTimestamps dataTimestamps,
             List<DataColumn> dataColumns,
             TimestampDataMap tableValueMap,
-            List<RetentionInterval> retentionIntervals
+            List<RetentionInterval> retentionIntervals,
+            SampleStatusFilter statusFilter
     ) throws DpException {
 
         int dataValueSize = 0;
@@ -211,6 +257,14 @@ public class TabularDataUtility {
 
             // add next value for each column to tableValueMap
             for (DataColumn dataColumn : dataColumns) {
+
+                // per-sample status filter (per-PV, so evaluated inside the column loop, unlike the
+                // column-independent interval test above): a filtered-out sample is never inserted,
+                // becoming a missing value at this (PV, timestamp) position
+                if (statusFilter != null && !statusFilter.retains(dataColumn.getName(), second, nano)) {
+                    continue;
+                }
+
                 final DataValue dataValue = dataColumn.getDataValues(valueIndex);
                 final int columnIndex = tableValueMap.getColumnIndex(dataColumn.getName());
 
