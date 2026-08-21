@@ -4,9 +4,13 @@ import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.client.result.*;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
+import com.ospreydcs.dp.grpc.v1.common.SampleStatusBucket;
+import com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame;
+import com.ospreydcs.dp.grpc.v1.common.TimeRange;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import io.grpc.ManagedChannel;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -16,6 +20,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class AnnotationClient extends ServiceApiClientBase {
 
@@ -1253,6 +1260,455 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
         final GetConfigurationRequest request = buildGetConfigurationRequest(configurationName);
         return sendGetConfiguration(request);
+    }
+
+    // =========================================================
+    // Sample Status API
+    // =========================================================
+
+    public static class SaveSampleStatusesResponseObserver
+            extends ApiResponseObserverBase<SaveSampleStatusesResponse> {
+
+        private final List<Long> savedCountList = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(SaveSampleStatusesResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(SaveSampleStatusesResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(SaveSampleStatusesResponse response) {
+
+            if (!response.hasSaveSampleStatusesResult()) {
+                recordFailure(observerName() + " response does not contain SaveSampleStatusesResult");
+                return false;
+            }
+
+            savedCountList.add(response.getSaveSampleStatusesResult().getSavedCount());
+            return true;
+        }
+
+        public Long getSavedCount() {
+            if (savedCountList.isEmpty()) {
+                return null;
+            } else {
+                return savedCountList.get(0);
+            }
+        }
+    }
+
+    public static class QuerySampleStatusesResponseObserver
+            extends ApiResponseObserverBase<QuerySampleStatusesResponse> {
+
+        private final List<SampleStatusBucket> bucketList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
+
+        @Override
+        protected boolean hasExceptionalResult(QuerySampleStatusesResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(QuerySampleStatusesResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(QuerySampleStatusesResponse response) {
+
+            if (!response.hasQuerySampleStatusesResult()) {
+                recordFailure(observerName() + " response does not contain QuerySampleStatusesResult");
+                return false;
+            }
+
+            bucketList.addAll(response.getQuerySampleStatusesResult().getSampleStatusBucketsList());
+            nextPageToken.set(response.getQuerySampleStatusesResult().getNextPageToken());
+            return true;
+        }
+
+        public List<SampleStatusBucket> getSampleStatusBuckets() {
+            return bucketList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
+        }
+    }
+
+    public static class DeleteSampleStatusesResponseObserver
+            extends ApiResponseObserverBase<DeleteSampleStatusesResponse> {
+
+        private final List<Long> deletedCountList = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(DeleteSampleStatusesResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(DeleteSampleStatusesResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(DeleteSampleStatusesResponse response) {
+
+            if (!response.hasDeleteSampleStatusesResult()) {
+                recordFailure(observerName() + " response does not contain DeleteSampleStatusesResult");
+                return false;
+            }
+
+            deletedCountList.add(response.getDeleteSampleStatusesResult().getDeletedCount());
+            return true;
+        }
+
+        public Long getDeletedCount() {
+            if (deletedCountList.isEmpty()) {
+                return null;
+            } else {
+                return deletedCountList.get(0);
+            }
+        }
+    }
+
+    /**
+     * Observer for the server-streaming querySampleStatusesStream(). Unlike the single-response
+     * observers this cannot extend ApiResponseObserverBase (which treats a second response as a
+     * failure): it accumulates buckets across all streamed messages, processed inline because gRPC
+     * delivers stream messages serially and accumulation order matters, and releases its caller at
+     * stream completion, transport error, or the first exceptional message.
+     */
+    public static class QuerySampleStatusesStreamResponseObserver
+            implements StreamObserver<QuerySampleStatusesResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<ApiResultStatus> apiResultStatus =
+                new AtomicReference<>(ApiResultStatus.NONE);
+        private final List<SampleStatusBucket> bucketList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try {
+                if (!finishLatch.await(ApiResponseObserverBase.DEFAULT_AWAIT_TIMEOUT_SECONDS,
+                        java.util.concurrent.TimeUnit.SECONDS)) {
+                    recordFailure("QuerySampleStatusesStreamResponseObserver timed out waiting for "
+                            + "finishLatch", null);
+                }
+            } catch (InterruptedException e) {
+                recordFailure("QuerySampleStatusesStreamResponseObserver InterruptedException "
+                        + "waiting for finishLatch", null);
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        public boolean isError() {
+            return isError.get();
+        }
+
+        public String getErrorMessage() {
+            return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
+        }
+
+        public ApiResultStatus getApiResultStatus() {
+            return apiResultStatus.get();
+        }
+
+        public List<SampleStatusBucket> getSampleStatusBuckets() {
+            return bucketList;
+        }
+
+        private void recordFailure(String errorMsg, ApiResultStatus status) {
+            if (status != null) {
+                apiResultStatus.compareAndSet(ApiResultStatus.NONE, status);
+            }
+            isError.set(true);
+            errorMessageList.add(errorMsg);
+            finishLatch.countDown();
+        }
+
+        @Override
+        public void onNext(QuerySampleStatusesResponse response) {
+            if (response.hasExceptionalResult()) {
+                final ExceptionalResult exceptionalResult = response.getExceptionalResult();
+                recordFailure(
+                        "QuerySampleStatusesStreamResponseObserver onNext received exceptional "
+                                + "response: " + exceptionalResult.getMessage(),
+                        ApiResultStatus.fromProto(exceptionalResult.getExceptionalResultStatus()));
+                return;
+            }
+            if (!response.hasQuerySampleStatusesResult()) {
+                recordFailure("QuerySampleStatusesStreamResponseObserver response does not contain "
+                        + "QuerySampleStatusesResult", null);
+                return;
+            }
+            bucketList.addAll(response.getQuerySampleStatusesResult().getSampleStatusBucketsList());
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            recordFailure("QuerySampleStatusesStreamResponseObserver onError: "
+                    + io.grpc.Status.fromThrowable(t), null);
+        }
+
+        @Override
+        public void onCompleted() {
+            finishLatch.countDown();
+        }
+    }
+
+    public SaveSampleStatusesApiResult sendSaveSampleStatuses(
+            SaveSampleStatusesRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final SaveSampleStatusesResponseObserver responseObserver = new SaveSampleStatusesResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.saveSampleStatuses(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new SaveSampleStatusesApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new SaveSampleStatusesApiResult(responseObserver.getSavedCount());
+        }
+    }
+
+    /**
+     * Batch upsert of sample statuses.  Each frame assigns statuses in one (domain, layer) to
+     * samples of one or more PVs on a shared time axis; upsert is per individual status keyed by
+     * (pvName, timestamp, domain, layer) and is a FULL REPLACE — re-saving a key with empty
+     * confidence/reasons clears the stored values.  source and modifiedBy are request-scoped
+     * provenance applying to all frames, so batch frames from a single producer per request.  On
+     * success the result carries the total count of individual statuses upserted.
+     */
+    public SaveSampleStatusesApiResult saveSampleStatuses(
+            List<SampleStatusFrame> frames, String source, String modifiedBy
+    ) {
+        final SaveSampleStatusesRequest.Builder requestBuilder = SaveSampleStatusesRequest.newBuilder();
+        if (frames != null) {
+            requestBuilder.addAllFrames(frames);
+        }
+        if (source != null) {
+            requestBuilder.setSource(source);
+        }
+        if (modifiedBy != null) {
+            requestBuilder.setModifiedBy(modifiedBy);
+        }
+        return sendSaveSampleStatuses(requestBuilder.build());
+    }
+
+    /*
+     * Parameters for querySampleStatuses() / querySampleStatusesStream().  beginTime and endTime
+     * are required (half-open [beginTime, endTime)); pvNames, domains and layers are optional
+     * filters where an empty/null list matches all values.  limit is the page size for the unary
+     * method (0 = server default) and the per-message chunk size for the streaming method.
+     * pageToken continues a unary query from a prior result's nextPageToken and must be null/empty
+     * for the streaming method.
+     */
+    public record QuerySampleStatusesParams(
+            Timestamp beginTime,
+            Timestamp endTime,
+            List<String> pvNames,
+            List<String> domains,
+            List<String> layers,
+            int limit,
+            String pageToken
+    ) {
+    }
+
+    public static QuerySampleStatusesRequest buildQuerySampleStatusesRequest(QuerySampleStatusesParams params) {
+
+        final QuerySampleStatusesRequest.Builder requestBuilder = QuerySampleStatusesRequest.newBuilder();
+
+        final TimeRange.Builder timeRangeBuilder = TimeRange.newBuilder();
+        if (params.beginTime() != null) {
+            timeRangeBuilder.setBeginTime(params.beginTime());
+        }
+        if (params.endTime() != null) {
+            timeRangeBuilder.setEndTime(params.endTime());
+        }
+        requestBuilder.setTimeRange(timeRangeBuilder);
+
+        if (params.pvNames() != null) {
+            requestBuilder.addAllPvNames(params.pvNames());
+        }
+        if (params.domains() != null) {
+            requestBuilder.addAllDomains(params.domains());
+        }
+        if (params.layers() != null) {
+            requestBuilder.addAllLayers(params.layers());
+        }
+        if (params.limit() > 0) {
+            requestBuilder.setLimit(params.limit());
+        }
+        if (params.pageToken() != null && !params.pageToken().isBlank()) {
+            requestBuilder.setPageToken(params.pageToken());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public QuerySampleStatusesApiResult sendQuerySampleStatuses(
+            QuerySampleStatusesRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final QuerySampleStatusesResponseObserver responseObserver = new QuerySampleStatusesResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.querySampleStatuses(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new QuerySampleStatusesApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new QuerySampleStatusesApiResult(
+                    responseObserver.getSampleStatusBuckets(), responseObserver.getNextPageToken());
+        }
+    }
+
+    /**
+     * Unary sample status query with resumable paging.  Bucket selection is the TimeRange overlap
+     * test and boundary buckets are returned WHOLE, so a returned bucket may contain statuses
+     * outside [beginTime, endTime).  An empty query result is a success with an empty bucket list.
+     * Pass a prior result's nextPageToken as params.pageToken to fetch the next page; an empty
+     * nextPageToken on the result indicates the last page.
+     */
+    public QuerySampleStatusesApiResult querySampleStatuses(
+            QuerySampleStatusesParams params
+    ) {
+        final QuerySampleStatusesRequest request = buildQuerySampleStatusesRequest(params);
+        return sendQuerySampleStatuses(request);
+    }
+
+    public QuerySampleStatusesApiResult sendQuerySampleStatusesStream(
+            QuerySampleStatusesRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final QuerySampleStatusesStreamResponseObserver responseObserver =
+                new QuerySampleStatusesStreamResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.querySampleStatusesStream(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new QuerySampleStatusesApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            // streaming is fire-and-consume: the buckets are the accumulated result of the whole
+            // stream and there is no continuation token
+            return new QuerySampleStatusesApiResult(responseObserver.getSampleStatusBuckets(), "");
+        }
+    }
+
+    /**
+     * Server-streaming sample status query.  Streams to completion and accumulates the buckets of
+     * every message into a single result; params.pageToken must be null/empty (a non-empty token
+     * is rejected by the server).  Use querySampleStatuses() when resumable paging is required.
+     */
+    public QuerySampleStatusesApiResult querySampleStatusesStream(
+            QuerySampleStatusesParams params
+    ) {
+        final QuerySampleStatusesRequest request = buildQuerySampleStatusesRequest(params);
+        return sendQuerySampleStatusesStream(request);
+    }
+
+    /*
+     * Parameters for deleteSampleStatuses().  beginTime, endTime, domain and layer are required —
+     * every delete is scoped to a single producer stream.  pvNames is optional: a null/empty list
+     * is a DELIBERATE WILDCARD deleting the (domain, layer)'s statuses for ALL PVs in the range
+     * (the layer-retirement path).
+     */
+    public record DeleteSampleStatusesParams(
+            Timestamp beginTime,
+            Timestamp endTime,
+            List<String> pvNames,
+            String domain,
+            String layer
+    ) {
+    }
+
+    public static DeleteSampleStatusesRequest buildDeleteSampleStatusesRequest(DeleteSampleStatusesParams params) {
+
+        final DeleteSampleStatusesRequest.Builder requestBuilder = DeleteSampleStatusesRequest.newBuilder();
+
+        final TimeRange.Builder timeRangeBuilder = TimeRange.newBuilder();
+        if (params.beginTime() != null) {
+            timeRangeBuilder.setBeginTime(params.beginTime());
+        }
+        if (params.endTime() != null) {
+            timeRangeBuilder.setEndTime(params.endTime());
+        }
+        requestBuilder.setTimeRange(timeRangeBuilder);
+
+        if (params.pvNames() != null) {
+            requestBuilder.addAllPvNames(params.pvNames());
+        }
+        if (params.domain() != null) {
+            requestBuilder.setDomain(params.domain());
+        }
+        if (params.layer() != null) {
+            requestBuilder.setLayer(params.layer());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public DeleteSampleStatusesApiResult sendDeleteSampleStatuses(
+            DeleteSampleStatusesRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final DeleteSampleStatusesResponseObserver responseObserver = new DeleteSampleStatusesResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.deleteSampleStatuses(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new DeleteSampleStatusesApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new DeleteSampleStatusesApiResult(responseObserver.getDeletedCount());
+        }
+    }
+
+    /**
+     * Deletes sample statuses within the half-open range [beginTime, endTime) for a single
+     * required (domain, layer).  Unlike query, deletion is EXACT at the sample axis: only statuses
+     * whose timestamps fall within the range are removed, and the server trims or splits boundary
+     * storage buckets as needed.  A delete matching nothing is a success with deletedCount = 0.
+     */
+    public DeleteSampleStatusesApiResult deleteSampleStatuses(
+            DeleteSampleStatusesParams params
+    ) {
+        final DeleteSampleStatusesRequest request = buildDeleteSampleStatusesRequest(params);
+        return sendDeleteSampleStatuses(request);
     }
 
 }
