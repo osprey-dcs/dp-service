@@ -1436,9 +1436,14 @@ public class AnnotationClient extends ServiceApiClientBase {
         public void onNext(QuerySampleStatusesResponse response) {
             if (response.hasExceptionalResult()) {
                 final ExceptionalResult exceptionalResult = response.getExceptionalResult();
-                recordFailure(
+                // the service's message is recorded verbatim for the caller; this observer's
+                // identity goes on the console line only.  See the message contract on
+                // ApiResponseObserverBase.
+                System.err.println(
                         "QuerySampleStatusesStreamResponseObserver onNext received exceptional "
-                                + "response: " + exceptionalResult.getMessage(),
+                                + "response: " + exceptionalResult.getMessage());
+                recordFailure(
+                        exceptionalResult.getMessage(),
                         ApiResultStatus.fromProto(exceptionalResult.getExceptionalResultStatus()));
                 return;
             }

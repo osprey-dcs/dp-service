@@ -372,9 +372,14 @@ public class IngestionClient extends ServiceApiClientBase {
         public void onNext(IngestDataResponse response) {
 
             if (response.hasExceptionalResult()) {
-                final String errorMsg = "onNext received exceptional response: "
-                        + response.getExceptionalResult().getMessage();
-                System.err.println(errorMsg);
+                // the service's message is recorded verbatim for the caller; this observer's
+                // identity goes on the console line only.  See the message contract on
+                // ApiResponseObserverBase, which this observer cannot extend because it accepts
+                // more than one response.
+                final String errorMsg = response.getExceptionalResult().getMessage();
+                System.err.println(
+                        "IngestDataResponseObserver onNext received exceptional response: "
+                                + errorMsg);
                 apiResultStatus.compareAndSet(
                         ApiResultStatus.NONE,
                         ApiResultStatus.fromProto(response.getExceptionalResult().getExceptionalResultStatus()));

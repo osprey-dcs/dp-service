@@ -36,6 +36,17 @@ import java.util.concurrent.atomic.AtomicReference;
  * original defect, so subclasses must report failures through {@code recordFailure} rather than
  * touching the error state directly.
  *
+ * <p><strong>Message contract.</strong> A failure the client itself detected -- a duplicate
+ * response, an expired await, a response missing its result field -- is named by this observer,
+ * and its message carries {@link #observerName} so that the caller can tell which RPC produced it.
+ * A failure the <em>service</em> reported is different: the service already wrote a complete
+ * sentence for the caller to read, so its message is recorded verbatim.  Prefixing it would
+ * displace the actual explanation in {@code ApiResult.resultStatus.msg}, which for most callers is
+ * the only message they have.  The observer identity is not lost -- it is written to the console
+ * line and is available from the result's type.  {@code ApiResponseObserverBaseTest} asserts the
+ * pass-through with an exact-equality check, since a {@code contains()} assertion would pass
+ * whether or not a prefix crept back in.
+ *
  * <p><strong>Threading.</strong> {@code onNext} and {@code onError} dispatch their work onto a new
  * thread, preserving the behavior of the observers this class replaces: it keeps response handling
  * off the service handler's thread, so in-process tests exercise the same concurrency an
@@ -143,8 +154,21 @@ public abstract class ApiResponseObserverBase<T extends Message> implements Stre
      * @param apiResultStatus the status to report, or null to leave it at its current value
      */
     protected final void recordFailure(String errorMsg, ApiResultStatus apiResultStatus) {
+        recordFailure(errorMsg, apiResultStatus, true);
+    }
 
-        System.err.println(errorMsg);
+    /**
+     * Records a failure, optionally suppressing the console line.
+     *
+     * <p>{@code print} is false only for a failure whose caller has already written a more
+     * informative console line than the recorded message -- a service-supplied message, which is
+     * recorded verbatim for the caller but logged with this observer's identity attached.
+     */
+    private void recordFailure(String errorMsg, ApiResultStatus apiResultStatus, boolean print) {
+
+        if (print) {
+            System.err.println(errorMsg);
+        }
 
         if (apiResultStatus != null) {
             this.apiResultStatus.compareAndSet(ApiResultStatus.NONE, apiResultStatus);
@@ -225,10 +249,18 @@ public abstract class ApiResponseObserverBase<T extends Message> implements Stre
 
             if (hasExceptionalResult(response)) {
                 final ExceptionalResult exceptionalResult = getExceptionalResult(response);
-                recordFailure(
+                // the service wrote this message for the caller to read, so it is passed through
+                // unmodified: prefixing it with this observer's identity displaces the actual
+                // explanation in the only message a caller has.  The identity is still useful for
+                // diagnosis, so it goes on the console line instead, which is why this branch
+                // prints for itself rather than letting recordFailure do it.
+                System.err.println(
                         observerName() + " onNext received exceptional response: "
-                                + exceptionalResult.getMessage(),
-                        ApiResultStatus.fromProto(exceptionalResult.getExceptionalResultStatus()));
+                                + exceptionalResult.getMessage());
+                recordFailure(
+                        exceptionalResult.getMessage(),
+                        ApiResultStatus.fromProto(exceptionalResult.getExceptionalResultStatus()),
+                        false);
                 return;
             }
 
