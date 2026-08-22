@@ -90,4 +90,12 @@ public class BsonConstants {
     public static final String BSON_KEY_ACTIVATION_END_TIME = "endTime";
     public static final String BSON_KEY_ACTIVATION_DESCRIPTION = "description";
     public static final String BSON_KEY_ACTIVATION_MODIFIED_BY = "modifiedBy";
+
+    // sampleStatusBuckets collection
+    public static final String BSON_KEY_SAMPLE_STATUS_ID = "_id";
+    public static final String BSON_KEY_SAMPLE_STATUS_PV_NAME = "pvName";
+    public static final String BSON_KEY_SAMPLE_STATUS_DOMAIN = "domain";
+    public static final String BSON_KEY_SAMPLE_STATUS_LAYER = "layer";
+    public static final String BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS = "firstTimeNanos";
+    public static final String BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS = "lastTimeNanos";
 }

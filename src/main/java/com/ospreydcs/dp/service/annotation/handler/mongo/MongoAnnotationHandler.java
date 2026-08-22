@@ -27,6 +27,34 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     // configuration
     public static final String CFG_KEY_NUM_WORKERS = "AnnotationHandler.numWorkers";
     public static final int DEFAULT_NUM_WORKERS = 7;
+    public static final String CFG_KEY_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE =
+            "AnnotationHandler.sampleStatusQueryDefaultPageSize";
+    public static final int DEFAULT_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE = 10_000;
+    public static final String CFG_KEY_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE =
+            "AnnotationHandler.sampleStatusQueryMaxPageSize";
+    public static final int DEFAULT_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE = 100_000;
+    public static final String CFG_KEY_SAMPLE_STATUS_SAVE_MAX_STATUSES =
+            "AnnotationHandler.sampleStatusSaveMaxStatuses";
+    public static final long DEFAULT_SAMPLE_STATUS_SAVE_MAX_STATUSES = 1_000_000L;
+
+    /**
+     * Resolves the effective page size for a sample status query: a requested limit of 0 selects
+     * the configured default, and a larger request is silently clamped to the configured maximum
+     * (consistent with Query API V2 page-size handling).
+     */
+    public static int sampleStatusQueryPageSize(int requestedLimit) {
+        final int defaultPageSize = configMgr().getConfigInteger(
+                CFG_KEY_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE, DEFAULT_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE);
+        final int maxPageSize = configMgr().getConfigInteger(
+                CFG_KEY_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE, DEFAULT_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE);
+        final int limit = requestedLimit > 0 ? requestedLimit : defaultPageSize;
+        return Math.min(limit, maxPageSize);
+    }
+
+    public static long sampleStatusSaveMaxStatuses() {
+        return configMgr().getConfigLong(
+                CFG_KEY_SAMPLE_STATUS_SAVE_MAX_STATUSES, DEFAULT_SAMPLE_STATUS_SAVE_MAX_STATUSES);
+    }
 
     // instance variables
     private final MongoAnnotationClientInterface mongoAnnotationClient;
@@ -490,6 +518,78 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 new GetActiveConfigurationsJob(request, responseObserver, mongoAnnotationClient);
 
         logger.debug("adding GetActiveConfigurationsJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleSaveSampleStatuses(
+            SaveSampleStatusesRequest request,
+            StreamObserver<SaveSampleStatusesResponse> responseObserver
+    ) {
+        final SaveSampleStatusesJob job =
+                new SaveSampleStatusesJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding SaveSampleStatusesJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQuerySampleStatuses(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver
+    ) {
+        final QuerySampleStatusesJob job =
+                new QuerySampleStatusesJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding QuerySampleStatusesJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleQuerySampleStatusesStream(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver
+    ) {
+        final QuerySampleStatusesStreamJob job =
+                new QuerySampleStatusesStreamJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding QuerySampleStatusesStreamJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleDeleteSampleStatuses(
+            DeleteSampleStatusesRequest request,
+            StreamObserver<DeleteSampleStatusesResponse> responseObserver
+    ) {
+        final DeleteSampleStatusesJob job =
+                new DeleteSampleStatusesJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding DeleteSampleStatusesJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

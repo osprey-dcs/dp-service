@@ -77,4 +77,20 @@ public interface AnnotationHandlerInterface {
     void handleGetActiveConfigurations(
             GetActiveConfigurationsRequest request,
             StreamObserver<GetActiveConfigurationsResponse> responseObserver);
+
+    void handleSaveSampleStatuses(
+            SaveSampleStatusesRequest request,
+            StreamObserver<SaveSampleStatusesResponse> responseObserver);
+
+    void handleQuerySampleStatuses(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver);
+
+    void handleQuerySampleStatusesStream(
+            QuerySampleStatusesRequest request,
+            StreamObserver<QuerySampleStatusesResponse> responseObserver);
+
+    void handleDeleteSampleStatuses(
+            DeleteSampleStatusesRequest request,
+            StreamObserver<DeleteSampleStatusesResponse> responseObserver);
 }

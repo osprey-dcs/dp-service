@@ -8,11 +8,17 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import com.ospreydcs.dp.grpc.v1.annotation.DeleteSampleStatusesRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryConfigurationActivationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryConfigurationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryPvMetadataRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QuerySampleStatusesRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.SaveSampleStatusesRequest;
+import com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn;
+import com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame;
+import com.ospreydcs.dp.service.annotation.handler.model.SampleStatusPageToken;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
@@ -20,12 +26,17 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusDocumentUtility;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.ConfigurationActivationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationQueryResult;
+import com.ospreydcs.dp.service.common.model.MongoCountResult;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
+import com.ospreydcs.dp.service.common.model.SampleStatusQueryResult;
 import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import org.apache.logging.log4j.LogManager;
@@ -37,7 +48,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.mongodb.client.model.Filters.*;
@@ -1237,6 +1250,240 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             logger.error("getActiveConfigurations: mongo exception: {}", ex.getMessage());
             return null;
         }
+    }
+
+    // =========================================================
+    // Sample Status
+    // =========================================================
+
+    /**
+     * Carve-and-insert upsert: for each incoming column, exactly-colliding timestamps are carved
+     * out of existing overlapping documents (maintaining the invariant that no two documents
+     * assert the same (pvName, timestamp, domain, layer) identity key), then the incoming column
+     * is inserted as a new document preserving its axis representation. Existing documents with
+     * overlapping spans but no colliding timestamps are left untouched, provenance intact.
+     *
+     * <p>Carve rewrites happen before the insert, so a mid-write failure can lose replaced
+     * statuses but never leaves two documents asserting the same key. Partial persistence on
+     * error is documented API behavior; the returned count reflects the statuses persisted before
+     * the failure.
+     */
+    @Override
+    public MongoCountResult saveSampleStatuses(SaveSampleStatusesRequest request) {
+
+        final Instant now = Instant.now();
+        long savedCount = 0;
+
+        // frames processed in request order so a later frame's write wins on duplicate keys
+        for (SampleStatusFrame frame : request.getFramesList()) {
+
+            final List<Long> frameTimestamps =
+                    SampleStatusDocumentUtility.timestampNanosList(frame.getDataTimestamps());
+            final Set<Long> frameTimestampSet = new HashSet<>(frameTimestamps);
+            final long frameFirstNanos = frameTimestamps.get(0);
+            final long frameLastNanos = frameTimestamps.get(frameTimestamps.size() - 1);
+
+            for (SampleStatusColumn column : frame.getStatusColumnsList()) {
+
+                // Find existing documents overlapping the incoming span for this identity prefix.
+                // A Mongo error here must abort the save rather than be read as "no overlap",
+                // which would insert colliding documents and violate the storage invariant.
+                final List<SampleStatusBucketDocument> overlappingDocuments = new ArrayList<>();
+                try {
+                    mongoCollectionSampleStatusBuckets.find(and(
+                            eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, column.getPvName()),
+                            eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, frame.getDomain()),
+                            eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, frame.getLayer()),
+                            lte(BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS, frameLastNanos),
+                            gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, frameFirstNanos)
+                    )).into(overlappingDocuments);
+                } catch (MongoException ex) {
+                    final String errorMsg = "MongoException querying overlapping sample status documents: "
+                            + ex.getMessage();
+                    logger.error("saveSampleStatuses overlap query error: {}", ex.getMessage(), ex);
+                    return new MongoCountResult(true, errorMsg, savedCount);
+                }
+
+                try {
+                    for (SampleStatusBucketDocument existingDocument : overlappingDocuments) {
+                        final SampleStatusDocumentUtility.RemovalResult removal =
+                                SampleStatusDocumentUtility.removeTimestamps(existingDocument, frameTimestampSet);
+                        if (removal.removedCount() == 0) {
+                            continue;
+                        }
+                        mongoCollectionSampleStatusBuckets.deleteOne(
+                                eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_ID, existingDocument.getId()));
+                        for (SampleStatusBucketDocument replacement : removal.replacementDocuments()) {
+                            // rewritten documents take the incoming save's provenance and a fresh
+                            // updatedTime ("most recent save affecting the bucket")
+                            replacement.setSource(request.getSource().isBlank() ? null : request.getSource());
+                            replacement.setModifiedBy(
+                                    request.getModifiedBy().isBlank() ? null : request.getModifiedBy());
+                            replacement.setUpdatedTime(now);
+                            mongoCollectionSampleStatusBuckets.insertOne(replacement);
+                        }
+                    }
+
+                    final SampleStatusBucketDocument newDocument =
+                            SampleStatusBucketDocument.fromSampleStatusColumn(
+                                    frame.getDomain(),
+                                    frame.getLayer(),
+                                    frame.getDataTimestamps(),
+                                    column,
+                                    request.getSource(),
+                                    request.getModifiedBy(),
+                                    now);
+                    mongoCollectionSampleStatusBuckets.insertOne(newDocument);
+
+                } catch (MongoException | DpException ex) {
+                    final String errorMsg = "error writing sample status documents for PV: "
+                            + column.getPvName() + ": " + ex.getMessage();
+                    logger.error("saveSampleStatuses write error: {}", ex.getMessage(), ex);
+                    return new MongoCountResult(true, errorMsg, savedCount);
+                }
+
+                savedCount += frameTimestamps.size();
+            }
+        }
+
+        return new MongoCountResult(false, "", savedCount);
+    }
+
+    /**
+     * Filter resuming a keyset-paged sample status query strictly after the given sort position
+     * in (pvName, domain, layer, firstTimeNanos) tuple order.
+     */
+    private static Bson sampleStatusResumeFilter(SampleStatusPageToken position) {
+        return or(
+                gt(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, position.pvName()),
+                and(
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, position.pvName()),
+                        gt(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, position.domain())),
+                and(
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, position.pvName()),
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, position.domain()),
+                        gt(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, position.layer())),
+                and(
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, position.pvName()),
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, position.domain()),
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, position.layer()),
+                        gt(BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS, position.firstTimeNanos())));
+    }
+
+    @Override
+    public SampleStatusQueryResult executeQuerySampleStatuses(
+            QuerySampleStatusesRequest request,
+            int limit,
+            SampleStatusPageToken position
+    ) {
+        final long beginNanos =
+                SampleStatusDocumentUtility.timestampNanos(request.getTimeRange().getBeginTime());
+        final long endNanos =
+                SampleStatusDocumentUtility.timestampNanos(request.getTimeRange().getEndTime());
+
+        final List<Bson> filters = new ArrayList<>();
+        // TimeRange overlap test: firstTime < endTime AND lastTime >= beginTime; boundary
+        // documents are returned whole (not trimmed), matching queryBuckets
+        filters.add(lt(BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS, endNanos));
+        filters.add(gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, beginNanos));
+        // filter fields combine with AND across fields, OR within a field; empty list = match all
+        if (!request.getPvNamesList().isEmpty()) {
+            filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, request.getPvNamesList()));
+        }
+        if (!request.getDomainsList().isEmpty()) {
+            filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, request.getDomainsList()));
+        }
+        if (!request.getLayersList().isEmpty()) {
+            filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, request.getLayersList()));
+        }
+        if (position != null) {
+            filters.add(sampleStatusResumeFilter(position));
+        }
+
+        // Fetch limit+1 to detect whether a next page exists without an extra count query.
+        final List<SampleStatusBucketDocument> documents = new ArrayList<>();
+        try {
+            mongoCollectionSampleStatusBuckets.find(and(filters))
+                    .sort(ascending(
+                            BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME,
+                            BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN,
+                            BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER,
+                            BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS))
+                    .limit(limit + 1)
+                    .into(documents);
+        } catch (MongoException ex) {
+            logger.error("executeQuerySampleStatuses: mongo exception: {}", ex.getMessage(), ex);
+            return null;
+        }
+
+        String nextPageToken = "";
+        if (documents.size() > limit) {
+            documents.remove(documents.size() - 1); // trim the extra probe document
+            final SampleStatusBucketDocument lastDocument = documents.get(documents.size() - 1);
+            nextPageToken = new SampleStatusPageToken(
+                    lastDocument.getPvName(),
+                    lastDocument.getDomain(),
+                    lastDocument.getLayer(),
+                    lastDocument.getFirstTimeNanos()).encode();
+        }
+
+        return new SampleStatusQueryResult(documents, nextPageToken);
+    }
+
+    /**
+     * Deletion is exact at the sample axis: documents fully inside [beginTime, endTime) are
+     * removed, boundary documents are trimmed or split via removeRange(). Trimmed survivors keep
+     * their original provenance — deletion is not a save. The count accumulates individual
+     * statuses removed, not documents.
+     */
+    @Override
+    public MongoCountResult deleteSampleStatuses(DeleteSampleStatusesRequest request) {
+
+        final long beginNanos =
+                SampleStatusDocumentUtility.timestampNanos(request.getTimeRange().getBeginTime());
+        final long endNanos =
+                SampleStatusDocumentUtility.timestampNanos(request.getTimeRange().getEndTime());
+
+        final List<Bson> filters = new ArrayList<>();
+        filters.add(eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, request.getDomain()));
+        filters.add(eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, request.getLayer()));
+        // empty pvNames is a deliberate wildcard deleting the (domain, layer)'s statuses for all PVs
+        if (!request.getPvNamesList().isEmpty()) {
+            filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, request.getPvNamesList()));
+        }
+        filters.add(lt(BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS, endNanos));
+        filters.add(gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, beginNanos));
+
+        long deletedCount = 0;
+
+        // Iterate with a cursor rather than materializing the matched set: a wildcard delete
+        // (layer retirement) can match many documents. Replacement documents inserted during
+        // iteration never re-match the filter (a prefix run ends before beginTime, a suffix run
+        // starts at or after endTime), so the loop cannot observe its own writes.
+        try (MongoCursor<SampleStatusBucketDocument> cursor =
+                     mongoCollectionSampleStatusBuckets.find(and(filters)).iterator()) {
+            while (cursor.hasNext()) {
+                final SampleStatusBucketDocument document = cursor.next();
+                final SampleStatusDocumentUtility.RemovalResult removal =
+                        SampleStatusDocumentUtility.removeRange(document, beginNanos, endNanos);
+                if (removal.removedCount() == 0) {
+                    // span overlaps the range but no individual sample falls inside it
+                    continue;
+                }
+                mongoCollectionSampleStatusBuckets.deleteOne(
+                        eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_ID, document.getId()));
+                for (SampleStatusBucketDocument replacement : removal.replacementDocuments()) {
+                    mongoCollectionSampleStatusBuckets.insertOne(replacement);
+                }
+                deletedCount += removal.removedCount();
+            }
+        } catch (MongoException | DpException ex) {
+            final String errorMsg = "error deleting sample status documents: " + ex.getMessage();
+            logger.error("deleteSampleStatuses error: {}", ex.getMessage(), ex);
+            return new MongoCountResult(true, errorMsg, deletedCount);
+        }
+
+        return new MongoCountResult(false, "", deletedCount);
     }
 
 }

@@ -9,6 +9,7 @@ import com.ospreydcs.dp.grpc.v1.query.PvNameList;
 import com.ospreydcs.dp.grpc.v1.query.PvSelector;
 import com.ospreydcs.dp.grpc.v1.query.QuerySpec;
 import com.ospreydcs.dp.grpc.v1.query.ResultRepresentation;
+import com.ospreydcs.dp.grpc.v1.query.SampleStatusSelector;
 import com.ospreydcs.dp.service.common.bson.PvMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
@@ -22,6 +23,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedStatusFilter;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.paging.PageToken;
@@ -62,6 +64,7 @@ public class QueryV2ResolverTest {
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery q) { return null; }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery q) { return null; }
         @Override public MongoCursor<BucketDocument> executeQuerySamplesV2(ResolvedQuery q, long bs, long bn) { return null; }
+        @Override public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn) { return java.util.Map.of(); }
         @Override public MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id) { return null; }
@@ -334,5 +337,115 @@ public class QueryV2ResolverTest {
         assertEquals(1, rq.getRetrievalIntervals().size());
         assertEquals(new TimeInterval(10, 0, 50, 0), rq.getRetrievalIntervals().get(0));
         assertFalse(rq.isEmptyResult());
+    }
+
+    // -----------------------------------------------------------------------
+    // SampleStatusSelector validation: sample-oriented methods only; domain and
+    // mode required; layers/statusCodes are wildcards
+    // -----------------------------------------------------------------------
+
+    private static SampleStatusSelector.Builder statusSelector(SampleStatusSelector.Mode mode) {
+        return SampleStatusSelector.newBuilder().setDomain("data_quality").setMode(mode);
+    }
+
+    private ResolutionResult resolveSample(QuerySpec spec) {
+        return resolver().resolve(
+                spec, ExecutionOptions.getDefaultInstance(), ResultRepresentation.getDefaultInstance(),
+                ResolvedQuery.ResultMode.SAMPLE, false);
+    }
+
+    @Test
+    public void testStatusSelectorMissingDomainRejected() {
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(
+                        statusSelector(SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING).setDomain(""))
+                .build();
+        final ResolutionResult r = resolveSample(spec);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("sampleStatusSelector.domain must be specified"));
+    }
+
+    @Test
+    public void testStatusSelectorModeUnspecifiedRejected() {
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(statusSelector(SampleStatusSelector.Mode.MODE_UNSPECIFIED))
+                .build();
+        final ResolutionResult r = resolveSample(spec);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("sampleStatusSelector.mode must be specified"));
+    }
+
+    @Test
+    public void testStatusSelectorOnBucketModeRejected() {
+        // bucket-oriented methods return storage buckets whole and cannot represent per-sample
+        // filtering: a well-formed selector still rejects in BUCKET mode
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(statusSelector(SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING))
+                .build();
+        final ResolutionResult r = resolve(spec, ExecutionOptions.getDefaultInstance(), false);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("bucket-oriented methods do not support"));
+    }
+
+    @Test
+    public void testStatusSelectorOnBucketStreamModeRejected() {
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(statusSelector(SampleStatusSelector.Mode.MODE_EXCLUDE_MATCHING))
+                .build();
+        final ResolutionResult r = resolve(spec, ExecutionOptions.getDefaultInstance(), true);
+        assertTrue(r.isError());
+        assertTrue(r.getErrorStatus().msg.contains("bucket-oriented methods do not support"));
+    }
+
+    @Test
+    public void testStatusSelectorWellFormedResolves() {
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(statusSelector(SampleStatusSelector.Mode.MODE_INCLUDE_MATCHING)
+                        .addLayers("ml_model_v1")
+                        .addStatusCodes(3)
+                        .addStatusCodes(7))
+                .build();
+        final ResolutionResult r = resolveSample(spec);
+        assertFalse(r.isError());
+        final ResolvedStatusFilter filter = r.getResolvedQuery().getStatusFilter();
+        assertNotNull(filter);
+        assertEquals("data_quality", filter.domain());
+        assertEquals(List.of("ml_model_v1"), filter.layers());
+        assertTrue(filter.includeMode());
+        assertTrue(filter.matchesCode(3));
+        assertTrue(filter.matchesCode(7));
+        assertFalse(filter.matchesCode(4));
+    }
+
+    @Test
+    public void testStatusSelectorEmptyCodesMatchesAnyCode() {
+        // empty statusCodes = any code ("labeled at all"); empty layers = all layers in the domain
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .setSampleStatusSelector(statusSelector(SampleStatusSelector.Mode.MODE_EXCLUDE_MATCHING))
+                .build();
+        final ResolutionResult r = resolveSample(spec);
+        assertFalse(r.isError());
+        final ResolvedStatusFilter filter = r.getResolvedQuery().getStatusFilter();
+        assertNotNull(filter);
+        assertTrue(filter.layers().isEmpty());
+        assertFalse(filter.includeMode());
+        assertTrue(filter.matchesCode(0));
+        assertTrue(filter.matchesCode(-42));
+    }
+
+    @Test
+    public void testNoStatusSelectorResolvesWithNullFilter() {
+        final QuerySpec spec = specWithTimeRange(0, 100)
+                .setPvSelector(pvList("pv1"))
+                .build();
+        final ResolutionResult r = resolveSample(spec);
+        assertFalse(r.isError());
+        assertNull(r.getResolvedQuery().getStatusFilter());
     }
 }

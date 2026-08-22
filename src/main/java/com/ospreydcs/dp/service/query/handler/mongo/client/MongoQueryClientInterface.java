@@ -7,12 +7,15 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.ProviderMetadataQueryResultDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import org.bson.conversions.Bson;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public interface MongoQueryClientInterface {
 
@@ -119,6 +122,21 @@ public interface MongoQueryClientInterface {
      */
     MongoCursor<BucketDocument> executeQuerySamplesV2(
             ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);
+
+    /**
+     * Resolves the query's sampleStatusSelector to the per-PV sets of epoch-nanos timestamps whose
+     * statuses match it, over the same clamped page window the sample retrieval uses. Queries the
+     * sampleStatusBuckets collection for the resolved PVs and the selector's (domain, layers) with
+     * the standard span-overlap predicate, expands the matching documents, and keeps a timestamp
+     * when its status code is in the selector's statusCodes (empty = any code). PVs with no
+     * matching statuses are absent from the map. The map is the assembly-time join input: memory
+     * is bounded by the number of labeled samples in the window. Returns an empty map when the
+     * clamped window is empty, or null on database error.
+     *
+     * @throws DpException when a stored sample status document is malformed
+     */
+    Map<String, Set<Long>> resolveSampleStatusTimestamps(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) throws DpException;
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

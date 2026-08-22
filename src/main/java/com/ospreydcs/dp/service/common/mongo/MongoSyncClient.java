@@ -17,6 +17,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -44,6 +45,7 @@ public class MongoSyncClient extends MongoClientBase {
     protected MongoCollection<PvMetadataDocument> mongoCollectionPvMetadata = null;
     protected MongoCollection<ConfigurationDocument> mongoCollectionConfigurations = null;
     protected MongoCollection<ConfigurationActivationDocument> mongoCollectionConfigurationActivations = null;
+    protected MongoCollection<SampleStatusBucketDocument> mongoCollectionSampleStatusBuckets = null;
 
     @Override
     protected boolean initMongoClient(String connectString) {
@@ -205,6 +207,18 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean createMongoIndexConfigurationActivationsWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions) {
         mongoCollectionConfigurationActivations.createIndex(fieldNamesBson, indexOptions);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionSampleStatusBuckets(String collectionName) {
+        mongoCollectionSampleStatusBuckets = mongoDatabase.getCollection(collectionName, SampleStatusBucketDocument.class);
+        return true;
+    }
+
+    @Override
+    protected boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson) {
+        mongoCollectionSampleStatusBuckets.createIndex(fieldNamesBson);
         return true;
     }
 

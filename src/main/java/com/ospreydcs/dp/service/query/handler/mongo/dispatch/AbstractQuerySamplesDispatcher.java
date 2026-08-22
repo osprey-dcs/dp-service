@@ -6,15 +6,18 @@ import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
+import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Shared base for the Query API V2 sample dispatchers (unary {@link QuerySamplesUnaryDispatcher} and
@@ -78,6 +81,36 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                     fragment.getEndSeconds(), fragment.getEndNanos()));
         }
         return intervals;
+    }
+
+    /**
+     * Resolves the query's sampleStatusSelector to a {@link TabularDataUtility.SampleStatusFilter}
+     * for assembly-time per-sample filtering, or {@code null} when the request carries no selector.
+     * The per-PV matching-timestamp sets come from the sampleStatusBuckets collection over the same
+     * clamped page window the bucket retrieval uses, so the join input covers exactly the samples
+     * that can appear on this page. Composition with the configurationSelector is by intersection:
+     * this filter and the fragment retention test are both applied in the same per-sample retention
+     * decision.
+     *
+     * @throws DpException on a database error or malformed stored status document — never silently
+     *     degraded to "no statuses", which in EXCLUDE mode would return filtered-out samples
+     */
+    protected static TabularDataUtility.SampleStatusFilter statusRetentionFilter(
+            ResolvedQuery resolvedQuery,
+            MongoQueryClientInterface mongoClient,
+            long windowBeginSecs,
+            long windowBeginNanos) throws DpException {
+
+        if (resolvedQuery.getStatusFilter() == null) {
+            return null;
+        }
+        final Map<String, Set<Long>> matchingTimestampsByPv =
+                mongoClient.resolveSampleStatusTimestamps(resolvedQuery, windowBeginSecs, windowBeginNanos);
+        if (matchingTimestampsByPv == null) {
+            throw new DpException("sample status selector resolution failed (database error)");
+        }
+        return new TabularDataUtility.SampleStatusFilter(
+                resolvedQuery.getStatusFilter().includeMode(), matchingTimestampsByPv);
     }
 
     /**

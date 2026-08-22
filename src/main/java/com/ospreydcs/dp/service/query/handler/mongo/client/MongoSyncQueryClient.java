@@ -14,10 +14,14 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusDocumentUtility;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
+import com.ospreydcs.dp.service.query.handler.model.ResolvedStatusFilter;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,8 +32,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -453,6 +459,88 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
             return null;
         }
+    }
+
+    /**
+     * Saturating epoch-nanos conversion for filter bounds: an out-of-range instant clamps to the
+     * long extreme instead of overflowing, which is correct for a comparison bound.
+     */
+    private static long saturatedEpochNanos(long seconds, long nanos) {
+        try {
+            return Math.addExact(Math.multiplyExact(seconds, 1_000_000_000L), nanos);
+        } catch (ArithmeticException ex) {
+            return seconds < 0 ? Long.MIN_VALUE : Long.MAX_VALUE;
+        }
+    }
+
+    @Override
+    public Map<String, Set<Long>> resolveSampleStatusTimestamps(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) throws DpException {
+
+        final ResolvedStatusFilter statusFilter = resolvedQuery.getStatusFilter();
+        if (statusFilter == null) {
+            return Map.of();
+        }
+
+        // Bound the fetch by the same clamped page window the sample retrieval uses (#207): a
+        // status can only affect samples inside some clamped fragment. The bounds here are the
+        // window extremes [first fragment begin, last fragment end) — statuses in the gaps between
+        // fragments are harmless to include (their samples are dropped by the fragment retention
+        // test regardless of mode), so per-fragment precision is not required for correctness.
+        final List<TimeInterval> clampedFragments = TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
+        if (clampedFragments.isEmpty()) {
+            return Map.of();
+        }
+        final TimeInterval firstFragment = clampedFragments.get(0);
+        final TimeInterval lastFragment = clampedFragments.get(clampedFragments.size() - 1);
+        final long windowBeginTotalNanos =
+                saturatedEpochNanos(firstFragment.getBeginSeconds(), firstFragment.getBeginNanos());
+        final long windowEndTotalNanos =
+                saturatedEpochNanos(lastFragment.getEndSeconds(), lastFragment.getEndNanos());
+
+        // Span-overlap predicate on the epoch-nanos scalars. Note: status documents have no
+        // maximum span (sparse labeling over an arbitrarily wide range is first-class), so no
+        // #197-style firstTime lower bound may ever be added here.
+        final List<Bson> filters = new ArrayList<>();
+        filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME, resolvedQuery.getPvNames()));
+        filters.add(eq(BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN, statusFilter.domain()));
+        if (!statusFilter.layers().isEmpty()) {
+            filters.add(in(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER, statusFilter.layers()));
+        }
+        filters.add(lt(BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS, windowEndTotalNanos));
+        filters.add(gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, windowBeginTotalNanos));
+
+        final Map<String, Set<Long>> matchingTimestampsByPv = new HashMap<>();
+        try (MongoCursor<SampleStatusBucketDocument> cursor =
+                     mongoCollectionSampleStatusBuckets.find(and(filters)).cursor()) {
+            while (cursor.hasNext()) {
+                final SampleStatusBucketDocument document = cursor.next();
+                for (SampleStatusDocumentUtility.StatusPoint point :
+                        SampleStatusDocumentUtility.expandDocument(document)) {
+                    // keep only in-window matching timestamps: memory stays bounded by the number
+                    // of labeled samples in the window
+                    if (point.timestampNanos() < windowBeginTotalNanos
+                            || point.timestampNanos() >= windowEndTotalNanos) {
+                        continue;
+                    }
+                    if (statusFilter.matchesCode(point.statusCode())) {
+                        matchingTimestampsByPv
+                                .computeIfAbsent(document.getPvName(), k -> new HashSet<>())
+                                .add(point.timestampNanos());
+                    }
+                }
+            }
+        } catch (DpException ex) {
+            // malformed stored document: must surface as a reportable error, never be read as
+            // "no statuses" (in EXCLUDE mode that would silently return filtered-out samples)
+            throw ex;
+        } catch (Exception ex) {
+            logger.error("resolveSampleStatusTimestamps database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
+        return matchingTimestampsByPv;
     }
 
     /**

@@ -74,12 +74,17 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
 
         try (cursor) {
+            // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
+            // for the assembly-time join; composes with the fragment trim by intersection.
+            final TabularDataUtility.SampleStatusFilter statusFilter =
+                    statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
             // Assemble the full window once. No sizeLimit: streaming materializes the whole table
             // (memory-bounded, per the class note); the byte budget bounds each emitted chunk, below.
             // Trimming uses every resolved fragment rather than a collapsed window (#207).
             TabularDataUtility.addBucketsToTable(
                     tableValueMap, cursor, 0, null,
-                    retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]));
+                    retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]),
+                    statusFilter);
         } catch (NonScalarColumnException e) {
             final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
                     + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";

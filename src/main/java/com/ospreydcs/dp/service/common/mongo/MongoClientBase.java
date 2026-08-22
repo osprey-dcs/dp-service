@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.column.*;
@@ -42,6 +43,7 @@ public abstract class MongoClientBase {
     public static final String COLLECTION_NAME_PV_METADATA = "pvMetadata";
     public static final String COLLECTION_NAME_CONFIGURATIONS = "configurations";
     public static final String COLLECTION_NAME_CONFIGURATION_ACTIVATIONS = "configurationActivations";
+    public static final String COLLECTION_NAME_SAMPLE_STATUS_BUCKETS = "sampleStatusBuckets";
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
@@ -73,6 +75,8 @@ public abstract class MongoClientBase {
     protected abstract boolean initMongoCollectionConfigurationActivations(String collectionName);
     protected abstract boolean createMongoIndexConfigurationActivations(Bson fieldNamesBson);
     protected abstract boolean createMongoIndexConfigurationActivationsWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions);
+    protected abstract boolean initMongoCollectionSampleStatusBuckets(String collectionName);
+    protected abstract boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson);
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -134,7 +138,8 @@ public abstract class MongoClientBase {
                 SerializedDataColumnDocument.class,
                 PvMetadataDocument.class,
                 ConfigurationDocument.class,
-                ConfigurationActivationDocument.class
+                ConfigurationActivationDocument.class,
+                SampleStatusBucketDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -311,6 +316,25 @@ public abstract class MongoClientBase {
         return true;
     }
 
+    private boolean createMongoIndexesSampleStatusBuckets() {
+        // compound index for the primary sort/lookup order (pvName, domain, layer, firstTimeNanos);
+        // lastTimeNanos is a residual filter in the overlap predicate. The span fields are plain
+        // epoch-nanos scalars so the overlap test is a plain indexed range comparison rather than
+        // the seconds/nanos $or construction that defeats index bounds on the buckets collection.
+        createMongoIndexSampleStatusBuckets(Indexes.ascending(
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_PV_NAME,
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN,
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER,
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS));
+        // second index led by (domain, layer) so empty-pvNames wildcard queries and deletes
+        // (e.g. layer retirement) don't require a full collection scan
+        createMongoIndexSampleStatusBuckets(Indexes.ascending(
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_DOMAIN,
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_LAYER,
+                BsonConstants.BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS));
+        return true;
+    }
+
     public static String getMongoConnectString() {
         // Allow a full connection string override to support replica sets, TLS, options, etc.
         String uriOverride = configMgr().getConfigString(CFG_KEY_DB_URI, DEFAULT_DB_URI);
@@ -367,6 +391,10 @@ public abstract class MongoClientBase {
 
     protected String getCollectionNameConfigurationActivations() {
         return COLLECTION_NAME_CONFIGURATION_ACTIVATIONS;
+    }
+
+    protected String getCollectionNameSampleStatusBuckets() {
+        return COLLECTION_NAME_SAMPLE_STATUS_BUCKETS;
     }
 
     public boolean init() {
@@ -433,6 +461,10 @@ public abstract class MongoClientBase {
         // initialize configurationActivations collection
         initMongoCollectionConfigurationActivations(getCollectionNameConfigurationActivations());
         createMongoIndexesConfigurationActivations();
+
+        // initialize sampleStatusBuckets collection
+        initMongoCollectionSampleStatusBuckets(getCollectionNameSampleStatusBuckets());
+        createMongoIndexesSampleStatusBuckets();
 
         return true;
     }
