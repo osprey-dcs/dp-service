@@ -26,6 +26,13 @@ import java.util.Set;
  */
 public class SampleStatusValidationUtility {
 
+    /**
+     * Largest epochSeconds whose conversion to signed 64-bit epoch-nanos does not overflow
+     * (~year 2262). Every Sample Status timestamp is validated against this, because the storage
+     * and query paths key on epoch-nanos scalars throughout.
+     */
+    static final long MAX_EPOCH_SECONDS = Long.MAX_VALUE / 1_000_000_000L;
+
     public static ResultStatus validateSaveSampleStatusesRequest(
             SaveSampleStatusesRequest request,
             long maxStatusesPerRequest
@@ -132,12 +139,12 @@ public class SampleStatusValidationUtility {
                 if (startStatus.isError) {
                     return startStatus;
                 }
-                // reject axes whose epoch-nanos arithmetic would overflow
+                // startTime itself is already range-checked by validateTimestamp above; the axis
+                // can still run off the end of the epoch-nanos range at its last sample
                 try {
-                    final long startNanos = Math.addExact(
-                            Math.multiplyExact(clock.getStartTime().getEpochSeconds(), 1_000_000_000L),
-                            clock.getStartTime().getNanoseconds());
-                    Math.addExact(startNanos, Math.multiplyExact((long) clock.getCount() - 1, clock.getPeriodNanos()));
+                    Math.addExact(
+                            validatedEpochNanos(clock.getStartTime()),
+                            Math.multiplyExact((long) clock.getCount() - 1, clock.getPeriodNanos()));
                 } catch (ArithmeticException ex) {
                     return new ResultStatus(true, framePath
                             + ".dataTimestamps.samplingClock time axis exceeds representable range");
@@ -234,6 +241,16 @@ public class SampleStatusValidationUtility {
         return new ResultStatus(false, "");
     }
 
+    /**
+     * Validates a single timestamp's field ranges and its representability as epoch-nanos.
+     *
+     * <p>The epoch-nanos check is not cosmetic: the storage and query paths convert every
+     * timestamp to a signed 64-bit epoch-nanos scalar (firstTimeNanos/lastTimeNanos, the overlap
+     * predicates, the keyset paging token). An epochSeconds above
+     * {@link #MAX_EPOCH_SECONDS} (~year 2262) silently wraps negative, which would write a
+     * document that no subsequent overlap query can find, or build a time range that matches the
+     * wrong set. Rejecting here keeps that class of silent wrong answer out of the collection.
+     */
     private static ResultStatus validateTimestamp(String fieldPath, Timestamp timestamp) {
         if (timestamp.getEpochSeconds() < 0
                 || timestamp.getNanoseconds() < 0
@@ -241,6 +258,18 @@ public class SampleStatusValidationUtility {
             return new ResultStatus(true, fieldPath + " has invalid values: seconds="
                     + timestamp.getEpochSeconds() + ", nanos=" + timestamp.getNanoseconds());
         }
+        if (timestamp.getEpochSeconds() > MAX_EPOCH_SECONDS) {
+            return new ResultStatus(true, fieldPath + " exceeds representable epoch-nanos range: seconds="
+                    + timestamp.getEpochSeconds() + ", maximum=" + MAX_EPOCH_SECONDS);
+        }
         return new ResultStatus(false, "");
+    }
+
+    /**
+     * Converts a validated timestamp to epoch-nanos. Only safe on a timestamp that has passed
+     * {@link #validateTimestamp}.
+     */
+    private static long validatedEpochNanos(Timestamp timestamp) {
+        return timestamp.getEpochSeconds() * 1_000_000_000L + timestamp.getNanoseconds();
     }
 }

@@ -380,4 +380,114 @@ public class SampleStatusValidationUtilityTest {
                 deleteRequestBuilder().setLayer("").build());
         assertRejected(status, "layer must be specified");
     }
+
+    // ------------------- epoch-nanos overflow ---------------------------
+    //
+    // Every Sample Status timestamp is converted to a signed 64-bit epoch-nanos scalar by the
+    // storage and query paths (firstTimeNanos/lastTimeNanos, the overlap predicates, the keyset
+    // paging token). An epochSeconds above MAX_EPOCH_SECONDS (~year 2262) wraps negative, which
+    // would write a document no later overlap query can find, or build a time range matching the
+    // wrong set -- a silent wrong answer rather than an error. These cover all four call sites of
+    // validateTimestamp: TimestampList entries, SamplingClock startTime, and TimeRange
+    // begin/end on both query and delete.
+
+    /** First epochSeconds whose epoch-nanos conversion overflows a signed 64-bit long. */
+    private static final long OVERFLOW_SECONDS = Long.MAX_VALUE / 1_000_000_000L + 1;
+
+    /** Largest epochSeconds that still converts without overflow. */
+    private static final long MAX_SAFE_SECONDS = Long.MAX_VALUE / 1_000_000_000L;
+
+    @Test
+    public void testOverflowSecondsActuallyWrapsNegative() {
+        // guards the premise of the tests below: this is the arithmetic the storage path performs
+        assertTrue(OVERFLOW_SECONDS * 1_000_000_000L < 0);
+        assertTrue(MAX_SAFE_SECONDS * 1_000_000_000L > 0);
+    }
+
+    @Test
+    public void testSaveOverflowingTimestampListEntryRejected() {
+        final DataTimestamps axis = DataTimestampsUtility.dataTimestampsWithTimestampList(List.of(
+                timestamp(OVERFLOW_SECONDS, 0)));
+        final SampleStatusFrame frame = frameBuilder(1).setDataTimestamps(axis).build();
+        final ResultStatus status = SampleStatusValidationUtility.validateSaveSampleStatusesRequest(
+                saveRequest(frame), MAX_STATUSES);
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
+
+    @Test
+    public void testSaveOverflowingLaterTimestampListEntryRejected() {
+        // the overflow is in the second entry: the axis is still strictly increasing, so only the
+        // range check catches it
+        final DataTimestamps axis = DataTimestampsUtility.dataTimestampsWithTimestampList(List.of(
+                timestamp(START_SECONDS, 0), timestamp(OVERFLOW_SECONDS, 0)));
+        final SampleStatusFrame frame = frameBuilder(2).setDataTimestamps(axis).build();
+        final ResultStatus status = SampleStatusValidationUtility.validateSaveSampleStatusesRequest(
+                saveRequest(frame), MAX_STATUSES);
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
+
+    @Test
+    public void testSaveMaxSafeTimestampListEntryAccepted() {
+        final DataTimestamps axis = DataTimestampsUtility.dataTimestampsWithTimestampList(List.of(
+                timestamp(MAX_SAFE_SECONDS, 0)));
+        final SampleStatusFrame frame = frameBuilder(1).setDataTimestamps(axis).build();
+        final ResultStatus status = SampleStatusValidationUtility.validateSaveSampleStatusesRequest(
+                saveRequest(frame), MAX_STATUSES);
+        assertFalse("boundary value must remain acceptable: " + status.msg, status.isError);
+    }
+
+    @Test
+    public void testSaveOverflowingClockStartTimeRejected() {
+        final DataTimestamps axis = DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                OVERFLOW_SECONDS, 0, PERIOD, 2);
+        final SampleStatusFrame frame = frameBuilder(2).setDataTimestamps(axis).build();
+        final ResultStatus status = SampleStatusValidationUtility.validateSaveSampleStatusesRequest(
+                saveRequest(frame), MAX_STATUSES);
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
+
+    @Test
+    public void testSaveClockAxisRunningPastRangeRejected() {
+        // startTime is representable, but start + (count-1) * period is not: the end-of-axis
+        // check in the SamplingClock branch is what catches this one
+        final DataTimestamps axis = DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                MAX_SAFE_SECONDS, 0, Long.MAX_VALUE / 2, 3);
+        final SampleStatusFrame frame = frameBuilder(3).setDataTimestamps(axis).build();
+        final ResultStatus status = SampleStatusValidationUtility.validateSaveSampleStatusesRequest(
+                saveRequest(frame), MAX_STATUSES);
+        assertRejected(status, "time axis exceeds representable range");
+    }
+
+    @Test
+    public void testQueryOverflowingBeginTimeRejected() {
+        final ResultStatus status = SampleStatusValidationUtility.validateQuerySampleStatusesRequest(
+                queryRequest(TimeRange.newBuilder()
+                        .setBeginTime(timestamp(OVERFLOW_SECONDS, 0))
+                        .setEndTime(timestamp(OVERFLOW_SECONDS + 60, 0))
+                        .build()));
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
+
+    @Test
+    public void testQueryOverflowingEndTimeRejected() {
+        final ResultStatus status = SampleStatusValidationUtility.validateQuerySampleStatusesRequest(
+                queryRequest(TimeRange.newBuilder()
+                        .setBeginTime(timestamp(START_SECONDS, 0))
+                        .setEndTime(timestamp(OVERFLOW_SECONDS, 0))
+                        .build()));
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
+
+    @Test
+    public void testDeleteOverflowingEndTimeRejected() {
+        // an unguarded wrap here makes lt(firstTimeNanos, endNanos) match the wrong set, so the
+        // delete silently removes something other than what was asked for
+        final ResultStatus status = SampleStatusValidationUtility.validateDeleteSampleStatusesRequest(
+                deleteRequestBuilder()
+                        .setTimeRange(TimeRange.newBuilder()
+                                .setBeginTime(timestamp(START_SECONDS, 0))
+                                .setEndTime(timestamp(OVERFLOW_SECONDS, 0)))
+                        .build());
+        assertRejected(status, "exceeds representable epoch-nanos range");
+    }
 }
