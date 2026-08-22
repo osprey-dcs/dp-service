@@ -197,6 +197,65 @@ public class ApiResponseObserverBaseTest {
     }
 
     /*
+     * The service's message must reach the caller verbatim.  It was previously prefixed with the
+     * observer's class name and a gRPC lifecycle phrase, so a caller displaying
+     * ApiResult.resultStatus.msg -- the only message it has -- showed client implementation detail
+     * ahead of the server's explanation.
+     *
+     * This asserts exact equality deliberately.  Every other assertion on a client error message
+     * in this repo uses contains() against the substantive text, which passes whether or not a
+     * prefix is present, so a contains() assertion here would let the prefix creep back in
+     * unnoticed.
+     */
+    @Test
+    public void testServiceMessageIsNotPrefixed() {
+
+        final String serviceMessage =
+                "overlapping activation exists for configurationName 'beamline-a'";
+
+        final QueryClient.QueryTableResponseObserver observer =
+                new QueryClient.QueryTableResponseObserver();
+
+        observer.onNext(QueryTableResponse.newBuilder()
+                .setExceptionalResult(ExceptionalResult.newBuilder()
+                        .setExceptionalResultStatus(
+                                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT)
+                        .setMessage(serviceMessage)
+                        .build())
+                .build());
+
+        assertReturnsPromptly("QueryTableResponseObserver.await()", observer::await);
+
+        assertTrue("an exceptional result must be reported as an error", observer.isError());
+        assertEquals(
+                "the service message must reach the caller unmodified",
+                serviceMessage,
+                observer.getErrorMessage());
+        assertEquals(ApiResultStatus.REJECT, observer.getApiResultStatus());
+    }
+
+    /*
+     * A failure the client itself detected keeps the observer name, which is the other half of the
+     * contract: stripping the prefix from service messages must not strip it from the messages
+     * this observer authors, where it identifies which RPC failed.
+     */
+    @Test
+    public void testClientDetectedFailureKeepsObserverName() {
+
+        final QueryClient.QueryProvidersResponseObserver observer =
+                new QueryClient.QueryProvidersResponseObserver();
+
+        observer.onNext(QueryProvidersResponse.newBuilder().build());
+
+        assertReturnsPromptly("QueryProvidersResponseObserver.await()", observer::await);
+
+        assertTrue(
+                "expected the observer name on a client-detected failure, got: "
+                        + observer.getErrorMessage(),
+                observer.getErrorMessage().startsWith("QueryProvidersResponseObserver"));
+    }
+
+    /*
      * A response missing the result field it is required to carry is rejected rather than stored,
      * and must release the caller.  Previously QueryProvidersResponseObserver called
      * Objects.requireNonNull here, on the onNext thread, where the resulting NPE was swallowed and

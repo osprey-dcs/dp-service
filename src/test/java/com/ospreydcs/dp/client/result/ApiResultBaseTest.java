@@ -138,15 +138,12 @@ public class ApiResultBaseTest {
     }
 
     /*
-     * RESULT_STATUS_REJECT is 0, the protobuf default, so an ExceptionalResult built without
-     * setExceptionalResultStatus() is indistinguishable on the wire from a deliberate reject and
-     * ApiResultStatus.fromProto() maps it to REJECT.  Callers branch on isReject() to read "target
-     * record does not exist", so such an omission can present as a benign not-found -- and for a
-     * caller deciding whether a save would overwrite, become a silent clobber.  Scan the service
-     * sources so a new dispatcher that forgets the setter fails here rather than in production.
+     * Scans the service sources for ExceptionalResult builder chains missing a required setter,
+     * returning "file:line" for each violation.  Shared by the status and message checks below,
+     * which guard the same class of defect: a field the client layer depends on that protobuf
+     * silently defaults rather than rejecting.
      */
-    @Test
-    public void testEveryExceptionalResultSetsStatus() throws IOException {
+    private static List<String> findExceptionalResultsMissing(String setter) throws IOException {
 
         final Path sourceRoot = Paths.get("src/main/java");
         assertTrue(
@@ -170,7 +167,7 @@ public class ApiResultBaseTest {
 
                 while (matcher.find()) {
                     chainCount++;
-                    if (!matcher.group().contains("setExceptionalResultStatus")) {
+                    if (!matcher.group().contains(setter)) {
                         final long line =
                                 contents.substring(0, matcher.start()).chars().filter(c -> c == '\n').count() + 1;
                         violations.add(source + ":" + line);
@@ -179,12 +176,49 @@ public class ApiResultBaseTest {
             }
         }
 
-        // guard against the regex silently matching nothing, which would make this test vacuous
+        // guard against the regex silently matching nothing, which would make the callers vacuous
         assertTrue(
                 "expected to find ExceptionalResult builders to check, found none",
                 chainCount > 0);
+
+        return violations;
+    }
+
+    /*
+     * RESULT_STATUS_REJECT is 0, the protobuf default, so an ExceptionalResult built without
+     * setExceptionalResultStatus() is indistinguishable on the wire from a deliberate reject and
+     * ApiResultStatus.fromProto() maps it to REJECT.  Callers branch on isReject() to read "target
+     * record does not exist", so such an omission can present as a benign not-found -- and for a
+     * caller deciding whether a save would overwrite, become a silent clobber.  Scan the service
+     * sources so a new dispatcher that forgets the setter fails here rather than in production.
+     */
+    @Test
+    public void testEveryExceptionalResultSetsStatus() throws IOException {
+
+        final List<String> violations =
+                findExceptionalResultsMissing("setExceptionalResultStatus");
+
         assertEquals(
                 "ExceptionalResult built without setExceptionalResultStatus() at " + violations,
+                List.of(),
+                violations);
+    }
+
+    /*
+     * The client layer records a service-supplied message verbatim (see the message contract on
+     * ApiResponseObserverBase), so an ExceptionalResult built without setMessage() reaches the
+     * caller as an empty resultStatus.msg -- a failure with no explanation at all.  Before the
+     * prefix was removed the observer name concealed this, because the caller always got at least
+     * that much text.  It no longer does, so the omission is now caller-visible and is checked
+     * here alongside the status.
+     */
+    @Test
+    public void testEveryExceptionalResultSetsMessage() throws IOException {
+
+        final List<String> violations = findExceptionalResultsMissing("setMessage");
+
+        assertEquals(
+                "ExceptionalResult built without setMessage() at " + violations,
                 List.of(),
                 violations);
     }

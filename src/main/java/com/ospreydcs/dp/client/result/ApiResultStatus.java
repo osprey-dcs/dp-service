@@ -72,7 +72,10 @@ public enum ApiResultStatus {
      * can present as a benign not-found and, for a caller deciding whether a save would overwrite,
      * turn into a silent clobber.  Every dispatcher must therefore set the status explicitly;
      * {@code ApiResultBaseTest.testEveryExceptionalResultSetsStatus()} guards this by scanning the
-     * service sources for a builder that omits it.
+     * service sources for a builder that omits it.  {@code
+     * ApiResultBaseTest.testEveryExceptionalResultSetsMessage()} guards the companion field the
+     * same way: the client layer records a service message verbatim, so an omitted {@code
+     * setMessage()} reaches the caller as an empty explanation.
      */
     public static ApiResultStatus fromProto(ExceptionalResult.ExceptionalResultStatus protoStatus) {
 
