@@ -36,6 +36,13 @@ public class SaveDataSetDispatcher extends Dispatcher {
 
     public void handleResult(MongoSaveResult result) {
 
+        // A rejection means the request violated a business rule (e.g. it referenced a document
+        // that does not exist), as opposed to the service failing to handle it.
+        if (result.isReject) {
+            AnnotationServiceImpl.sendSaveDataSetResponseReject(result.message, responseObserver);
+            return;
+        }
+
         // Check to see if error flag is set in our result wrapper, this indicates that insertOne failed.
         if (result.isError) {
             // send error response and close response stream

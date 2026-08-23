@@ -181,11 +181,43 @@ List<String> normalizedTags = new ArrayList<>(
 **Validation in Job.execute():** Call `dispatcher.handleValidationError(new ResultStatus(true, "message"))` and return early for each violation.
 
 **Result wrapper classes:**
-- `MongoSaveResult` — document identifier and error state
-- `MongoDeleteResult` — deleted document identifier and error state
+- `MongoSaveResult` — document identifier, plus `isError`/`isReject` state
+- `MongoDeleteResult` — deleted document identifier, plus `isError`/`isReject` state
+- `MongoCountResult` — affected-item count, plus `isError`/`isReject` state
 - `PvMetadataQueryResult` — `List<PvMetadataDocument>` and `String nextPageToken`
 - `ConfigurationQueryResult` — `List<ConfigurationDocument>` and `String nextPageToken`
 - `ConfigurationActivationQueryResult` — `List<ConfigurationActivationDocument>` and `String nextPageToken`
+
+### Reject vs. Error in the Mongo Client (issue #235)
+
+A failure detected *inside* the Mongo client must be classified, not just flagged. The three result
+wrappers above carry both `isError` and `isReject`, and the `Save*`/`Delete*` dispatchers route
+`isReject` to `sendXxxResponseReject` ahead of the `isError` branch.
+
+- **Reject** — the request violated a business rule: a referenced entity does not exist, or a
+  constraint would be broken. Retrying the identical request is pointless, and the condition is a
+  correctable mistake the caller may want to surface to a user. Build with
+  `MongoSaveResult.reject(...)` / `MongoDeleteResult.reject(...)` / `MongoCountResult.reject(...)`,
+  and log at `debug` — a client mistake is not a service error.
+- **Error** — the service failed to handle an otherwise valid request: a `MongoException`, an
+  unacknowledged write, an unexpected null id. A retry may succeed. Build with the matching
+  `error(...)` factory and log at `error` with the exception object.
+
+`isReject` implies `isError`, so callers reading only `isError` still see every failure. Adding a
+business rule on these paths without the `reject(...)` factory silently reproduces the original bug
+— the failure reads like a rejection but arrives as `RESULT_STATUS_ERROR`.
+
+**Do not classify "not found" by a helper that swallows exceptions.** `findDataSet()`/`findAnnotation()`
+return null for both "absent" and "query failed", so a Mongo outage is indistinguishable from a
+genuine not-found. `saveDataSet`/`saveAnnotation` therefore use the private `lookupDataSet()`/
+`lookupAnnotation()` variants, which throw `DpException` on query failure — otherwise a database
+outage would be reported to the caller as "your id does not exist", inverting the retry decision.
+
+The guard against regression is on the test side: the `sendAndVerify*` wrappers for the eight
+affected Save/Delete methods assert `RESULT_STATUS_REJECT` in their `expectReject` branch, and the
+observers in `AnnotationTestBase` capture `getExceptionalResultStatus()` to make that possible. Before
+this, `expectReject` asserted only `isError()` and a message substring, so the naming and the wire
+status could — and did — diverge silently.
 
 ### Pagination Pattern
 

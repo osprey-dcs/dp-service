@@ -26,7 +26,10 @@ public class DeleteConfigurationActivationDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoDeleteResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendDeleteConfigurationActivationResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendDeleteConfigurationActivationResponseError(result.message, responseObserver);
         } else if (result.deletedPvName == null) {
             final String keyDescription = switch (request.getKeyCase()) {

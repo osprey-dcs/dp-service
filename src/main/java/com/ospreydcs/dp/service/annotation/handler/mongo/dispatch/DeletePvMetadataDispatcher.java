@@ -26,7 +26,10 @@ public class DeletePvMetadataDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoDeleteResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendDeletePvMetadataResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendDeletePvMetadataResponseError(result.message, responseObserver);
         } else if (result.deletedPvName == null) {
             final String msg = "no PvMetadata record found for: " + request.getPvNameOrAlias();

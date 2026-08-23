@@ -30,7 +30,10 @@ public class SaveConfigurationDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoSaveResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendSaveConfigurationResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendSaveConfigurationResponseError(result.message, responseObserver);
         } else {
             AnnotationServiceImpl.sendSaveConfigurationResponseSuccess(result.documentId, responseObserver);

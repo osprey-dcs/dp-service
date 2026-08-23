@@ -26,7 +26,10 @@ public class DeleteConfigurationDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoDeleteResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendDeleteConfigurationResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendDeleteConfigurationResponseError(result.message, responseObserver);
         } else if (result.deletedPvName == null) {
             final String msg = "no Configuration record found for: " + request.getConfigurationName();

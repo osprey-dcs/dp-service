@@ -30,7 +30,10 @@ public class SavePvMetadataDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoSaveResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendSavePvMetadataResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendSavePvMetadataResponseError(result.message, responseObserver);
         } else {
             AnnotationServiceImpl.sendSavePvMetadataResponseSuccess(result.documentId, responseObserver);
