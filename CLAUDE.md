@@ -219,6 +219,19 @@ observers in `AnnotationTestBase` capture `getExceptionalResultStatus()` to make
 this, `expectReject` asserted only `isError()` and a message substring, so the naming and the wire
 status could — and did — diverge silently.
 
+**Never `upsert(true)` on an `_id` filter.** An upsert filtered by natural key (pvName,
+configurationName, clientActivationId) re-creates the same logical record and is fine — that is what
+`savePvMetadata`, `saveConfiguration`, and `saveConfigurationActivation` do. An upsert filtered by
+`_id` cannot: if the document was deleted between the lookup and the write, Mongo inserts a
+*different* document under a newly generated id, having silently written data the caller never sees.
+`saveDataSet`/`saveAnnotation` therefore replace without upsert and test `getMatchedCount() == 0`,
+reporting that race as a rejection.
+
+Test `matchedCount`, not `modifiedCount`, when checking whether a `replaceOne` found its target.
+`modifiedCount` is also 0 when the replacement leaves the stored document unchanged, which is a
+successful save. (These documents carry an always-refreshed `updatedAt`, so that case does not arise
+today — but the check should not depend on that.)
+
 ### Pagination Pattern
 
 ```java

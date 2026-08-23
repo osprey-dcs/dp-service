@@ -155,26 +155,34 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
             UpdateResult result = null;
             try {
-                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                // No upsert: the filter is on _id, so an upsert would not re-create this document —
+                // it would insert a *different* one under a new id if the document were deleted
+                // between the lookup above and this write. Matching zero documents is the honest
+                // signal for that race, handled below.
                 final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
-                result = mongoCollectionDataSets.replaceOne(idFilter, dataSetDocument, replaceOptions);
+                result = mongoCollectionDataSets.replaceOne(idFilter, dataSetDocument);
             } catch (MongoException ex) {
                 final String errorMsg = "MongoException replacing DataSetDocument: " + ex.getMessage();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                logger.error("saveDataSet replace error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
             if (!result.wasAcknowledged()) {
                 final String errorMsg = "replaceOne not acknowledged for existing DataSetDocument id: "
                         + existingDocumentId;
                 logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
-            if (result.getModifiedCount() != 1) {
-                final String errorMsg = "replaceOne DataSetDocument unexpected modified count: " + result.getModifiedCount();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            // Test matchedCount, not modifiedCount. With the upsert removed, matching nothing is the
+            // only real failure here: the document was deleted between the lookup above and this
+            // write. modifiedCount additionally reports 0 when the stored document is unchanged by
+            // the replacement, which is a successful save, not a failure.
+            if (result.getMatchedCount() == 0) {
+                final String rejectMsg = "saveDataSet no DataSetDocument found with id: " + existingDocumentId
+                        + " (deleted concurrently)";
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
             return new MongoSaveResult(false, "", existingDocumentId, false);
@@ -359,27 +367,34 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
             UpdateResult result = null;
             try {
-                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
-                final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
-                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument, replaceOptions);
+                // No upsert: the filter is on _id, so an upsert would not re-create this document —
+                // it would insert a *different* one under a new id if the document were deleted
+                // between the lookup above and this write. Matching zero documents is the honest
+                // signal for that race, handled below.
+                final Bson idFilter = eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(existingDocumentId));
+                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument);
             } catch (MongoException ex) {
                 final String errorMsg = "MongoException replacing AnnotationDocument: " + ex.getMessage();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                logger.error("saveAnnotation replace error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
             if (!result.wasAcknowledged()) {
                 final String errorMsg = "replaceOne not acknowledged for existing AnnotationDocument id: "
                         + existingDocumentId;
                 logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
-            if (result.getModifiedCount() != 1) {
-                final String errorMsg =
-                        "replaceOne AnnotationDocument unexpected modified count: " + result.getModifiedCount();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            // Test matchedCount, not modifiedCount. With the upsert removed, matching nothing is the
+            // only real failure here: the document was deleted between the lookup above and this
+            // write. modifiedCount additionally reports 0 when the stored document is unchanged by
+            // the replacement, which is a successful save, not a failure.
+            if (result.getMatchedCount() == 0) {
+                final String rejectMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId
+                        + " (deleted concurrently)";
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
             return new MongoSaveResult(false, "", existingDocumentId, false);
