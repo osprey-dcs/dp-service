@@ -109,7 +109,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             try {
                 existingDocument = lookupDataSet(existingDocumentId);
             } catch (DpException ex) {
-                final String errorMsg = "MongoException looking up DataSetDocument by id: " + ex.getMessage();
+                // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+                // from the ObjectId constructor. Let the wrapped message carry the specifics.
+                final String errorMsg = "error looking up DataSetDocument by id: " + ex.getMessage();
                 logger.error("saveDataSet lookup error: {}", ex.getMessage(), ex);
                 return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
@@ -321,7 +323,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             try {
                 existingDocument = lookupAnnotation(existingDocumentId);
             } catch (DpException ex) {
-                final String errorMsg = "MongoException looking up AnnotationDocument by id: " + ex.getMessage();
+                // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+                // from the ObjectId constructor. Let the wrapped message carry the specifics.
+                final String errorMsg = "error looking up AnnotationDocument by id: " + ex.getMessage();
                 logger.error("saveAnnotation lookup error: {}", ex.getMessage(), ex);
                 return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
@@ -992,7 +996,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return new MongoDeleteResult(true, errorMsg, null);
             }
             if (result.getDeletedCount() == 0) {
-                // not found — signal via null deletedPvName
+                // not found — signal via null deletedIdentifier
                 return new MongoDeleteResult(false, "", null);
             }
             return new MongoDeleteResult(false, "", configurationName);

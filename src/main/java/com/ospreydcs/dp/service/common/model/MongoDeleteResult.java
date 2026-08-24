@@ -5,26 +5,39 @@ package com.ospreydcs.dp.service.common.model;
  * {@link #isReject} (business-rule rejection, RESULT_STATUS_REJECT) and a plain {@link #isError}
  * (infrastructure failure, RESULT_STATUS_ERROR).
  *
- * <p>Note that "no matching record" is not a failure here: the delete methods signal it with
- * {@code isError=false} and a null {@link #deletedPvName}, and the dispatcher turns that into a
- * rejection.
+ * <p>Two distinct not-found-style outcomes reach the dispatcher through this type, and they are
+ * not interchangeable:
+ * <ul>
+ *   <li><b>No matching record</b> — not a failure at this layer. The delete methods signal it with
+ *       {@code isError=false} and a null {@link #deletedIdentifier}, and the dispatcher turns that
+ *       into a rejection. Use this when the delete simply matched nothing.</li>
+ *   <li><b>Blocked by a business rule</b> — e.g. {@code deleteConfiguration} refusing while
+ *       activations exist. Use {@link #reject}, which sets both flags. The record may well exist;
+ *       the service is declining to remove it.</li>
+ * </ul>
+ * {@code deleteConfiguration} uses both, so pick by which condition actually held rather than by
+ * what the surrounding method does elsewhere.
  */
 public class MongoDeleteResult {
 
     public final boolean isError;
     public final boolean isReject;
     public final String message;
-    public final String deletedPvName;
+    public final String deletedIdentifier;
 
-    public MongoDeleteResult(boolean isError, String message, String deletedPvName) {
-        this(isError, false, message, deletedPvName);
+    public MongoDeleteResult(boolean isError, String message, String deletedIdentifier) {
+        this(isError, false, message, deletedIdentifier);
     }
 
-    public MongoDeleteResult(boolean isError, boolean isReject, String message, String deletedPvName) {
+    /**
+     * Private so that {@code isReject} without {@code isError} cannot be constructed. Build failure
+     * results with {@link #reject} or {@link #error}.
+     */
+    private MongoDeleteResult(boolean isError, boolean isReject, String message, String deletedIdentifier) {
         this.isError = isError;
         this.isReject = isReject;
         this.message = message;
-        this.deletedPvName = deletedPvName;
+        this.deletedIdentifier = deletedIdentifier;
     }
 
     /** Creates a result for a business-rule rejection, sent to the client as RESULT_STATUS_REJECT. */

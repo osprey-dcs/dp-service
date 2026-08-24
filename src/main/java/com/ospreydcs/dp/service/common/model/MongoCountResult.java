@@ -23,7 +23,11 @@ public class MongoCountResult {
         this(isError, false, message, count);
     }
 
-    public MongoCountResult(boolean isError, boolean isReject, String message, long count) {
+    /**
+     * Private so that {@code isReject} without {@code isError} cannot be constructed. Build failure
+     * results with {@link #reject} or {@link #error}.
+     */
+    private MongoCountResult(boolean isError, boolean isReject, String message, long count) {
         this.isError = isError;
         this.isReject = isReject;
         this.message = message;

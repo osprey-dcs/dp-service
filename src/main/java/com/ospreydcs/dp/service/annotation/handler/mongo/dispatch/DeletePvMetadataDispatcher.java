@@ -31,11 +31,11 @@ public class DeletePvMetadataDispatcher extends Dispatcher {
             AnnotationServiceImpl.sendDeletePvMetadataResponseReject(result.message, responseObserver);
         } else if (result.isError) {
             AnnotationServiceImpl.sendDeletePvMetadataResponseError(result.message, responseObserver);
-        } else if (result.deletedPvName == null) {
+        } else if (result.deletedIdentifier == null) {
             final String msg = "no PvMetadata record found for: " + request.getPvNameOrAlias();
             AnnotationServiceImpl.sendDeletePvMetadataResponseReject(msg, responseObserver);
         } else {
-            AnnotationServiceImpl.sendDeletePvMetadataResponseSuccess(result.deletedPvName, responseObserver);
+            AnnotationServiceImpl.sendDeletePvMetadataResponseSuccess(result.deletedIdentifier, responseObserver);
         }
     }
 }

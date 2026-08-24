@@ -203,9 +203,19 @@ wrappers above carry both `isError` and `isReject`, and the `Save*`/`Delete*` di
   unacknowledged write, an unexpected null id. A retry may succeed. Build with the matching
   `error(...)` factory and log at `error` with the exception object.
 
-`isReject` implies `isError`, so callers reading only `isError` still see every failure. Adding a
-business rule on these paths without the `reject(...)` factory silently reproduces the original bug
-— the failure reads like a rejection but arrives as `RESULT_STATUS_ERROR`.
+`isReject` implies `isError`, so callers reading only `isError` still see every failure. That
+invariant is enforced by construction, not by convention: the constructor that sets `isReject` is
+private on all three wrappers, so `isReject=true, isError=false` cannot be built. The public
+constructor is the legacy non-reject form, retained for the ~50 untouched call sites.
+
+Adding a business rule on these paths without the `reject(...)` factory silently reproduces the
+original bug — the failure reads like a rejection but arrives as `RESULT_STATUS_ERROR`.
+
+`MongoDeleteResult` carries two different not-found outcomes and they are not interchangeable: a
+delete that simply matched nothing returns `isError=false` with a null `deletedIdentifier` (the
+dispatcher converts that to a rejection), while a delete blocked by a business rule uses
+`reject(...)`. `deleteConfiguration` uses both. The field is named `deletedIdentifier` rather than
+`deletedPvName` because the same wrapper serves configuration and activation deletes.
 
 **Do not classify "not found" by a helper that swallows exceptions.** `findDataSet()`/`findAnnotation()`
 return null for both "absent" and "query failed", so a Mongo outage is indistinguishable from a

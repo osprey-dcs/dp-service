@@ -31,11 +31,11 @@ public class DeleteConfigurationDispatcher extends Dispatcher {
             AnnotationServiceImpl.sendDeleteConfigurationResponseReject(result.message, responseObserver);
         } else if (result.isError) {
             AnnotationServiceImpl.sendDeleteConfigurationResponseError(result.message, responseObserver);
-        } else if (result.deletedPvName == null) {
+        } else if (result.deletedIdentifier == null) {
             final String msg = "no Configuration record found for: " + request.getConfigurationName();
             AnnotationServiceImpl.sendDeleteConfigurationResponseReject(msg, responseObserver);
         } else {
-            AnnotationServiceImpl.sendDeleteConfigurationResponseSuccess(result.deletedPvName, responseObserver);
+            AnnotationServiceImpl.sendDeleteConfigurationResponseSuccess(result.deletedIdentifier, responseObserver);
         }
     }
 }
