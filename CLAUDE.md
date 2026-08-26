@@ -45,6 +45,39 @@ When modifying gRPC APIs:
 4. Update validation logic in `IngestionValidationUtility` for new column types
 5. Follow systematic renaming pattern: Service → Handler → Jobs → Dispatchers → Tests
 
+## Ticket Planning Workflow
+
+Every non-trivial ticket gets a **version-controlled plan** at `plan/tickets/<issue>/plan.md`,
+committed alongside the implementation. This is a deliberate change from the older convention of
+keeping plans in the gitignored `.dev/plan/issue-<n>/` directory — plans there were invisible to
+reviewers, to CI, and to anyone working from a fresh clone. `.dev/` remains in `.gitignore` and still
+holds scratch material; do not add new ticket plans there.
+
+Scratch and draft material stays outside the repo, under `~/dp/dev/tickets/dp-service/<issue>/`.
+The distinction is intent, not format: a draft being iterated on is scratch; the plan the
+implementation will be reviewed against belongs under `plan/tickets/`.
+
+**Triage before planning.** Verify the ticket's stated premises against the code before writing the
+plan — several tickets in this repo have been filed on a claim that turned out not to hold (see
+#243's triage of #245, where "these two methods already behave this way" was wrong for all three
+methods, changing the scope of both tickets). Where triage contradicts the ticket, update the issue
+description and say so explicitly in the plan's Background section rather than silently planning
+around it.
+
+**Plan structure** (see `plan/tickets/243/plan.md` for a worked example):
+
+- **Overview** — what the ticket delivers, and for whom.
+- **Background / triage findings** — verified facts with `file:line` references, especially anything
+  that contradicts the issue as filed.
+- **Design decisions** — the choices a reviewer would otherwise have to reverse-engineer, each with
+  its rationale and the alternative that was rejected.
+- **Implementation tasks** — per file, concrete enough to execute without re-deriving the design.
+- **Out of scope** — with a pointer to the ticket that owns each excluded item.
+- **Dependencies and sequencing** — what blocks on what, and explicitly what does *not*.
+
+Record findings that outlive the ticket in CLAUDE.md rather than leaving them only in the plan: a
+plan documents one change, CLAUDE.md documents the invariant it established.
+
 ## MongoDB Collections
 - **buckets**: Time-series data storage (main data collection with embedded protobuf serialization)
 - **providers**: Registered data providers
