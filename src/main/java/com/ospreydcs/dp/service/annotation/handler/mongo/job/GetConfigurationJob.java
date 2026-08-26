@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.GetConfigurationResponse;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.GetConfigurationDispatcher;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
@@ -44,7 +45,7 @@ public class GetConfigurationJob extends HandlerJob {
         final ConfigurationDocument document;
         try {
             document = mongoClient.findConfigurationByName(request.getConfigurationName());
-        } catch (Exception ex) {
+        } catch (DpException ex) {
             dispatcher.handleError("error looking up Configuration: " + ex.getMessage());
             return;
         }

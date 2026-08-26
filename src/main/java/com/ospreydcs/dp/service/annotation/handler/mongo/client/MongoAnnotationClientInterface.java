@@ -16,6 +16,7 @@ import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivatio
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.ConfigurationActivationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationQueryResult;
 import com.ospreydcs.dp.service.common.model.MongoCountResult;
@@ -52,13 +53,21 @@ public interface MongoAnnotationClientInterface {
 
     PvMetadataQueryResult executeQueryPvMetadata(QueryPvMetadataRequest request);
 
-    PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias);
+    /**
+     * Returns null if no record matches; throws if the query itself failed. Callers must
+     * distinguish the two — see the implementation for why this is checked.
+     */
+    PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) throws DpException;
 
     MongoDeleteResult deletePvMetadata(String pvNameOrAlias);
 
     MongoSaveResult saveConfiguration(ConfigurationDocument document);
 
-    ConfigurationDocument findConfigurationByName(String configurationName);
+    /**
+     * Returns null if no Configuration has this name; throws if the query itself failed. Callers
+     * must distinguish the two — see the implementation for why this is checked.
+     */
+    ConfigurationDocument findConfigurationByName(String configurationName) throws DpException;
 
     ConfigurationQueryResult executeQueryConfigurations(QueryConfigurationsRequest request);
 

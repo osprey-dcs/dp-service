@@ -223,6 +223,23 @@ genuine not-found. `saveDataSet`/`saveAnnotation` therefore use the private `loo
 `lookupAnnotation()` variants, which throw `DpException` on query failure — otherwise a database
 outage would be reported to the caller as "your id does not exist", inverting the retry decision.
 
+**A lookup helper must throw a *checked* exception, not an unchecked one.** `findConfigurationByName()`
+and `findPvMetadataByNameOrAlias()` originally wrapped query failures in a bare `RuntimeException`,
+which escaped both of their in-client callers: it is not a `MongoException`, so it slipped past
+`saveConfigurationActivation`'s `catch (MongoException)`, and `deletePvMetadata` called its helper
+with no catch at all. In both cases `QueueHandlerBase`'s worker caught the escapee, logged it, and
+moved on — so the job never reached `dispatcher.handleResult()` and the caller's response stream
+stayed open until it timed out, with no error ever sent. That is strictly worse than a
+misclassified failure: the caller gets nothing to act on.
+
+Both helpers now throw `DpException`, like the two `lookup*` helpers above, so the compiler forces
+every caller to decide what a query failure means. The regression guard is
+`MongoSyncAnnotationClientLookupFailureTest`, which pins each failing lookup to an error result and
+each genuine absence to the not-found/reject path. Prefer a checked exception for any
+Mongo-client helper whose failure must reach the client, and catch it at the call site into the
+matching `error(...)` result — never let it fall through to a rejection branch, which would invert the
+retry decision.
+
 The guard against regression is on the test side: the `sendAndVerify*` wrappers for the eight
 affected Save/Delete methods assert `RESULT_STATUS_REJECT` in their `expectReject` branch, and the
 observers in `AnnotationTestBase` capture `getExceptionalResultStatus()` to make that possible. Before

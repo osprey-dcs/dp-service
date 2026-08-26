@@ -720,8 +720,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         return new PvMetadataQueryResult(documents, nextPageToken);
     }
 
+    /**
+     * Looks up a PvMetadataDocument by pvName or alias, distinguishing an absent document (null)
+     * from a failed query (DpException). Checked for the same reason as
+     * {@link #findConfigurationByName}: an unchecked throw here escaped {@link #deletePvMetadata},
+     * which called it without a catch.
+     */
     @Override
-    public PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) {
+    public PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) throws DpException {
 
         final List<PvMetadataDocument> matchingDocuments = new ArrayList<>();
 
@@ -731,9 +737,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     eq(BsonConstants.BSON_KEY_PV_METADATA_ALIASES, pvNameOrAlias));
             mongoCollectionPvMetadata.find(filter).into(matchingDocuments);
         } catch (Exception ex) {
-            final String errorMsg = "findPvMetadataByNameOrAlias: mongo exception: " + ex.getMessage();
-            logger.error(errorMsg);
-            throw new RuntimeException(errorMsg, ex);
+            // log here with the trace: DpException carries only the message onward
+            logger.error("findPvMetadataByNameOrAlias: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying PvMetadataDocument by name or alias: " + ex.getMessage());
         }
 
         return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
@@ -742,7 +748,16 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public MongoDeleteResult deletePvMetadata(String pvNameOrAlias) {
 
-        final PvMetadataDocument existingDocument = findPvMetadataByNameOrAlias(pvNameOrAlias);
+        final PvMetadataDocument existingDocument;
+        try {
+            existingDocument = findPvMetadataByNameOrAlias(pvNameOrAlias);
+        } catch (DpException ex) {
+            // A failed lookup is an infrastructure error, not "no such record": returning the
+            // not-found result below would report a database outage as a rejection to the caller.
+            final String errorMsg = "error looking up PvMetadata for '" + pvNameOrAlias + "': " + ex.getMessage();
+            logger.error("deletePvMetadata lookup error: {}", ex.getMessage(), ex);
+            return MongoDeleteResult.error(errorMsg);
+        }
         if (existingDocument == null) {
             return new MongoDeleteResult(false, "", null);
         }
@@ -858,15 +873,26 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         }
     }
 
+    /**
+     * Looks up a ConfigurationDocument by name, distinguishing an absent document (null) from a
+     * failed query (DpException). See {@link #lookupDataSet} for why the distinction matters.
+     *
+     * <p>This throws a checked {@link DpException} rather than an unchecked exception on purpose.
+     * It previously wrapped failures in a bare {@code RuntimeException}, which slipped past
+     * {@code saveConfigurationActivation}'s {@code catch (MongoException)} and escaped the job
+     * entirely — the queue worker logged it and moved on, so the dispatcher never ran and the
+     * caller's response stream was left open until it timed out. A checked exception makes the
+     * compiler enforce that every caller decides what to do with a query failure.
+     */
     @Override
-    public ConfigurationDocument findConfigurationByName(String configurationName) {
+    public ConfigurationDocument findConfigurationByName(String configurationName) throws DpException {
         try {
             return mongoCollectionConfigurations.find(
                     eq(BsonConstants.BSON_KEY_CONFIGURATION_NAME, configurationName)).first();
         } catch (Exception ex) {
-            final String errorMsg = "findConfigurationByName: mongo exception: " + ex.getMessage();
-            logger.error(errorMsg);
-            throw new RuntimeException(errorMsg, ex);
+            // log here with the trace: DpException carries only the message onward
+            logger.error("findConfigurationByName: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying ConfigurationDocument by name: " + ex.getMessage());
         }
     }
 
@@ -1065,7 +1091,17 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     public MongoSaveResult saveConfigurationActivation(ConfigurationActivationDocument document) {
         try {
             // look up Configuration to get internalCategory
-            final ConfigurationDocument config = findConfigurationByName(document.getConfigurationName());
+            final ConfigurationDocument config;
+            try {
+                config = findConfigurationByName(document.getConfigurationName());
+            } catch (DpException ex) {
+                // A failed lookup is an infrastructure error, not "no such Configuration": reporting
+                // it as the rejection below would invert the caller's retry decision.
+                final String errorMsg = "error looking up Configuration for configurationName '"
+                        + document.getConfigurationName() + "': " + ex.getMessage();
+                logger.error("saveConfigurationActivation lookup error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, null, false);
+            }
             if (config == null) {
                 return MongoSaveResult.reject(
                         "no Configuration found for configurationName: '" + document.getConfigurationName() + "'",
