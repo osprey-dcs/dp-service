@@ -480,6 +480,10 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                                 null, null, null, null));
 
         assertTrue(result.resultStatus.isError);
+        // the referenced configuration not existing is a business rule, so this must be a REJECT
+        // rather than an ERROR: the test's name and the wire status have to agree (issue #235)
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
         assertTrue(result.resultStatus.msg,
                 result.resultStatus.msg.contains("no Configuration found for configurationName"));
         assertNull(result.clientActivationId);
@@ -605,18 +609,18 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
     }
 
     /**
-     * Verifies that the overlap constraint failure arrives categorized as ERROR, not REJECT.
+     * Verifies that the overlap constraint failure arrives categorized as REJECT, not ERROR.
      *
      * The overlap check runs in MongoSyncAnnotationClient after the request has already passed
-     * validation, and reports through the MongoSaveResult error path, which the dispatcher sends as
-     * RESULT_STATUS_ERROR.  So although "an overlapping activation already exists" reads like a
-     * rejection of the request, it is categorized as a service error, and a caller branching on
-     * isReject() will not catch it.  This test pins that behavior: the constraint is a server-side
-     * concern, and whether it ought to be reported as a reject instead is a question about the
-     * service, not about this client status mapping.
+     * validation.  It used to report through the MongoSaveResult error path, so "an overlapping
+     * activation already exists" — which reads like a rejection of the request — reached the caller
+     * as RESULT_STATUS_ERROR and a caller branching on isReject() would not catch it.  Issue #235
+     * gave the result wrappers an isReject flag and classified this site as a business rule, so the
+     * constraint now arrives as a rejection: retrying the identical request is pointless, and the
+     * condition is a correctable mistake rather than a service failure.
      */
     @Test
-    public void testApiResultStatusErrorOnOverlapConstraint() {
+    public void testApiResultStatusRejectOnOverlapConstraint() {
 
         final SaveConfigurationApiResult configResult = annotationClient.saveConfiguration(
                 new AnnotationClient.SaveConfigurationParams(
@@ -644,8 +648,9 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                                 null, null, null, null));
 
         assertTrue(secondResult.resultStatus.isError);
-        assertEquals(ApiResultStatus.ERROR, secondResult.apiResultStatus);
-        assertFalse(secondResult.isReject());
+        assertEquals(ApiResultStatus.REJECT, secondResult.apiResultStatus);
+        assertTrue(secondResult.isReject());
+        assertTrue(secondResult.resultStatus.msg.contains("overlapping activation exists"));
     }
 
 }

@@ -608,6 +608,57 @@ public class ConfigurationIT extends AnnotationIntegrationTestIntermediate {
                 overlap, true, "overlapping activation exists");
     }
 
+    /**
+     * The activation guard on saveConfiguration is a business rule, so a category change blocked by
+     * existing activations must reach the client as REJECT rather than ERROR (issue #235). The
+     * status assertion lives in sendAndVerifySaveConfiguration().
+     */
+    @Test
+    public void testSaveConfigurationRejectCategoryChangeWithActivations() {
+        saveConfigForActivationTests("cat-change-config", "original-cat");
+
+        // an activation makes the configuration's category immutable
+        final AnnotationTestBase.SaveConfigurationActivationParams activation =
+                new AnnotationTestBase.SaveConfigurationActivationParams(
+                        "cat-change-activation", "cat-change-config",
+                        ts(T0_SECONDS, T0_NANOS), ts(T2_SECONDS, T2_NANOS),
+                        null, null, null, null);
+        annotationServiceWrapper.sendAndVerifySaveConfigurationActivation(activation, false, null);
+        assertNotNull(mongoClient.findConfigurationActivationById("cat-change-activation"));
+
+        // re-saving with a different category must be rejected
+        final AnnotationTestBase.SaveConfigurationParams changed = new AnnotationTestBase.SaveConfigurationParams(
+                "cat-change-config", "different-cat", null, null, null, null, null);
+        annotationServiceWrapper.sendAndVerifySaveConfiguration(
+                changed, true, "existing activations must be deleted first");
+
+        // the stored category is unchanged
+        assertEquals("original-cat", mongoClient.findConfiguration("cat-change-config").getCategory());
+    }
+
+    /**
+     * As above, for the delete guard: deleting a configuration that still has activations is a
+     * business rule violation, and must arrive as REJECT rather than ERROR (issue #235).
+     */
+    @Test
+    public void testDeleteConfigurationRejectWithActivations() {
+        saveConfigForActivationTests("delete-guard-config", "delete-guard-cat");
+
+        final AnnotationTestBase.SaveConfigurationActivationParams activation =
+                new AnnotationTestBase.SaveConfigurationActivationParams(
+                        "delete-guard-activation", "delete-guard-config",
+                        ts(T0_SECONDS, T0_NANOS), ts(T2_SECONDS, T2_NANOS),
+                        null, null, null, null);
+        annotationServiceWrapper.sendAndVerifySaveConfigurationActivation(activation, false, null);
+        assertNotNull(mongoClient.findConfigurationActivationById("delete-guard-activation"));
+
+        annotationServiceWrapper.sendAndVerifyDeleteConfiguration(
+                "delete-guard-config", true, "existing activations must be deleted first");
+
+        // the configuration survives the rejected delete
+        assertNotNull(mongoClient.findConfiguration("delete-guard-config"));
+    }
+
     @Test
     public void testSaveConfigurationActivationRejectOverlapSameCategory() {
         saveConfigForActivationTests("cat-config-A", "shared-cat");

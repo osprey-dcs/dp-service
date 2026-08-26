@@ -30,7 +30,10 @@ public class DeleteSampleStatusesDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoCountResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendDeleteSampleStatusesResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendDeleteSampleStatusesResponseError(result.message, responseObserver);
         } else {
             // a delete matching nothing is a success with deletedCount = 0, not an ExceptionalResult

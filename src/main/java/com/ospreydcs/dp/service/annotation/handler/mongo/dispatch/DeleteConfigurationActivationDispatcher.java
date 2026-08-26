@@ -26,9 +26,12 @@ public class DeleteConfigurationActivationDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoDeleteResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendDeleteConfigurationActivationResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendDeleteConfigurationActivationResponseError(result.message, responseObserver);
-        } else if (result.deletedPvName == null) {
+        } else if (result.deletedIdentifier == null) {
             final String keyDescription = switch (request.getKeyCase()) {
                 case CLIENTACTIVATIONID -> "clientActivationId: " + request.getClientActivationId();
                 case COMPOSITEKEY -> "configurationName: " + request.getCompositeKey().getConfigurationName()
@@ -38,7 +41,7 @@ public class DeleteConfigurationActivationDispatcher extends Dispatcher {
             final String msg = "no ConfigurationActivation record found for: " + keyDescription;
             AnnotationServiceImpl.sendDeleteConfigurationActivationResponseReject(msg, responseObserver);
         } else {
-            AnnotationServiceImpl.sendDeleteConfigurationActivationResponseSuccess(result.deletedPvName, responseObserver);
+            AnnotationServiceImpl.sendDeleteConfigurationActivationResponseSuccess(result.deletedIdentifier, responseObserver);
         }
     }
 }

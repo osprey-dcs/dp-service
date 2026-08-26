@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DoubleColumn;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
@@ -58,6 +59,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> dataSetIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -81,6 +84,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public String getDataSetId() {
             if (!dataSetIdList.isEmpty()) {
                 return dataSetIdList.get(0);
@@ -97,6 +105,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -310,6 +319,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -333,6 +344,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public String getAnnotationId() {
             if (!annotationIdList.isEmpty()) {
                 return annotationIdList.get(0);
@@ -349,6 +365,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -1157,6 +1174,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1176,6 +1195,11 @@ public class AnnotationTestBase {
             return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public String getPvName() {
             return pvNameList.isEmpty() ? null : pvNameList.get(0);
         }
@@ -1184,6 +1208,7 @@ public class AnnotationTestBase {
         public void onNext(SavePvMetadataResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -1362,6 +1387,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> pvNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1381,6 +1408,11 @@ public class AnnotationTestBase {
             return errorMessageList.isEmpty() ? "" : errorMessageList.get(0);
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public String getDeletedPvName() {
             return pvNameList.isEmpty() ? null : pvNameList.get(0);
         }
@@ -1389,6 +1421,7 @@ public class AnnotationTestBase {
         public void onNext(DeletePvMetadataResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -1574,6 +1607,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> configNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1582,12 +1617,18 @@ public class AnnotationTestBase {
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         public String getConfigurationName() { return configNameList.isEmpty() ? null : configNameList.get(0); }
 
         @Override
         public void onNext(SaveConfigurationResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     isError.set(true);
                     errorMessageList.add(response.getExceptionalResult().getMessage());
                     finishLatch.countDown();
@@ -1692,6 +1733,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> configNameList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1700,12 +1743,18 @@ public class AnnotationTestBase {
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         public String getConfigurationName() { return configNameList.isEmpty() ? null : configNameList.get(0); }
 
         @Override
         public void onNext(DeleteConfigurationResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     isError.set(true);
                     errorMessageList.add(response.getExceptionalResult().getMessage());
                     finishLatch.countDown();
@@ -1809,6 +1858,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> idList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1817,12 +1868,18 @@ public class AnnotationTestBase {
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         public String getClientActivationId() { return idList.isEmpty() ? null : idList.get(0); }
 
         @Override
         public void onNext(SaveConfigurationActivationResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     isError.set(true);
                     errorMessageList.add(response.getExceptionalResult().getMessage());
                     finishLatch.countDown();
@@ -1931,6 +1988,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<String> idList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -1939,12 +1998,18 @@ public class AnnotationTestBase {
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         public String getClientActivationId() { return idList.isEmpty() ? null : idList.get(0); }
 
         @Override
         public void onNext(DeleteConfigurationActivationResponse response) {
             new Thread(() -> {
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     isError.set(true);
                     errorMessageList.add(response.getExceptionalResult().getMessage());
                     finishLatch.countDown();

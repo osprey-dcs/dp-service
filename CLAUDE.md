@@ -181,11 +181,83 @@ List<String> normalizedTags = new ArrayList<>(
 **Validation in Job.execute():** Call `dispatcher.handleValidationError(new ResultStatus(true, "message"))` and return early for each violation.
 
 **Result wrapper classes:**
-- `MongoSaveResult` — document identifier and error state
-- `MongoDeleteResult` — deleted document identifier and error state
+- `MongoSaveResult` — document identifier, plus `isError`/`isReject` state
+- `MongoDeleteResult` — deleted document identifier, plus `isError`/`isReject` state
+- `MongoCountResult` — affected-item count, plus `isError`/`isReject` state
 - `PvMetadataQueryResult` — `List<PvMetadataDocument>` and `String nextPageToken`
 - `ConfigurationQueryResult` — `List<ConfigurationDocument>` and `String nextPageToken`
 - `ConfigurationActivationQueryResult` — `List<ConfigurationActivationDocument>` and `String nextPageToken`
+
+### Reject vs. Error in the Mongo Client (issue #235)
+
+A failure detected *inside* the Mongo client must be classified, not just flagged. The three result
+wrappers above carry both `isError` and `isReject`, and the `Save*`/`Delete*` dispatchers route
+`isReject` to `sendXxxResponseReject` ahead of the `isError` branch.
+
+- **Reject** — the request violated a business rule: a referenced entity does not exist, or a
+  constraint would be broken. Retrying the identical request is pointless, and the condition is a
+  correctable mistake the caller may want to surface to a user. Build with
+  `MongoSaveResult.reject(...)` / `MongoDeleteResult.reject(...)` / `MongoCountResult.reject(...)`,
+  and log at `debug` — a client mistake is not a service error.
+- **Error** — the service failed to handle an otherwise valid request: a `MongoException`, an
+  unacknowledged write, an unexpected null id. A retry may succeed. Build with the matching
+  `error(...)` factory and log at `error` with the exception object.
+
+`isReject` implies `isError`, so callers reading only `isError` still see every failure. That
+invariant is enforced by construction, not by convention: the constructor that sets `isReject` is
+private on all three wrappers, so `isReject=true, isError=false` cannot be built. The public
+constructor is the legacy non-reject form, retained for the ~50 untouched call sites.
+
+Adding a business rule on these paths without the `reject(...)` factory silently reproduces the
+original bug — the failure reads like a rejection but arrives as `RESULT_STATUS_ERROR`.
+
+`MongoDeleteResult` carries two different not-found outcomes and they are not interchangeable: a
+delete that simply matched nothing returns `isError=false` with a null `deletedIdentifier` (the
+dispatcher converts that to a rejection), while a delete blocked by a business rule uses
+`reject(...)`. `deleteConfiguration` uses both. The field is named `deletedIdentifier` rather than
+`deletedPvName` because the same wrapper serves configuration and activation deletes.
+
+**Do not classify "not found" by a helper that swallows exceptions.** `findDataSet()`/`findAnnotation()`
+return null for both "absent" and "query failed", so a Mongo outage is indistinguishable from a
+genuine not-found. `saveDataSet`/`saveAnnotation` therefore use the private `lookupDataSet()`/
+`lookupAnnotation()` variants, which throw `DpException` on query failure — otherwise a database
+outage would be reported to the caller as "your id does not exist", inverting the retry decision.
+
+**A lookup helper must throw a *checked* exception, not an unchecked one.** `findConfigurationByName()`
+and `findPvMetadataByNameOrAlias()` originally wrapped query failures in a bare `RuntimeException`,
+which escaped both of their in-client callers: it is not a `MongoException`, so it slipped past
+`saveConfigurationActivation`'s `catch (MongoException)`, and `deletePvMetadata` called its helper
+with no catch at all. In both cases `QueueHandlerBase`'s worker caught the escapee, logged it, and
+moved on — so the job never reached `dispatcher.handleResult()` and the caller's response stream
+stayed open until it timed out, with no error ever sent. That is strictly worse than a
+misclassified failure: the caller gets nothing to act on.
+
+Both helpers now throw `DpException`, like the two `lookup*` helpers above, so the compiler forces
+every caller to decide what a query failure means. The regression guard is
+`MongoSyncAnnotationClientLookupFailureTest`, which pins each failing lookup to an error result and
+each genuine absence to the not-found/reject path. Prefer a checked exception for any
+Mongo-client helper whose failure must reach the client, and catch it at the call site into the
+matching `error(...)` result — never let it fall through to a rejection branch, which would invert the
+retry decision.
+
+The guard against regression is on the test side: the `sendAndVerify*` wrappers for the eight
+affected Save/Delete methods assert `RESULT_STATUS_REJECT` in their `expectReject` branch, and the
+observers in `AnnotationTestBase` capture `getExceptionalResultStatus()` to make that possible. Before
+this, `expectReject` asserted only `isError()` and a message substring, so the naming and the wire
+status could — and did — diverge silently.
+
+**Never `upsert(true)` on an `_id` filter.** An upsert filtered by natural key (pvName,
+configurationName, clientActivationId) re-creates the same logical record and is fine — that is what
+`savePvMetadata`, `saveConfiguration`, and `saveConfigurationActivation` do. An upsert filtered by
+`_id` cannot: if the document was deleted between the lookup and the write, Mongo inserts a
+*different* document under a newly generated id, having silently written data the caller never sees.
+`saveDataSet`/`saveAnnotation` therefore replace without upsert and test `getMatchedCount() == 0`,
+reporting that race as a rejection.
+
+Test `matchedCount`, not `modifiedCount`, when checking whether a `replaceOne` found its target.
+`modifiedCount` is also 0 when the replacement leaves the stored document unchanged, which is a
+successful save. (These documents carry an always-refreshed `updatedAt`, so that case does not arise
+today — but the check should not depend on that.)
 
 ### Pagination Pattern
 

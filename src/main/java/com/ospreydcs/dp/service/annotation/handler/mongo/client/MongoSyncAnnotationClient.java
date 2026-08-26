@@ -64,24 +64,38 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
     @Override
     public DataSetDocument findDataSet(String dataSetId) {
+        // Collapses "absent" and "query failed" to null. Callers that must tell the two apart —
+        // saveDataSet, which reports the former as a rejection — use lookupDataSet() instead.
+        try {
+            return lookupDataSet(dataSetId);
+        } catch (DpException ex) {
+            // already logged with its stack trace in lookupDataSet()
+            return null;
+        }
+    }
+
+    /**
+     * Looks up a DataSetDocument by id, distinguishing an absent document (null) from a failed
+     * query (DpException). {@link #findDataSet} cannot make that distinction, so a caller whose
+     * response depends on it — a missing document is a business-rule rejection, a failed query is
+     * an infrastructure error — must use this method.
+     */
+    private DataSetDocument lookupDataSet(String dataSetId) throws DpException {
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has a dataSetId, it already exists in the database.
-        List<DataSetDocument> matchingDocuments = new ArrayList<>();
+        final List<DataSetDocument> matchingDocuments = new ArrayList<>();
 
         // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
         try {
             mongoCollectionDataSets.find(
                     eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(dataSetId))).into(matchingDocuments);
         } catch (Exception ex) {
-            logger.error("findDataSet: mongo exception in find(): {}", ex.getMessage());
-            return null;
+            // log here with the trace: DpException carries only the message onward
+            logger.error("lookupDataSet: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying DataSetDocument by id: " + ex.getMessage());
         }
 
-        if (matchingDocuments.size() > 0) {
-            return matchingDocuments.get(0);
-        } else {
-            return null;
-        }
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
     }
 
     @Override
@@ -92,11 +106,20 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // try to fetch existing document
         DataSetDocument existingDocument = null;
         if (!existingDocumentId.isBlank()) {
-            existingDocument = findDataSet(existingDocumentId);
+            try {
+                existingDocument = lookupDataSet(existingDocumentId);
+            } catch (DpException ex) {
+                // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+                // from the ObjectId constructor. Let the wrapped message carry the specifics.
+                final String errorMsg = "error looking up DataSetDocument by id: " + ex.getMessage();
+                logger.error("saveDataSet lookup error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
+            }
             if (existingDocument == null) {
-                final String errorMsg = "saveDataSet no DataSetDocument found with id: " + existingDocumentId;
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                // the caller referenced a document that does not exist: a rejection, not an error
+                final String rejectMsg = "saveDataSet no DataSetDocument found with id: " + existingDocumentId;
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
         }
 
@@ -134,26 +157,34 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
             UpdateResult result = null;
             try {
-                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
+                // No upsert: the filter is on _id, so an upsert would not re-create this document —
+                // it would insert a *different* one under a new id if the document were deleted
+                // between the lookup above and this write. Matching zero documents is the honest
+                // signal for that race, handled below.
                 final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
-                result = mongoCollectionDataSets.replaceOne(idFilter, dataSetDocument, replaceOptions);
+                result = mongoCollectionDataSets.replaceOne(idFilter, dataSetDocument);
             } catch (MongoException ex) {
                 final String errorMsg = "MongoException replacing DataSetDocument: " + ex.getMessage();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                logger.error("saveDataSet replace error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
             if (!result.wasAcknowledged()) {
                 final String errorMsg = "replaceOne not acknowledged for existing DataSetDocument id: "
                         + existingDocumentId;
                 logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
-            if (result.getModifiedCount() != 1) {
-                final String errorMsg = "replaceOne DataSetDocument unexpected modified count: " + result.getModifiedCount();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            // Test matchedCount, not modifiedCount. With the upsert removed, matching nothing is the
+            // only real failure here: the document was deleted between the lookup above and this
+            // write. modifiedCount additionally reports 0 when the stored document is unchanged by
+            // the replacement, which is a successful save, not a failure.
+            if (result.getMatchedCount() == 0) {
+                final String rejectMsg = "saveDataSet no DataSetDocument found with id: " + existingDocumentId
+                        + " (deleted concurrently)";
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
             return new MongoSaveResult(false, "", existingDocumentId, false);
@@ -248,25 +279,37 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
     @Override
     public AnnotationDocument findAnnotation(String annotationId) {
+        // Collapses "absent" and "query failed" to null. Callers that must tell the two apart —
+        // saveAnnotation, which reports the former as a rejection — use lookupAnnotation() instead.
+        try {
+            return lookupAnnotation(annotationId);
+        } catch (DpException ex) {
+            // already logged with its stack trace in lookupAnnotation()
+            return null;
+        }
+     }
+
+    /**
+     * Looks up an AnnotationDocument by id, distinguishing an absent document (null) from a failed
+     * query (DpException). See {@link #lookupDataSet} for why the distinction matters.
+     */
+    private AnnotationDocument lookupAnnotation(String annotationId) throws DpException {
 
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has an annotationId, it already exists in the database.
-        List<AnnotationDocument> matchingDocuments = new ArrayList<>();
+        final List<AnnotationDocument> matchingDocuments = new ArrayList<>();
 
         // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
         try {
             mongoCollectionAnnotations.find(
                     eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId))).into(matchingDocuments);
         } catch (Exception ex) {
-            logger.error("findAnnotation: mongo exception in find(): {}", ex.getMessage());
-            return null;
+            // log here with the trace: DpException carries only the message onward
+            logger.error("lookupAnnotation: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying AnnotationDocument by id: " + ex.getMessage());
         }
 
-        if (!matchingDocuments.isEmpty()) {
-            return matchingDocuments.get(0);
-        } else {
-            return null;
-        }
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
      }
 
     @Override
@@ -277,11 +320,20 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // try to fetch existing document
         AnnotationDocument existingDocument = null;
         if (!existingDocumentId.isBlank()) {
-            existingDocument = findAnnotation(existingDocumentId);
+            try {
+                existingDocument = lookupAnnotation(existingDocumentId);
+            } catch (DpException ex) {
+                // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+                // from the ObjectId constructor. Let the wrapped message carry the specifics.
+                final String errorMsg = "error looking up AnnotationDocument by id: " + ex.getMessage();
+                logger.error("saveAnnotation lookup error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
+            }
             if (existingDocument == null) {
-                final String errorMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId;
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                // the caller referenced a document that does not exist: a rejection, not an error
+                final String rejectMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId;
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
         }
 
@@ -319,27 +371,34 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
             UpdateResult result = null;
             try {
-                final ReplaceOptions replaceOptions = new ReplaceOptions().upsert(true);
-                final Bson idFilter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(existingDocumentId));
-                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument, replaceOptions);
+                // No upsert: the filter is on _id, so an upsert would not re-create this document —
+                // it would insert a *different* one under a new id if the document were deleted
+                // between the lookup above and this write. Matching zero documents is the honest
+                // signal for that race, handled below.
+                final Bson idFilter = eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(existingDocumentId));
+                result = mongoCollectionAnnotations.replaceOne(idFilter, annotationDocument);
             } catch (MongoException ex) {
                 final String errorMsg = "MongoException replacing AnnotationDocument: " + ex.getMessage();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                logger.error("saveAnnotation replace error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
             if (!result.wasAcknowledged()) {
                 final String errorMsg = "replaceOne not acknowledged for existing AnnotationDocument id: "
                         + existingDocumentId;
                 logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+                return MongoSaveResult.error(errorMsg, existingDocumentId, false);
             }
 
-            if (result.getModifiedCount() != 1) {
-                final String errorMsg =
-                        "replaceOne AnnotationDocument unexpected modified count: " + result.getModifiedCount();
-                logger.error(errorMsg);
-                return new MongoSaveResult(true, errorMsg, existingDocumentId, false);
+            // Test matchedCount, not modifiedCount. With the upsert removed, matching nothing is the
+            // only real failure here: the document was deleted between the lookup above and this
+            // write. modifiedCount additionally reports 0 when the stored document is unchanged by
+            // the replacement, which is a successful save, not a failure.
+            if (result.getMatchedCount() == 0) {
+                final String rejectMsg = "saveAnnotation no AnnotationDocument found with id: " + existingDocumentId
+                        + " (deleted concurrently)";
+                logger.debug(rejectMsg);
+                return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
             return new MongoSaveResult(false, "", existingDocumentId, false);
@@ -661,8 +720,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         return new PvMetadataQueryResult(documents, nextPageToken);
     }
 
+    /**
+     * Looks up a PvMetadataDocument by pvName or alias, distinguishing an absent document (null)
+     * from a failed query (DpException). Checked for the same reason as
+     * {@link #findConfigurationByName}: an unchecked throw here escaped {@link #deletePvMetadata},
+     * which called it without a catch.
+     */
     @Override
-    public PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) {
+    public PvMetadataDocument findPvMetadataByNameOrAlias(String pvNameOrAlias) throws DpException {
 
         final List<PvMetadataDocument> matchingDocuments = new ArrayList<>();
 
@@ -672,9 +737,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     eq(BsonConstants.BSON_KEY_PV_METADATA_ALIASES, pvNameOrAlias));
             mongoCollectionPvMetadata.find(filter).into(matchingDocuments);
         } catch (Exception ex) {
-            final String errorMsg = "findPvMetadataByNameOrAlias: mongo exception: " + ex.getMessage();
-            logger.error(errorMsg);
-            throw new RuntimeException(errorMsg, ex);
+            // log here with the trace: DpException carries only the message onward
+            logger.error("findPvMetadataByNameOrAlias: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying PvMetadataDocument by name or alias: " + ex.getMessage());
         }
 
         return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
@@ -683,7 +748,16 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public MongoDeleteResult deletePvMetadata(String pvNameOrAlias) {
 
-        final PvMetadataDocument existingDocument = findPvMetadataByNameOrAlias(pvNameOrAlias);
+        final PvMetadataDocument existingDocument;
+        try {
+            existingDocument = findPvMetadataByNameOrAlias(pvNameOrAlias);
+        } catch (DpException ex) {
+            // A failed lookup is an infrastructure error, not "no such record": returning the
+            // not-found result below would report a database outage as a rejection to the caller.
+            final String errorMsg = "error looking up PvMetadata for '" + pvNameOrAlias + "': " + ex.getMessage();
+            logger.error("deletePvMetadata lookup error: {}", ex.getMessage(), ex);
+            return MongoDeleteResult.error(errorMsg);
+        }
         if (existingDocument == null) {
             return new MongoDeleteResult(false, "", null);
         }
@@ -748,10 +822,10 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return new MongoSaveResult(true, errorMsg, null, false);
             }
             if (hasActivations) {
-                final String errorMsg = "cannot change category for configurationName '"
+                final String rejectMsg = "cannot change category for configurationName '"
                         + document.getConfigurationName()
                         + "': existing activations must be deleted first";
-                return new MongoSaveResult(true, errorMsg, null, false);
+                return MongoSaveResult.reject(rejectMsg, null, false);
             }
         }
         // NOTE: the activation existence check above and the subsequent replaceOne are not atomic.
@@ -799,15 +873,26 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         }
     }
 
+    /**
+     * Looks up a ConfigurationDocument by name, distinguishing an absent document (null) from a
+     * failed query (DpException). See {@link #lookupDataSet} for why the distinction matters.
+     *
+     * <p>This throws a checked {@link DpException} rather than an unchecked exception on purpose.
+     * It previously wrapped failures in a bare {@code RuntimeException}, which slipped past
+     * {@code saveConfigurationActivation}'s {@code catch (MongoException)} and escaped the job
+     * entirely — the queue worker logged it and moved on, so the dispatcher never ran and the
+     * caller's response stream was left open until it timed out. A checked exception makes the
+     * compiler enforce that every caller decides what to do with a query failure.
+     */
     @Override
-    public ConfigurationDocument findConfigurationByName(String configurationName) {
+    public ConfigurationDocument findConfigurationByName(String configurationName) throws DpException {
         try {
             return mongoCollectionConfigurations.find(
                     eq(BsonConstants.BSON_KEY_CONFIGURATION_NAME, configurationName)).first();
         } catch (Exception ex) {
-            final String errorMsg = "findConfigurationByName: mongo exception: " + ex.getMessage();
-            logger.error(errorMsg);
-            throw new RuntimeException(errorMsg, ex);
+            // log here with the trace: DpException carries only the message onward
+            logger.error("findConfigurationByName: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying ConfigurationDocument by name: " + ex.getMessage());
         }
     }
 
@@ -923,9 +1008,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             return new MongoDeleteResult(true, errorMsg, null);
         }
         if (hasActivations) {
-            final String errorMsg = "cannot delete configurationName '" + configurationName
+            final String rejectMsg = "cannot delete configurationName '" + configurationName
                     + "': existing activations must be deleted first";
-            return new MongoDeleteResult(true, errorMsg, null);
+            return MongoDeleteResult.reject(rejectMsg);
         }
 
         try {
@@ -937,7 +1022,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return new MongoDeleteResult(true, errorMsg, null);
             }
             if (result.getDeletedCount() == 0) {
-                // not found — signal via null deletedPvName
+                // not found — signal via null deletedIdentifier
                 return new MongoDeleteResult(false, "", null);
             }
             return new MongoDeleteResult(false, "", configurationName);
@@ -1006,9 +1091,19 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     public MongoSaveResult saveConfigurationActivation(ConfigurationActivationDocument document) {
         try {
             // look up Configuration to get internalCategory
-            final ConfigurationDocument config = findConfigurationByName(document.getConfigurationName());
+            final ConfigurationDocument config;
+            try {
+                config = findConfigurationByName(document.getConfigurationName());
+            } catch (DpException ex) {
+                // A failed lookup is an infrastructure error, not "no such Configuration": reporting
+                // it as the rejection below would invert the caller's retry decision.
+                final String errorMsg = "error looking up Configuration for configurationName '"
+                        + document.getConfigurationName() + "': " + ex.getMessage();
+                logger.error("saveConfigurationActivation lookup error: {}", ex.getMessage(), ex);
+                return MongoSaveResult.error(errorMsg, null, false);
+            }
             if (config == null) {
-                return new MongoSaveResult(true,
+                return MongoSaveResult.reject(
                         "no Configuration found for configurationName: '" + document.getConfigurationName() + "'",
                         null, false);
             }
@@ -1031,7 +1126,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return new MongoSaveResult(true, errorMsg, null, false);
             }
             if (overlap) {
-                return new MongoSaveResult(true,
+                return MongoSaveResult.reject(
                         "overlapping activation exists for configurationName '"
                                 + document.getConfigurationName() + "' or category '"
                                 + document.getInternalCategory() + "'",

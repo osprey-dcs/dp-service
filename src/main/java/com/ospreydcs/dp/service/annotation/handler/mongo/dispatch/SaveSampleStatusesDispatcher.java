@@ -30,7 +30,10 @@ public class SaveSampleStatusesDispatcher extends Dispatcher {
     }
 
     public void handleResult(MongoCountResult result) {
-        if (result.isError) {
+        if (result.isReject) {
+            // business-rule rejection detected in the mongo client, not an infrastructure failure
+            AnnotationServiceImpl.sendSaveSampleStatusesResponseReject(result.message, responseObserver);
+        } else if (result.isError) {
             AnnotationServiceImpl.sendSaveSampleStatusesResponseError(result.message, responseObserver);
         } else {
             AnnotationServiceImpl.sendSaveSampleStatusesResponseSuccess(result.count, responseObserver);

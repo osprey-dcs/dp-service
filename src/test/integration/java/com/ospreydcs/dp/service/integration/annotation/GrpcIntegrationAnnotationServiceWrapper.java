@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
@@ -144,6 +145,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
@@ -322,6 +327,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertFalse(expectedRejectMessage.isBlank());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
@@ -817,6 +826,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             assertNull(responseObserver.getPvName());
             return null;
@@ -899,6 +912,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             return null;
         }
@@ -1230,6 +1247,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             assertNull(responseObserver.getConfigurationName());
             return null;
@@ -1311,6 +1332,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             return null;
         }
@@ -1365,6 +1390,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             assertNull(responseObserver.getClientActivationId());
             return null;
@@ -1475,6 +1504,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             return null;
         }
@@ -1503,6 +1536,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
             return null;
         }
