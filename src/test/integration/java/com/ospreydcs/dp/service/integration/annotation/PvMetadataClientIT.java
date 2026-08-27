@@ -13,6 +13,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -329,6 +330,172 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         // a blank page token is left unset rather than sent as whitespace
         assertEquals("", request.getPageToken());
+    }
+
+    /**
+     * Verifies that collections CONTAINING blank entries are treated as unsupplied, which is a
+     * distinct case from the empty collections covered above and a materially more dangerous one.
+     *
+     * A blank prefix or contains value survives protobuf serialization as a zero-length repeated
+     * entry, so the criterion passes the server's "at least one of exact/prefix/contains" check.
+     * MongoQueryFilterBuilder.nameMatchFilter() then turns it into the regex "^" + Pattern.quote("")
+     * (or ".*" + Pattern.quote("") + ".*"), both of which match EVERY value.  A caller binding an
+     * unfilled optional UI field would therefore silently retrieve the entire collection rather
+     * than applying no filter — a silent wrong answer, not an error, which is the failure mode this
+     * repo treats as the most serious.
+     */
+    @Test
+    public void testBuildQueryPvMetadataRequestOmitsBlankEntries() {
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(List.of(""), List.of("  "), List.of("\t")),
+                        new AnnotationClient.TextMatch(List.of(" "), List.of(""), List.of("   ")),
+                        List.of("", "  "),
+                        List.of(new AnnotationClient.AttributeCriterion("  ", List.of("v"))),
+                        0,
+                        null);
+
+        final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
+
+        assertEquals(
+                "a criterion built entirely from blank entries must not be emitted",
+                0,
+                request.getCriteriaCount());
+    }
+
+    /**
+     * Verifies that a blank prefix alone does not produce a match-all query.  Asserted separately
+     * from the aggregate test above because this is the single most dangerous input: prior to the
+     * blank filter it emitted a PvNameCriterion whose prefix list held one zero-length entry, which
+     * passed server validation and matched every record.
+     */
+    @Test
+    public void testBuildQueryPvMetadataRequestBlankPrefixEmitsNoCriterion() {
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        null, null, null, 0, null);
+
+        final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
+
+        assertEquals(
+                "a blank prefix must emit no criterion rather than a match-all regex",
+                0,
+                request.getCriteriaCount());
+    }
+
+    /**
+     * Verifies that blank entries are dropped individually while real values in the same list are
+     * preserved — the filter removes blanks, it does not discard the whole criterion when one
+     * entry happens to be blank.
+     */
+    @Test
+    public void testBuildQueryPvMetadataRequestDropsBlanksKeepsRealValues() {
+
+        final List<String> prefixWithBlanks = new ArrayList<>();
+        prefixWithBlanks.add("REAL:PV");
+        prefixWithBlanks.add("");
+        prefixWithBlanks.add("   ");
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(null, prefixWithBlanks, null),
+                        null,
+                        List.of("realtag", "  "),
+                        null,
+                        0,
+                        null);
+
+        final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
+
+        assertEquals(2, request.getCriteriaCount());
+
+        final QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion pvNameCriterion =
+                request.getCriteria(0).getPvNameCriterion();
+        assertEquals(1, pvNameCriterion.getPrefixCount());
+        assertEquals("REAL:PV", pvNameCriterion.getPrefix(0));
+
+        assertEquals(
+                List.of("realtag"),
+                request.getCriteria(1).getTagsCriterion().getValuesList());
+    }
+
+    /**
+     * Verifies that a blank attribute key emits no criterion.  The server validates
+     * AttributesCriterion.key with isBlank() (QueryPvMetadataJob), so forwarding a whitespace key
+     * produces an avoidable REJECT rather than the omitted filter the caller intended.
+     */
+    @Test
+    public void testBuildQueryPvMetadataRequestOmitsBlankAttributeKey() {
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new AnnotationClient.AttributeCriterion("  ", List.of("v")),
+                                new AnnotationClient.AttributeCriterion("realkey", List.of("v"))),
+                        0,
+                        null);
+
+        final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
+
+        assertEquals(1, request.getCriteriaCount());
+        assertEquals("realkey", request.getCriteria(0).getAttributesCriterion().getKey());
+    }
+
+    /**
+     * Verifies that a null entry inside a criterion list is dropped rather than thrown.  Protobuf's
+     * addAll rejects a null element with NullPointerException, so an unfiltered null would surface
+     * to the caller as an exception from the builder instead of a result.
+     */
+    @Test
+    public void testBuildQueryPvMetadataRequestDropsNullEntries() {
+
+        final List<String> exactWithNull = new ArrayList<>();
+        exactWithNull.add(null);
+        exactWithNull.add("REAL:PV");
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(exactWithNull, null, null),
+                        null, null, null, 0, null);
+
+        final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
+
+        assertEquals(1, request.getCriteriaCount());
+        assertEquals(
+                List.of("REAL:PV"),
+                request.getCriteria(0).getPvNameCriterion().getExactList());
+    }
+
+    /**
+     * Verifies end-to-end that a blank-only query is rejected rather than silently returning every
+     * record.  This is the behavioral consequence of the builder change: with the blanks dropped no
+     * criteria remain, and the server rejects an empty criteria list (today — see the note on
+     * testQueryPvMetadataRejectsEmptyCriteria regarding #245).  The essential guarantee, which
+     * holds under #245 as well, is that the caller does NOT receive the whole collection.
+     */
+    @Test
+    public void testQueryPvMetadataBlankCriteriaDoesNotMatchAll() {
+
+        // seed two records so a match-all regression would be visible as a non-empty result
+        savePvsWithTag("blanktest", "BLANK:TEST:PV:1", "BLANK:TEST:PV:2");
+
+        final AnnotationClient.QueryPvMetadataParams params =
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        null, null, null, 0, null);
+
+        final QueryPvMetadataApiResult result = annotationClient.queryPvMetadata(params);
+
+        assertTrue(
+                "a blank-only query must not succeed as a match-all over every record",
+                result.isError());
+        assertTrue(result.isReject());
     }
 
     /**

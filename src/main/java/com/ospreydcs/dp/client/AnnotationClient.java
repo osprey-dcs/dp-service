@@ -1283,8 +1283,16 @@ public class AnnotationClient extends ServiceApiClientBase {
             List<String> prefix,
             List<String> contains
     ) {
+        /**
+         * True when no usable match value is present.  Blank and null entries do not count: a
+         * TextMatch holding only blanks is empty, because those entries are dropped when the
+         * criterion is built (see nonBlank()).  Were this to report false for such a TextMatch,
+         * the builder would emit a criterion with all three lists empty, which the server rejects.
+         */
         public boolean isEmpty() {
-            return isNullOrEmpty(exact) && isNullOrEmpty(prefix) && isNullOrEmpty(contains);
+            return nonBlank(exact).isEmpty()
+                    && nonBlank(prefix).isEmpty()
+                    && nonBlank(contains).isEmpty();
         }
     }
 
@@ -1306,8 +1314,35 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
     }
 
-    private static boolean isNullOrEmpty(List<String> list) {
-        return list == null || list.isEmpty();
+    /**
+     * Returns the non-blank entries of the supplied list, never null.
+     *
+     * Blank entries must never reach the server.  A blank prefix or contains value becomes the
+     * regex "^" + Pattern.quote("") (respectively ".*" + Pattern.quote("") + ".*") in
+     * MongoQueryFilterBuilder.nameMatchFilter(), and both match EVERY value — so a caller binding
+     * an unfilled optional UI field would silently retrieve the entire collection instead of
+     * applying no filter.  That is a silent wrong answer rather than an error, so the blanks are
+     * dropped here rather than being sent and rejected.
+     *
+     * Null entries are dropped for the same reason they cannot be forwarded: protobuf's addAll
+     * throws NullPointerException on a null element.
+     */
+    private static List<String> nonBlank(List<String> list) {
+        if (list == null) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+    }
+
+    /**
+     * True when the supplied attribute key is unusable as a criterion key.  The server validates
+     * AttributesCriterion.key with isBlank(), so a blank key is an avoidable rejection rather than
+     * an omitted filter.
+     */
+    private static boolean isBlankKey(String key) {
+        return key == null || key.isBlank();
     }
 
     public static class QueryPvMetadataResponseObserver
@@ -1538,14 +1573,14 @@ public class AnnotationClient extends ServiceApiClientBase {
         if (params.pvName() != null && !params.pvName().isEmpty()) {
             final QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion.Builder criterionBuilder =
                     QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion.newBuilder();
-            if (!isNullOrEmpty(params.pvName().exact())) {
-                criterionBuilder.addAllExact(params.pvName().exact());
+            if (!nonBlank(params.pvName().exact()).isEmpty()) {
+                criterionBuilder.addAllExact(nonBlank(params.pvName().exact()));
             }
-            if (!isNullOrEmpty(params.pvName().prefix())) {
-                criterionBuilder.addAllPrefix(params.pvName().prefix());
+            if (!nonBlank(params.pvName().prefix()).isEmpty()) {
+                criterionBuilder.addAllPrefix(nonBlank(params.pvName().prefix()));
             }
-            if (!isNullOrEmpty(params.pvName().contains())) {
-                criterionBuilder.addAllContains(params.pvName().contains());
+            if (!nonBlank(params.pvName().contains()).isEmpty()) {
+                criterionBuilder.addAllContains(nonBlank(params.pvName().contains()));
             }
             requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
                     .setPvNameCriterion(criterionBuilder)
@@ -1555,39 +1590,39 @@ public class AnnotationClient extends ServiceApiClientBase {
         if (params.aliases() != null && !params.aliases().isEmpty()) {
             final QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion.Builder criterionBuilder =
                     QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion.newBuilder();
-            if (!isNullOrEmpty(params.aliases().exact())) {
-                criterionBuilder.addAllExact(params.aliases().exact());
+            if (!nonBlank(params.aliases().exact()).isEmpty()) {
+                criterionBuilder.addAllExact(nonBlank(params.aliases().exact()));
             }
-            if (!isNullOrEmpty(params.aliases().prefix())) {
-                criterionBuilder.addAllPrefix(params.aliases().prefix());
+            if (!nonBlank(params.aliases().prefix()).isEmpty()) {
+                criterionBuilder.addAllPrefix(nonBlank(params.aliases().prefix()));
             }
-            if (!isNullOrEmpty(params.aliases().contains())) {
-                criterionBuilder.addAllContains(params.aliases().contains());
+            if (!nonBlank(params.aliases().contains()).isEmpty()) {
+                criterionBuilder.addAllContains(nonBlank(params.aliases().contains()));
             }
             requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
                     .setAliasesCriterion(criterionBuilder)
                     .build());
         }
 
-        if (!isNullOrEmpty(params.tagsAnyOf())) {
+        if (!nonBlank(params.tagsAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
                     .setTagsCriterion(
                             QueryPvMetadataRequest.QueryPvMetadataCriterion.TagsCriterion.newBuilder()
-                                    .addAllValues(params.tagsAnyOf()))
+                                    .addAllValues(nonBlank(params.tagsAnyOf())))
                     .build());
         }
 
         if (params.attributes() != null) {
             for (AttributeCriterion attribute : params.attributes()) {
-                if (attribute == null || attribute.key() == null) {
+                if (attribute == null || isBlankKey(attribute.key())) {
                     continue;
                 }
                 final QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion.Builder
                         criterionBuilder =
                         QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion.newBuilder()
                                 .setKey(attribute.key());
-                if (!isNullOrEmpty(attribute.values())) {
-                    criterionBuilder.addAllValues(attribute.values());
+                if (!nonBlank(attribute.values()).isEmpty()) {
+                    criterionBuilder.addAllValues(nonBlank(attribute.values()));
                 }
                 requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
                         .setAttributesCriterion(criterionBuilder)
@@ -1641,14 +1676,14 @@ public class AnnotationClient extends ServiceApiClientBase {
             final QueryConfigurationsRequest.QueryConfigurationsCriterion.NameCriterion.Builder
                     criterionBuilder =
                     QueryConfigurationsRequest.QueryConfigurationsCriterion.NameCriterion.newBuilder();
-            if (!isNullOrEmpty(params.name().exact())) {
-                criterionBuilder.addAllExact(params.name().exact());
+            if (!nonBlank(params.name().exact()).isEmpty()) {
+                criterionBuilder.addAllExact(nonBlank(params.name().exact()));
             }
-            if (!isNullOrEmpty(params.name().prefix())) {
-                criterionBuilder.addAllPrefix(params.name().prefix());
+            if (!nonBlank(params.name().prefix()).isEmpty()) {
+                criterionBuilder.addAllPrefix(nonBlank(params.name().prefix()));
             }
-            if (!isNullOrEmpty(params.name().contains())) {
-                criterionBuilder.addAllContains(params.name().contains());
+            if (!nonBlank(params.name().contains()).isEmpty()) {
+                criterionBuilder.addAllContains(nonBlank(params.name().contains()));
             }
             requestBuilder.addCriteria(
                     QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
@@ -1656,29 +1691,29 @@ public class AnnotationClient extends ServiceApiClientBase {
                             .build());
         }
 
-        if (!isNullOrEmpty(params.categoryAnyOf())) {
+        if (!nonBlank(params.categoryAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
                             .setCategoryCriterion(
                                     QueryConfigurationsRequest.QueryConfigurationsCriterion
                                             .CategoryCriterion.newBuilder()
-                                            .addAllValues(params.categoryAnyOf()))
+                                            .addAllValues(nonBlank(params.categoryAnyOf())))
                             .build());
         }
 
-        if (!isNullOrEmpty(params.tagsAnyOf())) {
+        if (!nonBlank(params.tagsAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
                             .setTagsCriterion(
                                     QueryConfigurationsRequest.QueryConfigurationsCriterion
                                             .TagsCriterion.newBuilder()
-                                            .addAllValues(params.tagsAnyOf()))
+                                            .addAllValues(nonBlank(params.tagsAnyOf())))
                             .build());
         }
 
         if (params.attributes() != null) {
             for (AttributeCriterion attribute : params.attributes()) {
-                if (attribute == null || attribute.key() == null) {
+                if (attribute == null || isBlankKey(attribute.key())) {
                     continue;
                 }
                 final QueryConfigurationsRequest.QueryConfigurationsCriterion.AttributesCriterion.Builder
@@ -1686,8 +1721,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                         QueryConfigurationsRequest.QueryConfigurationsCriterion.AttributesCriterion
                                 .newBuilder()
                                 .setKey(attribute.key());
-                if (!isNullOrEmpty(attribute.values())) {
-                    criterionBuilder.addAllValues(attribute.values());
+                if (!nonBlank(attribute.values()).isEmpty()) {
+                    criterionBuilder.addAllValues(nonBlank(attribute.values()));
                 }
                 requestBuilder.addCriteria(
                         QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
@@ -1696,13 +1731,13 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
         }
 
-        if (!isNullOrEmpty(params.parentAnyOf())) {
+        if (!nonBlank(params.parentAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
                             .setParentCriterion(
                                     QueryConfigurationsRequest.QueryConfigurationsCriterion
                                             .ParentCriterion.newBuilder()
-                                            .addAllValues(params.parentAnyOf()))
+                                            .addAllValues(nonBlank(params.parentAnyOf())))
                             .build());
         }
 
@@ -1774,53 +1809,53 @@ public class AnnotationClient extends ServiceApiClientBase {
                             .build());
         }
 
-        if (!isNullOrEmpty(params.configurationNameAnyOf())) {
+        if (!nonBlank(params.configurationNameAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
                             .setConfigurationNameCriterion(
                                     QueryConfigurationActivationsRequest
                                             .QueryConfigurationActivationsCriterion
                                             .ConfigurationNameCriterion.newBuilder()
-                                            .addAllValues(params.configurationNameAnyOf()))
+                                            .addAllValues(nonBlank(params.configurationNameAnyOf())))
                             .build());
         }
 
-        if (!isNullOrEmpty(params.clientActivationIdAnyOf())) {
+        if (!nonBlank(params.clientActivationIdAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
                             .setClientActivationIdCriterion(
                                     QueryConfigurationActivationsRequest
                                             .QueryConfigurationActivationsCriterion
                                             .ClientActivationIdCriterion.newBuilder()
-                                            .addAllValues(params.clientActivationIdAnyOf()))
+                                            .addAllValues(nonBlank(params.clientActivationIdAnyOf())))
                             .build());
         }
 
-        if (!isNullOrEmpty(params.categoryAnyOf())) {
+        if (!nonBlank(params.categoryAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
                             .setCategoryCriterion(
                                     QueryConfigurationActivationsRequest
                                             .QueryConfigurationActivationsCriterion
                                             .CategoryCriterion.newBuilder()
-                                            .addAllValues(params.categoryAnyOf()))
+                                            .addAllValues(nonBlank(params.categoryAnyOf())))
                             .build());
         }
 
-        if (!isNullOrEmpty(params.tagsAnyOf())) {
+        if (!nonBlank(params.tagsAnyOf()).isEmpty()) {
             requestBuilder.addCriteria(
                     QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
                             .setTagsCriterion(
                                     QueryConfigurationActivationsRequest
                                             .QueryConfigurationActivationsCriterion
                                             .TagsCriterion.newBuilder()
-                                            .addAllValues(params.tagsAnyOf()))
+                                            .addAllValues(nonBlank(params.tagsAnyOf())))
                             .build());
         }
 
         if (params.attributes() != null) {
             for (AttributeCriterion attribute : params.attributes()) {
-                if (attribute == null || attribute.key() == null) {
+                if (attribute == null || isBlankKey(attribute.key())) {
                     continue;
                 }
                 final QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion
@@ -1828,8 +1863,8 @@ public class AnnotationClient extends ServiceApiClientBase {
                         QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion
                                 .AttributesCriterion.newBuilder()
                                 .setKey(attribute.key());
-                if (!isNullOrEmpty(attribute.values())) {
-                    criterionBuilder.addAllValues(attribute.values());
+                if (!nonBlank(attribute.values()).isEmpty()) {
+                    criterionBuilder.addAllValues(nonBlank(attribute.values()));
                 }
                 requestBuilder.addCriteria(
                         QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion

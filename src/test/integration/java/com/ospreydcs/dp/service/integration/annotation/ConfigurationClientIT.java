@@ -703,6 +703,157 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
     }
 
     /**
+     * Verifies that collections CONTAINING blank entries are treated as unsupplied, a distinct and
+     * more dangerous case than the empty collections covered above.
+     *
+     * A blank prefix or contains value survives protobuf serialization as a zero-length repeated
+     * entry, so the NameCriterion passes the server's "at least one of exact/prefix/contains"
+     * check, and MongoQueryFilterBuilder.nameMatchFilter() turns it into a match-all regex.  A
+     * caller binding an unfilled optional UI field would silently retrieve every configuration
+     * rather than applying no filter.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestOmitsBlankEntries() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(List.of(""), List.of("  "), List.of("\t")),
+                        List.of("", "  "),
+                        List.of(" "),
+                        List.of(new AnnotationClient.AttributeCriterion("  ", List.of("v"))),
+                        List.of(""),
+                        0,
+                        null));
+
+        assertEquals(
+                "criteria built entirely from blank entries must not be emitted",
+                0,
+                request.getCriteriaCount());
+    }
+
+    /**
+     * Verifies that a blank prefix alone does not produce a match-all query — the single most
+     * dangerous input, asserted separately from the aggregate test above.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestBlankPrefixEmitsNoCriterion() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        null, null, null, null, 0, null));
+
+        assertEquals(
+                "a blank prefix must emit no criterion rather than a match-all regex",
+                0,
+                request.getCriteriaCount());
+    }
+
+    /**
+     * Verifies that blank entries are dropped individually while real values in the same list
+     * survive.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestDropsBlanksKeepsRealValues() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(null, List.of("cfg-", "", "  "), null),
+                        List.of("beamline", ""),
+                        null, null, null, 0, null));
+
+        assertEquals(2, request.getCriteriaCount());
+
+        final QueryConfigurationsRequest.QueryConfigurationsCriterion.NameCriterion nameCriterion =
+                request.getCriteria(0).getNameCriterion();
+        assertEquals(1, nameCriterion.getPrefixCount());
+        assertEquals("cfg-", nameCriterion.getPrefix(0));
+
+        assertEquals(
+                List.of("beamline"),
+                request.getCriteria(1).getCategoryCriterion().getValuesList());
+    }
+
+    /**
+     * Verifies that a blank attribute key emits no criterion.  QueryConfigurationsJob validates
+     * AttributesCriterion.key with isBlank(), so a whitespace key would otherwise produce an
+     * avoidable REJECT instead of the omitted filter the caller intended.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestOmitsBlankAttributeKey() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new AnnotationClient.AttributeCriterion("  ", List.of("v")),
+                                new AnnotationClient.AttributeCriterion("realkey", List.of("v"))),
+                        null,
+                        0,
+                        null));
+
+        assertEquals(1, request.getCriteriaCount());
+        assertEquals("realkey", request.getCriteria(0).getAttributesCriterion().getKey());
+    }
+
+    /**
+     * Verifies the same blank-entry handling for queryConfigurationActivations, whose criteria are
+     * all exact-match value lists plus an attribute key validated with isBlank() by
+     * QueryConfigurationActivationsJob.
+     */
+    @Test
+    public void testBuildQueryActivationsRequestOmitsBlankEntries() {
+
+        final QueryConfigurationActivationsRequest request =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null,
+                                null,
+                                null,
+                                List.of("", "  "),
+                                List.of(" "),
+                                List.of(""),
+                                List.of("  "),
+                                List.of(new AnnotationClient.AttributeCriterion(" ", null)),
+                                0,
+                                null));
+
+        assertEquals(
+                "criteria built entirely from blank entries must not be emitted",
+                0,
+                request.getCriteriaCount());
+    }
+
+    /**
+     * Verifies that queryConfigurationActivations drops blank entries individually while retaining
+     * real values in the same list.
+     */
+    @Test
+    public void testBuildQueryActivationsRequestDropsBlanksKeepsRealValues() {
+
+        final QueryConfigurationActivationsRequest request =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null,
+                                null,
+                                null,
+                                List.of("cfg-real", "", "  "),
+                                null,
+                                null,
+                                null,
+                                null,
+                                0,
+                                null));
+
+        assertEquals(1, request.getCriteriaCount());
+        assertEquals(
+                List.of("cfg-real"),
+                request.getCriteria(0).getConfigurationNameCriterion().getValuesList());
+    }
+
+    /**
      * Verifies that every supplied field maps to the right criterion type with the right values.
      */
     @Test

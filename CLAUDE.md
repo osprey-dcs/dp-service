@@ -319,6 +319,33 @@ Build a compound `Filters.and()` from criteria list:
 
 Multiple match types within one criterion are combined with `Filters.or()`.
 
+### Blank Criterion Values Must Never Reach the Server (issue #243)
+
+A blank string in a `prefix` or `contains` criterion is a **silent match-all**, not a no-op. The
+filter builder produces `"^" + Pattern.quote("")` and `".*" + Pattern.quote("") + ".*"`, and both
+match every value — so a client that forwards an unfilled optional UI field retrieves the entire
+collection while appearing to have applied a filter. The empty string survives protobuf
+serialization as a zero-length repeated entry, so it also satisfies the server's "at least one of
+exact/prefix/contains" check and slips past the empty-criteria rejection by making the criteria list
+non-empty.
+
+Like the #197 and #207 invariants, the failure mode is a **wrong answer rather than an error**, which
+is why the guard belongs at the point where a criterion is built rather than in a validator.
+
+`AnnotationClient.nonBlank()` is the single source for this: it drops blank *and* null entries (the
+latter because protobuf's `addAll` throws `NullPointerException` on a null element), and every
+criterion list is both guarded and populated through it. A criterion whose entries are all blank is
+therefore omitted entirely rather than emitted empty. `TextMatch.isEmpty()` is defined in the same
+terms — were it to use a plain `isEmpty()` on the lists, a blank-only `TextMatch` would pass the
+guard and emit a criterion with all three lists empty, which the server rejects.
+
+Checking a criterion list with a plain null/empty test reintroduces the bug. There is deliberately no
+weaker helper in `AnnotationClient` to reach for.
+
+Attribute keys have a milder version of the same problem: the three `Query*Job` classes validate
+`AttributesCriterion.key` with `isBlank()`, so a whitespace key is an avoidable `REJECT` rather than
+an omitted filter. `isBlankKey()` guards those three sites.
+
 ### Overlap Constraint Pattern (ConfigurationActivation)
 
 `saveConfigurationActivation` enforces that no two activations for the same `configurationName` or `internalCategory` have overlapping time intervals. The `overlapExists()` method in `MongoSyncAnnotationClient` runs two `countDocuments()` queries (one per dimension). The overlap condition for an existing record [S, E] against a new interval [newS, newE] is:
