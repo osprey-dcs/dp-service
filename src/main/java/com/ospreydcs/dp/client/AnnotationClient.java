@@ -1249,17 +1249,899 @@ public class AnnotationClient extends ServiceApiClientBase {
      * all of the single-record getters in this API: an empty collection is a normal answer, but a
      * missing singleton is a rejected request.
      *
-     * The server does distinguish a rejection (RESULT_STATUS_REJECT) from a genuine failure
-     * (RESULT_STATUS_ERROR), but ApiResultBase currently flattens both to resultStatus.isError, so
-     * a caller using this method as an existence check cannot presently tell "does not exist" from
-     * "the service is unreachable" without inspecting resultStatus.msg.  Surfacing the underlying
-     * status is tracked separately.
+     * A caller using this method as an existence check should branch on isReject() rather than on
+     * isError(): a missing record arrives as ApiResultStatus.REJECT, while a backend failure arrives
+     * as ApiResultStatus.ERROR.  Note that a malformed request is also rejected, so REJECT does not
+     * by itself prove the record is absent (see ApiResultStatus.REJECT); validate the request before
+     * reading a rejection that way.
      */
     public GetConfigurationApiResult getConfiguration(
             String configurationName
     ) {
         final GetConfigurationRequest request = buildGetConfigurationRequest(configurationName);
         return sendGetConfiguration(request);
+    }
+
+    // =========================================================
+    // PV Metadata and Machine Configuration query/get API
+    // =========================================================
+
+    /**
+     * Matches a text field by exact value, prefix, or substring.  Mirrors the proto
+     * PvNameCriterion / AliasesCriterion / configuration NameCriterion messages, all three of which
+     * have the same shape.
+     *
+     * All values across all three lists are ORed: a record matches if it satisfies any supplied
+     * value from any list.  A null list is treated as empty.  A TextMatch with all three lists
+     * null or empty contributes no criterion to the request.
+     *
+     * To require that a name satisfy two matches simultaneously (AND), build the request directly
+     * with two separate criterion entries and pass it to the corresponding sendXxx() method.
+     */
+    public record TextMatch(
+            List<String> exact,
+            List<String> prefix,
+            List<String> contains
+    ) {
+        public boolean isEmpty() {
+            return isNullOrEmpty(exact) && isNullOrEmpty(prefix) && isNullOrEmpty(contains);
+        }
+    }
+
+    /**
+     * Matches records by attribute key and optional value(s).  Mirrors the proto
+     * AttributesCriterion message.
+     *
+     * key is required.  values is optional: when non-empty, the record must carry the key with one
+     * of the specified values (ORed); when null or empty, any record possessing the key matches
+     * regardless of its value (key-only existence search).
+     *
+     * Note that this cannot be expressed as a Map<String,String> — hence the absence of
+     * AttributesUtility here — because a map can represent neither multiple values for one key nor
+     * a key-only search.
+     */
+    public record AttributeCriterion(
+            String key,
+            List<String> values
+    ) {
+    }
+
+    private static boolean isNullOrEmpty(List<String> list) {
+        return list == null || list.isEmpty();
+    }
+
+    public static class QueryPvMetadataResponseObserver
+            extends ApiResponseObserverBase<QueryPvMetadataResponse> {
+
+        private final List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> pvMetadataList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
+
+        @Override
+        protected boolean hasExceptionalResult(QueryPvMetadataResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(QueryPvMetadataResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(QueryPvMetadataResponse response) {
+
+            // note the accessor is getPvMetadataResult(), not getQueryPvMetadataResult(), unlike
+            // the two configuration query responses
+            if (!response.hasPvMetadataResult()) {
+                recordFailure(observerName() + " response does not contain PvMetadataResult");
+                return false;
+            }
+
+            pvMetadataList.addAll(response.getPvMetadataResult().getPvMetadataList());
+            nextPageToken.set(response.getPvMetadataResult().getNextPageToken());
+            return true;
+        }
+
+        public List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> getPvMetadata() {
+            return pvMetadataList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
+        }
+    }
+
+    public static class GetPvMetadataResponseObserver
+            extends ApiResponseObserverBase<GetPvMetadataResponse> {
+
+        private final List<com.ospreydcs.dp.grpc.v1.common.PvMetadata> pvMetadataList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(GetPvMetadataResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetPvMetadataResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(GetPvMetadataResponse response) {
+
+            if (!response.hasGetPvMetadataResult()) {
+                recordFailure(observerName() + " response does not contain GetPvMetadataResult");
+                return false;
+            }
+
+            pvMetadataList.add(response.getGetPvMetadataResult().getPvMetadata());
+            return true;
+        }
+
+        public com.ospreydcs.dp.grpc.v1.common.PvMetadata getPvMetadata() {
+            if (pvMetadataList.isEmpty()) {
+                return null;
+            } else {
+                return pvMetadataList.get(0);
+            }
+        }
+    }
+
+    public static class QueryConfigurationsResponseObserver
+            extends ApiResponseObserverBase<QueryConfigurationsResponse> {
+
+        private final List<com.ospreydcs.dp.grpc.v1.common.Configuration> configurationList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
+
+        @Override
+        protected boolean hasExceptionalResult(QueryConfigurationsResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(QueryConfigurationsResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(QueryConfigurationsResponse response) {
+
+            if (!response.hasQueryConfigurationsResult()) {
+                recordFailure(observerName() + " response does not contain QueryConfigurationsResult");
+                return false;
+            }
+
+            configurationList.addAll(response.getQueryConfigurationsResult().getConfigurationsList());
+            nextPageToken.set(response.getQueryConfigurationsResult().getNextPageToken());
+            return true;
+        }
+
+        public List<com.ospreydcs.dp.grpc.v1.common.Configuration> getConfigurations() {
+            return configurationList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
+        }
+    }
+
+    public static class QueryConfigurationActivationsResponseObserver
+            extends ApiResponseObserverBase<QueryConfigurationActivationsResponse> {
+
+        private final List<com.ospreydcs.dp.grpc.v1.common.ConfigurationActivation> activationList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
+
+        @Override
+        protected boolean hasExceptionalResult(QueryConfigurationActivationsResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(QueryConfigurationActivationsResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(QueryConfigurationActivationsResponse response) {
+
+            if (!response.hasQueryConfigurationActivationsResult()) {
+                recordFailure(observerName()
+                        + " response does not contain QueryConfigurationActivationsResult");
+                return false;
+            }
+
+            activationList.addAll(
+                    response.getQueryConfigurationActivationsResult().getConfigurationActivationsList());
+            nextPageToken.set(response.getQueryConfigurationActivationsResult().getNextPageToken());
+            return true;
+        }
+
+        public List<com.ospreydcs.dp.grpc.v1.common.ConfigurationActivation> getConfigurationActivations() {
+            return activationList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
+        }
+    }
+
+    public static class GetConfigurationActivationResponseObserver
+            extends ApiResponseObserverBase<GetConfigurationActivationResponse> {
+
+        private final List<com.ospreydcs.dp.grpc.v1.common.ConfigurationActivation> activationList =
+                Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(GetConfigurationActivationResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetConfigurationActivationResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(GetConfigurationActivationResponse response) {
+
+            if (!response.hasGetConfigurationActivationResult()) {
+                recordFailure(observerName()
+                        + " response does not contain GetConfigurationActivationResult");
+                return false;
+            }
+
+            activationList.add(
+                    response.getGetConfigurationActivationResult().getConfigurationActivation());
+            return true;
+        }
+
+        public com.ospreydcs.dp.grpc.v1.common.ConfigurationActivation getConfigurationActivation() {
+            if (activationList.isEmpty()) {
+                return null;
+            } else {
+                return activationList.get(0);
+            }
+        }
+    }
+
+    /**
+     * Parameters for queryPvMetadata().  Every field is optional and a null or empty field
+     * contributes no criterion to the request.
+     *
+     * Criteria in the generated request are ANDed; values within a single criterion are ORed.
+     * tagsAnyOf therefore matches a record carrying ANY of the listed tags — it is named that way
+     * to distinguish it from SavePvMetadataParams.tags(), which is the record's own tag list.
+     *
+     * limit is the page size and pageToken continues a query from a prior result's nextPageToken.
+     */
+    public record QueryPvMetadataParams(
+            TextMatch pvName,
+            TextMatch aliases,
+            List<String> tagsAnyOf,
+            List<AttributeCriterion> attributes,
+            int limit,
+            String pageToken
+    ) {
+    }
+
+    public static QueryPvMetadataRequest buildQueryPvMetadataRequest(QueryPvMetadataParams params) {
+
+        final QueryPvMetadataRequest.Builder requestBuilder = QueryPvMetadataRequest.newBuilder();
+
+        // A null or empty field contributes NO criterion, rather than an empty one.  The server
+        // rejects an empty TagsCriterion.values, so emitting an empty criterion would turn an
+        // omitted filter into a rejected request.
+
+        if (params.pvName() != null && !params.pvName().isEmpty()) {
+            final QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion.Builder criterionBuilder =
+                    QueryPvMetadataRequest.QueryPvMetadataCriterion.PvNameCriterion.newBuilder();
+            if (!isNullOrEmpty(params.pvName().exact())) {
+                criterionBuilder.addAllExact(params.pvName().exact());
+            }
+            if (!isNullOrEmpty(params.pvName().prefix())) {
+                criterionBuilder.addAllPrefix(params.pvName().prefix());
+            }
+            if (!isNullOrEmpty(params.pvName().contains())) {
+                criterionBuilder.addAllContains(params.pvName().contains());
+            }
+            requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
+                    .setPvNameCriterion(criterionBuilder)
+                    .build());
+        }
+
+        if (params.aliases() != null && !params.aliases().isEmpty()) {
+            final QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion.Builder criterionBuilder =
+                    QueryPvMetadataRequest.QueryPvMetadataCriterion.AliasesCriterion.newBuilder();
+            if (!isNullOrEmpty(params.aliases().exact())) {
+                criterionBuilder.addAllExact(params.aliases().exact());
+            }
+            if (!isNullOrEmpty(params.aliases().prefix())) {
+                criterionBuilder.addAllPrefix(params.aliases().prefix());
+            }
+            if (!isNullOrEmpty(params.aliases().contains())) {
+                criterionBuilder.addAllContains(params.aliases().contains());
+            }
+            requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
+                    .setAliasesCriterion(criterionBuilder)
+                    .build());
+        }
+
+        if (!isNullOrEmpty(params.tagsAnyOf())) {
+            requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
+                    .setTagsCriterion(
+                            QueryPvMetadataRequest.QueryPvMetadataCriterion.TagsCriterion.newBuilder()
+                                    .addAllValues(params.tagsAnyOf()))
+                    .build());
+        }
+
+        if (params.attributes() != null) {
+            for (AttributeCriterion attribute : params.attributes()) {
+                if (attribute == null || attribute.key() == null) {
+                    continue;
+                }
+                final QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion.Builder
+                        criterionBuilder =
+                        QueryPvMetadataRequest.QueryPvMetadataCriterion.AttributesCriterion.newBuilder()
+                                .setKey(attribute.key());
+                if (!isNullOrEmpty(attribute.values())) {
+                    criterionBuilder.addAllValues(attribute.values());
+                }
+                requestBuilder.addCriteria(QueryPvMetadataRequest.QueryPvMetadataCriterion.newBuilder()
+                        .setAttributesCriterion(criterionBuilder)
+                        .build());
+            }
+        }
+
+        if (params.limit() > 0) {
+            requestBuilder.setLimit(params.limit());
+        }
+        if (params.pageToken() != null && !params.pageToken().isBlank()) {
+            requestBuilder.setPageToken(params.pageToken());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetPvMetadataRequest buildGetPvMetadataRequest(String pvNameOrAlias) {
+
+        final GetPvMetadataRequest.Builder requestBuilder = GetPvMetadataRequest.newBuilder();
+
+        if (pvNameOrAlias != null) {
+            requestBuilder.setPvNameOrAlias(pvNameOrAlias);
+        }
+
+        return requestBuilder.build();
+    }
+
+    /**
+     * Parameters for queryConfigurations().  Every field is optional and a null or empty field
+     * contributes no criterion to the request.  Criteria are ANDed; values within a criterion are
+     * ORed.  See QueryPvMetadataParams for the tagsAnyOf naming rationale.
+     */
+    public record QueryConfigurationsParams(
+            TextMatch name,
+            List<String> categoryAnyOf,
+            List<String> tagsAnyOf,
+            List<AttributeCriterion> attributes,
+            List<String> parentAnyOf,
+            int limit,
+            String pageToken
+    ) {
+    }
+
+    public static QueryConfigurationsRequest buildQueryConfigurationsRequest(
+            QueryConfigurationsParams params
+    ) {
+        final QueryConfigurationsRequest.Builder requestBuilder = QueryConfigurationsRequest.newBuilder();
+
+        if (params.name() != null && !params.name().isEmpty()) {
+            final QueryConfigurationsRequest.QueryConfigurationsCriterion.NameCriterion.Builder
+                    criterionBuilder =
+                    QueryConfigurationsRequest.QueryConfigurationsCriterion.NameCriterion.newBuilder();
+            if (!isNullOrEmpty(params.name().exact())) {
+                criterionBuilder.addAllExact(params.name().exact());
+            }
+            if (!isNullOrEmpty(params.name().prefix())) {
+                criterionBuilder.addAllPrefix(params.name().prefix());
+            }
+            if (!isNullOrEmpty(params.name().contains())) {
+                criterionBuilder.addAllContains(params.name().contains());
+            }
+            requestBuilder.addCriteria(
+                    QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
+                            .setNameCriterion(criterionBuilder)
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.categoryAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
+                            .setCategoryCriterion(
+                                    QueryConfigurationsRequest.QueryConfigurationsCriterion
+                                            .CategoryCriterion.newBuilder()
+                                            .addAllValues(params.categoryAnyOf()))
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.tagsAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryConfigurationsRequest.QueryConfigurationsCriterion
+                                            .TagsCriterion.newBuilder()
+                                            .addAllValues(params.tagsAnyOf()))
+                            .build());
+        }
+
+        if (params.attributes() != null) {
+            for (AttributeCriterion attribute : params.attributes()) {
+                if (attribute == null || attribute.key() == null) {
+                    continue;
+                }
+                final QueryConfigurationsRequest.QueryConfigurationsCriterion.AttributesCriterion.Builder
+                        criterionBuilder =
+                        QueryConfigurationsRequest.QueryConfigurationsCriterion.AttributesCriterion
+                                .newBuilder()
+                                .setKey(attribute.key());
+                if (!isNullOrEmpty(attribute.values())) {
+                    criterionBuilder.addAllValues(attribute.values());
+                }
+                requestBuilder.addCriteria(
+                        QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
+                                .setAttributesCriterion(criterionBuilder)
+                                .build());
+            }
+        }
+
+        if (!isNullOrEmpty(params.parentAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationsRequest.QueryConfigurationsCriterion.newBuilder()
+                            .setParentCriterion(
+                                    QueryConfigurationsRequest.QueryConfigurationsCriterion
+                                            .ParentCriterion.newBuilder()
+                                            .addAllValues(params.parentAnyOf()))
+                            .build());
+        }
+
+        if (params.limit() > 0) {
+            requestBuilder.setLimit(params.limit());
+        }
+        if (params.pageToken() != null && !params.pageToken().isBlank()) {
+            requestBuilder.setPageToken(params.pageToken());
+        }
+
+        return requestBuilder.build();
+    }
+
+    /**
+     * Parameters for queryConfigurationActivations().  Every field is optional and a null or empty
+     * field contributes no criterion to the request.  Criteria are ANDed; values within a criterion
+     * are ORed.
+     *
+     * activeAt selects activations in effect at a point in time.  rangeStart and rangeEnd together
+     * select activations overlapping a window; BOTH are required — supplying only one emits no
+     * criterion at all, because the server rejects a TimeRangeCriterion with a missing bound.
+     *
+     * Note the server's zero-timestamp idiom: a Timestamp with epochSeconds == 0 and
+     * nanoseconds == 0 is treated as unspecified and rejected, so a legitimate query at Unix epoch
+     * 0 cannot be expressed.
+     */
+    public record QueryConfigurationActivationsParams(
+            Timestamp activeAt,
+            Timestamp rangeStart,
+            Timestamp rangeEnd,
+            List<String> configurationNameAnyOf,
+            List<String> clientActivationIdAnyOf,
+            List<String> categoryAnyOf,
+            List<String> tagsAnyOf,
+            List<AttributeCriterion> attributes,
+            int limit,
+            String pageToken
+    ) {
+    }
+
+    public static QueryConfigurationActivationsRequest buildQueryConfigurationActivationsRequest(
+            QueryConfigurationActivationsParams params
+    ) {
+        final QueryConfigurationActivationsRequest.Builder requestBuilder =
+                QueryConfigurationActivationsRequest.newBuilder();
+
+        if (params.activeAt() != null) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setTimestampCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .TimestampCriterion.newBuilder()
+                                            .setTimestamp(params.activeAt()))
+                            .build());
+        }
+
+        // TimeRangeCriterion requires both bounds; a partial criterion would be rejected by the
+        // server, so emit nothing unless both are supplied.
+        if (params.rangeStart() != null && params.rangeEnd() != null) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setTimeRangeCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .TimeRangeCriterion.newBuilder()
+                                            .setStartTime(params.rangeStart())
+                                            .setEndTime(params.rangeEnd()))
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.configurationNameAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setConfigurationNameCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .ConfigurationNameCriterion.newBuilder()
+                                            .addAllValues(params.configurationNameAnyOf()))
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.clientActivationIdAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setClientActivationIdCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .ClientActivationIdCriterion.newBuilder()
+                                            .addAllValues(params.clientActivationIdAnyOf()))
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.categoryAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setCategoryCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .CategoryCriterion.newBuilder()
+                                            .addAllValues(params.categoryAnyOf()))
+                            .build());
+        }
+
+        if (!isNullOrEmpty(params.tagsAnyOf())) {
+            requestBuilder.addCriteria(
+                    QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryConfigurationActivationsRequest
+                                            .QueryConfigurationActivationsCriterion
+                                            .TagsCriterion.newBuilder()
+                                            .addAllValues(params.tagsAnyOf()))
+                            .build());
+        }
+
+        if (params.attributes() != null) {
+            for (AttributeCriterion attribute : params.attributes()) {
+                if (attribute == null || attribute.key() == null) {
+                    continue;
+                }
+                final QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion
+                        .AttributesCriterion.Builder criterionBuilder =
+                        QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion
+                                .AttributesCriterion.newBuilder()
+                                .setKey(attribute.key());
+                if (!isNullOrEmpty(attribute.values())) {
+                    criterionBuilder.addAllValues(attribute.values());
+                }
+                requestBuilder.addCriteria(
+                        QueryConfigurationActivationsRequest.QueryConfigurationActivationsCriterion
+                                .newBuilder()
+                                .setAttributesCriterion(criterionBuilder)
+                                .build());
+            }
+        }
+
+        if (params.limit() > 0) {
+            requestBuilder.setLimit(params.limit());
+        }
+        if (params.pageToken() != null && !params.pageToken().isBlank()) {
+            requestBuilder.setPageToken(params.pageToken());
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetConfigurationActivationRequest buildGetConfigurationActivationByIdRequest(
+            String clientActivationId
+    ) {
+        final GetConfigurationActivationRequest.Builder requestBuilder =
+                GetConfigurationActivationRequest.newBuilder();
+
+        if (clientActivationId != null) {
+            requestBuilder.setClientActivationId(clientActivationId);
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetConfigurationActivationRequest buildGetConfigurationActivationByCompositeKeyRequest(
+            String configurationName,
+            Timestamp startTime
+    ) {
+        final GetConfigurationActivationRequest.CompositeKey.Builder compositeKeyBuilder =
+                GetConfigurationActivationRequest.CompositeKey.newBuilder();
+
+        if (configurationName != null) {
+            compositeKeyBuilder.setConfigurationName(configurationName);
+        }
+        if (startTime != null) {
+            compositeKeyBuilder.setStartTime(startTime);
+        }
+
+        return GetConfigurationActivationRequest.newBuilder()
+                .setCompositeKey(compositeKeyBuilder)
+                .build();
+    }
+
+    public QueryPvMetadataApiResult sendQueryPvMetadata(
+            QueryPvMetadataRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final QueryPvMetadataResponseObserver responseObserver = new QueryPvMetadataResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.queryPvMetadata(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new QueryPvMetadataApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new QueryPvMetadataApiResult(
+                    responseObserver.getPvMetadata(), responseObserver.getNextPageToken());
+        }
+    }
+
+    /**
+     * Queries PV metadata records matching the supplied criteria.
+     *
+     * A query that matches nothing is a normal success with an empty pvMetadata list, NOT a
+     * rejection.  Conversely, a backend failure is NOT an empty result: it arrives as
+     * ApiResultStatus.ERROR, while a request the server refuses to run arrives as
+     * ApiResultStatus.REJECT.  Do not read a failed query as "nothing matched" — check isError()
+     * before reading the list.
+     *
+     * On paging: omitting limit (or passing a non-positive value) yields a SERVER-CHOSEN default
+     * page size.  Callers should always pass an explicit limit and always check nextPageToken,
+     * which is non-empty when more pages remain.  Page tokens are opaque — do not parse or
+     * construct them; a malformed token is silently ignored by the server and pagination restarts
+     * at the first page.
+     *
+     * The params record cannot express AND-of-tags or AND-of-name-matches, since each params field
+     * maps to at most one criterion and values within a criterion are ORed.  For those, build a
+     * QueryPvMetadataRequest with multiple criterion entries and call sendQueryPvMetadata().
+     */
+    public QueryPvMetadataApiResult queryPvMetadata(
+            QueryPvMetadataParams params
+    ) {
+        final QueryPvMetadataRequest request = buildQueryPvMetadataRequest(params);
+        return sendQueryPvMetadata(request);
+    }
+
+    public GetPvMetadataApiResult sendGetPvMetadata(
+            GetPvMetadataRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetPvMetadataResponseObserver responseObserver = new GetPvMetadataResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.getPvMetadata(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetPvMetadataApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new GetPvMetadataApiResult(responseObserver.getPvMetadata());
+        }
+    }
+
+    /**
+     * Retrieves the PV metadata record for the specified canonical PV name or alias.
+     *
+     * A missing record is NOT reported as an empty successful result: the server rejects the
+     * request, so a name that does not exist returns isError() == true with ApiResultStatus.REJECT.
+     * A caller using this method as an existence check should branch on isReject() rather than on
+     * isError(), since a backend failure arrives as ApiResultStatus.ERROR.  Note that a malformed
+     * request is also rejected, so REJECT does not by itself prove the record is absent (see
+     * ApiResultStatus.REJECT); validate the request before reading a rejection that way.
+     */
+    public GetPvMetadataApiResult getPvMetadata(
+            String pvNameOrAlias
+    ) {
+        final GetPvMetadataRequest request = buildGetPvMetadataRequest(pvNameOrAlias);
+        return sendGetPvMetadata(request);
+    }
+
+    public QueryConfigurationsApiResult sendQueryConfigurations(
+            QueryConfigurationsRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final QueryConfigurationsResponseObserver responseObserver =
+                new QueryConfigurationsResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.queryConfigurations(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new QueryConfigurationsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new QueryConfigurationsApiResult(
+                    responseObserver.getConfigurations(), responseObserver.getNextPageToken());
+        }
+    }
+
+    /**
+     * Queries machine configuration records matching the supplied criteria.
+     *
+     * A query that matches nothing is a normal success with an empty configurations list, NOT a
+     * rejection.  Conversely, a backend failure is NOT an empty result: it arrives as
+     * ApiResultStatus.ERROR, while a request the server refuses to run arrives as
+     * ApiResultStatus.REJECT.  Do not read a failed query as "nothing matched" — check isError()
+     * before reading the list.
+     *
+     * On paging: omitting limit (or passing a non-positive value) yields a SERVER-CHOSEN default
+     * page size.  Callers should always pass an explicit limit and always check nextPageToken,
+     * which is non-empty when more pages remain.  Page tokens are opaque — do not parse or
+     * construct them; a malformed token is silently ignored by the server and pagination restarts
+     * at the first page.
+     *
+     * The params record cannot express AND-of-tags or AND-of-name-matches; for those, build a
+     * QueryConfigurationsRequest with multiple criterion entries and call sendQueryConfigurations().
+     */
+    public QueryConfigurationsApiResult queryConfigurations(
+            QueryConfigurationsParams params
+    ) {
+        final QueryConfigurationsRequest request = buildQueryConfigurationsRequest(params);
+        return sendQueryConfigurations(request);
+    }
+
+    public QueryConfigurationActivationsApiResult sendQueryConfigurationActivations(
+            QueryConfigurationActivationsRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final QueryConfigurationActivationsResponseObserver responseObserver =
+                new QueryConfigurationActivationsResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.queryConfigurationActivations(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new QueryConfigurationActivationsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new QueryConfigurationActivationsApiResult(
+                    responseObserver.getConfigurationActivations(), responseObserver.getNextPageToken());
+        }
+    }
+
+    /**
+     * Queries configuration activation records matching the supplied criteria.
+     *
+     * A query that matches nothing is a normal success with an empty configurationActivations list,
+     * NOT a rejection.  Conversely, a backend failure is NOT an empty result: it arrives as
+     * ApiResultStatus.ERROR, while a request the server refuses to run arrives as
+     * ApiResultStatus.REJECT.  Do not read a failed query as "nothing matched" — check isError()
+     * before reading the list.
+     *
+     * On paging: omitting limit (or passing a non-positive value) yields a SERVER-CHOSEN default
+     * page size.  Callers should always pass an explicit limit and always check nextPageToken,
+     * which is non-empty when more pages remain.  Page tokens are opaque — do not parse or
+     * construct them; a malformed token is silently ignored by the server and pagination restarts
+     * at the first page.
+     *
+     * The params record cannot express AND-of-tags; for that, build a
+     * QueryConfigurationActivationsRequest with multiple TagsCriterion entries and call
+     * sendQueryConfigurationActivations().
+     */
+    public QueryConfigurationActivationsApiResult queryConfigurationActivations(
+            QueryConfigurationActivationsParams params
+    ) {
+        final QueryConfigurationActivationsRequest request =
+                buildQueryConfigurationActivationsRequest(params);
+        return sendQueryConfigurationActivations(request);
+    }
+
+    public GetConfigurationActivationApiResult sendGetConfigurationActivation(
+            GetConfigurationActivationRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetConfigurationActivationResponseObserver responseObserver =
+                new GetConfigurationActivationResponseObserver();
+
+        new Thread(() -> {
+            asyncStub.getConfigurationActivation(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetConfigurationActivationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new GetConfigurationActivationApiResult(
+                    responseObserver.getConfigurationActivation());
+        }
+    }
+
+    /**
+     * Retrieves the configuration activation record with the specified client-supplied activation
+     * id.
+     *
+     * A missing record is NOT reported as an empty successful result: the server rejects the
+     * request, so an id that does not exist returns isError() == true with ApiResultStatus.REJECT.
+     * A caller using this method as an existence check — for instance to detect an activation id
+     * collision before saving — should branch on isReject() rather than on isError(), since a
+     * backend failure arrives as ApiResultStatus.ERROR.  Note that a malformed request is also
+     * rejected, so REJECT does not by itself prove the record is absent (see
+     * ApiResultStatus.REJECT); validate the request before reading a rejection that way.
+     *
+     * This is one of two wrappers for the getConfigurationActivation RPC, whose key is a proto
+     * oneof.  See getConfigurationActivationByCompositeKey() for the other arm; they are separate
+     * methods so that "both keys supplied" and "neither supplied" cannot arise client-side.
+     */
+    public GetConfigurationActivationApiResult getConfigurationActivationById(
+            String clientActivationId
+    ) {
+        final GetConfigurationActivationRequest request =
+                buildGetConfigurationActivationByIdRequest(clientActivationId);
+        return sendGetConfigurationActivation(request);
+    }
+
+    /**
+     * Retrieves the configuration activation record identified by configurationName and startTime,
+     * for use when the client-supplied activation id is not available.
+     *
+     * A missing record is NOT reported as an empty successful result: the server rejects the
+     * request, so a key that does not exist returns isError() == true with ApiResultStatus.REJECT.
+     * A caller using this method as an existence check should branch on isReject() rather than on
+     * isError(), since a backend failure arrives as ApiResultStatus.ERROR.  Note that a malformed
+     * request is also rejected, so REJECT does not by itself prove the record is absent (see
+     * ApiResultStatus.REJECT); validate the request before reading a rejection that way.
+     *
+     * Note the server's zero-timestamp idiom: a startTime with epochSeconds == 0 and
+     * nanoseconds == 0 is treated as unspecified and rejected.
+     *
+     * See getConfigurationActivationById() for the other arm of the RPC's key oneof.
+     */
+    public GetConfigurationActivationApiResult getConfigurationActivationByCompositeKey(
+            String configurationName,
+            Timestamp startTime
+    ) {
+        final GetConfigurationActivationRequest request =
+                buildGetConfigurationActivationByCompositeKeyRequest(configurationName, startTime);
+        return sendGetConfigurationActivation(request);
     }
 
     // =========================================================

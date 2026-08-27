@@ -2,10 +2,16 @@ package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.client.AnnotationClient;
 import com.ospreydcs.dp.client.result.ApiResultStatus;
+import com.ospreydcs.dp.client.result.GetConfigurationActivationApiResult;
 import com.ospreydcs.dp.client.result.GetConfigurationApiResult;
+import com.ospreydcs.dp.client.result.QueryConfigurationActivationsApiResult;
+import com.ospreydcs.dp.client.result.QueryConfigurationsApiResult;
 import com.ospreydcs.dp.client.result.SaveConfigurationActivationApiResult;
 import com.ospreydcs.dp.client.result.SaveConfigurationApiResult;
+import com.ospreydcs.dp.grpc.v1.annotation.GetConfigurationActivationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.GetConfigurationRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryConfigurationActivationsRequest;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryConfigurationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveConfigurationActivationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveConfigurationRequest;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -651,6 +657,563 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
         assertEquals(ApiResultStatus.REJECT, secondResult.apiResultStatus);
         assertTrue(secondResult.isReject());
         assertTrue(secondResult.resultStatus.msg.contains("overlapping activation exists"));
+    }
+
+    // =========================================================================
+    // buildQueryConfigurationsRequest tests
+    // =========================================================================
+
+    /**
+     * Verifies that a params record with nothing supplied emits NO criteria, rather than empty
+     * ones.  The server rejects an empty TagsCriterion.values and an empty NameCriterion, so an
+     * empty criterion for an omitted filter would turn an unfiltered query into a rejected request.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestOmitsUnsuppliedCriteria() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        null, null, null, null, null, 0, null));
+
+        assertEquals(0, request.getCriteriaCount());
+        assertEquals(0, request.getLimit());
+        assertEquals("", request.getPageToken());
+    }
+
+    /**
+     * Verifies that empty collections are treated as unsupplied, and specifically that an empty
+     * tagsAnyOf does not emit an empty TagsCriterion.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestOmitsEmptyCollections() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(List.of(), List.of(), List.of()),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        -1,
+                        "  "));
+
+        assertEquals(0, request.getCriteriaCount());
+        assertEquals(0, request.getLimit());
+        assertEquals("", request.getPageToken());
+    }
+
+    /**
+     * Verifies that every supplied field maps to the right criterion type with the right values.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestPopulatesSuppliedFields() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(
+                                List.of("cfg-exact"), List.of("cfg-"), List.of("fg")),
+                        List.of("beamline"),
+                        List.of("tag1", "tag2"),
+                        List.of(new AnnotationClient.AttributeCriterion("facility", List.of("lcls"))),
+                        List.of("parent-1"),
+                        50,
+                        "token-xyz"));
+
+        assertEquals(5, request.getCriteriaCount());
+
+        assertTrue(request.getCriteria(0).hasNameCriterion());
+        assertEquals(List.of("cfg-exact"), request.getCriteria(0).getNameCriterion().getExactList());
+        assertEquals(List.of("cfg-"), request.getCriteria(0).getNameCriterion().getPrefixList());
+        assertEquals(List.of("fg"), request.getCriteria(0).getNameCriterion().getContainsList());
+
+        assertTrue(request.getCriteria(1).hasCategoryCriterion());
+        assertEquals(
+                List.of("beamline"), request.getCriteria(1).getCategoryCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(2).hasTagsCriterion());
+        assertEquals(
+                List.of("tag1", "tag2"), request.getCriteria(2).getTagsCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(3).hasAttributesCriterion());
+        assertEquals("facility", request.getCriteria(3).getAttributesCriterion().getKey());
+        assertEquals(
+                List.of("lcls"), request.getCriteria(3).getAttributesCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(4).hasParentCriterion());
+        assertEquals(
+                List.of("parent-1"), request.getCriteria(4).getParentCriterion().getValuesList());
+
+        assertEquals(50, request.getLimit());
+        assertEquals("token-xyz", request.getPageToken());
+    }
+
+    /**
+     * Verifies that an AttributeCriterion with no values produces a key-only existence criterion.
+     */
+    @Test
+    public void testBuildQueryConfigurationsRequestAttributeKeyOnly() {
+
+        final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
+                new AnnotationClient.QueryConfigurationsParams(
+                        null,
+                        null,
+                        null,
+                        List.of(new AnnotationClient.AttributeCriterion("facility", null)),
+                        null,
+                        0,
+                        null));
+
+        assertEquals(1, request.getCriteriaCount());
+        assertEquals("facility", request.getCriteria(0).getAttributesCriterion().getKey());
+        assertTrue(request.getCriteria(0).getAttributesCriterion().getValuesList().isEmpty());
+    }
+
+    // =========================================================================
+    // buildQueryConfigurationActivationsRequest tests
+    // =========================================================================
+
+    /**
+     * Verifies that a params record with nothing supplied emits no criteria.
+     */
+    @Test
+    public void testBuildQueryActivationsRequestOmitsUnsuppliedCriteria() {
+
+        final QueryConfigurationActivationsRequest request =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, null, null, null, null, null, null, null, 0, null));
+
+        assertEquals(0, request.getCriteriaCount());
+        assertEquals(0, request.getLimit());
+        assertEquals("", request.getPageToken());
+    }
+
+    /**
+     * Verifies that every supplied field maps to the right criterion type with the right values.
+     */
+    @Test
+    public void testBuildQueryActivationsRequestPopulatesSuppliedFields() {
+
+        final QueryConfigurationActivationsRequest request =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                timestamp(1500L),
+                                timestamp(1000L),
+                                timestamp(2000L),
+                                List.of("cfg-1"),
+                                List.of("activation-1"),
+                                List.of("beamline"),
+                                List.of("tag1"),
+                                List.of(new AnnotationClient.AttributeCriterion(
+                                        "facility", List.of("lcls"))),
+                                40,
+                                "token-act"));
+
+        assertEquals(7, request.getCriteriaCount());
+
+        assertTrue(request.getCriteria(0).hasTimestampCriterion());
+        assertEquals(
+                1500L,
+                request.getCriteria(0).getTimestampCriterion().getTimestamp().getEpochSeconds());
+
+        assertTrue(request.getCriteria(1).hasTimeRangeCriterion());
+        assertEquals(
+                1000L,
+                request.getCriteria(1).getTimeRangeCriterion().getStartTime().getEpochSeconds());
+        assertEquals(
+                2000L,
+                request.getCriteria(1).getTimeRangeCriterion().getEndTime().getEpochSeconds());
+
+        assertTrue(request.getCriteria(2).hasConfigurationNameCriterion());
+        assertEquals(
+                List.of("cfg-1"),
+                request.getCriteria(2).getConfigurationNameCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(3).hasClientActivationIdCriterion());
+        assertEquals(
+                List.of("activation-1"),
+                request.getCriteria(3).getClientActivationIdCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(4).hasCategoryCriterion());
+        assertEquals(
+                List.of("beamline"), request.getCriteria(4).getCategoryCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(5).hasTagsCriterion());
+        assertEquals(List.of("tag1"), request.getCriteria(5).getTagsCriterion().getValuesList());
+
+        assertTrue(request.getCriteria(6).hasAttributesCriterion());
+        assertEquals("facility", request.getCriteria(6).getAttributesCriterion().getKey());
+
+        assertEquals(40, request.getLimit());
+        assertEquals("token-act", request.getPageToken());
+    }
+
+    /**
+     * Verifies that a TimeRangeCriterion is emitted only when BOTH bounds are supplied.  A partial
+     * criterion would be rejected by the server, so the builder emits nothing rather than half of
+     * one — supplying only one bound is a caller mistake that must not become a rejected request.
+     */
+    @Test
+    public void testBuildQueryActivationsRequestTimeRangeRequiresBothBounds() {
+
+        // start only
+        final QueryConfigurationActivationsRequest startOnly =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, timestamp(1000L), null, null, null, null, null, null, 0, null));
+        assertEquals(0, startOnly.getCriteriaCount());
+
+        // end only
+        final QueryConfigurationActivationsRequest endOnly =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, null, timestamp(2000L), null, null, null, null, null, 0, null));
+        assertEquals(0, endOnly.getCriteriaCount());
+
+        // both
+        final QueryConfigurationActivationsRequest both =
+                AnnotationClient.buildQueryConfigurationActivationsRequest(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, timestamp(1000L), timestamp(2000L), null, null, null, null,
+                                null, 0, null));
+        assertEquals(1, both.getCriteriaCount());
+        assertTrue(both.getCriteria(0).hasTimeRangeCriterion());
+    }
+
+    // =========================================================================
+    // buildGetConfigurationActivation request tests
+    // =========================================================================
+
+    /**
+     * Verifies that each of the two activation get-request builders sets its own arm of the key
+     * oneof, and only that arm.  Two named builders rather than one nullable-argument builder is
+     * what keeps "both supplied" and "neither supplied" from arising client-side.
+     */
+    @Test
+    public void testBuildGetActivationRequestSetsCorrectOneofArm() {
+
+        final GetConfigurationActivationRequest byId =
+                AnnotationClient.buildGetConfigurationActivationByIdRequest("activation-1");
+        assertEquals(
+                GetConfigurationActivationRequest.KeyCase.CLIENTACTIVATIONID, byId.getKeyCase());
+        assertEquals("activation-1", byId.getClientActivationId());
+
+        final GetConfigurationActivationRequest byCompositeKey =
+                AnnotationClient.buildGetConfigurationActivationByCompositeKeyRequest(
+                        "cfg-1", timestamp(1000L));
+        assertEquals(
+                GetConfigurationActivationRequest.KeyCase.COMPOSITEKEY,
+                byCompositeKey.getKeyCase());
+        assertEquals("cfg-1", byCompositeKey.getCompositeKey().getConfigurationName());
+        assertEquals(1000L, byCompositeKey.getCompositeKey().getStartTime().getEpochSeconds());
+    }
+
+    // =========================================================================
+    // queryConfigurations tests
+    // =========================================================================
+
+    /*
+     * Saves a configuration with the given name and category, asserting success.
+     */
+    private void saveConfiguration(String configurationName, String category) {
+        final SaveConfigurationApiResult result = annotationClient.saveConfiguration(
+                new AnnotationClient.SaveConfigurationParams(
+                        configurationName, category, null, null, null, null, "craigmcc"));
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+    }
+
+    /**
+     * Verifies that a query matching records returns them through the wrapper.
+     */
+    @Test
+    public void testQueryConfigurationsSuccess() {
+
+        saveConfiguration("query-cfg-001", "beamline");
+        saveConfiguration("query-cfg-002", "beamline");
+
+        final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(null, List.of("query-cfg-"), null),
+                        null, null, null, null, 100, null));
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertNotNull(result.configurations);
+        assertEquals(2, result.configurations.size());
+
+        final List<String> names = result.configurations.stream()
+                .map(c -> c.getConfigurationName()).sorted().toList();
+        assertEquals(List.of("query-cfg-001", "query-cfg-002"), names);
+    }
+
+    /**
+     * Verifies that a query matching nothing is a normal SUCCESS with an empty list, not a
+     * rejection.
+     */
+    @Test
+    public void testQueryConfigurationsEmptyResultIsSuccess() {
+
+        final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(List.of("no-such-config"), null, null),
+                        null, null, null, null, 100, null));
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertFalse(result.isReject());
+        assertNotNull(result.configurations);
+        assertTrue(result.configurations.isEmpty());
+        assertEquals("", result.nextPageToken);
+    }
+
+    /**
+     * Verifies a full paging round-trip through the wrapper, including the BLANK final-page token.
+     * The wrapper returns nextPageToken directly, so this test needs none of the raw-stub
+     * workaround that ConfigurationIT.testQueryConfigurationsPagination resorts to — and unlike
+     * that test, it asserts end-of-pagination rather than leaving it unverified.
+     */
+    @Test
+    public void testQueryConfigurationsPagingRoundTrip() {
+
+        saveConfiguration("page-cfg-001", "beamline");
+        saveConfiguration("page-cfg-002", "beamline");
+        saveConfiguration("page-cfg-003", "beamline");
+
+        final QueryConfigurationsApiResult firstPage = annotationClient.queryConfigurations(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(null, List.of("page-cfg-"), null),
+                        null, null, null, null, 2, null));
+
+        assertFalse(firstPage.resultStatus.msg, firstPage.resultStatus.isError);
+        assertEquals(2, firstPage.configurations.size());
+        assertFalse(
+                "expected a non-empty nextPageToken on a truncated page",
+                firstPage.nextPageToken.isEmpty());
+
+        final QueryConfigurationsApiResult secondPage = annotationClient.queryConfigurations(
+                new AnnotationClient.QueryConfigurationsParams(
+                        new AnnotationClient.TextMatch(null, List.of("page-cfg-"), null),
+                        null, null, null, null, 2, firstPage.nextPageToken));
+
+        assertFalse(secondPage.resultStatus.msg, secondPage.resultStatus.isError);
+        assertEquals(1, secondPage.configurations.size());
+        assertEquals(
+                "the final page must carry a blank nextPageToken", "", secondPage.nextPageToken);
+
+        final List<String> allNames = new java.util.ArrayList<String>();
+        firstPage.configurations.forEach(c -> allNames.add(c.getConfigurationName()));
+        secondPage.configurations.forEach(c -> allNames.add(c.getConfigurationName()));
+        allNames.sort(null);
+        assertEquals(List.of("page-cfg-001", "page-cfg-002", "page-cfg-003"), allNames);
+    }
+
+    /**
+     * Pins the CURRENT server behavior that an empty criteria list is rejected.  #245 relaxes this
+     * to match-all; see the companion test in PvMetadataClientIT for why it is pinned.
+     */
+    @Test
+    public void testQueryConfigurationsRejectsEmptyCriteria() {
+
+        final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
+                new AnnotationClient.QueryConfigurationsParams(
+                        null, null, null, null, null, 100, null));
+
+        assertTrue(result.resultStatus.isError);
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+        assertTrue(
+                result.resultStatus.msg,
+                result.resultStatus.msg.contains(
+                        "QueryConfigurationsRequest.criteria list must not be empty"));
+        assertNull(result.configurations);
+    }
+
+    // =========================================================================
+    // queryConfigurationActivations tests
+    // =========================================================================
+
+    /**
+     * Verifies that an activation query matching records returns them through the wrapper.
+     */
+    @Test
+    public void testQueryConfigurationActivationsSuccess() {
+
+        saveConfiguration("query-act-cfg-001", "beamline");
+
+        final SaveConfigurationActivationApiResult saveResult =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "query-act-001",
+                                "query-act-cfg-001",
+                                timestamp(1000L),
+                                timestamp(2000L),
+                                null, null, null, "craigmcc"));
+        assertFalse(saveResult.resultStatus.msg, saveResult.resultStatus.isError);
+
+        final QueryConfigurationActivationsApiResult result =
+                annotationClient.queryConfigurationActivations(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, null, null,
+                                List.of("query-act-cfg-001"),
+                                null, null, null, null, 100, null));
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertNotNull(result.configurationActivations);
+        assertEquals(1, result.configurationActivations.size());
+        assertEquals(
+                "query-act-001",
+                result.configurationActivations.get(0).getClientActivationId());
+    }
+
+    /**
+     * Verifies that an activation query matching nothing is a normal SUCCESS with an empty list.
+     */
+    @Test
+    public void testQueryConfigurationActivationsEmptyResultIsSuccess() {
+
+        final QueryConfigurationActivationsApiResult result =
+                annotationClient.queryConfigurationActivations(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, null, null,
+                                List.of("no-such-config"),
+                                null, null, null, null, 100, null));
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertFalse(result.isReject());
+        assertNotNull(result.configurationActivations);
+        assertTrue(result.configurationActivations.isEmpty());
+        assertEquals("", result.nextPageToken);
+    }
+
+    /**
+     * Pins the CURRENT server behavior that an empty criteria list is rejected.  Note the message
+     * differs from the other two queries: "criteria must not be empty", without "list".  #245
+     * relaxes this to match-all.
+     */
+    @Test
+    public void testQueryConfigurationActivationsRejectsEmptyCriteria() {
+
+        final QueryConfigurationActivationsApiResult result =
+                annotationClient.queryConfigurationActivations(
+                        new AnnotationClient.QueryConfigurationActivationsParams(
+                                null, null, null, null, null, null, null, null, 100, null));
+
+        assertTrue(result.resultStatus.isError);
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+        assertTrue(
+                result.resultStatus.msg,
+                result.resultStatus.msg.contains(
+                        "QueryConfigurationActivationsRequest.criteria must not be empty"));
+        assertNull(result.configurationActivations);
+    }
+
+    // =========================================================================
+    // getConfigurationActivation tests
+    // =========================================================================
+
+    /**
+     * Verifies a get by clientActivationId, the arm dp-desktop-app#36 uses to detect an activation
+     * id collision before saving.
+     */
+    @Test
+    public void testGetConfigurationActivationByIdSuccess() {
+
+        saveConfiguration("get-act-cfg-001", "beamline");
+
+        final SaveConfigurationActivationApiResult saveResult =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "get-act-001",
+                                "get-act-cfg-001",
+                                timestamp(1000L),
+                                timestamp(2000L),
+                                null, null, null, "craigmcc"));
+        assertFalse(saveResult.resultStatus.msg, saveResult.resultStatus.isError);
+
+        final GetConfigurationActivationApiResult result =
+                annotationClient.getConfigurationActivationById("get-act-001");
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertNotNull(result.configurationActivation);
+        assertEquals("get-act-001", result.configurationActivation.getClientActivationId());
+        assertEquals(
+                "get-act-cfg-001", result.configurationActivation.getConfigurationName());
+        assertEquals(1000L, result.configurationActivation.getStartTime().getEpochSeconds());
+    }
+
+    /**
+     * Verifies that a missing activation id is a REJECTION, not an empty success, and that the
+     * rejection is categorized on apiResultStatus rather than only in the message.  A caller using
+     * this as a collision check branches on isReject(), so the status must be right.
+     */
+    @Test
+    public void testGetConfigurationActivationByIdRejectNotFound() {
+
+        final GetConfigurationActivationApiResult result =
+                annotationClient.getConfigurationActivationById("no-such-activation");
+
+        assertTrue(result.resultStatus.isError);
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+        assertTrue(
+                result.resultStatus.msg,
+                result.resultStatus.msg.contains(
+                        "no ConfigurationActivation record found for: clientActivationId: "
+                                + "no-such-activation"));
+        assertNull(result.configurationActivation);
+    }
+
+    /**
+     * Verifies a get by the composite key arm, resolving the same record as the id arm.
+     */
+    @Test
+    public void testGetConfigurationActivationByCompositeKeySuccess() {
+
+        saveConfiguration("get-act-cfg-002", "beamline");
+
+        final SaveConfigurationActivationApiResult saveResult =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "get-act-002",
+                                "get-act-cfg-002",
+                                timestamp(3000L),
+                                timestamp(4000L),
+                                null, null, null, "craigmcc"));
+        assertFalse(saveResult.resultStatus.msg, saveResult.resultStatus.isError);
+
+        final GetConfigurationActivationApiResult result =
+                annotationClient.getConfigurationActivationByCompositeKey(
+                        "get-act-cfg-002", timestamp(3000L));
+
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertNotNull(result.configurationActivation);
+        assertEquals("get-act-002", result.configurationActivation.getClientActivationId());
+    }
+
+    /**
+     * Verifies that a composite key matching no record is a REJECTION rather than an empty success.
+     */
+    @Test
+    public void testGetConfigurationActivationByCompositeKeyRejectNotFound() {
+
+        final GetConfigurationActivationApiResult result =
+                annotationClient.getConfigurationActivationByCompositeKey(
+                        "no-such-config", timestamp(9000L));
+
+        assertTrue(result.resultStatus.isError);
+        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
+        assertTrue(result.isReject());
+        assertTrue(
+                result.resultStatus.msg,
+                result.resultStatus.msg.contains(
+                        "no ConfigurationActivation record found for: configurationName: "
+                                + "no-such-config startTime: 9000"));
+        assertNull(result.configurationActivation);
     }
 
 }
