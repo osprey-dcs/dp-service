@@ -52,16 +52,19 @@ all three. There is no majority behavior to align with; the relaxation is a chan
 not two.
 
 This blocks dp-desktop-app#39 task 4, whose PV Metadata explore view needs the same browse-all entry
-point as the configuration view. **Resolution: #245 is being extended to cover `queryPvMetadata`, and
-its description corrected.** #243 does not depend on that landing first — the wrappers pass criteria
-through unchanged — but the desktop explore view does.
+point as the configuration view. **Resolution: #245 has been extended to cover `queryPvMetadata`,
+with its description corrected and its plan written on branch `issue-245-empty-criteria-match-all`.**
+#243 does not depend on that landing first — the wrappers pass criteria through unchanged — but the
+desktop explore view does.
 
-Note the two are not symmetric on safety, which #245 must account for: configurations are
+Note the two are not symmetric on safety, which #245 accounts for: configurations are
 low-cardinality and default `limit` to 100, whereas `queryPvMetadata` defaults to **unbounded** and
 materializes all matches into an `ArrayList`. Match-all on `queryPvMetadata` without a default limit
-is the facility-scale memory event #210 flags.
+is a facility-scale memory event. #245's plan (D1) gives `queryPvMetadata` the same default of 100
+**unconditionally** — not only for the newly-legal match-all case — and deletes the unbounded branch
+as dead code, so the divergence in finding 4 disappears when it lands.
 
-### 4. The `limit=0` divergence is load-bearing for these wrappers (#210)
+### 4. The `limit=0` divergence is load-bearing for these wrappers
 
 | Method | `limit=0` behavior | `nextPageToken` when truncated |
 |---|---|---|
@@ -72,6 +75,17 @@ is the facility-scale memory event #210 flags.
 The dangerous case is `queryPvMetadata`, where a caller omitting `limit` pulls the whole collection
 with no signal that it did so. The ticket's note that "desktop callers will always pass an explicit
 limit" is therefore a real contract, not a passing remark, and the wrapper javadoc must state it.
+
+**This table describes today's server, not the steady state.** #245 collapses all three rows to
+"defaults to 100, truncation discoverable via `nextPageToken`". #243 and #245 may land in either
+order (see Dependencies), so the wrapper javadoc must be written to be true under both: state that an
+omitted `limit` yields a *server-chosen* default page size, and that callers should always pass an
+explicit limit and always check `nextPageToken`. Do not document the current unbounded behavior as
+the contract — that sentence would be wrong the day #245 merges.
+
+Note also that #210, which previously owned this divergence, is **closed** — deferred out of 1.15.0
+without deciding the general unset-`limit` semantic. #245 is what actually resolves the
+`queryPvMetadata` case; nothing in this ticket should defer to #210.
 
 Related, and also documented rather than changed here: all three methods **silently swallow a
 malformed `pageToken`** and reset to page 0 (`logger.warn("invalid page token, ignoring")`). This is
@@ -134,17 +148,15 @@ already in `GrpcIntegrationAnnotationServiceWrapper`
 
 ### Task 1 — Shared criterion sub-records
 
-**New file:** `src/main/java/com/ospreydcs/dp/client/params/TextMatch.java`
-**New file:** `src/main/java/com/ospreydcs/dp/client/params/AttributeCriterion.java`
+**File:** `src/main/java/com/ospreydcs/dp/client/AnnotationClient.java`
 
-Two small public records per D2. Each with a javadoc stating its OR semantics, and for
+Two small public records per D2, **nested as static records in `AnnotationClient`** alongside
+`SavePvMetadataParams` and the other params records. A `com.ospreydcs.dp.client.params` package was
+considered and rejected: no such package exists today, and every params record in the client layer is
+currently nested in its client class. Revisit extraction if `QueryClient` (#244) needs them too. Each with a javadoc stating its OR semantics, and for
 `AttributeCriterion`, that empty `values` means key-only existence search. Null-tolerant: a null list
 is treated as empty by the builders.
 
-Package choice: `com.ospreydcs.dp.client.params` is new. The alternative is nesting them in
-`AnnotationClient` as static records, matching where `SavePvMetadataParams` etc. live today. **Nest
-them in `AnnotationClient`** for consistency with the existing class, and revisit extraction if
-`QueryClient` (#244) needs them too.
 
 ### Task 2 — `ApiResult` classes
 
@@ -259,11 +271,16 @@ Javadoc requirements — each of these is a triage finding that must survive int
   same status (see `ApiResultStatus.REJECT`), so validate before relying on that reading.
 - **All three query methods:** an empty result is a normal success with an empty list, not a
   rejection.
-- **`queryPvMetadata` specifically:** omitting `limit` returns the entire matching set unbounded, and
-  `nextPageToken` is always empty in that case, so truncation cannot be detected. Callers should
-  always pass an explicit limit.
-- **`queryConfigurations` / `queryConfigurationActivations`:** omitting `limit` silently caps the
-  result at 100 with a non-empty `nextPageToken`.
+- **All three query methods, on `limit`:** omitting `limit` yields a *server-chosen default page
+  size*; callers should always pass an explicit limit and always check `nextPageToken`. Word it that
+  way deliberately — it is true both today and after #245, whereas naming today's per-method behavior
+  would go stale on merge. Do **not** state that `queryPvMetadata` returns everything when `limit` is
+  unset: #245 changes exactly that.
+- **A backend failure is not an empty result.** All three `executeQuery*` methods return `null` on a
+  `MongoException`, which the jobs convert to `handleError(...)` → `RESULT_STATUS_ERROR` →
+  `ApiResultStatus.ERROR`. Callers must not read a failed query as "nothing matched" — that is the
+  #235 inversion in client-layer form. Validation failures, by contrast, arrive as
+  `ApiResultStatus.REJECT` via `handleValidationError`.
 - **All three query methods:** page tokens are opaque; do not parse or construct them. A malformed
   token is silently ignored server-side and pagination restarts at the first page.
 - **Params limits:** AND-of-tags and AND-of-name-matches are not expressible through the params
@@ -281,8 +298,19 @@ same contract.
 
 ### Task 7 — Tests
 
-**File:** `src/test/integration/java/com/ospreydcs/dp/service/integration/annotation/PvMetadataClientIT.java`
-**File:** `src/test/integration/java/com/ospreydcs/dp/service/integration/annotation/ConfigurationClientIT.java`
+**Existing file:** `src/test/integration/java/com/ospreydcs/dp/service/integration/annotation/PvMetadataClientIT.java` (276 lines, 7 tests)
+**Existing file:** `src/test/integration/java/com/ospreydcs/dp/service/integration/annotation/ConfigurationClientIT.java` (656 lines, 19 tests)
+
+Both files already exist and cover the save-path wrappers; extend them rather than creating new ones.
+Note the source root is `src/test/integration/java` (failsafe), not `src/test/java`.
+
+**Method-name collision — `PvMetadataClientIT` only.** It already has
+`testBuildRequestOmitsUnsuppliedOptionalFields` and `testBuildRequestPopulatesSuppliedFields` for the
+*save* request builder (`:53`, `:73`), so the new query-builder tests cannot reuse those names.
+Follow the convention `ConfigurationClientIT` already uses for exactly this reason — it prefixes by
+subject (`testBuildConfigurationRequest*` / `testBuildActivationRequest*` / `testBuildGetConfigurationRequest`)
+— and name the new ones `testBuildQueryPvMetadataRequest*` / `testBuildGetPvMetadataRequest*`.
+Renaming the two existing save tests to match is optional and out of scope here.
 
 These test the **wrapper layer**, not the RPCs — `PvMetadataIT` (544 lines) and `ConfigurationIT`
 (1223 lines) already cover the RPCs thoroughly, including both activation oneof branches and the
@@ -311,6 +339,13 @@ Integration tests against the running service:
   merely `isError()`, per the #235 lesson that naming and wire status can diverge silently.
 - `getConfigurationActivation` by both id and composite key, each with a not-found case.
 - A validation rejection surfaces as `ApiResultStatus.REJECT` (e.g. blank `pvNameOrAlias`).
+- A backend failure surfaces as `ApiResultStatus.ERROR`, distinct from the REJECT case above —
+  companion to `ConfigurationClientIT`'s existing `testApiResultStatusRejectOn*` tests, and the
+  client-layer guard for the #235 lesson that the two must not be conflated.
+- **Empty criteria is rejected today** (`"criteria list must not be empty"`), surfacing as
+  `ApiResultStatus.REJECT`. Pin it for each of the three query wrappers. #245 flips this to
+  match-all, so these assertions are the signal that it landed — expect to update them, and treat a
+  silent pass after #245 merges as a bug in that ticket rather than in this one.
 
 The new client wrappers return `nextPageToken` directly, so these tests need none of the raw-stub
 workaround that `ConfigurationIT.java:387-390` apologizes for.
@@ -322,13 +357,20 @@ workaround that `ConfigurationIT.java:387-390` apologizes for.
   requested by either consumer.
 - Changing the silent-pageToken-reset behavior — documented here, a separate ticket if it should
   change.
-- The #210 unset-`limit` decision — documented here, decided there.
+- The unset-`limit` semantic for `queryPvMetadata` — decided and fixed in #245 (its D1 applies the
+  default of 100 unconditionally). #210, which originally owned this question, is closed without
+  deciding it, so do not defer to it.
 - The empty-criteria relaxation itself — that is #245, extended per finding 3.
 
 ## Dependencies and sequencing
 
 - **#243 does not block on #245.** The wrappers pass criteria through unchanged, so they compile and
   test against today's server. Only the desktop app's browse-all explore views need #245.
+- **#245 is a source-of-truth for two things this plan asserts**, and its plan lives on branch
+  `issue-245-empty-criteria-match-all`, not on `main`. Whichever ticket lands second must reconcile:
+  (a) the empty-criteria rejection tests added under Task 7 flip to match-all assertions, and (b) the
+  `limit` javadoc must remain accurate — it is worded to be true under both, so it should need no
+  change, and if it does, that is the signal it was worded too specifically.
 - **#235 has landed** (merge `e2ea5fd`), so `isReject()` is reliable on these paths.
 - dp-desktop-app#39 task 1 covers #243, #244, and #245 together; #244 (`QueryClient.querySamples`) is
   independent of this ticket.
