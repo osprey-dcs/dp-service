@@ -463,3 +463,25 @@ Integration tests follow a layered structure:
 - **Triggers**: pushes/PRs to main/master; manual workflow dispatch
 - **Services**: MongoDB 8.0 service container
 - **Artifacts**: Surefire and Failsafe test reports
+
+### Vendored dependency: `cisd:jhdf5` (do not remove)
+
+`cisd:jhdf5` is **not on Maven Central**; its only public host is `maven.scijava.org`. The jar and
+its POM are committed under `third-party/cisd-jhdf5/` and installed into the runner's local Maven
+repository by a CI step that runs before any build. Deleting either the directory or that step
+breaks CI on every pull request.
+
+This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
+serving POMs**, making the dependency unresolvable with no Central fallback. The host has since
+recovered, which is *not* a reason to remove the vendored copy: GitHub Actions caches are **scoped
+per ref**, so a PR branch can read only its own caches and the default branch's. Every cache in this
+repo was created on a `refs/pull/NNN/merge` ref and none on `main`, meaning no PR can reuse another
+PR's cache — every PR was resolving this jar from the network, and a single-host dependency with no
+mirror will break CI again the next time that host has trouble.
+
+The failure reads like a transient outage ("could not transfer... 503"), so the tempting response is
+to re-run the job. That does not help; it only passes if the run happens to restore a cache.
+
+`third-party/cisd-jhdf5/README.md` records the checksums, the Apache-2.0 licensing (the POM declares
+`<distribution>repo</distribution>`, permitting redistribution), and the two conditions under which
+this may be removed — jhdf5 reaching Central, or the project dropping the HDF5 export path.
