@@ -38,6 +38,13 @@ import static org.junit.Assert.assertTrue;
  */
 public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
+    /**
+     * Mirrors MongoSyncAnnotationClient.DEFAULT_QUERY_LIMIT, which is private to the client.  If the
+     * server default changes without this constant following, testQueryPvMetadataUnsetLimitReturns-
+     * DefaultPageSize fails loudly rather than silently asserting the wrong bound.
+     */
+    private static final int DEFAULT_QUERY_LIMIT = 100;
+
     private AnnotationClient annotationClient;
 
     @Before
@@ -473,16 +480,30 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
     }
 
     /**
-     * Verifies end-to-end that a blank-only query is rejected rather than silently returning every
-     * record.  This is the behavioral consequence of the builder change: with the blanks dropped no
-     * criteria remain, and the server rejects an empty criteria list (today — see the note on
-     * testQueryPvMetadataRejectsEmptyCriteria regarding #245).  The essential guarantee, which
-     * holds under #245 as well, is that the caller does NOT receive the whole collection.
+     * Verifies end-to-end that a blank-only query emits no criterion, and so is treated as
+     * "no filters requested" rather than as a match-all regex.
+     *
+     * <p><b>This test asserted a rejection before #245</b>, which is no longer the right assertion.
+     * It relied on a second-order mechanism: nonBlank() dropped the blank entry, the criterion was
+     * omitted, and the server rejected the resulting empty criteria list.  #245 makes an empty
+     * criteria list match-all, so that rejection is gone and the request now legitimately succeeds.
+     *
+     * <p>The #243 invariant that survives is narrower and is the one that always mattered: a blank
+     * prefix must never reach the server as {@code "^" + Pattern.quote("")}, a regex matching every
+     * value.  What distinguishes the two is not the result set — both return every record — but
+     * whether the server was asked to filter at all.  So this asserts on the built request, where
+     * the difference is visible, and additionally pins that the response is bounded by the default
+     * page size rather than being the unbounded read a match-all regex used to produce.
+     *
+     * <p>The primary guards for the blank-drop behavior are the builder-level tests above
+     * (testBuildQueryPvMetadataRequestOmitsBlankEntries and
+     * testBuildQueryPvMetadataRequestBlankPrefixEmitsNoCriterion), which assert
+     * getCriteriaCount() == 0 directly and are unaffected by #245.
      */
     @Test
-    public void testQueryPvMetadataBlankCriteriaDoesNotMatchAll() {
+    public void testQueryPvMetadataBlankCriteriaEmitsNoCriterion() {
 
-        // seed two records so a match-all regression would be visible as a non-empty result
+        // seed two records so a match-all REGEX regression would still be visible below
         savePvsWithTag("blanktest", "BLANK:TEST:PV:1", "BLANK:TEST:PV:2");
 
         final AnnotationClient.QueryPvMetadataParams params =
@@ -490,12 +511,19 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
                         new AnnotationClient.TextMatch(null, List.of(""), null),
                         null, null, null, 0, null);
 
+        // the guarantee: no criterion is emitted, so no "^" + Pattern.quote("") regex is built
+        assertEquals(
+                "a blank prefix must emit no criterion rather than a match-all regex",
+                0,
+                AnnotationClient.buildQueryPvMetadataRequest(params).getCriteriaCount());
+
+        // and end-to-end it is an ordinary unfiltered browse, bounded by the default page size
         final QueryPvMetadataApiResult result = annotationClient.queryPvMetadata(params);
 
-        assertTrue(
-                "a blank-only query must not succeed as a match-all over every record",
-                result.isError());
-        assertTrue(result.isReject());
+        assertFalse(result.resultStatus.msg, result.isError());
+        assertFalse(result.isReject());
+        assertNotNull(result.pvMetadata);
+        assertEquals(2, result.pvMetadata.size());
     }
 
     /**
@@ -752,26 +780,114 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
     }
 
     /**
-     * Pins the CURRENT server behavior that an empty criteria list is rejected.
+     * An empty criteria list is match-all, not a rejection (#245).  This is the browse-all entry
+     * point the dp-desktop-app PV Metadata explore view opens with: no filters, see everything.
      *
-     * #245 relaxes this to match-all for all three annotation queries, at which point this
-     * assertion flips.  That is the point of pinning it: a silent pass here after #245 merges means
-     * the relaxation did not reach queryPvMetadata, which is exactly the gap #245's triage found.
+     * <p>Replaces testQueryPvMetadataRejectsEmptyCriteria, which pinned the pre-#245 rejection.
      */
     @Test
-    public void testQueryPvMetadataRejectsEmptyCriteria() {
+    public void testQueryPvMetadataEmptyCriteriaMatchesAll() {
+
+        savePvsWithTag("matchall", "TEST:ALL:001", "TEST:ALL:002", "TEST:ALL:003");
 
         final QueryPvMetadataApiResult result = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(null, null, null, null, 100, null));
 
-        assertTrue(result.resultStatus.isError);
-        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
-        assertTrue(result.isReject());
-        assertTrue(
-                result.resultStatus.msg,
-                result.resultStatus.msg.contains(
-                        "QueryPvMetadataRequest.criteria list must not be empty"));
-        assertNull(result.pvMetadata);
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertFalse(result.isReject());
+        assertNotNull(result.pvMetadata);
+        assertEquals(3, result.pvMetadata.size());
+
+        final List<String> pvNames =
+                result.pvMetadata.stream().map(pv -> pv.getPvName()).sorted().toList();
+        assertEquals(List.of("TEST:ALL:001", "TEST:ALL:002", "TEST:ALL:003"), pvNames);
+    }
+
+    /**
+     * Match-all plus paging enumerates every record exactly once, with a blank token on the final
+     * page.  Pages with an explicit limit of 2 over 5 records: 2, 2, 1.
+     */
+    @Test
+    public void testQueryPvMetadataEmptyCriteriaPagesThroughAll() {
+
+        savePvsWithTag(
+                "matchallpage",
+                "TEST:MAP:001", "TEST:MAP:002", "TEST:MAP:003", "TEST:MAP:004", "TEST:MAP:005");
+
+        final List<String> seen = new java.util.ArrayList<String>();
+        String pageToken = null;
+        int pageCount = 0;
+
+        while (true) {
+            final QueryPvMetadataApiResult page = annotationClient.queryPvMetadata(
+                    new AnnotationClient.QueryPvMetadataParams(null, null, null, null, 2, pageToken));
+
+            assertFalse(page.resultStatus.msg, page.resultStatus.isError);
+            assertNotNull(page.pvMetadata);
+            page.pvMetadata.forEach(pv -> seen.add(pv.getPvName()));
+
+            pageCount++;
+            assertTrue("paging did not terminate", pageCount <= 10);
+
+            if (page.nextPageToken.isEmpty()) {
+                assertEquals("the final page should hold the remainder", 1, page.pvMetadata.size());
+                break;
+            }
+            assertEquals("a non-final page should be full", 2, page.pvMetadata.size());
+            pageToken = page.nextPageToken;
+        }
+
+        assertEquals(3, pageCount);
+        seen.sort(null);
+        assertEquals(
+                List.of("TEST:MAP:001", "TEST:MAP:002", "TEST:MAP:003", "TEST:MAP:004", "TEST:MAP:005"),
+                seen);
+    }
+
+    /**
+     * An unset limit returns the default page size with a token, NOT the entire collection.
+     *
+     * <p>This is the regression guard for the hazard #245 exists to avoid.  Before #245,
+     * queryPvMetadata returned every match with an always-blank nextPageToken, so a match-all
+     * request at facility scale was an unbounded read the caller could not even detect had been
+     * truncated (it had not been).  The default is unconditional -- see the criteria-bearing
+     * companion test below -- so this asserts both halves of D1.
+     */
+    @Test
+    public void testQueryPvMetadataUnsetLimitReturnsDefaultPageSize() {
+
+        final String[] pvNames = new String[DEFAULT_QUERY_LIMIT + 1];
+        for (int i = 0; i < pvNames.length; i++) {
+            pvNames[i] = String.format("TEST:LIMIT:%03d", i);
+        }
+        savePvsWithTag("limitdefault", pvNames);
+
+        // match-all with an unset limit
+        final QueryPvMetadataApiResult matchAll = annotationClient.queryPvMetadata(
+                new AnnotationClient.QueryPvMetadataParams(null, null, null, null, 0, null));
+
+        assertFalse(matchAll.resultStatus.msg, matchAll.resultStatus.isError);
+        assertNotNull(matchAll.pvMetadata);
+        assertEquals(
+                "an unset limit must return the default page size, not every record",
+                DEFAULT_QUERY_LIMIT,
+                matchAll.pvMetadata.size());
+        assertFalse(
+                "a truncated page must carry a token so the caller can detect the truncation",
+                matchAll.nextPageToken.isEmpty());
+
+        // the same default applies to a criteria-bearing query: the page size does not depend on
+        // whether the caller supplied criteria (#245 plan D1)
+        final QueryPvMetadataApiResult withCriteria = annotationClient.queryPvMetadata(
+                new AnnotationClient.QueryPvMetadataParams(
+                        new AnnotationClient.TextMatch(null, List.of("TEST:LIMIT:"), null),
+                        null, null, null, 0, null));
+
+        assertFalse(withCriteria.resultStatus.msg, withCriteria.resultStatus.isError);
+        assertNotNull(withCriteria.pvMetadata);
+        assertEquals(DEFAULT_QUERY_LIMIT, withCriteria.pvMetadata.size());
+        assertFalse(withCriteria.nextPageToken.isEmpty());
     }
 
     // =========================================================================

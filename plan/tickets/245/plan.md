@@ -293,6 +293,36 @@ comments affect neither the wire format nor the Java API.
 dp-service PR. Do not let it gate the behavior change, but do not let it be forgotten either — a proto
 that documents a rejection the server no longer performs is worse than one that says nothing.
 
+## Implementation notes (added when the work landed)
+
+One thing surfaced during implementation that the triage did not predict, and it is the kind of thing
+this plan exists to record.
+
+**`PvMetadataClientIT.testQueryPvMetadataBlankCriteriaDoesNotMatchAll` failed, correctly.** It was a
+#243 test asserting that a blank-only `prefix` criterion is *rejected*. It never tested the rejection
+directly — it relied on a second-order mechanism: `nonBlank()` drops the blank entry, the criterion
+is omitted, and the server rejected the resulting empty criteria list. Task 1 removes that rejection,
+so the request now legitimately succeeds as match-all.
+
+Its javadoc had anticipated #245 and asserted that "the essential guarantee, which holds under #245
+as well, is that the caller does NOT receive the whole collection." That framing turned out to be
+wrong: under #245 a blank-only query *does* return everything (bounded by the default limit), because
+it is genuinely indistinguishable from "no filters requested". The guarantee that survives is
+narrower — no `"^" + Pattern.quote("")` regex is ever emitted, i.e. the server is never *asked* to
+filter on a blank value. The difference between the two cases is not the result set; it is whether a
+criterion was built at all.
+
+The test was renamed to `testQueryPvMetadataBlankCriteriaEmitsNoCriterion` and now asserts
+`getCriteriaCount() == 0` on the built request, plus an ordinary bounded success end-to-end. The
+primary guards were never affected: the two builder-level tests assert `getCriteriaCount() == 0`
+directly. `ConfigurationClientIT`'s blank tests are all builder-level, which is why only this one
+failed. Recorded in CLAUDE.md, since the trap generalizes: **never assert a client-side guard by
+expecting a server error, when the error comes from a rule a different ticket may relax.**
+
+Also worth noting for anyone re-running this: `mvn failsafe:integration-test` does **not** recompile.
+An early run reported green against stale classes. Run `mvn test-compile` first, and confirm the new
+test names appear in `target/failsafe-reports/*.xml`.
+
 ## Out of scope
 
 - **The general unset-`limit` semantic** — #210 owns it. See D2.
