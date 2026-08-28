@@ -45,6 +45,39 @@ When modifying gRPC APIs:
 4. Update validation logic in `IngestionValidationUtility` for new column types
 5. Follow systematic renaming pattern: Service → Handler → Jobs → Dispatchers → Tests
 
+## Ticket Planning Workflow
+
+Every non-trivial ticket gets a **version-controlled plan** at `plan/tickets/<issue>/plan.md`,
+committed alongside the implementation. This is a deliberate change from the older convention of
+keeping plans in the gitignored `.dev/plan/issue-<n>/` directory — plans there were invisible to
+reviewers, to CI, and to anyone working from a fresh clone. `.dev/` remains in `.gitignore` and still
+holds scratch material; do not add new ticket plans there.
+
+Scratch and draft material stays outside the repo, under `~/dp/dev/tickets/dp-service/<issue>/`.
+The distinction is intent, not format: a draft being iterated on is scratch; the plan the
+implementation will be reviewed against belongs under `plan/tickets/`.
+
+**Triage before planning.** Verify the ticket's stated premises against the code before writing the
+plan — several tickets in this repo have been filed on a claim that turned out not to hold (see
+#243's triage of #245, where "these two methods already behave this way" was wrong for all three
+methods, changing the scope of both tickets). Where triage contradicts the ticket, update the issue
+description and say so explicitly in the plan's Background section rather than silently planning
+around it.
+
+**Plan structure** (see `plan/tickets/243/plan.md` for a worked example):
+
+- **Overview** — what the ticket delivers, and for whom.
+- **Background / triage findings** — verified facts with `file:line` references, especially anything
+  that contradicts the issue as filed.
+- **Design decisions** — the choices a reviewer would otherwise have to reverse-engineer, each with
+  its rationale and the alternative that was rejected.
+- **Implementation tasks** — per file, concrete enough to execute without re-deriving the design.
+- **Out of scope** — with a pointer to the ticket that owns each excluded item.
+- **Dependencies and sequencing** — what blocks on what, and explicitly what does *not*.
+
+Record findings that outlive the ticket in CLAUDE.md rather than leaving them only in the plan: a
+plan documents one change, CLAUDE.md documents the invariant it established.
+
 ## MongoDB Collections
 - **buckets**: Time-series data storage (main data collection with embedded protobuf serialization)
 - **providers**: Registered data providers
@@ -285,6 +318,33 @@ Build a compound `Filters.and()` from criteria list:
 | Timestamp overlap | `lte(startTime, ts)` AND (`gt(endTime, ts)` OR `exists(endTime, false)`) |
 
 Multiple match types within one criterion are combined with `Filters.or()`.
+
+### Blank Criterion Values Must Never Reach the Server (issue #243)
+
+A blank string in a `prefix` or `contains` criterion is a **silent match-all**, not a no-op. The
+filter builder produces `"^" + Pattern.quote("")` and `".*" + Pattern.quote("") + ".*"`, and both
+match every value — so a client that forwards an unfilled optional UI field retrieves the entire
+collection while appearing to have applied a filter. The empty string survives protobuf
+serialization as a zero-length repeated entry, so it also satisfies the server's "at least one of
+exact/prefix/contains" check and slips past the empty-criteria rejection by making the criteria list
+non-empty.
+
+Like the #197 and #207 invariants, the failure mode is a **wrong answer rather than an error**, which
+is why the guard belongs at the point where a criterion is built rather than in a validator.
+
+`AnnotationClient.nonBlank()` is the single source for this: it drops blank *and* null entries (the
+latter because protobuf's `addAll` throws `NullPointerException` on a null element), and every
+criterion list is both guarded and populated through it. A criterion whose entries are all blank is
+therefore omitted entirely rather than emitted empty. `TextMatch.isEmpty()` is defined in the same
+terms — were it to use a plain `isEmpty()` on the lists, a blank-only `TextMatch` would pass the
+guard and emit a criterion with all three lists empty, which the server rejects.
+
+Checking a criterion list with a plain null/empty test reintroduces the bug. There is deliberately no
+weaker helper in `AnnotationClient` to reach for.
+
+Attribute keys have a milder version of the same problem: the three `Query*Job` classes validate
+`AttributesCriterion.key` with `isBlank()`, so a whitespace key is an avoidable `REJECT` rather than
+an omitted filter. `isBlankKey()` guards those three sites.
 
 ### Overlap Constraint Pattern (ConfigurationActivation)
 
