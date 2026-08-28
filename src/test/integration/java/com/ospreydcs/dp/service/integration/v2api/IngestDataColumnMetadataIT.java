@@ -53,7 +53,7 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
                         1_000_000L,   // 1ms sample interval
                         numSamples,
                         columnNames,
-                        null, null, null, null);
+                        null, null, null);
         params.setDoubleColumnList(doubleColumns);
         return params;
     }
@@ -277,7 +277,7 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
                         1_000_000L,
                         numSamples,
                         columnNames,
-                        null, null, null, null);
+                        null, null, null);
         params.setFloatColumnList(Collections.singletonList(floatColumn));
         params.setDoubleArrayColumnList(Collections.singletonList(arrayColumn));
         params.setStructColumnList(Collections.singletonList(structColumn));

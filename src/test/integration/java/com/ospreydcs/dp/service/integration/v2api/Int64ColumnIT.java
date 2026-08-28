@@ -84,7 +84,6 @@ public class Int64ColumnIT extends GrpcIntegrationTestBase {
                             pvNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             null,
-                            null,
                             null);
             params.setInt64ColumnList(int64Columns);
 
@@ -236,7 +235,6 @@ public class Int64ColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             columnNames,
-                            null,
                             null,
                             null,
                             null

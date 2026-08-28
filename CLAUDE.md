@@ -514,6 +514,20 @@ Integration tests follow a layered structure:
 - **Scalar tests**: single-PV pattern (`DoubleColumnIT`, etc.)
 - **Array/Binary tests**: dual-PV pattern — scalar trigger + array/binary target (`DoubleArrayColumnIT`, `StructColumnIT`, etc.)
 
+**`IngestionRequestParams` has one all-positional constructor with ~12 same-typed arguments, called
+from 62 sites across 26 files.** Adding or removing a parameter is therefore never a local change,
+and because most arguments are `null` literals of similar types, a wrong-position argument compiles
+silently. Two consequences when touching it (learned in #252, which removed `valuesStatus`):
+
+- Change every call site in the same commit; there is no overload to absorb the difference, unlike
+  `IngestionClient.IngestionRequestParams`, which carries a shorter delegating constructor.
+- The class hand-writes `equals`, `hashCode`, and `toString` over its full field list. A field
+  removed from the declarations but left in those three still compiles — it is the *field*, not a
+  type — so grepping for the proto type name misses them. Grep the lowercase field name too.
+
+Prefer adding new state as a chained setter (as `setColumnMetadata()` does) over extending the
+positional list.
+
 ### Ingestion Validation Test Coverage
 - `IngestionValidationUtilityTest` (22 test cases): legacy validation, new column types, duplicate PV names, timestamp integrity
 

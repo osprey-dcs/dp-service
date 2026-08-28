@@ -56,7 +56,6 @@ public class IngestDataStreamIT extends GrpcIntegrationTestBase {
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
                                 values,
-                                null,
                                 null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
@@ -82,7 +81,6 @@ public class IngestDataStreamIT extends GrpcIntegrationTestBase {
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
                                 values,
-                                null,
                                 null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
@@ -117,7 +115,7 @@ public class IngestDataStreamIT extends GrpcIntegrationTestBase {
                                 1,
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null, null);
+                                values, null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);
@@ -141,7 +139,7 @@ public class IngestDataStreamIT extends GrpcIntegrationTestBase {
                                 1,
                                 columnNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null, null);
+                                values, null);
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                 paramsList.add(params);
                 requestList.add(request);

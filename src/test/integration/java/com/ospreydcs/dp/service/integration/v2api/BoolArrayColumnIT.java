@@ -130,7 +130,6 @@ public class BoolArrayColumnIT extends GrpcIntegrationTestBase {
                             allColumnNames,
                             null,
                             null,
-                            null,
                             null
                     );
             initialIngestionRequestParams.setDoubleColumnList(doubleColumns); // add scalar trigger column
@@ -310,7 +309,6 @@ public class BoolArrayColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             allColumnNames,
-                            null,
                             null,
                             null,
                             null

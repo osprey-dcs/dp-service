@@ -132,7 +132,6 @@ public class DoubleArrayColumnIT extends GrpcIntegrationTestBase {
                             allColumnNames,
                             null,
                             null,
-                            null,
                             null
                     );
             initialIngestionRequestParams.setDoubleColumnList(doubleColumns); // add scalar trigger column
@@ -314,7 +313,6 @@ public class DoubleArrayColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             allColumnNames,
-                            null,
                             null,
                             null,
                             null

@@ -782,7 +782,6 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
                             List.of(columnName),
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             columnValues,
-                            null,
                             null);
             paramsList.add(params);
 

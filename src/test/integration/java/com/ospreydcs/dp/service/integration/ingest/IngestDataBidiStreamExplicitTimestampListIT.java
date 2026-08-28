@@ -85,7 +85,7 @@ public class IngestDataBidiStreamExplicitTimestampListIT extends GrpcIntegration
                                 numSamples, // each DataColumn must contain 5 DataValues
                                 pvNames,
                                 IngestionTestBase.IngestionDataType.DOUBLE,
-                                values, null, null);
+                                values, null);
 
                 // build ingestion request
                 final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);

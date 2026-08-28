@@ -895,7 +895,7 @@ public class QueryTestBase {
                 numSamples,
                 responseBucket.getDataTimestamps().getSamplingClock().getCount());
 
-        // this compares each DataValue including ValueStatus, confirmed in debugger
+        // this compares each DataValue, confirmed in debugger
         assertEquals(
                 requestColumn,
                 responseBucket.getDataValues().getDataColumn());

@@ -84,7 +84,6 @@ public class FloatColumnIT extends GrpcIntegrationTestBase {
                             pvNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             null,
-                            null,
                             null);
             params.setFloatColumnList(floatColumns);
 
@@ -236,7 +235,6 @@ public class FloatColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             columnNames,
-                            null,
                             null,
                             null,
                             null
