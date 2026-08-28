@@ -45,6 +45,39 @@ When modifying gRPC APIs:
 4. Update validation logic in `IngestionValidationUtility` for new column types
 5. Follow systematic renaming pattern: Service → Handler → Jobs → Dispatchers → Tests
 
+## Ticket Planning Workflow
+
+Every non-trivial ticket gets a **version-controlled plan** at `plan/tickets/<issue>/plan.md`,
+committed alongside the implementation. This is a deliberate change from the older convention of
+keeping plans in the gitignored `.dev/plan/issue-<n>/` directory — plans there were invisible to
+reviewers, to CI, and to anyone working from a fresh clone. `.dev/` remains in `.gitignore` and still
+holds scratch material; do not add new ticket plans there.
+
+Scratch and draft material stays outside the repo, under `~/dp/dev/tickets/dp-service/<issue>/`.
+The distinction is intent, not format: a draft being iterated on is scratch; the plan the
+implementation will be reviewed against belongs under `plan/tickets/`.
+
+**Triage before planning.** Verify the ticket's stated premises against the code before writing the
+plan — several tickets in this repo have been filed on a claim that turned out not to hold (see
+#243's triage of #245, where "these two methods already behave this way" was wrong for all three
+methods, changing the scope of both tickets). Where triage contradicts the ticket, update the issue
+description and say so explicitly in the plan's Background section rather than silently planning
+around it.
+
+**Plan structure** (see `plan/tickets/243/plan.md` for a worked example):
+
+- **Overview** — what the ticket delivers, and for whom.
+- **Background / triage findings** — verified facts with `file:line` references, especially anything
+  that contradicts the issue as filed.
+- **Design decisions** — the choices a reviewer would otherwise have to reverse-engineer, each with
+  its rationale and the alternative that was rejected.
+- **Implementation tasks** — per file, concrete enough to execute without re-deriving the design.
+- **Out of scope** — with a pointer to the ticket that owns each excluded item.
+- **Dependencies and sequencing** — what blocks on what, and explicitly what does *not*.
+
+Record findings that outlive the ticket in CLAUDE.md rather than leaving them only in the plan: a
+plan documents one change, CLAUDE.md documents the invariant it established.
+
 ## MongoDB Collections
 - **buckets**: Time-series data storage (main data collection with embedded protobuf serialization)
 - **providers**: Registered data providers
@@ -286,6 +319,33 @@ Build a compound `Filters.and()` from criteria list:
 
 Multiple match types within one criterion are combined with `Filters.or()`.
 
+### Blank Criterion Values Must Never Reach the Server (issue #243)
+
+A blank string in a `prefix` or `contains` criterion is a **silent match-all**, not a no-op. The
+filter builder produces `"^" + Pattern.quote("")` and `".*" + Pattern.quote("") + ".*"`, and both
+match every value — so a client that forwards an unfilled optional UI field retrieves the entire
+collection while appearing to have applied a filter. The empty string survives protobuf
+serialization as a zero-length repeated entry, so it also satisfies the server's "at least one of
+exact/prefix/contains" check and slips past the empty-criteria rejection by making the criteria list
+non-empty.
+
+Like the #197 and #207 invariants, the failure mode is a **wrong answer rather than an error**, which
+is why the guard belongs at the point where a criterion is built rather than in a validator.
+
+`AnnotationClient.nonBlank()` is the single source for this: it drops blank *and* null entries (the
+latter because protobuf's `addAll` throws `NullPointerException` on a null element), and every
+criterion list is both guarded and populated through it. A criterion whose entries are all blank is
+therefore omitted entirely rather than emitted empty. `TextMatch.isEmpty()` is defined in the same
+terms — were it to use a plain `isEmpty()` on the lists, a blank-only `TextMatch` would pass the
+guard and emit a criterion with all three lists empty, which the server rejects.
+
+Checking a criterion list with a plain null/empty test reintroduces the bug. There is deliberately no
+weaker helper in `AnnotationClient` to reach for.
+
+Attribute keys have a milder version of the same problem: the three `Query*Job` classes validate
+`AttributesCriterion.key` with `isBlank()`, so a whitespace key is an avoidable `REJECT` rather than
+an omitted filter. `isBlankKey()` guards those three sites.
+
 ### Overlap Constraint Pattern (ConfigurationActivation)
 
 `saveConfigurationActivation` enforces that no two activations for the same `configurationName` or `internalCategory` have overlapping time intervals. The `overlapExists()` method in `MongoSyncAnnotationClient` runs two `countDocuments()` queries (one per dimension). The overlap condition for an existing record [S, E] against a new interval [newS, newE] is:
@@ -463,3 +523,25 @@ Integration tests follow a layered structure:
 - **Triggers**: pushes/PRs to main/master; manual workflow dispatch
 - **Services**: MongoDB 8.0 service container
 - **Artifacts**: Surefire and Failsafe test reports
+
+### Vendored dependency: `cisd:jhdf5` (do not remove)
+
+`cisd:jhdf5` is **not on Maven Central**; its only public host is `maven.scijava.org`. The jar and
+its POM are committed under `third-party/cisd-jhdf5/` and installed into the runner's local Maven
+repository by a CI step that runs before any build. Deleting either the directory or that step
+breaks CI on every pull request.
+
+This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
+serving POMs**, making the dependency unresolvable with no Central fallback. The host has since
+recovered, which is *not* a reason to remove the vendored copy: GitHub Actions caches are **scoped
+per ref**, so a PR branch can read only its own caches and the default branch's. Every cache in this
+repo was created on a `refs/pull/NNN/merge` ref and none on `main`, meaning no PR can reuse another
+PR's cache — every PR was resolving this jar from the network, and a single-host dependency with no
+mirror will break CI again the next time that host has trouble.
+
+The failure reads like a transient outage ("could not transfer... 503"), so the tempting response is
+to re-run the job. That does not help; it only passes if the run happens to restore a cache.
+
+`third-party/cisd-jhdf5/README.md` records the checksums, the Apache-2.0 licensing (the POM declares
+`<distribution>repo</distribution>`, permitting redistribution), and the two conditions under which
+this may be removed — jhdf5 reaching Central, or the project dropping the HDF5 export path.

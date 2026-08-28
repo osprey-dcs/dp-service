@@ -52,6 +52,19 @@ jobs:
           ref: ${{ env.DP_GRPC_REF }}
           fetch-depth: 0
 
+      # cisd:jhdf5 is not published to Maven Central, and its only upstream host
+      # (maven.scijava.org) has served 503 for JAR downloads while continuing to serve
+      # POMs, which broke every CI run that could not restore a Maven cache.  Actions
+      # caches are scoped per-ref, so no PR can reuse another PR's cache -- CI had been
+      # relying on downloading this jar fresh each run.  The jar is vendored under
+      # third-party/ and installed here so the build no longer depends on that host.
+      # See third-party/cisd-jhdf5/README.md before removing this step.
+      - name: Install vendored cisd:jhdf5 to local Maven repo
+        run: |
+          mvn -B install:install-file \
+            -Dfile=third-party/cisd-jhdf5/jhdf5-19.04.1.jar \
+            -DpomFile=third-party/cisd-jhdf5/jhdf5-19.04.1.pom
+
       - name: Build and install dp-grpc to local Maven repo
         working-directory: dp-grpc
         run: |
