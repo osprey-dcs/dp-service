@@ -19,12 +19,11 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Provides test coverage for IngestionClient.IngestionRequestParams and the column metadata and
- * valuesStatus handling in IngestionClient.buildIngestionRequest().
+ * Provides test coverage for IngestionClient.IngestionRequestParams and the column metadata
+ * handling in IngestionClient.buildIngestionRequest().
  */
 public class IngestionClientTest {
 
@@ -35,18 +34,9 @@ public class IngestionClientTest {
             Arrays.asList(Arrays.asList(12.34, 42.00), Arrays.asList(56.78, 90.12));
 
     /*
-     * Builds params using the 13 argument constructor, which does not accept valuesStatus.
+     * Builds params for a two column, two value double request.
      */
     private static IngestionRequestParams buildParams() {
-        return buildParams(null);
-    }
-
-    /*
-     * Builds params using the 14 argument constructor, which accepts valuesStatus explicitly.
-     */
-    private static IngestionRequestParams buildParams(
-            List<List<DataValue.ValueStatus>> valuesStatus
-    ) {
         final Instant instantNow = Instant.now();
         return new IngestionRequestParams(
                 PROVIDER_ID,
@@ -61,8 +51,7 @@ public class IngestionClientTest {
                 2,
                 COLUMN_NAMES,
                 IngestionDataType.DOUBLE,
-                VALUES,
-                valuesStatus);
+                VALUES);
     }
 
     private static List<DataColumn> buildRequestColumns(IngestionRequestParams params) {
@@ -71,80 +60,16 @@ public class IngestionClientTest {
     }
 
     /**
-     * Verifies that valuesStatus supplied to the 14 argument constructor reaches the built request.
-     * Regression coverage for the self assignment in the 13 argument constructor, which left the
-     * field permanently null and made the valuesStatus handling in buildIngestionRequest()
-     * unreachable.
-     */
-    @Test
-    public void testValuesStatusReachesBuiltRequest() {
-
-        final DataValue.ValueStatus statusOne = DataValue.ValueStatus.newBuilder()
-                .setMessage("status-one")
-                .build();
-        final DataValue.ValueStatus statusTwo = DataValue.ValueStatus.newBuilder()
-                .setMessage("status-two")
-                .build();
-
-        final List<List<DataValue.ValueStatus>> valuesStatus = Arrays.asList(
-                Arrays.asList(statusOne, statusTwo),
-                Arrays.asList(statusTwo, statusOne));
-
-        final IngestionRequestParams params = buildParams(valuesStatus);
-        assertEquals(valuesStatus, params.valuesStatus);
-
-        final List<DataColumn> columns = buildRequestColumns(params);
-        assertEquals(COLUMN_NAMES.size(), columns.size());
-
-        // each value carries the status supplied for its column and row position
-        for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
-            final List<DataValue> dataValues = columns.get(columnIndex).getDataValuesList();
-            assertEquals(VALUES.get(columnIndex).size(), dataValues.size());
-            for (int valueIndex = 0; valueIndex < dataValues.size(); valueIndex++) {
-                assertEquals(
-                        valuesStatus.get(columnIndex).get(valueIndex),
-                        dataValues.get(valueIndex).getValueStatus());
-            }
-        }
-    }
-
-    /**
-     * Verifies that the 13 argument constructor still builds a request, leaving valuesStatus unset.
-     */
-    @Test
-    public void testThirteenArgumentConstructorLeavesValuesStatusUnset() {
-
-        final IngestionRequestParams params = buildParams();
-        assertNull(params.valuesStatus);
-
-        final List<DataColumn> columns = buildRequestColumns(params);
-        assertEquals(COLUMN_NAMES.size(), columns.size());
-
-        for (DataColumn column : columns) {
-            for (DataValue dataValue : column.getDataValuesList()) {
-                assertFalse(dataValue.hasValueStatus());
-            }
-        }
-    }
-
-    /**
      * Verifies that column metadata is applied to columns built from the params columnNames and
-     * values, and that it coexists with valuesStatus.
+     * values.
      */
     @Test
     public void testColumnMetadataAppliedToGeneratedColumns() {
 
-        final DataValue.ValueStatus status = DataValue.ValueStatus.newBuilder()
-                .setMessage("status")
-                .build();
-        final List<List<DataValue.ValueStatus>> valuesStatus = Arrays.asList(
-                Arrays.asList(status, status),
-                Arrays.asList(status, status));
-
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("attribute-name", "attribute-value");
 
-        final IngestionRequestParams params = buildParams(valuesStatus)
+        final IngestionRequestParams params = buildParams()
                 .setColumnMetadata(
                         "test-source",
                         "test-process",
@@ -164,11 +89,6 @@ public class IngestionClientTest {
             assertEquals(1, metadata.getAttributesCount());
             assertEquals("attribute-name", metadata.getAttributes(0).getName());
             assertEquals("attribute-value", metadata.getAttributes(0).getValue());
-
-            // metadata application preserves the per value status set on the generated values
-            for (DataValue dataValue : column.getDataValuesList()) {
-                assertEquals(status, dataValue.getValueStatus());
-            }
         }
     }
 
@@ -309,40 +229,6 @@ public class IngestionClientTest {
         assertEquals(1, attributeList.size());
         assertEquals("good-name", attributeList.get(0).getName());
         assertEquals("good-value", attributeList.get(0).getValue());
-    }
-
-    /**
-     * Verifies that a valuesStatus whose dimensions do not match values is rejected at construction
-     * with a clear message, rather than surfacing later as an IndexOutOfBoundsException from inside
-     * buildIngestionRequest().
-     */
-    @Test
-    public void testMismatchedValuesStatusDimensionsRejected() {
-
-        final DataValue.ValueStatus status = DataValue.ValueStatus.newBuilder()
-                .setMessage("status")
-                .build();
-
-        // outer dimension too short: one status column for two value columns
-        final IllegalArgumentException outerException = assertThrows(
-                IllegalArgumentException.class,
-                () -> buildParams(List.of(List.of(status, status))));
-        assertTrue(
-                outerException.getMessage(),
-                outerException.getMessage().contains("valuesStatus size does not match values size"));
-
-        // inner dimension too short: one status for a column with two values
-        final IllegalArgumentException innerException = assertThrows(
-                IllegalArgumentException.class,
-                () -> buildParams(List.of(List.of(status), List.of(status, status))));
-        assertTrue(
-                innerException.getMessage(),
-                innerException.getMessage().contains("valuesStatus[0] size does not match values[0] size"));
-
-        // matching dimensions are accepted
-        buildParams(Arrays.asList(
-                Arrays.asList(status, status),
-                Arrays.asList(status, status)));
     }
 
     /**

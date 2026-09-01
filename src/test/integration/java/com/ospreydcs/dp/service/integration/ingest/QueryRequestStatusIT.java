@@ -76,8 +76,7 @@ public class QueryRequestStatusIT extends GrpcIntegrationTestBase {
                                     1,
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
-                                    values,
-                                    null, null);
+                                    values, null);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
                     ingestionServiceWrapper.sendAndVerifyIngestData(params, request);
                 }
@@ -100,8 +99,7 @@ public class QueryRequestStatusIT extends GrpcIntegrationTestBase {
                                     1,
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
-                                    values,
-                                    null, null);
+                                    values, null);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion, manually inspect reject response
@@ -137,8 +135,7 @@ public class QueryRequestStatusIT extends GrpcIntegrationTestBase {
                                     1,
                                     columnNames,
                                     IngestionTestBase.IngestionDataType.DOUBLE,
-                                    values,
-                                    null, null);
+                                    values, null);
                     final IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
 
                     // send but don't verify ingestion since it will fail, manually inspect ack response

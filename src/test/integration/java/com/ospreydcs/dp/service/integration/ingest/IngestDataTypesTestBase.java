@@ -155,7 +155,6 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             pvNames,
                             null,
                             null,
-                            null,
                             arrayDataColumnList
                     );
 
@@ -277,7 +276,6 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             samplePeriod, // 5 values per second
                             numSamples, // each DataColumn must contain 5 DataValues
                             pvNames,
-                            null,
                             null,
                             null,
                             dataColumnList
@@ -493,7 +491,6 @@ public abstract class IngestDataTypesTestBase extends GrpcIntegrationTestBase {
                             samplePeriod,
                             numSamples,
                             pvNames,
-                            null,
                             null,
                             null,
                             dataColumnList

@@ -100,7 +100,6 @@ public class DoubleColumnIT extends GrpcIntegrationTestBase {
                             columnNames,
                             null,
                             null,
-                            null,
                             null
                     );
             ingestionRequestParams.setDoubleColumnList(doubleColumns); // add list of DoubleColumns to request parameters
@@ -251,7 +250,6 @@ public class DoubleColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             columnNames,
-                            null,
                             null,
                             null,
                             null

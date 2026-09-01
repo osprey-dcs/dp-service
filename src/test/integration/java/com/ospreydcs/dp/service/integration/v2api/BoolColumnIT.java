@@ -84,7 +84,6 @@ public class BoolColumnIT extends GrpcIntegrationTestBase {
                             pvNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             null,
-                            null,
                             null);
             params.setBoolColumnList(boolColumns);
 
@@ -236,7 +235,6 @@ public class BoolColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             columnNames,
-                            null,
                             null,
                             null,
                             null

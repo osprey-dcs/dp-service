@@ -84,7 +84,6 @@ public class StringColumnIT extends GrpcIntegrationTestBase {
                             pvNames,
                             IngestionTestBase.IngestionDataType.DOUBLE,
                             null,
-                            null,
                             null);
             params.setStringColumnList(stringColumns);
 
@@ -236,7 +235,6 @@ public class StringColumnIT extends GrpcIntegrationTestBase {
                             sampleIntervalNanos,
                             numSamples,
                             columnNames,
-                            null,
                             null,
                             null,
                             null

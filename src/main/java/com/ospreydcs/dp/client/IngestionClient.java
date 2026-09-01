@@ -115,7 +115,6 @@ public class IngestionClient extends ServiceApiClientBase {
         public List<String> columnNames = null;
         public IngestionDataType dataType = null;
         public List<List<Object>> values = null;
-        public List<List<DataValue.ValueStatus>> valuesStatus = null;
 
         /*
          * Optional column-level metadata (provenance, tags, attributes) applied to each DataColumn
@@ -235,39 +234,6 @@ public class IngestionClient extends ServiceApiClientBase {
                 IngestionDataType dataType,
                 List<List<Object>> values
         ) {
-            this(
-                    providerId,
-                    requestId,
-                    snapshotStartTimestampSeconds,
-                    snapshotStartTimestampNanos,
-                    timestampsSecondsList,
-                    timestampNanosList,
-                    samplingClockStartSeconds,
-                    samplingClockStartNanos,
-                    samplingClockPeriodNanos,
-                    samplingClockCount,
-                    columnNames,
-                    dataType,
-                    values,
-                    null);
-        }
-
-        public IngestionRequestParams(
-                String providerId,
-                String requestId,
-                Long snapshotStartTimestampSeconds,
-                Long snapshotStartTimestampNanos,
-                List<Long> timestampsSecondsList,
-                List<Long> timestampNanosList,
-                Long samplingClockStartSeconds,
-                Long samplingClockStartNanos,
-                Long samplingClockPeriodNanos,
-                Integer samplingClockCount,
-                List<String> columnNames,
-                IngestionDataType dataType,
-                List<List<Object>> values,
-                List<List<DataValue.ValueStatus>> valuesStatus
-        ) {
             this(providerId, requestId);
 
             this.snapshotStartTimestampSeconds = snapshotStartTimestampSeconds;
@@ -281,29 +247,6 @@ public class IngestionClient extends ServiceApiClientBase {
             this.columnNames = columnNames;
             this.dataType = dataType;
             this.values = values;
-            this.valuesStatus = valuesStatus;
-
-            // buildIngestionRequest() indexes valuesStatus by the values dimensions, so a mismatch
-            // would otherwise surface as an IndexOutOfBoundsException from inside the builder,
-            // far from the call site that supplied the mismatched lists
-            if (valuesStatus != null && values != null) {
-                if (valuesStatus.size() != values.size()) {
-                    throw new IllegalArgumentException(
-                            "valuesStatus size does not match values size: "
-                                    + "valuesStatus: " + valuesStatus.size()
-                                    + ", values: " + values.size());
-                }
-                for (int i = 0; i < values.size(); i++) {
-                    final List<DataValue.ValueStatus> columnStatus = valuesStatus.get(i);
-                    if (columnStatus == null || columnStatus.size() != values.get(i).size()) {
-                        throw new IllegalArgumentException(
-                                "valuesStatus[" + i + "] size does not match values[" + i + "] size: "
-                                        + "valuesStatus: "
-                                        + (columnStatus == null ? "null" : columnStatus.size())
-                                        + ", values: " + values.get(i).size());
-                    }
-                }
-            }
         }
     }
 
@@ -554,7 +497,6 @@ public class IngestionClient extends ServiceApiClientBase {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
                 DataValue.Builder dataValueBuilder = null;
-                int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
                         case STRING -> {
@@ -597,13 +539,7 @@ public class IngestionClient extends ServiceApiClientBase {
                         }
                     }
 
-                    if (params.valuesStatus != null) {
-                        DataValue.ValueStatus valueStatus = params.valuesStatus.get(i).get(valueIndex);
-                        dataValueBuilder.setValueStatus(valueStatus);
-                    }
-
                     dataColumnBuilder.addDataValues(dataValueBuilder.build());
-                    valueIndex++;
                 }
 
                 frameColumns.add(dataColumnBuilder.build());

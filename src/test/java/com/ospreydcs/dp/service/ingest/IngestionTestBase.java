@@ -55,10 +55,9 @@ public class IngestionTestBase {
         // list of column names
         private final List<String> columnNames;
 
-        // fields for building request list of DataColumns with DataValue / ValueStatus objects
+        // fields for building request list of DataColumns with DataValue objects
         private final IngestionDataType dataType;
         private final List<List<Object>> values;
-        private final List<List<DataValue.ValueStatus>> valuesStatus;
 
         // explicit list of prebuilt DataColumns, instead of construcint them from the dataType / values fields
         private final List<DataColumn> dataColumnList;
@@ -93,7 +92,6 @@ public class IngestionTestBase {
                 List<String> columnNames,
                 IngestionDataType dataType,
                 List<List<Object>> values,
-                List<List<DataValue.ValueStatus>> valuesStatus,
                 List<DataColumn> dataColumnList
         ) {
             this.providerId = providerId;
@@ -107,7 +105,6 @@ public class IngestionTestBase {
             this.columnNames = columnNames;
             this.dataType = dataType;
             this.values = values;
-            this.valuesStatus = valuesStatus;
             this.dataColumnList = dataColumnList;
         }
 
@@ -153,10 +150,6 @@ public class IngestionTestBase {
 
         public List<List<Object>> values() {
             return values;
-        }
-
-        public List<List<DataValue.ValueStatus>> valuesStatus() {
-            return valuesStatus;
         }
 
         public List<DataColumn> dataColumnList() {
@@ -299,7 +292,6 @@ public class IngestionTestBase {
                     Objects.equals(this.columnNames, that.columnNames) &&
                     Objects.equals(this.dataType, that.dataType) &&
                     Objects.equals(this.values, that.values) &&
-                    Objects.equals(this.valuesStatus, that.valuesStatus) &&
                     Objects.equals(this.dataColumnList, that.dataColumnList) &&
                     Objects.equals(this.doubleColumnList, that.doubleColumnList) &&
                     Objects.equals(this.floatColumnList, that.floatColumnList);
@@ -319,7 +311,6 @@ public class IngestionTestBase {
                     columnNames,
                     dataType,
                     values,
-                    valuesStatus,
                     dataColumnList,
                     doubleColumnList,
                     floatColumnList);
@@ -339,7 +330,6 @@ public class IngestionTestBase {
                     "columnNames=" + columnNames + ", " +
                     "dataType=" + dataType + ", " +
                     "values=" + values + ", " +
-                    "valuesStatus=" + valuesStatus + ", " +
                     "dataColumnList=" + dataColumnList + ", " +
                     "doubleColumnList=" + doubleColumnList + ", " +
                     "floatColumnList=" + floatColumnList + ']';
@@ -474,17 +464,10 @@ public class IngestionTestBase {
 
             assertTrue(params.values != null);
             assertEquals(params.columnNames.size(), params.values.size());
-            if (params.valuesStatus != null) {
-                assertEquals(params.columnNames.size(), params.valuesStatus.size());
-            }
             for (int i = 0 ; i < params.columnNames.size() ; i++) {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
                 DataValue.Builder dataValueBuilder = null;
-                if (params.valuesStatus != null) {
-                    assertEquals(params.values.get(i).size(), params.valuesStatus.get(i).size());
-                }
-                int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
                         case STRING -> {
@@ -527,13 +510,7 @@ public class IngestionTestBase {
                         }
                     }
 
-                    if (params.valuesStatus != null) {
-                        DataValue.ValueStatus valueStatus = params.valuesStatus.get(i).get(valueIndex);
-                        dataValueBuilder.setValueStatus(valueStatus);
-                    }
-
                     dataColumnBuilder.addDataValues(dataValueBuilder.build());
-                    valueIndex++;
                 }
 
                 frameColumns.add(dataColumnBuilder.build());
