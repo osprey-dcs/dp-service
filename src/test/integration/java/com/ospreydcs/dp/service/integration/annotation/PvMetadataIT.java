@@ -127,10 +127,15 @@ public class PvMetadataIT extends AnnotationIntegrationTestIntermediate {
     // queryPvMetadata tests
     // =========================================================================
 
+    /**
+     * An empty criteria list is match-all, not a rejection (#245).  This is the browse-all entry
+     * point the dp-desktop-app explore views open with.
+     */
     @Test
-    public void testQueryPvMetadataRejectEmptyCriteria() {
+    public void testQueryPvMetadataEmptyCriteriaMatchesAll() {
+        createQueryTestData();
         annotationServiceWrapper.sendAndVerifyQueryPvMetadata(
-                List.of(), 0, null, true, "criteria list must not be empty", 0);
+                List.of(), 0, null, false, null, 4);
     }
 
     @Test

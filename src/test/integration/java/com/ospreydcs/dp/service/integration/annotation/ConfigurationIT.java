@@ -229,11 +229,15 @@ public class ConfigurationIT extends AnnotationIntegrationTestIntermediate {
         annotationServiceWrapper.sendAndVerifySaveConfiguration(qp2, false, null);
     }
 
+    /**
+     * An empty criteria list is match-all, not a rejection (#245).  This is the browse-all entry
+     * point the dp-desktop-app explore views open with.
+     */
     @Test
-    public void testQueryConfigurationsRejectEmptyCriteria() {
+    public void testQueryConfigurationsEmptyCriteriaMatchesAll() {
+        createQueryConfigurationsScenario();
         annotationServiceWrapper.sendAndVerifyQueryConfigurations(
-                List.of(), 0, null,
-                true, "QueryConfigurationsRequest.criteria list must not be empty", 0);
+                List.of(), 0, null, false, null, 5);
     }
 
     @Test
@@ -844,11 +848,15 @@ public class ConfigurationIT extends AnnotationIntegrationTestIntermediate {
         annotationServiceWrapper.sendAndVerifySaveConfigurationActivation(qa3, false, null);
     }
 
+    /**
+     * An empty criteria list is match-all, not a rejection (#245).  This is the browse-all entry
+     * point the dp-desktop-app explore views open with.
+     */
     @Test
-    public void testQueryConfigurationActivationsRejectEmptyCriteria() {
+    public void testQueryConfigurationActivationsEmptyCriteriaMatchesAll() {
+        createQueryActivationsScenario();
         annotationServiceWrapper.sendAndVerifyQueryConfigurationActivations(
-                List.of(), 0, null,
-                true, "QueryConfigurationActivationsRequest.criteria must not be empty", 0);
+                List.of(), 0, null, false, null, 3);
     }
 
     @Test

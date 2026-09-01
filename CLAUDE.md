@@ -319,6 +319,37 @@ Build a compound `Filters.and()` from criteria list:
 
 Multiple match types within one criterion are combined with `Filters.or()`.
 
+### Empty Criteria Is Match-All, and Every Query Is Bounded (issue #245)
+
+An empty criteria list on `queryPvMetadata`, `queryConfigurations`, and
+`queryConfigurationActivations` means **match-all**, not an error. The three `Query*Job` classes
+deliberately have no list-level emptiness check; each carries a comment saying so, because the
+absence of a validation block reads like an omission. Per-criterion validation is untouched: a
+criterion that *is* supplied must still be well-formed, so "no filters requested" and "a filter was
+requested but is malformed" stay distinguishable.
+
+`MongoSyncAnnotationClient.DEFAULT_QUERY_LIMIT` (100) is applied by all three when `limit` is unset,
+and **the default is unconditional** — it does not depend on whether criteria were supplied. Making
+it conditional would couple page size to an unrelated request field: a client removing its last
+filter would silently switch from "everything" to "first 100 with a token". There is deliberately no
+unbounded path left in `executeQueryPvMetadata`; before #245 an unset limit there returned every
+match with an **always-blank `nextPageToken`**, so the caller could not detect the unbounded read.
+Reintroducing a `limit > 0 ? ... : 0` branch restores exactly that hazard.
+
+Keep the constant shared across all three call sites. It replaced two hardcoded `100` literals plus
+`queryPvMetadata`'s `0`, so a future change to the default cannot land on two of the three.
+
+**This interacts with the #243 blank-criterion guard, and the interaction is subtle.** Before #245, a
+blank-only criterion was observably a *rejection*: `nonBlank()` dropped the blank entry, the
+criterion was omitted, and the server rejected the resulting empty criteria list. That rejection is
+gone, so a blank-only query now legitimately succeeds as match-all. The #243 invariant still holds,
+but it is narrower than "the caller does not receive the whole collection" — under #245 a blank-only
+query and an explicit empty-criteria query both return everything. What #243 guarantees is that no
+`"^" + Pattern.quote("")` regex is ever built, i.e. the server is never *asked* to filter on a blank
+value. Assert that on the built request (`getCriteriaCount() == 0`), never by expecting an error:
+`PvMetadataClientIT.testQueryPvMetadataBlankCriteriaEmitsNoCriterion` was rewritten for exactly this
+reason when it failed during #245's implementation.
+
 ### Blank Criterion Values Must Never Reach the Server (issue #243)
 
 A blank string in a `prefix` or `contains` criterion is a **silent match-all**, not a no-op. The

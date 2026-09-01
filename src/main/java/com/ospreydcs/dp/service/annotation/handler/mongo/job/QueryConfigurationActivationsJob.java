@@ -35,12 +35,9 @@ public class QueryConfigurationActivationsJob extends HandlerJob {
     public void execute() {
         logger.debug("executing QueryConfigurationActivationsJob id: {}", responseObserver.hashCode());
 
-        // validate criteria list not empty
-        if (request.getCriteriaList().isEmpty()) {
-            dispatcher.handleValidationError(new ResultStatus(
-                    true, "QueryConfigurationActivationsRequest.criteria must not be empty"));
-            return;
-        }
+        // An empty criteria list is match-all by contract (#245), not an error, so there is
+        // deliberately no list-level emptiness check here.  Per-criterion validation below is
+        // unaffected: a criterion that IS supplied must still be well-formed.
 
         // validate each criterion
         for (var criterion : request.getCriteriaList()) {

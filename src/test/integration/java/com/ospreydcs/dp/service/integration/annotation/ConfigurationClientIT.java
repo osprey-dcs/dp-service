@@ -1159,24 +1159,77 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
     }
 
     /**
-     * Pins the CURRENT server behavior that an empty criteria list is rejected.  #245 relaxes this
-     * to match-all; see the companion test in PvMetadataClientIT for why it is pinned.
+     * An empty criteria list is match-all, not a rejection (#245).  This is the browse-all entry
+     * point the dp-desktop-app configuration explore view opens with.
+     *
+     * <p>Replaces testQueryConfigurationsRejectsEmptyCriteria, which pinned the pre-#245 rejection.
      */
     @Test
-    public void testQueryConfigurationsRejectsEmptyCriteria() {
+    public void testQueryConfigurationsEmptyCriteriaMatchesAll() {
+
+        saveConfiguration("matchall-cfg-001", "beamline");
+        saveConfiguration("matchall-cfg-002", "beamline");
+        saveConfiguration("matchall-cfg-003", "vacuum");
 
         final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
                 new AnnotationClient.QueryConfigurationsParams(
                         null, null, null, null, null, 100, null));
 
-        assertTrue(result.resultStatus.isError);
-        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
-        assertTrue(result.isReject());
-        assertTrue(
-                result.resultStatus.msg,
-                result.resultStatus.msg.contains(
-                        "QueryConfigurationsRequest.criteria list must not be empty"));
-        assertNull(result.configurations);
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertFalse(result.isReject());
+        assertNotNull(result.configurations);
+        assertEquals(3, result.configurations.size());
+
+        final List<String> names = result.configurations.stream()
+                .map(c -> c.getConfigurationName()).sorted().toList();
+        assertEquals(
+                List.of("matchall-cfg-001", "matchall-cfg-002", "matchall-cfg-003"), names);
+    }
+
+    /**
+     * Match-all plus paging enumerates every configuration exactly once, with a blank token on the
+     * final page.
+     */
+    @Test
+    public void testQueryConfigurationsEmptyCriteriaPagesThroughAll() {
+
+        saveConfiguration("matchallpage-cfg-001", "beamline");
+        saveConfiguration("matchallpage-cfg-002", "beamline");
+        saveConfiguration("matchallpage-cfg-003", "vacuum");
+        saveConfiguration("matchallpage-cfg-004", "vacuum");
+        saveConfiguration("matchallpage-cfg-005", "cryo");
+
+        final List<String> seen = new java.util.ArrayList<String>();
+        String pageToken = null;
+        int pageCount = 0;
+
+        while (true) {
+            final QueryConfigurationsApiResult page = annotationClient.queryConfigurations(
+                    new AnnotationClient.QueryConfigurationsParams(
+                            null, null, null, null, null, 2, pageToken));
+
+            assertFalse(page.resultStatus.msg, page.resultStatus.isError);
+            assertNotNull(page.configurations);
+            page.configurations.forEach(c -> seen.add(c.getConfigurationName()));
+
+            pageCount++;
+            assertTrue("paging did not terminate", pageCount <= 10);
+
+            if (page.nextPageToken.isEmpty()) {
+                assertEquals("the final page should hold the remainder", 1, page.configurations.size());
+                break;
+            }
+            assertEquals("a non-final page should be full", 2, page.configurations.size());
+            pageToken = page.nextPageToken;
+        }
+
+        assertEquals(3, pageCount);
+        seen.sort(null);
+        assertEquals(
+                List.of("matchallpage-cfg-001", "matchallpage-cfg-002", "matchallpage-cfg-003",
+                        "matchallpage-cfg-004", "matchallpage-cfg-005"),
+                seen);
     }
 
     // =========================================================================
@@ -1239,26 +1292,49 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
     }
 
     /**
-     * Pins the CURRENT server behavior that an empty criteria list is rejected.  Note the message
-     * differs from the other two queries: "criteria must not be empty", without "list".  #245
-     * relaxes this to match-all.
+     * An empty criteria list is match-all, not a rejection (#245).
+     *
+     * <p>Replaces testQueryConfigurationActivationsRejectsEmptyCriteria, which pinned the pre-#245
+     * rejection.  Note the rejection message this used to assert differed from the other two
+     * queries ("criteria must not be empty", without "list"); that divergence is now moot.
      */
     @Test
-    public void testQueryConfigurationActivationsRejectsEmptyCriteria() {
+    public void testQueryConfigurationActivationsEmptyCriteriaMatchesAll() {
+
+        saveConfiguration("matchall-act-cfg-001", "beamline");
+
+        // two non-overlapping activations: the overlap constraint forbids overlapping intervals
+        // for the same configurationName
+        final SaveConfigurationActivationApiResult save1 =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "matchall-act-001", "matchall-act-cfg-001",
+                                timestamp(1000L), timestamp(2000L),
+                                null, null, null, "craigmcc"));
+        assertFalse(save1.resultStatus.msg, save1.resultStatus.isError);
+
+        final SaveConfigurationActivationApiResult save2 =
+                annotationClient.saveConfigurationActivation(
+                        new AnnotationClient.SaveConfigurationActivationParams(
+                                "matchall-act-002", "matchall-act-cfg-001",
+                                timestamp(2000L), timestamp(3000L),
+                                null, null, null, "craigmcc"));
+        assertFalse(save2.resultStatus.msg, save2.resultStatus.isError);
 
         final QueryConfigurationActivationsApiResult result =
                 annotationClient.queryConfigurationActivations(
                         new AnnotationClient.QueryConfigurationActivationsParams(
                                 null, null, null, null, null, null, null, null, 100, null));
 
-        assertTrue(result.resultStatus.isError);
-        assertEquals(ApiResultStatus.REJECT, result.apiResultStatus);
-        assertTrue(result.isReject());
-        assertTrue(
-                result.resultStatus.msg,
-                result.resultStatus.msg.contains(
-                        "QueryConfigurationActivationsRequest.criteria must not be empty"));
-        assertNull(result.configurationActivations);
+        assertFalse(result.resultStatus.msg, result.resultStatus.isError);
+        assertEquals(ApiResultStatus.NONE, result.apiResultStatus);
+        assertFalse(result.isReject());
+        assertNotNull(result.configurationActivations);
+        assertEquals(2, result.configurationActivations.size());
+
+        final List<String> ids = result.configurationActivations.stream()
+                .map(a -> a.getClientActivationId()).sorted().toList();
+        assertEquals(List.of("matchall-act-001", "matchall-act-002"), ids);
     }
 
     // =========================================================================

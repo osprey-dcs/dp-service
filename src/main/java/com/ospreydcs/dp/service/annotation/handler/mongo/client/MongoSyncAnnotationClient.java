@@ -62,6 +62,19 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
+    /**
+     * Default page size applied by queryPvMetadata, queryConfigurations, and
+     * queryConfigurationActivations when the request's limit is 0/unset.
+     *
+     * <p>Shared by all three so a change to the default cannot land on two of the three.  It matters
+     * most for queryPvMetadata: since #245 made an empty criteria list match-all, an unset limit
+     * there would otherwise materialize every PV in the archive into an ArrayList, and because a
+     * nextPageToken is only produced when the page is full, the caller could not even detect it.
+     * The default is deliberately unconditional rather than applied only to the match-all case —
+     * see #245 plan D1.
+     */
+    private static final int DEFAULT_QUERY_LIMIT = 100;
+
     @Override
     public DataSetDocument findDataSet(String dataSetId) {
         // Collapses "absent" and "query failed" to null. Callers that must tell the two apart —
@@ -678,7 +691,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
                 : and(filterList);
 
-        final int limit = request.getLimit() > 0 ? request.getLimit() : 0;
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
         int skip = 0;
         if (!request.getPageToken().isBlank()) {
             try {
@@ -696,13 +709,10 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         if (skip > 0) query = query.skip(skip);
 
         // Fetch limit+1 to detect whether a next page exists without an extra count query.
+        // limit is always positive (DEFAULT_QUERY_LIMIT when unset), so there is no unbounded path.
         final List<PvMetadataDocument> documents = new ArrayList<>();
         try {
-            if (limit > 0) {
-                query.limit(limit + 1).into(documents);
-            } else {
-                query.into(documents);
-            }
+            query.limit(limit + 1).into(documents);
         } catch (Exception ex) {
             logger.error("executeQueryPvMetadata: mongo exception: {}", ex.getMessage());
             return null;
@@ -710,7 +720,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         // Determine next-page token: only produce one when the result set is full (has more).
         String nextPageToken = "";
-        if (limit > 0 && documents.size() > limit) {
+        if (documents.size() > limit) {
             documents.remove(documents.size() - 1); // trim the extra probe document
             final int nextSkip = skip + limit;
             nextPageToken = Base64.getEncoder().encodeToString(
@@ -959,7 +969,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 ? Filters.exists(BsonConstants.BSON_KEY_CONFIGURATION_NAME)
                 : and(filterList);
 
-        final int limit = request.getLimit() > 0 ? request.getLimit() : 100;
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
         int skip = 0;
         if (!request.getPageToken().isBlank()) {
             try {
@@ -1244,7 +1254,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             }
         }
         int limit = request.getLimit();
-        if (limit <= 0) limit = 100;
+        if (limit <= 0) limit = DEFAULT_QUERY_LIMIT;
 
         final List<ConfigurationActivationDocument> documents = new ArrayList<>();
         try {
