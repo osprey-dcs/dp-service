@@ -251,15 +251,62 @@ Confirm the old index's actual name first with `db.annotations.getIndexes()` and
 (`name`/`comment`/`event.description` text plus ascending `ownerId`) and may differ if the index was
 ever created explicitly.
 
-The service creates the new text index on startup but **does not drop the old one** — the same
-deliberate choice recorded on #231: dropping an index on a live archive is not something startup code
-should decide unprompted. Leaving the stale index costs write overhead on every annotation save and
+The service creates the new text index on startup but **does not drop the old one** — not by
+deliberate policy, but because nothing in the codebase drops indexes at all. `MongoSyncClient`'s
+`createMongoIndex*` methods only ever call `createIndex()`, and there is no migration mechanism of
+any kind in the repo. See [Migration strategy](#migration-strategy-unresolved) below: this plan
+should not be merged assuming hand-run shell commands are an adequate answer. Leaving the stale index costs write overhead on every annotation save and
 gives the planner a competing candidate.
 
 Verify the end state with `db.annotations.getIndexes().map(i => i.name)`.
 
 Annotations saved before the migration and not migrated will read back with a null description; no
-error, just a missing field. Run the migration before serving traffic.
+error, just a missing field — which is exactly the failure mode this repo treats as the serious one,
+since a caller cannot tell an unmigrated record from one saved without a description.
+
+## Migration strategy (unresolved)
+
+**This is an open question that blocks Phase 1's merge, not a detail of it.**
+
+The repo has no migration mechanism: no version marker, no migration runner, no
+`dropIndex` call anywhere, and no record of which schema a given database is at. Every schema change
+to date has been absorbed by there being no deployment that mattered.
+
+The `comment` → `description` rename is the first change that needs one, and it arrives just as real
+users do. Its properties are worth stating plainly, because they generalize:
+
+- **It is not backward compatible.** A record written by the old code is unreadable-as-intended by
+  the new code, and vice versa. There is no window where both versions can run against one database,
+  so this is not a rolling deploy.
+- **It fails silently.** An unmigrated annotation reads back with a null description rather than an
+  error.
+- **It cannot be verified after the fact from the data alone.** A null description is
+  indistinguishable from a record legitimately saved without one.
+
+Options, in rough order of cost:
+
+1. **Documented manual runbook** (what this plan currently assumes). Cheapest, and adequate only
+   while every deployment is one we operate and can take offline. It does not survive a user
+   upgrading unattended, and nothing detects a skipped migration.
+2. **Startup migration with a schema-version marker.** A `schemaVersion` document in a
+   `serviceMetadata` collection; on startup the service compares, runs pending migrations, and
+   records the new version. Follows the `bucketSpanVerification` precedent already in the codebase —
+   which is exactly this pattern for a different purpose, so there is a shape to copy. Requires
+   deciding whether the service refuses to start on a version mismatch it cannot handle, which is
+   the safe behavior and also the one that turns a bad migration into an outage.
+3. **Separate migration tool** shipped alongside the service, run deliberately. Keeps startup code
+   out of the business of mutating archives — the instinct behind the sentence I wrongly attributed
+   to #231 — at the cost of a second artifact and a step an operator can forget.
+
+**Recommendation: (2), with the refuse-to-start behavior, and (1) as the interim for Phase 1 only if
+Phase 1 must land before the mechanism exists.** The deciding factor is that (1) and (3) both fail
+open — a skipped migration is silent — whereas (2) fails closed. Given that this change's failure
+mode is already silent, layering a silent delivery mechanism on top of it is the combination worth
+avoiding.
+
+This deserves its own ticket rather than being smuggled into #248. Phase 1 can proceed on the
+runbook if the mechanism lands before any real deployment upgrades; it should not proceed on the
+runbook if that ordering is not guaranteed.
 
 ## Work already done
 
