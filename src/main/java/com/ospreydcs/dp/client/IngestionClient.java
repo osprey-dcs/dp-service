@@ -497,7 +497,6 @@ public class IngestionClient extends ServiceApiClientBase {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
                 DataValue.Builder dataValueBuilder = null;
-                int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
                         case STRING -> {
@@ -541,7 +540,6 @@ public class IngestionClient extends ServiceApiClientBase {
                     }
 
                     dataColumnBuilder.addDataValues(dataValueBuilder.build());
-                    valueIndex++;
                 }
 
                 frameColumns.add(dataColumnBuilder.build());

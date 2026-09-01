@@ -468,7 +468,6 @@ public class IngestionTestBase {
                 DataColumn.Builder dataColumnBuilder = DataColumn.newBuilder();
                 dataColumnBuilder.setName(params.columnNames.get(i));
                 DataValue.Builder dataValueBuilder = null;
-                int valueIndex = 0;
                 for (Object value : params.values.get(i)) {
                     switch (params.dataType) {
                         case STRING -> {
@@ -512,7 +511,6 @@ public class IngestionTestBase {
                     }
 
                     dataColumnBuilder.addDataValues(dataValueBuilder.build());
-                    valueIndex++;
                 }
 
                 frameColumns.add(dataColumnBuilder.build());
