@@ -88,6 +88,7 @@ plan documents one change, CLAUDE.md documents the invariant it established.
 - **pvMetadata**: PV metadata records (pvName unique index, aliases index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurations**: Machine configuration records (configurationName unique index, category index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurationActivations**: Time-bounded activations of configurations (clientActivationId unique sparse index; configurationName, internalCategory, startTime, endTime indexes; tags, attributes, description, modifiedBy, createdAt, updatedAt)
+- **serviceMetadata**: Service-level markers, currently the `schemaVersion` document recording the applied schema version, its audit list, and the in-progress migration claim (see Schema Migration below)
 - **sampleStatusBuckets**: Sample status storage (SampleStatusBucketDocument: pvName/domain/layer identity, embedded DataTimestampsDocument, firstTimeNanos/lastTimeNanos epoch-nanos scalars, statusCodes/confidence/reasons arrays, source/modifiedBy/updatedTime; indexes on (pvName, domain, layer, firstTimeNanos) and (domain, layer, firstTimeNanos))
 
 ### Document Embedding Pattern
@@ -561,6 +562,79 @@ positional list.
 
 ### Ingestion Validation Test Coverage
 - `IngestionValidationUtilityTest` (22 test cases): legacy validation, new column types, duplicate PV names, timestamp integrity
+
+## Schema Migration (issue #254)
+
+Schema changes are delivered by a versioned migration runner that executes during
+`MongoClientBase.init()`, and the mechanism **fails closed**: a database whose schema version the
+binary cannot establish stops the service rather than being served from. Operator documentation is
+`doc/schema-migration.md`.
+
+- **Adding a migration**: implement `Migration` in `common/mongo/migration/migrations/`, add it to
+  `SchemaMigrationRunner.MIGRATIONS`, and bump `SCHEMA_VERSION`. The version is a plain integer owned
+  by the code, deliberately *not* derived from the Maven project version — most releases change no
+  schema, so the two move at different rates.
+- **Migrations operate on `MongoDatabase`/`Document`, never the POJO document classes.** The codec
+  registry is bound to the *current* class shape, while a migration by definition reads documents
+  written under a previous one. This also keeps an old migration working after the classes move on.
+- **Every migration must be idempotent**, and must say why in its Javadoc — the runner cannot enforce
+  it. A crash between applying and recording the version re-runs it, as can the stuck-claim recovery.
+- **Index changes are migration steps**, so `createMongoIndex*` stays purely additive. Reconciling
+  live indexes against the declared set instead would drop an index an operator added deliberately.
+  Migrations therefore run **after** collection init but **before** every `createMongoIndexes*()`
+  call; that ordering is load-bearing, see below.
+
+### Absence of a marker is resolved by emptiness, not assumption
+
+No marker plus no documents in any managed collection is a **fresh install** (stamped at the current
+version, nothing run); no marker plus any document is a **legacy database** (migrated from 0). Neither
+can be assumed: always-version-0 replays an accumulating list against every fresh install, while
+always-current silently stamps a real unmigrated deployment as done — the failure the mechanism
+exists to prevent.
+
+`SchemaMigrationRunner.MANAGED_COLLECTION_NAMES` must list every `COLLECTION_NAME_*` constant on
+`MongoClientBase` (except `serviceMetadata`, which holds the marker itself). A collection omitted
+makes a populated database look fresh and skips every migration.
+`SchemaMigrationRunnerTest.testManagedCollectionListCoversEveryDeclaredCollection` pins this by
+reflection — **add new collections there too**.
+
+### A text index is identified by its `weights`, never its key or name
+
+MongoDB stores a text index as `key: {_fts: "text", _ftsx: 1, <ascending fields>}` with the indexed
+text fields moved into a separate `weights` document. Two text indexes over different fields therefore
+have **identical key documents**. Matching a text index by key finds both or neither; matching by the
+default derived name misses one created explicitly under another name. Match on `weights`.
+
+**Mongo permits only one text index per collection.** Replacing one is therefore a drop-then-create,
+and the drop must precede any `createIndex` for the replacement or it fails with
+`IndexOptionsConflict` — a startup failure, not a stale-index performance cost. This is why the
+migration runner is ordered ahead of index creation in `init()`.
+
+### A stored field rename must move its index declaration in the same change
+
+Renaming a BSON field without moving the `BsonConstants` key and the index declaration that uses it
+has index creation rebuild, moments after the migration drops it, an index over a field no document
+has any more — while the marker records the migration as applied. Caught end-to-end during #254; the
+constant and index line ship with the migration, not with the document-class rename.
+
+### `Instant` round-trips through BSON as `java.util.Date`
+
+BSON has one date type, and the driver's default decoding target is `Date`. So
+`Document.get(key, Instant.class)` on a value written as an `Instant` throws `ClassCastException`
+rather than returning null. Convert explicitly (`SchemaVersionMarker.readInstant()`) when reading
+timestamps out of a raw `Document`.
+
+### Startup failure stops the server
+
+`GrpcServerBase.initService_()` returns `boolean` and `start()` throws `DpRuntimeException` before
+binding the port when it is false. Before #254 it returned `void` and all four servers logged and
+returned — which exited `initService_()`, not `start()`, so a service whose Mongo connection or
+handler init failed went on to serve requests against an uninitialized handler.
+
+`start()` must **throw**, not return: `main()` calls `start()` then `blockUntilShutdown()`, and a
+silent return leaves `server` null, so `blockUntilShutdown()` falls through to `finiService_()` and
+the process exits 0 — a supervisor reads that as a clean shutdown and never alerts. Any new server
+implementation must return its `serviceImpl.init(...)` result rather than swallowing it.
 
 ## Continuous Integration
 - **GitHub Actions**: `.github/workflows/ci.yml`
