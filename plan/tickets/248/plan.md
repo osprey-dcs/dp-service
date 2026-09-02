@@ -10,7 +10,7 @@
   other half of the same breaking release.
 - **Supersedes**: #210, #211, #214.
 - **Status**: triaged 2026-09-01 against dp-service `7be9a05` and dp-grpc `6dfff3f`. Not yet
-  implemented; Phase 1 is drafted (see [Work already done](#work-already-done)).
+  implemented; Phase 1 is drafted (see [Work already done](#work-already-done)) and blocked on #254.
 
 ## Overview
 
@@ -238,75 +238,50 @@ Independent of Phases 2–3 and the largest single chunk. Also carries D8.
 
 ## Upgrade note (required for D3)
 
-The `comment` → `description` rename changes a stored field name and a text index. Existing
-deployments need, after deploying Phase 1:
+The `comment` → `description` rename changes a stored field name and a text index. **This is
+delivered by the migration mechanism in
+[#254](https://github.com/osprey-dcs/dp-service/issues/254), not by hand-run shell commands** — see
+[Migration strategy](#migration-strategy-resolved-by-254) below.
 
-```js
-db.annotations.updateMany({}, { $rename: { "comment": "description" } })
-db.annotations.dropIndex("name_text_comment_text_event.description_text_ownerId_1")
-```
+Its version-1 migration performs both halves: a `$rename` of `comment` → `description` on the
+`annotations` collection, and a drop of the old compound text index. The drop is by key-spec match
+rather than by name, since the literal
+`name_text_comment_text_event.description_text_ownerId_1` is Mongo's default derivation from the
+key spec and may differ if the index was ever created explicitly.
 
-Confirm the old index's actual name first with `db.annotations.getIndexes()` and drop by that name
-— the literal above is Mongo's default derivation from the key spec
-(`name`/`comment`/`event.description` text plus ascending `ownerId`) and may differ if the index was
-ever created explicitly.
+**The drop is not optional, and it is not merely a performance matter.** Mongo permits only one text
+index per collection, so on an existing deployment `createMongoIndexesAnnotations()` cannot create
+the new index while the old one exists — it fails. #254 therefore orders the migration runner before
+all `createMongoIndexes*()` calls in `MongoClientBase.init()`. The earlier draft of this note, which
+treated the stale index as write overhead the service tolerates, was wrong on this point.
 
-The service creates the new text index on startup but **does not drop the old one** — not by
-deliberate policy, but because nothing in the codebase drops indexes at all. `MongoSyncClient`'s
-`createMongoIndex*` methods only ever call `createIndex()`, and there is no migration mechanism of
-any kind in the repo. See [Migration strategy](#migration-strategy-unresolved) below: this plan
-should not be merged assuming hand-run shell commands are an adequate answer. Leaving the stale index costs write overhead on every annotation save and
-gives the planner a competing candidate.
+Verify the end state with `db.annotations.getIndexes().map(i => i.name)`, and the applied schema
+version with `db.serviceMetadata.findOne({_id: "schemaVersion"})`.
 
-Verify the end state with `db.annotations.getIndexes().map(i => i.name)`.
+Annotations saved before the migration and not migrated read back with a null description; no error,
+just a missing field — which is exactly the failure mode this repo treats as the serious one, since a
+caller cannot tell an unmigrated record from one saved without a description. That is the reason the
+mechanism fails closed rather than logging and continuing.
 
-Annotations saved before the migration and not migrated will read back with a null description; no
-error, just a missing field — which is exactly the failure mode this repo treats as the serious one,
-since a caller cannot tell an unmigrated record from one saved without a description.
+## Migration strategy (resolved by #254)
 
-## Migration strategy (unresolved)
+**Resolved 2026-09-02.** This was an open question blocking Phase 1's merge; it is now owned by
+[#254](https://github.com/osprey-dcs/dp-service/issues/254), planned at
+[`plan/tickets/254/plan.md`](../254/plan.md).
 
-**This is an open question that blocks Phase 1's merge, not a detail of it.**
+The outcome, for Phase 1's purposes:
 
-The repo has no migration mechanism: no version marker, no migration runner, no
-`dropIndex` call anywhere, and no record of which schema a given database is at. Every schema change
-to date has been absorbed by there being no deployment that mattered.
+- Option (2) — startup migration with a schema-version marker — was chosen, **with refuse-to-start**.
+  Options (1) and (3) both fail open, and this change's own failure mode is already silent.
+- The interim runbook is **not** used. #254 lands first and Phase 1 consumes its version-1 migration.
+- Refuse-to-start required more than a policy decision: `GrpcServerBase.initService_()` is `void` and
+  all three servers log-and-return on init failure while `start()` binds the port anyway. #254 fixes
+  that, which also fixes a pre-existing bug in which a failed Mongo init leaves a service serving
+  requests against an uninitialized handler.
 
-The `comment` → `description` rename is the first change that needs one, and it arrives just as real
-users do. Its properties are worth stating plainly, because they generalize:
-
-- **It is not backward compatible.** A record written by the old code is unreadable-as-intended by
-  the new code, and vice versa. There is no window where both versions can run against one database,
-  so this is not a rolling deploy.
-- **It fails silently.** An unmigrated annotation reads back with a null description rather than an
-  error.
-- **It cannot be verified after the fact from the data alone.** A null description is
-  indistinguishable from a record legitimately saved without one.
-
-Options, in rough order of cost:
-
-1. **Documented manual runbook** (what this plan currently assumes). Cheapest, and adequate only
-   while every deployment is one we operate and can take offline. It does not survive a user
-   upgrading unattended, and nothing detects a skipped migration.
-2. **Startup migration with a schema-version marker.** A `schemaVersion` document in a
-   `serviceMetadata` collection; on startup the service compares, runs pending migrations, and
-   records the new version. Follows the `bucketSpanVerification` precedent already in the codebase —
-   which is exactly this pattern for a different purpose, so there is a shape to copy. Requires
-   deciding whether the service refuses to start on a version mismatch it cannot handle, which is
-   the safe behavior and also the one that turns a bad migration into an outage.
-3. **Separate migration tool** shipped alongside the service, run deliberately. Keeps startup code
-   out of the business of mutating archives — the instinct behind the sentence I wrongly attributed
-   to #231 — at the cost of a second artifact and a step an operator can forget.
-
-**Recommendation: (2), with the refuse-to-start behavior, and (1) as the interim for Phase 1 only if
-Phase 1 must land before the mechanism exists.** The deciding factor is that (1) and (3) both fail
-open — a skipped migration is silent — whereas (2) fails closed. Given that this change's failure
-mode is already silent, layering a silent delivery mechanism on top of it is the combination worth
-avoiding.
-
-This deserves its own ticket rather than being smuggled into #248. Phase 1 can proceed on the
-runbook if the mechanism lands before any real deployment upgrades; it should not proceed on the
-runbook if that ordering is not guaranteed.
+**Sequencing consequence for this ticket:** Phase 1 no longer merges on a runbook, so it waits on
+#254. Since Phase 1 is what restores compilation, `main` stays red for the duration and #254 is
+developed against a non-compiling tree — see #254's plan for how that is handled.
 
 ## Work already done
 
@@ -332,3 +307,9 @@ Phases 2 and 4 are independent of each other and of Phase 3. Phase 3's paging wo
 query methods Phase 1 also touches, so it should follow Phase 1 rather than run beside it.
 
 dp-grpc is already merged (`6dfff3f`); there is no upstream dependency remaining.
+
+**Phase 1 is blocked by [#254](https://github.com/osprey-dcs/dp-service/issues/254)**, which owns the
+migration mechanism its D3 storage rename requires — see
+[Migration strategy](#migration-strategy-resolved-by-254). #254's version-1 migration is written
+against the pre-rename schema, so it does not depend on Phase 1's code; the dependency runs one way
+only. The practical effect is that `main` stays red until both land.
