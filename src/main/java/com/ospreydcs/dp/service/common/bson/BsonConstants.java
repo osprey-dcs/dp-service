@@ -51,7 +51,12 @@ public class BsonConstants {
     public static final String BSON_KEY_ANNOTATION_DATASET_IDS = "dataSetIds";
     public static final String BSON_KEY_ANNOTATION_NAME = "name";
     public static final String BSON_KEY_ANNOTATION_ANNOTATION_IDS = "annotationIds";
-    public static final String BSON_KEY_ANNOTATION_COMMENT = "comment";
+    // Renamed from BSON_KEY_ANNOTATION_COMMENT ("comment") by the version-1 schema migration
+    // (#254, for #248's D3). The stored field and the index over it move together: the migration
+    // drops the old text index, and this constant is what the replacement is built from, so leaving
+    // it at "comment" would have index creation immediately rebuild the index the migration just
+    // dropped — over a field no document has any more.
+    public static final String BSON_KEY_ANNOTATION_DESCRIPTION = "description";
 
     public static final String BSON_KEY_CALCULATIONS_ID = "_id";
 

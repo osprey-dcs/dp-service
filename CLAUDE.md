@@ -88,6 +88,7 @@ plan documents one change, CLAUDE.md documents the invariant it established.
 - **pvMetadata**: PV metadata records (pvName unique index, aliases index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurations**: Machine configuration records (configurationName unique index, category index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurationActivations**: Time-bounded activations of configurations (clientActivationId unique sparse index; configurationName, internalCategory, startTime, endTime indexes; tags, attributes, description, modifiedBy, createdAt, updatedAt)
+- **serviceMetadata**: Service-level markers, currently the `schemaVersion` document recording the applied schema version, its audit list, and the in-progress migration claim (see Schema Migration below)
 - **sampleStatusBuckets**: Sample status storage (SampleStatusBucketDocument: pvName/domain/layer identity, embedded DataTimestampsDocument, firstTimeNanos/lastTimeNanos epoch-nanos scalars, statusCodes/confidence/reasons arrays, source/modifiedBy/updatedTime; indexes on (pvName, domain, layer, firstTimeNanos) and (domain, layer, firstTimeNanos))
 
 ### Document Embedding Pattern
@@ -561,6 +562,119 @@ positional list.
 
 ### Ingestion Validation Test Coverage
 - `IngestionValidationUtilityTest` (22 test cases): legacy validation, new column types, duplicate PV names, timestamp integrity
+
+## Schema Migration (issue #254)
+
+Schema changes are delivered by a versioned migration runner that executes during
+`MongoClientBase.init()`, and the mechanism **fails closed**: a database whose schema version the
+binary cannot establish stops the service rather than being served from. Operator documentation is
+`doc/schema-migration.md`.
+
+- **Adding a migration**: implement `Migration` in `common/mongo/migration/migrations/`, add it to
+  `SchemaMigrationRunner.MIGRATIONS`, and bump `SCHEMA_VERSION`. The version is a plain integer owned
+  by the code, deliberately *not* derived from the Maven project version — most releases change no
+  schema, so the two move at different rates.
+- **Migrations operate on `MongoDatabase`/`Document`, never the POJO document classes.** The codec
+  registry is bound to the *current* class shape, while a migration by definition reads documents
+  written under a previous one. This also keeps an old migration working after the classes move on.
+- **Every migration must be idempotent**, and must say why in its Javadoc — the runner cannot enforce
+  it. A crash between applying and recording the version re-runs it, as can the stuck-claim recovery.
+- **Index changes are migration steps**, so `createMongoIndex*` stays purely additive. Reconciling
+  live indexes against the declared set instead would drop an index an operator added deliberately.
+  Migrations therefore run **after** collection init but **before** every `createMongoIndexes*()`
+  call; that ordering is load-bearing, see below.
+
+### Absence of a marker is resolved by emptiness, not assumption
+
+No marker plus no documents in any managed collection is a **fresh install** (stamped at the current
+version, nothing run); no marker plus any document is a **legacy database** (migrated from 0). Neither
+can be assumed: always-version-0 replays an accumulating list against every fresh install, while
+always-current silently stamps a real unmigrated deployment as done — the failure the mechanism
+exists to prevent.
+
+`SchemaMigrationRunner.MANAGED_COLLECTION_NAMES` must list every `COLLECTION_NAME_*` constant on
+`MongoClientBase` (except `serviceMetadata`, which holds the marker itself), **plus
+`bucketSpanVerification`, which is declared on `BucketSpanVerifier`**. A collection omitted makes a
+populated database look fresh and skips every migration — verified against MongoDB 8.0: with
+`bucketSpanVerification` missing from the list, a database holding only that marker reported zero
+migrations applied and was stamped as current.
+
+The probe asks "has any build ever used this database?", which is broader than "does it hold service
+data" — a prior deployment's marker still counts when the data collections have been emptied.
+Including a collection can only push a database toward "legacy", never "fresh", and that is the safe
+direction, since every migration is idempotent.
+
+`SchemaMigrationRunnerTest.testManagedCollectionListCoversEveryDeclaredCollection` pins this by
+reflection **over both declaring classes** — **add new collections there too**, and extend the class
+list if a collection constant is ever declared somewhere new.
+
+### Every marker write checks `matchedCount`
+
+`recordApplied` and `releaseClaim` filter on `_id: "schemaVersion"`, and a filtered update that
+matches nothing writes nothing while reporting no error. Both therefore test
+`getMatchedCount() == 0` and throw — the same convention the annotation client's `replaceOne` calls
+follow, and for a sharper reason here: `recordApplied` runs *after* the migration has already changed
+the data, so an unchecked write leaves migrated data with no record of it, and the run continues to
+report success. Any new marker write must check the same way.
+
+### The claim wait is bounded by one deadline, not one per attempt
+
+`SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one absolute deadline across every
+claim attempt, including takeovers after another process releases without completing. It was
+originally a pair of mutually recursive methods, each allocating a fresh timeout — so the bound the
+class documents was not the bound in force, and repeated takeovers grew the stack. Keep the deadline
+computed once at entry; do not reintroduce a per-attempt timeout.
+
+### The async client skips the version check, and that is a deployment constraint
+
+`MongoAsyncClient.runSchemaMigrations()` returns true without doing anything: the reactive driver has
+no synchronous `MongoDatabase`, and the async client is not a separate database — it connects to the
+one the sync clients migrate. It does **not** fail startup, because refusing there would stop a
+process that has no migration to perform and no way to perform one.
+
+What it cannot do is verify that the database matches the schema its binary expects. That is only
+acceptable while the client stays off every production path (today its sole construction is in
+`MongoAsyncIngestionHandlerTest`). **Putting it into service requires implementing the version check
+first** — read the marker via a short-lived sync client — or that process serves requests against a
+schema it never verified.
+
+### A text index is identified by its `weights`, never its key or name
+
+MongoDB stores a text index as `key: {_fts: "text", _ftsx: 1, <ascending fields>}` with the indexed
+text fields moved into a separate `weights` document. Two text indexes over different fields therefore
+have **identical key documents**. Matching a text index by key finds both or neither; matching by the
+default derived name misses one created explicitly under another name. Match on `weights`.
+
+**Mongo permits only one text index per collection.** Replacing one is therefore a drop-then-create,
+and the drop must precede any `createIndex` for the replacement or it fails with
+`IndexOptionsConflict` — a startup failure, not a stale-index performance cost. This is why the
+migration runner is ordered ahead of index creation in `init()`.
+
+### A stored field rename must move its index declaration in the same change
+
+Renaming a BSON field without moving the `BsonConstants` key and the index declaration that uses it
+has index creation rebuild, moments after the migration drops it, an index over a field no document
+has any more — while the marker records the migration as applied. Caught end-to-end during #254; the
+constant and index line ship with the migration, not with the document-class rename.
+
+### `Instant` round-trips through BSON as `java.util.Date`
+
+BSON has one date type, and the driver's default decoding target is `Date`. So
+`Document.get(key, Instant.class)` on a value written as an `Instant` throws `ClassCastException`
+rather than returning null. Convert explicitly (`SchemaVersionMarker.readInstant()`) when reading
+timestamps out of a raw `Document`.
+
+### Startup failure stops the server
+
+`GrpcServerBase.initService_()` returns `boolean` and `start()` throws `DpRuntimeException` before
+binding the port when it is false. Before #254 it returned `void` and all four servers logged and
+returned — which exited `initService_()`, not `start()`, so a service whose Mongo connection or
+handler init failed went on to serve requests against an uninitialized handler.
+
+`start()` must **throw**, not return: `main()` calls `start()` then `blockUntilShutdown()`, and a
+silent return leaves `server` null, so `blockUntilShutdown()` falls through to `finiService_()` and
+the process exits 0 — a supervisor reads that as a clean shutdown and never alerts. Any new server
+implementation must return its `serviceImpl.init(...)` result rather than swallowing it.
 
 ## Continuous Integration
 - **GitHub Actions**: `.github/workflows/ci.yml`

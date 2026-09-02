@@ -37,6 +37,13 @@ public class MongoTestClient extends MongoSyncClient {
     public static final int MONGO_FIND_RETRY_COUNT = 300;
     public static final int MONGO_FIND_RETRY_INTERVAL_MILLIS = 100;
 
+    /**
+     * Suppresses the migration runner for the throwaway init that precedes dropping the test
+     * database. Instance state rather than a config key so it cannot leak into the second init,
+     * which must exercise the real path.
+     */
+    private boolean skipSchemaMigrations = false;
+
     @Override
     public boolean init() {
 
@@ -47,13 +54,33 @@ public class MongoTestClient extends MongoSyncClient {
         logger.warn("overriding db name globally to: {} — THIS DATABASE WILL BE DROPPED", testDatabaseName);
         MongoClientBase.setMongoDatabaseName(testDatabaseName);
 
-        // init so we have database client for dropping existing db
-        super.init();
-        dropTestDatabase();
-        super.fini();
+        // Init so we have a database client for dropping the existing db. Migrations are suppressed
+        // for this pass: it runs against whatever the previous test run left behind, and that
+        // database is about to be dropped, so migrating it is at best wasted work. It is also
+        // actively harmful — a test that deliberately leaves a stuck `migrating: true` claim (as the
+        // migration runner's own failure-path tests do) would make this init block for the full
+        // claim-wait timeout and then fail, in whatever unrelated test happened to run next.
+        skipSchemaMigrations = true;
+        try {
+            super.init();
+            dropTestDatabase();
+            super.fini();
+        } finally {
+            skipSchemaMigrations = false;
+        }
 
-        // re-initialize to recreate db and collections as needed
+        // re-initialize to recreate db and collections as needed; this pass migrates normally, which
+        // for a freshly dropped database means taking the fresh-install path
         return super.init();
+    }
+
+    @Override
+    protected boolean runSchemaMigrations() {
+        if (skipSchemaMigrations) {
+            logger.debug("skipping schema migrations for the pre-drop test client init");
+            return true;
+        }
+        return super.runSchemaMigrations();
     }
 
     public void dropTestDatabase() {

@@ -32,7 +32,7 @@ public class IngestionStreamGrpcServer extends GrpcServerBase {
     }
     
     @Override
-    protected void initService_() {
+    protected boolean initService_() {
 
         // create and initialize handler
         IngestionStreamHandlerInterface handler = new IngestionStreamHandler();
@@ -41,8 +41,10 @@ public class IngestionStreamGrpcServer extends GrpcServerBase {
         // create and initialize ingestion service implementation
         if (!serviceImpl.init(handler)) {
             LOGGER.error("initService_ serviceImpl.init failed");
-            return;
+            return false;
         }
+
+        return true;
     }
 
     @Override

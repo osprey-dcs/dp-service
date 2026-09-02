@@ -32,7 +32,7 @@ public class AnnotationGrpcServer extends GrpcServerBase {
     }
 
     @Override
-    protected void initService_() {
+    protected boolean initService_() {
 
         // create and initialize handler
         AnnotationHandlerInterface handler = MongoAnnotationHandler.newMongoSyncAnnotationHandler();
@@ -41,8 +41,10 @@ public class AnnotationGrpcServer extends GrpcServerBase {
         // create and initialize ingestion service implementation
         if (!serviceImpl.init(handler)) {
             LOGGER.error("initService serviceImpl.init failed");
-            return;
+            return false;
         }
+
+        return true;
     }
 
     @Override

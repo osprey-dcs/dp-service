@@ -368,6 +368,10 @@ Notes for running the Data Platform server and client applications are linked [h
 
 Options for configuring Data Platform services are desribed in more detail in [the configuration documentation](doc/configuration.md).
 
+## Database schema migration
+
+The services apply pending database schema migrations at startup and refuse to start on a schema they cannot handle.  [The schema migration documentation](doc/schema-migration.md) covers reading the current schema version, interpreting each startup failure, and recovering from an interrupted migration.
+
 
 ---
 # Developer Notes and UML Diagrams

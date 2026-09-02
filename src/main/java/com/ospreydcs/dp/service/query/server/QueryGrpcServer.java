@@ -31,7 +31,7 @@ public class QueryGrpcServer extends GrpcServerBase {
     }
 
     @Override
-    protected void initService_() {
+    protected boolean initService_() {
 
         // create and initialize handler
         QueryHandlerInterface handler = MongoQueryHandler.newMongoSyncQueryHandler();
@@ -40,8 +40,10 @@ public class QueryGrpcServer extends GrpcServerBase {
         // create and initialize ingestion service implementation
         if (!serviceImpl.init(handler)) {
             LOGGER.error("initService_ serviceImpl.init failed");
-            return;
+            return false;
         }
+
+        return true;
     }
 
     @Override
