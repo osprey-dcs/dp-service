@@ -101,7 +101,7 @@ public class V1AnnotationCommentToDescription implements Migration {
 
         } catch (MongoException ex) {
             throw new DpException(
-                    "error renaming annotation '" + FIELD_COMMENT + "' field: " + ex.getMessage());
+                    "error renaming annotation '" + FIELD_COMMENT + "' field: " + ex.getMessage(), ex);
         }
     }
 
@@ -145,7 +145,7 @@ public class V1AnnotationCommentToDescription implements Migration {
 
         } catch (MongoException ex) {
             throw new DpException(
-                    "error dropping stale annotation text index: " + ex.getMessage());
+                    "error dropping stale annotation text index: " + ex.getMessage(), ex);
         }
     }
 }

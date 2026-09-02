@@ -89,7 +89,7 @@ public class SchemaVersionMarker {
         try {
             marker = collection(database).find(Filters.eq(FIELD_ID, MARKER_ID)).first();
         } catch (MongoException ex) {
-            throw new DpException("error reading schema version marker: " + ex.getMessage());
+            throw new DpException("error reading schema version marker: " + ex.getMessage(), ex);
         }
 
         if (marker == null) {
@@ -156,7 +156,7 @@ public class SchemaVersionMarker {
             if (isDuplicateKey(ex)) {
                 return false;
             }
-            throw new DpException("error creating schema version marker: " + ex.getMessage());
+            throw new DpException("error creating schema version marker: " + ex.getMessage(), ex);
         }
     }
 
@@ -189,7 +189,7 @@ public class SchemaVersionMarker {
                             Updates.set(FIELD_MIGRATING_HOST, host)),
                     new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER));
         } catch (MongoException ex) {
-            throw new DpException("error claiming schema migration: " + ex.getMessage());
+            throw new DpException("error claiming schema migration: " + ex.getMessage(), ex);
         }
 
         return claimed != null;
@@ -231,7 +231,7 @@ public class SchemaVersionMarker {
                             Updates.push(FIELD_APPLIED_MIGRATIONS, applied)));
         } catch (MongoException ex) {
             throw new DpException(
-                    "error recording applied migration version " + version + ": " + ex.getMessage());
+                    "error recording applied migration version " + version + ": " + ex.getMessage(), ex);
         }
     }
 
@@ -249,7 +249,7 @@ public class SchemaVersionMarker {
                             Updates.unset(FIELD_MIGRATING_SINCE),
                             Updates.unset(FIELD_MIGRATING_HOST)));
         } catch (MongoException ex) {
-            throw new DpException("error releasing schema migration claim: " + ex.getMessage());
+            throw new DpException("error releasing schema migration claim: " + ex.getMessage(), ex);
         }
     }
 
@@ -260,7 +260,7 @@ public class SchemaVersionMarker {
         try {
             marker = collection(database).find(Filters.eq(FIELD_ID, MARKER_ID)).first();
         } catch (MongoException ex) {
-            throw new DpException("error reading schema version marker: " + ex.getMessage());
+            throw new DpException("error reading schema version marker: " + ex.getMessage(), ex);
         }
 
         final List<Integer> versions = new ArrayList<>();

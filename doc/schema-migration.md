@@ -67,6 +67,14 @@ as always-version-0 would make every fresh install replay an ever-growing migrat
 collections. Treating it as always-current would silently stamp a real unmigrated deployment as done —
 exactly the failure the mechanism exists to prevent.
 
+"Has data" is judged across every collection the services manage, and that deliberately includes
+`bucketSpanVerification` — the marker written by the bucket-span check on a previous startup. A
+database whose data collections have been emptied by a purge, a retention wipe, or a partial restore
+still carries that marker, and it is proof the database has been served before. Counting it can only
+push a database toward "populated", never toward "fresh", which is the safe direction: re-running
+migrations against empty collections is harmless because every migration is idempotent, while a
+legacy database mistaken for fresh is stamped as migrated with its migrations silently skipped.
+
 **Restoring a backup into an empty database:** restore *first*, then start the service. A service
 started against the empty database stamps it as a fresh install at the current version; restoring
 older data underneath that marker afterwards leaves the database claiming to be migrated when it is
@@ -120,12 +128,20 @@ skips *applying* migrations; it does **not** skip the version check.
 
 **Fix:** enable the setting, or apply the migration out of band, then restart.
 
-### "schema migrations are not supported on the async mongo client"
+### "schema migrations and the schema version check are not supported on the async mongo client"
 
-A service was wired to `MongoAsyncClient`, which has no synchronous database handle and so cannot run
-migrations. This should not occur in a normal deployment.
+A warning, not a startup failure. `MongoAsyncClient` has no synchronous database handle and so cannot
+run the migration runner. It is not a second database — it connects to the same one the sync clients
+do, and every deployed service runs a sync client that migrates it — so a process using it is not
+skipping a migration that would otherwise happen.
 
-**Fix:** use the sync client.
+What it *is* skipping is the version check: such a process cannot confirm the database matches the
+schema its binary expects. That is acceptable only while the async client stays off every production
+path, which it is today (`MongoIngestionHandler`'s async factory is commented out, and the only
+construction is in a test).
+
+**If you see this in a deployed service, treat it as a defect**: the version check must be
+implemented for that client before it carries production traffic.
 
 ---
 

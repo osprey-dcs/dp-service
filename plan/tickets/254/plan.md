@@ -157,6 +157,58 @@ BSON has one date type and the driver decodes it to `Date`. Left unhandled this 
 `SchemaVersionMarker.read()` unchecked and would have surfaced as something other than a marker
 problem. `readInstant()` accepts both. Caught by `SchemaVersionMarkerTest`.
 
+## Review findings (post-implementation)
+
+Five changes made during review of the PR, all against MongoDB 8.0 where behavior was in question.
+
+### D. The emptiness probe missed `bucketSpanVerification` — a real silent skip
+
+`MANAGED_COLLECTION_NAMES` enumerated the ten `COLLECTION_NAME_*` constants on `MongoClientBase`, and
+the reflection test pinned exactly those. But `bucketSpanVerification` is declared on
+`BucketSpanVerifier`, so it was invisible to both — a database holding only that marker (data
+collections emptied by a purge, retention wipe, or partial restore) probed as a fresh install.
+
+**Confirmed empirically**: against the pre-fix code that database reported `applyCount=0` and was
+stamped at the current version with every migration skipped. It is now included, and the reflection
+test scans both declaring classes. Regression guard:
+`testBucketSpanVerificationMarkerAloneCountsAsPopulated`.
+
+### E. The claim wait had no real bound
+
+`migrateOrWait` and `awaitMigrationByAnotherProcess` called each other, and each entry into the wait
+allocated a **fresh** timeout — so D6's "bounded timeout, then fail to start" was not the bound in
+force, and each takeover added a stack frame.
+
+Restructured into one loop with a single absolute deadline. Note this is a **structural correction,
+not a fix for a reproduced failure**: a harness that forced repeated claim flapping did not hang the
+original code, because the loser of one claim race generally wins the next. The recursion was a
+latent fault, not an observed one.
+
+### F. The async client's fail-closed return broke an existing test
+
+`MongoAsyncClient.runSchemaMigrations()` returned `false`, which now propagates through `init()` — so
+`MongoAsyncIngestionHandlerTest.setUp` fails at `assertTrue("dbHandler init failed", ...)`.
+
+The fail-closed reasoning did not hold on inspection: the async client is not a separate database, it
+connects to the one every sync-client process migrates, so refusing there stops a process that has no
+migration to perform and no way to perform one. It now returns true with a warning. The **version
+check** genuinely is missing, and that is recorded as a precondition on ever deploying this client.
+
+### G. `MongoTestClient.init()` ran migrations against the database it was about to drop
+
+Its first `super.init()` exists only to obtain a handle for `dropTestDatabase()`, but now also ran the
+runner against whatever the previous test left behind — including, for the runner's own failure-path
+tests, a retained `migrating: true` claim, which would block the next test for the full claim-wait
+timeout. Migrations are suppressed for that throwaway pass; the second `init()` exercises the real
+path.
+
+### H. `DpException` could not carry a cause
+
+Every `DpException` in the migration code was built from `ex.getMessage()`, discarding the stack
+trace and contradicting the #191 logging convention. Added the `(String, Throwable)` constructor —
+matching `DpRuntimeException`, which already had one — and threaded the cause through all eleven
+construction sites.
+
 ## Design decisions
 
 ### D1 — Absence of a marker is resolved by emptiness, not by assumption
@@ -388,7 +440,7 @@ Insert `runMigrations()` between collection initialization and the `createMongoI
 
 ### 7. Operator documentation
 
-New `docs/schema-migration.md`, linked from the README:
+New `doc/schema-migration.md`, linked from the README:
 
 - How to read the current version (`db.serviceMetadata.findOne({_id: "schemaVersion"})`).
 - What a version-mismatch startup failure looks like in the log, and what to do about each direction

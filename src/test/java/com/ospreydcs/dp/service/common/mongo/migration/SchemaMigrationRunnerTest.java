@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.mongo.migration;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanVerifier;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
@@ -94,6 +95,13 @@ public class SchemaMigrationRunnerTest {
         clearAll();
     }
 
+    /**
+     * Clearing the marker here is load-bearing, not tidiness. Several tests below deliberately leave
+     * a retained `migrating: true` claim, which is exactly the state that blocks startup — so a
+     * marker left behind would be picked up by the next test's client init. {@code MongoTestClient}
+     * suppresses migrations for its pre-drop init so that cannot hang the suite, but leaving the
+     * claim would still be a surprise waiting for whoever changes that.
+     */
     @After
     public void tearDown() {
         clearAll();
@@ -160,6 +168,28 @@ public class SchemaMigrationRunnerTest {
         new SchemaMigrationRunner(database, List.of(migration), 1).run();
 
         assertEquals(1, migration.applyCount.get());
+    }
+
+    @Test
+    public void testBucketSpanVerificationMarkerAloneCountsAsPopulated() throws DpException {
+
+        // A previous deployment's bucket-span marker is evidence the database has been served
+        // before, even with every data collection emptied by a purge, a retention wipe, or a
+        // partial restore. Verified against MongoDB 8.0 that omitting this collection from the
+        // probe made exactly this database report applyCount=0 — stamped as migrated with the
+        // migrations silently skipped, which is the failure the mechanism exists to prevent.
+        //
+        // The constant lives on BucketSpanVerifier rather than MongoClientBase, which is why the
+        // list-coverage test below scans both classes.
+        database.getCollection(BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION)
+                .insertOne(new Document("verifiedLimitSeconds", 86400L));
+
+        final RecordingMigration migration = new RecordingMigration(1);
+        new SchemaMigrationRunner(database, List.of(migration), 1).run();
+
+        assertEquals(
+                "a database carrying a prior deployment's bucket-span marker is not a fresh install",
+                1, migration.applyCount.get());
     }
 
     // ------------------------------------------------------------------
@@ -291,22 +321,29 @@ public class SchemaMigrationRunnerTest {
     @Test
     public void testManagedCollectionListCoversEveryDeclaredCollection() throws Exception {
 
-        // A collection added to MongoClientBase but omitted from MANAGED_COLLECTION_NAMES makes a
-        // populated database look fresh, which stamps it as migrated and silently skips every
-        // migration. Pin the list against the declared constants rather than trusting a hand copy.
+        // A collection declared anywhere but omitted from MANAGED_COLLECTION_NAMES makes a populated
+        // database look fresh, which stamps it as migrated and silently skips every migration. Pin
+        // the list against the declared constants rather than trusting a hand copy.
+        //
+        // Both declaring classes are consulted. bucketSpanVerification lives on BucketSpanVerifier
+        // rather than MongoClientBase, so scanning only the latter would leave it out of scope of a
+        // test whose whole promise is that a new collection cannot be forgotten.
         final List<String> declared = new ArrayList<>();
-        for (Field field : MongoClientBase.class.getDeclaredFields()) {
-            if (!Modifier.isStatic(field.getModifiers())
-                    || !field.getName().startsWith("COLLECTION_NAME_")
-                    || field.getType() != String.class) {
-                continue;
+        for (Class<?> declaringClass : List.of(MongoClientBase.class, BucketSpanVerifier.class)) {
+            for (Field field : declaringClass.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers())
+                        || !field.getName().startsWith("COLLECTION_NAME_")
+                        || field.getType() != String.class) {
+                    continue;
+                }
+                // serviceMetadata holds the marker itself, not service data; including it would make
+                // every database look populated the moment a marker is written.
+                if (field.getName().equals("COLLECTION_NAME_SERVICE_METADATA")) {
+                    continue;
+                }
+                field.setAccessible(true);
+                declared.add((String) field.get(null));
             }
-            // serviceMetadata holds the marker itself, not service data; including it would make
-            // every database look populated the moment a marker is written.
-            if (field.getName().equals("COLLECTION_NAME_SERVICE_METADATA")) {
-                continue;
-            }
-            declared.add((String) field.get(null));
         }
 
         assertFalse("expected to find COLLECTION_NAME_* constants", declared.isEmpty());

@@ -182,23 +182,33 @@ public class MongoAsyncClient extends MongoClientBase {
     }
 
     /**
-     * Not supported. The reactive driver exposes no synchronous {@code MongoDatabase}, and a
-     * migration must complete before startup continues, so it cannot run on this client.
+     * Not supported on this client: the reactive driver exposes no synchronous
+     * {@code MongoDatabase}, and the runner needs one because a migration must complete before
+     * startup continues rather than proceeding asynchronously alongside it.
      *
-     * <p>Returning false rather than true is deliberate. This client is not on any production path
-     * today — {@code MongoIngestionHandler}'s async factory is commented out and only one test
-     * constructs it — but "not a production path" is a fact that can change quietly. Silently
-     * skipping migrations here would mean a service wired to the async client serves requests
-     * against an unmigrated database with no indication, which is exactly the silent skip the
-     * mechanism exists to prevent. If the async client is ever put into service, this must be
-     * implemented rather than relaxed.
+     * <p>This returns true — it does <b>not</b> fail startup — and the distinction is worth being
+     * precise about, because failing closed is the whole point of the mechanism elsewhere. The async
+     * client is not a second database; it connects to the same one the sync clients do, and every
+     * deployed service runs a sync client that migrates it. So the schema this client sees is
+     * established by those processes, and refusing to start here would fail a process that has no
+     * migration to perform and no way to perform one.
+     *
+     * <p>What is genuinely missing is the <i>version check</i>: this client cannot confirm the
+     * database matches the schema this binary expects. That gap is acceptable only while the async
+     * client stays off every production path — {@code MongoIngestionHandler}'s async factory is
+     * commented out, and the sole constructor call is in {@code MongoAsyncIngestionHandlerTest}.
+     * <b>Putting this client into service requires implementing the version check first</b>, by
+     * reading the marker through a short-lived sync client, or the process would serve requests
+     * against a schema it never verified.
      */
     @Override
     protected boolean runSchemaMigrations() {
-        LOGGER.error(
-                "schema migrations are not supported on the async mongo client; "
-                        + "use the sync client, or implement runSchemaMigrations() for async");
-        return false;
+        LOGGER.warn(
+                "schema migrations and the schema version check are not supported on the async "
+                        + "mongo client; relying on a sync-client process to have migrated this "
+                        + "database. Do not put the async client on a production path without "
+                        + "implementing the version check.");
+        return true;
     }
 
     @Override

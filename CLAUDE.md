@@ -593,10 +593,41 @@ always-current silently stamps a real unmigrated deployment as done — the fail
 exists to prevent.
 
 `SchemaMigrationRunner.MANAGED_COLLECTION_NAMES` must list every `COLLECTION_NAME_*` constant on
-`MongoClientBase` (except `serviceMetadata`, which holds the marker itself). A collection omitted
-makes a populated database look fresh and skips every migration.
+`MongoClientBase` (except `serviceMetadata`, which holds the marker itself), **plus
+`bucketSpanVerification`, which is declared on `BucketSpanVerifier`**. A collection omitted makes a
+populated database look fresh and skips every migration — verified against MongoDB 8.0: with
+`bucketSpanVerification` missing from the list, a database holding only that marker reported zero
+migrations applied and was stamped as current.
+
+The probe asks "has any build ever used this database?", which is broader than "does it hold service
+data" — a prior deployment's marker still counts when the data collections have been emptied.
+Including a collection can only push a database toward "legacy", never "fresh", and that is the safe
+direction, since every migration is idempotent.
+
 `SchemaMigrationRunnerTest.testManagedCollectionListCoversEveryDeclaredCollection` pins this by
-reflection — **add new collections there too**.
+reflection **over both declaring classes** — **add new collections there too**, and extend the class
+list if a collection constant is ever declared somewhere new.
+
+### The claim wait is bounded by one deadline, not one per attempt
+
+`SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one absolute deadline across every
+claim attempt, including takeovers after another process releases without completing. It was
+originally a pair of mutually recursive methods, each allocating a fresh timeout — so the bound the
+class documents was not the bound in force, and repeated takeovers grew the stack. Keep the deadline
+computed once at entry; do not reintroduce a per-attempt timeout.
+
+### The async client skips the version check, and that is a deployment constraint
+
+`MongoAsyncClient.runSchemaMigrations()` returns true without doing anything: the reactive driver has
+no synchronous `MongoDatabase`, and the async client is not a separate database — it connects to the
+one the sync clients migrate. It does **not** fail startup, because refusing there would stop a
+process that has no migration to perform and no way to perform one.
+
+What it cannot do is verify that the database matches the schema its binary expects. That is only
+acceptable while the client stays off every production path (today its sole construction is in
+`MongoAsyncIngestionHandlerTest`). **Putting it into service requires implementing the version check
+first** — read the marker via a short-lived sync client — or that process serves requests against a
+schema it never verified.
 
 ### A text index is identified by its `weights`, never its key or name
 
