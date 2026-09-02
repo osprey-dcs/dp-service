@@ -9,7 +9,8 @@
 - **Prior art**: `common/bson/bucket/BucketSpanVerifier.java` (#197) — a startup check that records
   its outcome in a marker document. Structurally similar, but see [D6](#d6) for why its
   concurrency posture does **not** transfer.
-- **Status**: triaged 2026-09-02 against `0208d09`. Not yet implemented.
+- **Status**: triaged and implemented 2026-09-02 against `0208d09`. Three findings during
+  implementation changed the design; see [Implementation findings](#implementation-findings).
 
 ## Overview
 
@@ -101,6 +102,60 @@ rather than silently leaving a stale index alongside the new one. This makes the
 index a *sharper* case than the ticket's general "stale index costs write overhead" framing: it is
 not a performance regression, it is a startup failure. It also means the drop must be ordered before
 the index creation in `init()`, which [D5](#d5) addresses.
+
+## Implementation findings
+
+Three things found while building it changed the design. All were caught by running against a real
+MongoDB rather than by reading the driver docs.
+
+### A. A text index is not identified by its key document
+
+[D5](#d5) said to drop the stale index "by key specification, not by name". Verified against MongoDB
+8.0, that does not work. Mongo stores a text index as:
+
+```js
+{
+  key:     { _fts: "text", _ftsx: 1, ownerId: 1 },   // the indexed text fields are NOT here
+  name:    "name_text_comment_text_event.description_text_ownerId_1",
+  weights: { comment: 1, "event.description": 1, name: 1 }   // they are here
+}
+```
+
+The old and new indexes therefore have **identical key documents** and differ only in `weights`. A
+key-spec match would find both or neither. Matching the literal default name is also wrong, for the
+reason D5 already gave: an index created explicitly may carry another name.
+
+The migration matches on **the presence of `comment` in `weights`**, which is what actually
+distinguishes the two. `V1AnnotationCommentToDescriptionTest.testIdentifiesTheIndexByWeightsNotByName`
+pins this by creating the index under a non-default name.
+
+The same run confirmed D5's central claim: creating the new text index while the old one exists fails
+with `IndexOptionsConflict`, so the drop is a startup prerequisite rather than a tidiness matter.
+
+### B. The index declaration had to move with the migration, so the BSON constant moved too
+
+The end-to-end upgrade test initially showed the migration dropping the old index and
+`createMongoIndexesAnnotations()` immediately **recreating it over `comment`** — because
+`BsonConstants.BSON_KEY_ANNOTATION_COMMENT` still read `"comment"`. Version 1 was recorded as applied
+while the schema was only half changed, and the rebuilt index covered a field no document had.
+
+This plan had assigned the whole rename to #248 Phase 1. That boundary does not hold: the index
+declaration and the migration that replaces the index are one change. So #254 also renames
+`BSON_KEY_ANNOTATION_COMMENT` → `BSON_KEY_ANNOTATION_DESCRIPTION = "description"` and the single index
+line that uses it — two lines, touching no proto accessor.
+
+**Decided by the ticket owner on 2026-09-02**, choosing this over shipping a knowingly half-applied
+migration or splitting the change across two migration versions.
+
+What remains #248 Phase 1's is the `AnnotationDocument.comment` **field** and its proto accessors,
+which are entangled with the `SaveAnnotationRequest` changes Phase 1 must make anyway.
+
+### C. `Instant` round-trips through BSON as `java.util.Date`
+
+`Document.get(key, Instant.class)` throws `ClassCastException` on a value written as `Instant`, since
+BSON has one date type and the driver decodes it to `Date`. Left unhandled this escaped
+`SchemaVersionMarker.read()` unchecked and would have surfaced as something other than a marker
+problem. `readInstant()` accepts both. Caught by `SchemaVersionMarkerTest`.
 
 ## Design decisions
 
@@ -207,11 +262,14 @@ initMongoClient / initMongoDatabase
 This keeps `createMongoIndex*` additive-only, as it is today, and means the version-1 migration drops
 the old text index just before `createMongoIndexesAnnotations()` creates the replacement.
 
-The drop is **by key specification, not by name**. `#248`'s plan notes that the literal
-`name_text_comment_text_event.description_text_ownerId_1` is Mongo's default derivation and may
-differ if the index was ever created explicitly. The migration therefore enumerates
-`listIndexes()`, matches on the key document, and drops by the name found — never on a hardcoded
-name string. A drop that matches nothing is not an error: on a fresh database there is nothing to
+The drop is **by neither name nor key document** — see
+[implementation finding A](#a-a-text-index-is-not-identified-by-its-key-document), which corrected
+this decision's original instruction. A text index's stored key is `{_fts, _ftsx, ...}` with the
+indexed fields in a separate `weights` document, so the old and new indexes have identical keys. The
+migration enumerates `listIndexes()`, matches on `comment` appearing in `weights`, and drops by the
+name it finds — never a hardcoded name, since the default derivation
+(`name_text_comment_text_event.description_text_ownerId_1`) differs if the index was ever created
+explicitly. A drop that matches nothing is not an error: on a fresh database there is nothing to
 drop, and [D7](#d7) requires each migration to tolerate that.
 
 ### D6 — Concurrent startup is coordinated by an atomic marker claim
@@ -305,7 +363,12 @@ the runner, and the decision it must be forced to make is whether to abort start
 ### 4. `common/mongo/migration/migrations/V1AnnotationCommentToDescription.java`
 
 - `$rename` `comment` → `description` on the `annotations` collection.
-- Drop the old compound text index by key-spec match ([D5](#d5)).
+- Drop the old compound text index, matched on `weights` ([D5](#d5), finding A).
+- Rename `BSON_KEY_ANNOTATION_COMMENT` → `BSON_KEY_ANNOTATION_DESCRIPTION` and the one index line in
+  `MongoClientBase` that uses it (finding B) — otherwise index creation rebuilds the index the
+  migration just dropped, over a field no document has.
+- Refuse rather than rename when a document carries **both** fields: `$rename` overwrites the target,
+  so proceeding would destroy an existing description with no record of it.
 - Javadoc stating its idempotency per [D7](#d7).
 
 ### 5. Wire into `MongoClientBase.init()`
@@ -367,6 +430,18 @@ unit tests above are its only coverage. Worth stating plainly rather than assumi
 **#254 lands before #248 Phase 1.** Phase 1's storage rename (its D3) needs the version-1 migration
 to exist, and #254's version-1 migration is written against the pre-rename schema, so it does not
 depend on Phase 1's code changes. The two are separable in this direction only.
+
+The boundary between them moved during implementation
+([finding B](#b-the-index-declaration-had-to-move-with-the-migration-so-the-bson-constant-moved-too)):
+#254 now carries the `BsonConstants` key and the index declaration, because those are the same change
+as the index the migration replaces. **Phase 1 retains** the `AnnotationDocument.comment` field, its
+getter/setter, and the proto accessors in `fromSaveAnnotationRequest` / `diffSaveAnnotationRequest` /
+`toAnnotation` — all entangled with the `SaveAnnotationRequest` shape change Phase 1 must make anyway.
+
+Until Phase 1 lands, `AnnotationDocument` writes its Java field `comment` to BSON while the text index
+covers `description`. That is a real inconsistency, and it is confined to the annotations text search
+path on a tree that does not compile — no deployment can reach it. Phase 1 closes it by renaming the
+field. Do not deploy #254 alone to an environment that serves annotation text queries.
 
 This ordering has a cost worth acknowledging: `main` does not compile until #248 Phase 1 lands, so
 **#254 is developed and reviewed against a non-compiling `main`**. Its own sources compile — nothing

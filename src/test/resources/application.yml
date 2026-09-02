@@ -8,6 +8,10 @@
 
 MongoClient:
   testDatabaseName: ${DP_MONGO_TEST_DB_NAME:dp-test}
+  # Mirrors the main application.yml key so tests exercise the same default; see that file for docs.
+  # Left enabled under test: MongoTestClient drops and recreates the database for every test, so this
+  # exercises the fresh-install path on every run — which is the path production installs take too.
+  runSchemaMigrationsOnStartup: ${DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP:true}
 
 # Buckets: Invariants of the buckets collection shared by ingestion and query.
 # Mirrors the main application.yml key so tests exercise the same defaults; see that file for docs.

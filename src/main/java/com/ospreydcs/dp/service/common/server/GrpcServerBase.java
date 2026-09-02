@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.common.server;
 
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.exception.DpRuntimeException;
 import io.grpc.BindableService;
 import io.grpc.Grpc;
 import io.grpc.InsecureServerCredentials;
@@ -42,7 +43,19 @@ public abstract class GrpcServerBase {
     }
 
     // abstract methods
-    protected abstract void initService_();
+
+    /**
+     * Initializes the service implementation and its handler.
+     *
+     * <p>Returns a boolean rather than void so that a failure actually stops startup. Before this
+     * returned {@code void} and implementations logged and returned, which exited only
+     * {@code initService_()} — {@link #start()} then bound the port and served requests against an
+     * uninitialized handler. Any implementation must return the result of its
+     * {@code serviceImpl.init(...)} call rather than swallowing it.
+     *
+     * @return true if the service is ready to serve requests
+     */
+    protected abstract boolean initService_();
     protected abstract void finiService_();
     protected abstract int getPort_();
 
@@ -54,7 +67,15 @@ public abstract class GrpcServerBase {
 
     protected void start() throws IOException {
 
-        initService_();
+        if (!initService_()) {
+            // Throw rather than return. main() calls start() then blockUntilShutdown(), and a
+            // silent return would leave `server` null, so blockUntilShutdown() falls straight
+            // through to finiService_() and the process exits 0 — a supervisor would read a failed
+            // migration or a failed database connection as a clean shutdown and never alert.
+            throw new DpRuntimeException(
+                    "service initialization failed; not starting the server. See the preceding log "
+                            + "entries for the cause.");
+        }
 
         int port = getPort_();
 

@@ -17,6 +17,8 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.mongo.migration.SchemaMigrationRunner;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -214,6 +216,19 @@ public class MongoSyncClient extends MongoClientBase {
     protected boolean initMongoCollectionSampleStatusBuckets(String collectionName) {
         mongoCollectionSampleStatusBuckets = mongoDatabase.getCollection(collectionName, SampleStatusBucketDocument.class);
         return true;
+    }
+
+    @Override
+    protected boolean runSchemaMigrations() {
+        try {
+            new SchemaMigrationRunner(mongoDatabase).run();
+            return true;
+        } catch (DpException ex) {
+            // Logged here with the full message because this is the last point that knows it was a
+            // migration failure; the caller only sees a false return.
+            logger.error("schema migration failed: {}", ex.getMessage(), ex);
+            return false;
+        }
     }
 
     @Override

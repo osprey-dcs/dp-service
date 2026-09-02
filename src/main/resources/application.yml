@@ -13,6 +13,15 @@ MongoClient:
   # never point it at a database containing data you want to keep.
   benchmarkDatabaseName: ${DP_MONGO_BENCHMARK_DB_NAME:dp-benchmark}
 
+  # MongoClient.runSchemaMigrationsOnStartup: Whether the service applies pending schema migrations
+  # at startup. Enabled by default; see doc/schema-migration.md.
+  #
+  # Disabling this skips APPLYING migrations, not the version check. A service whose expected schema
+  # version does not match the database still refuses to start — that is the point of the mechanism.
+  # Set this to false only when migrating out of band, and expect to run the migration yourself
+  # before the service will start.
+  runSchemaMigrationsOnStartup: ${DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP:true}
+
 # GrpcClient: General settings for gRPC clients.
 GrpcClient:
 

@@ -181,6 +181,26 @@ public class MongoAsyncClient extends MongoClientBase {
         return true;
     }
 
+    /**
+     * Not supported. The reactive driver exposes no synchronous {@code MongoDatabase}, and a
+     * migration must complete before startup continues, so it cannot run on this client.
+     *
+     * <p>Returning false rather than true is deliberate. This client is not on any production path
+     * today — {@code MongoIngestionHandler}'s async factory is commented out and only one test
+     * constructs it — but "not a production path" is a fact that can change quietly. Silently
+     * skipping migrations here would mean a service wired to the async client serves requests
+     * against an unmigrated database with no indication, which is exactly the silent skip the
+     * mechanism exists to prevent. If the async client is ever put into service, this must be
+     * implemented rather than relaxed.
+     */
+    @Override
+    protected boolean runSchemaMigrations() {
+        LOGGER.error(
+                "schema migrations are not supported on the async mongo client; "
+                        + "use the sync client, or implement runSchemaMigrations() for async");
+        return false;
+    }
+
     @Override
     protected boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson) {
         // sampleStatusBuckets indexes not used by async client

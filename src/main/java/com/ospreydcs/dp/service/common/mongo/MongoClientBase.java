@@ -13,6 +13,8 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.mongo.migration.SchemaVersionMarker;
 import com.ospreydcs.dp.service.common.bson.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,6 +46,8 @@ public abstract class MongoClientBase {
     public static final String COLLECTION_NAME_CONFIGURATIONS = "configurations";
     public static final String COLLECTION_NAME_CONFIGURATION_ACTIVATIONS = "configurationActivations";
     public static final String COLLECTION_NAME_SAMPLE_STATUS_BUCKETS = "sampleStatusBuckets";
+    public static final String COLLECTION_NAME_SERVICE_METADATA =
+            SchemaVersionMarker.COLLECTION_NAME_SERVICE_METADATA;
 
     // configuration
     public static final int DEFAULT_NUM_WORKERS = 7;
@@ -77,6 +81,20 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexConfigurationActivationsWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions);
     protected abstract boolean initMongoCollectionSampleStatusBuckets(String collectionName);
     protected abstract boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson);
+
+    /**
+     * Brings the database to the schema version this binary expects, before any index is created.
+     *
+     * <p>Ordering matters and is not incidental: the version-1 migration must drop the annotation
+     * text index built over the old {@code comment} field, and MongoDB permits only one text index
+     * per collection — so {@link #createMongoIndexesAnnotations()} fails with
+     * {@code IndexOptionsConflict} if it runs first. Keeping migrations ahead of index creation also
+     * keeps every {@code createMongoIndex*} method purely additive, which is what they have always
+     * been.
+     *
+     * @return true if the schema is at the expected version and startup may proceed
+     */
+    protected abstract boolean runSchemaMigrations();
 
     protected static ConfigurationManager configMgr() {
         return ConfigurationManager.getInstance();
@@ -245,7 +263,7 @@ public abstract class MongoClientBase {
         createMongoIndexAnnotations(
                 Indexes.ascending(BsonConstants.BSON_KEY_ATTRIBUTES + ".$**"));
 
-        // create compound index on type/comment to optimize searching comment annotation text
+        // create compound index on name/description to optimize searching annotation text
         // NOTE - reordering so that owner id comes before the text index can lead to an error message like this:
         // "if text index is compound, are equality predicates given for all prefix fields?"
         // discussed here: https://stackoverflow.com/questions/35260539/combine-full-text-with-other-index
@@ -253,7 +271,7 @@ public abstract class MongoClientBase {
                 Indexes.compoundIndex(
                         Indexes.compoundIndex(
                             Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
-                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_COMMENT),
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_DESCRIPTION),
                             Indexes.text(BsonConstants.BSON_KEY_EVENT_DESCRIPTION)),
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
 
@@ -426,44 +444,38 @@ public abstract class MongoClientBase {
         // connect to database
         initMongoDatabase(databaseName, getPojoCodecRegistry());
 
-        // initialize providers collection
+        // Initialize all collections first, then migrate, then create indexes. Migrations must
+        // precede index creation: the version-1 migration drops the annotation text index over the
+        // old "comment" field, and Mongo allows only one text index per collection, so creating the
+        // replacement first fails. See runSchemaMigrations().
         initMongoCollectionProviders(collectionNameProviders);
-        createMongoIndexesProviders();
-
-        // initialize buckets collection
         initMongoCollectionBuckets(collectionNameBuckets);
-        createMongoIndexesBuckets();
-
-        // initialize request status collection
         initMongoCollectionRequestStatus(collectionNameRequestStatus);
-        createMongoIndexesRequestStatus();
-
-        // initialize datasets collection
         initMongoCollectionDataSets(collectionNameDataSets);
-        createMongoIndexesDataSets();
-
-        // initialize annotations collection
         initMongoCollectionAnnotations(collectionNameAnnotations);
-        createMongoIndexesAnnotations();
-
-        // initialize calculations collection
         initMongoCollectionCalculations(collectionNameCalculations);
-        createMongoIndexesCalculations();
-
-        // initialize pvMetadata collection
         initMongoCollectionPvMetadata(getCollectionNamePvMetadata());
-        createMongoIndexesPvMetadata();
-
-        // initialize configurations collection
         initMongoCollectionConfigurations(getCollectionNameConfigurations());
-        createMongoIndexesConfigurations();
-
-        // initialize configurationActivations collection
         initMongoCollectionConfigurationActivations(getCollectionNameConfigurationActivations());
-        createMongoIndexesConfigurationActivations();
-
-        // initialize sampleStatusBuckets collection
         initMongoCollectionSampleStatusBuckets(getCollectionNameSampleStatusBuckets());
+
+        // Apply any pending schema migrations. A false return means the schema is not one this
+        // binary can serve; init() fails and the caller must abort startup rather than serve
+        // requests against a database whose shape it cannot establish.
+        if (!runSchemaMigrations()) {
+            logger.error("mongo client init failed: schema migration did not complete");
+            return false;
+        }
+
+        createMongoIndexesProviders();
+        createMongoIndexesBuckets();
+        createMongoIndexesRequestStatus();
+        createMongoIndexesDataSets();
+        createMongoIndexesAnnotations();
+        createMongoIndexesCalculations();
+        createMongoIndexesPvMetadata();
+        createMongoIndexesConfigurations();
+        createMongoIndexesConfigurationActivations();
         createMongoIndexesSampleStatusBuckets();
 
         return true;
