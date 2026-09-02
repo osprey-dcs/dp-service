@@ -141,6 +141,44 @@ public class SchemaVersionMarkerTest {
     }
 
     @Test
+    public void testRecordAppliedFailsWhenTheMarkerHasVanished() {
+
+        // A filtered update that matches nothing writes nothing. Without a matchedCount check the
+        // version advance is silently lost: the migration has been applied to the data, but the
+        // runner carries on and reports success, and the next startup re-runs from a stale version.
+        // The data change is real, so this must be reported rather than absorbed.
+        try {
+            SchemaVersionMarker.recordApplied(database, 1, "change against a missing marker");
+            fail("expected recording against an absent marker to fail");
+        } catch (DpException ex) {
+            assertTrue(
+                    "message should tell the operator the applied migration went unrecorded: "
+                            + ex.getMessage(),
+                    ex.getMessage().contains("could not be recorded"));
+        }
+    }
+
+    @Test
+    public void testReleaseClaimFailsWhenTheMarkerHasVanished() throws DpException {
+
+        SchemaVersionMarker.createUnmanagedMarker(database);
+        assertTrue(SchemaVersionMarker.claimForMigration(database, 0, "host"));
+        markerCollection.deleteMany(new Document());
+
+        // Releasing a claim on a marker that no longer exists must not report success: the
+        // authoritative state is gone, so every other starting process is polling for something
+        // that will never appear.
+        try {
+            SchemaVersionMarker.releaseClaim(database);
+            fail("expected releasing a claim against an absent marker to fail");
+        } catch (DpException ex) {
+            assertTrue(
+                    "message should say the claim could not be released: " + ex.getMessage(),
+                    ex.getMessage().contains("could not be released"));
+        }
+    }
+
+    @Test
     public void testCorruptMarkerIsAnErrorRatherThanAnAssumedVersion() {
 
         markerCollection.insertOne(

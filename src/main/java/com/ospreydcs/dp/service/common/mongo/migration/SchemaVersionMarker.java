@@ -7,6 +7,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
 import com.mongodb.client.model.Updates;
+import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import org.bson.Document;
 
@@ -223,12 +224,31 @@ public class SchemaVersionMarker {
                 .append(FIELD_APPLIED_AT, Instant.now());
 
         try {
-            collection(database).updateOne(
+            final UpdateResult result = collection(database).updateOne(
                     Filters.eq(FIELD_ID, MARKER_ID),
                     Updates.combine(
                             Updates.set(FIELD_VERSION, version),
                             Updates.set(FIELD_UPDATED_AT, Instant.now()),
                             Updates.push(FIELD_APPLIED_MIGRATIONS, applied)));
+
+            // Test matchedCount, per the repo convention for a filtered update that must find its
+            // target. Matching nothing means the marker was deleted or replaced while this process
+            // held the claim, so the version advance is silently lost: the migration has been
+            // applied to the data but nothing records it. Left unreported, the runner would go on
+            // to the next migration and finally report success, while the next startup re-runs
+            // everything from a stale or absent version — safe only because migrations are
+            // idempotent, and wrong to rely on. Throwing stops the run with the claim retained,
+            // which is the right posture for a schema whose recorded state no longer matches its
+            // data.
+            if (result.getMatchedCount() == 0) {
+                throw new DpException(
+                        "schema migration version " + version + " was applied but could not be "
+                                + "recorded: the marker document is gone. It was deleted or "
+                                + "replaced while this process held the migration claim. The "
+                                + "database now holds migrated data with no record of it; inspect "
+                                + "the schema and restore the marker manually before restarting. "
+                                + "See doc/schema-migration.md.");
+            }
         } catch (MongoException ex) {
             throw new DpException(
                     "error recording applied migration version " + version + ": " + ex.getMessage(), ex);
@@ -242,12 +262,27 @@ public class SchemaVersionMarker {
      */
     public static void releaseClaim(MongoDatabase database) throws DpException {
         try {
-            collection(database).updateOne(
+            final UpdateResult result = collection(database).updateOne(
                     Filters.eq(FIELD_ID, MARKER_ID),
                     Updates.combine(
                             Updates.set(FIELD_MIGRATING, false),
                             Updates.unset(FIELD_MIGRATING_SINCE),
                             Updates.unset(FIELD_MIGRATING_HOST)));
+
+            // Matching nothing means the marker vanished while this process held the claim. Unlike
+            // recordApplied, this throws rather than merely logging: the migration itself succeeded,
+            // but there is now no authoritative marker, so every other starting process is polling
+            // for a state that will never appear and this process cannot assert the schema is what
+            // it needs. Reporting success would leave the deployment coordinating on nothing.
+            if (result.getMatchedCount() == 0) {
+                throw new DpException(
+                        "schema migration completed but the claim could not be released: the marker "
+                                + "document is gone. It was deleted or replaced while this process "
+                                + "held the claim, so the recorded schema state is lost and other "
+                                + "starting processes have nothing to coordinate on. Verify the "
+                                + "schema and restore the marker before restarting. See "
+                                + "doc/schema-migration.md.");
+            }
         } catch (MongoException ex) {
             throw new DpException("error releasing schema migration claim: " + ex.getMessage(), ex);
         }

@@ -608,6 +608,15 @@ direction, since every migration is idempotent.
 reflection **over both declaring classes** — **add new collections there too**, and extend the class
 list if a collection constant is ever declared somewhere new.
 
+### Every marker write checks `matchedCount`
+
+`recordApplied` and `releaseClaim` filter on `_id: "schemaVersion"`, and a filtered update that
+matches nothing writes nothing while reporting no error. Both therefore test
+`getMatchedCount() == 0` and throw — the same convention the annotation client's `replaceOne` calls
+follow, and for a sharper reason here: `recordApplied` runs *after* the migration has already changed
+the data, so an unchecked write leaves migrated data with no record of it, and the run continues to
+report success. Any new marker write must check the same way.
+
 ### The claim wait is bounded by one deadline, not one per attempt
 
 `SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one absolute deadline across every
