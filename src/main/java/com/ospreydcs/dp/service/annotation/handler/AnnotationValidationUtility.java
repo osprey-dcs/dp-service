@@ -11,24 +11,24 @@ import java.util.List;
 
 public class AnnotationValidationUtility {
 
-    public static ResultStatus validateDataSet(DataSet dataSet) {
+    public static ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
 
-        // DataSet must include name
-        if (dataSet.getName() == null || dataSet.getName().isBlank()) {
-            final String errorMsg = "DataSet name must be specified";
-            return new ResultStatus(true, errorMsg);
-        }
-        
-        // DataSet must include ownerId
-        if (dataSet.getOwnerId() == null || dataSet.getOwnerId().isBlank()) {
-            final String errorMsg = "DataSet ownerId must be specified";
+        // request must include name
+        if (request.getName().isBlank()) {
+            final String errorMsg = "SaveDataSetRequest.name must be specified";
             return new ResultStatus(true, errorMsg);
         }
 
-        // DataSet must contain one or more DataBlocks
-        final List<DataBlock> requestDataBlocks = dataSet.getDataBlocksList();
+        // request must include ownerId
+        if (request.getOwnerId().isBlank()) {
+            final String errorMsg = "SaveDataSetRequest.ownerId must be specified";
+            return new ResultStatus(true, errorMsg);
+        }
+
+        // request must contain one or more DataBlocks
+        final List<DataBlock> requestDataBlocks = request.getDataBlocksList();
         if (requestDataBlocks.isEmpty()) {
-            final String errorMsg = "DataSet must include one or more data blocks";
+            final String errorMsg = "SaveDataSetRequest must include one or more data blocks";
             return new ResultStatus(true, errorMsg);
         }
 
@@ -38,21 +38,21 @@ public class AnnotationValidationUtility {
             // validate beginTime
             final Timestamp blockBeginTime = dataBlock.getBeginTime();
             if (blockBeginTime.getEpochSeconds() < 1) {
-                final String errorMsg = "DataSet.DataBlock.beginTime must be non-zero";
+                final String errorMsg = "SaveDataSetRequest.DataBlock.beginTime must be non-zero";
                 return new ResultStatus(true, errorMsg);
             }
 
             // validate endTime
             final Timestamp blockEndTime = dataBlock.getEndTime();
             if (blockEndTime.getEpochSeconds() < 1) {
-                final String errorMsg = "DataSet.DataBlock.endTime must be non-zero";
+                final String errorMsg = "SaveDataSetRequest.DataBlock.endTime must be non-zero";
                 return new ResultStatus(true, errorMsg);
             }
 
             // validate pvNames list not empty
             final List<String> blockPvNames = dataBlock.getPvNamesList();
             if (blockPvNames.isEmpty()) {
-                final String errorMsg = "DataSet.DataBlock.pvNames must not be empty";
+                final String errorMsg = "SaveDataSetRequest.DataBlock.pvNames must not be empty";
                 return new ResultStatus(true, errorMsg);
             }
         }
@@ -104,15 +104,15 @@ public class AnnotationValidationUtility {
                 }
 
                 // check that request includes DataTimestamps
-                if (! frame.hasDataTimestamps()) {
+                if (! frame.getFrame().hasDataTimestamps()) {
                     final String errorMsg =
                             "CalculationDataFrame.dataTimestamps must be specified";
                     return new ResultStatus(true, errorMsg);
                 }
 
                 // check that DataTimestamps include either SamplingClock or TimestampList
-                if ((!frame.getDataTimestamps().hasSamplingClock())
-                        && (!frame.getDataTimestamps().hasTimestampList())
+                if ((!frame.getFrame().getDataTimestamps().hasSamplingClock())
+                        && (!frame.getFrame().getDataTimestamps().hasTimestampList())
                 ) {
                     final String errorMsg =
                             "CalculationDataFrame.dataTimestamps must contain either SamplingClock or TimestampList";
@@ -120,8 +120,8 @@ public class AnnotationValidationUtility {
                 }
 
                 // check that SamplingClock is valid, if specified
-                if (frame.getDataTimestamps().hasSamplingClock()) {
-                    final SamplingClock samplingClock = frame.getDataTimestamps().getSamplingClock();
+                if (frame.getFrame().getDataTimestamps().hasSamplingClock()) {
+                    final SamplingClock samplingClock = frame.getFrame().getDataTimestamps().getSamplingClock();
                     if ((!samplingClock.hasStartTime())
                             || (samplingClock.getStartTime().getEpochSeconds() == 0)
                             || (samplingClock.getPeriodNanos() == 0)
@@ -134,9 +134,9 @@ public class AnnotationValidationUtility {
                 }
 
                 // check that TimestampList is valid, if specified
-                if (frame.getDataTimestamps().hasTimestampList()) {
+                if (frame.getFrame().getDataTimestamps().hasTimestampList()) {
                     // check that TimestampList is not empty
-                    if (frame.getDataTimestamps().getTimestampList().getTimestampsList().isEmpty()) {
+                    if (frame.getFrame().getDataTimestamps().getTimestampList().getTimestampsList().isEmpty()) {
                         final String errorMsg =
                                 "CalculationDataFrame.dataTimestamps.timestampList must not be empty";
                         return new ResultStatus(true, errorMsg);
@@ -144,14 +144,14 @@ public class AnnotationValidationUtility {
                 }
 
                 // check that list of DataColumns is not empty
-                if (frame.getDataColumnsList().isEmpty()) {
+                if (frame.getFrame().getDataColumnsList().isEmpty()) {
                     final String errorMsg =
                             "CalculationDataFrame.dataColumns must not be empty";
                     return new ResultStatus(true, errorMsg);
                 }
 
                 // check that each DataColumn is valid
-                for (DataColumn dataColumn : frame.getDataColumnsList()) {
+                for (DataColumn dataColumn : frame.getFrame().getDataColumnsList()) {
 
                     // check that DataColumn name is specified
                     if (dataColumn.getName().isBlank()) {

@@ -29,8 +29,10 @@ import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusDocumentUtility;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.model.AnnotationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationActivationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationQueryResult;
+import com.ospreydcs.dp.service.common.model.DataSetQueryResult;
 import com.ospreydcs.dp.service.common.model.MongoCountResult;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
@@ -205,69 +207,120 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public MongoCursor<DataSetDocument> executeQueryDataSets(QueryDataSetsRequest request) {
+    public DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request) {
 
-        // create query filter from request search criteria
+        // Create query filter from request search criteria.  Phase 1 of #248 (plan D4) preserves the
+        // legacy combination semantics verbatim: id / owner criteria AND with everything (global
+        // bucket), text / pvName criteria OR with each other (criteria bucket).  Criterion types new
+        // in dp-grpc 1.16.0 (name, tags, attributes) have no legacy behavior to preserve and follow
+        // the proto contract instead -- criteria list entries AND -- so they join the global bucket.
+        // Phase 3 makes the combination all-AND for every criterion type.
         final List<Bson> globalFilterList = new ArrayList<>();
         final List<Bson> criteriaFilterList = new ArrayList<>();
 
-        final List<QueryDataSetsRequest.QueryDataSetsCriterion> criterionList = request.getCriteriaList();
-        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : criterionList) {
+        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : request.getCriteriaList()) {
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    final String datasetId = criterion.getIdCriterion().getId();
-                    if (! datasetId.isBlank()) {
-                        Bson idFilter = Filters.eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(datasetId));
-                        globalFilterList.add(idFilter);
+                    // ids within a criterion are ORed; blank entries are skipped like the old
+                    // singular blank id was
+                    final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
+                            .filter(id -> ! id.isBlank())
+                            .map(ObjectId::new)
+                            .toList();
+                    if ( ! objectIds.isEmpty()) {
+                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_ID, objectIds));
                     }
                 }
 
                 case OWNERCRITERION -> {
-                    // update ownerFilter from OwnerCriterion
-                    final String ownerId = criterion.getOwnerCriterion().getOwnerId();
-                    if (! ownerId.isBlank()) {
-                        Bson ownerFilter = Filters.eq(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID, ownerId);
-                        globalFilterList.add(ownerFilter);
+                    final List<String> ownerIds = criterion.getOwnerCriterion().getOwnerIdsList().stream()
+                            .filter(ownerId -> ! ownerId.isBlank())
+                            .toList();
+                    if ( ! ownerIds.isEmpty()) {
+                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID, ownerIds));
+                    }
+                }
+
+                case NAMECRITERION -> {
+                    final var c = criterion.getNameCriterion();
+                    final List<Bson> nameFilters = new ArrayList<>();
+                    if (!c.getExactList().isEmpty()) {
+                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_NAME, c.getExactList()));
+                    }
+                    for (String prefix : c.getPrefixList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME,
+                                "^" + java.util.regex.Pattern.quote(prefix)));
+                    }
+                    for (String contains : c.getContainsList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME,
+                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
+                    }
+                    if (!nameFilters.isEmpty()) {
+                        globalFilterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
                     }
                 }
 
                 case TEXTCRITERION -> {
                     final String text = criterion.getTextCriterion().getText();
-                    if (! text.isBlank()) {
-                        final Bson descriptionFilter = Filters.text(text);
-                        criteriaFilterList.add(descriptionFilter);
+                    if ( ! text.isBlank()) {
+                        criteriaFilterList.add(Filters.text(text));
                     }
                 }
 
                 case PVNAMECRITERION -> {
-                    final String name = criterion.getPvNameCriterion().getName();
-                    if (! name.isBlank()) {
-                        final Bson descriptionFilter = Filters.in(BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES, name);
-                        criteriaFilterList.add(descriptionFilter);
+                    // pv names within a criterion are ORed
+                    final List<String> names = criterion.getPvNameCriterion().getNamesList().stream()
+                            .filter(name -> ! name.isBlank())
+                            .toList();
+                    if ( ! names.isEmpty()) {
+                        criteriaFilterList.add(
+                                Filters.in(BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES, names));
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    final List<String> tagValues = criterion.getTagsCriterion().getValuesList().stream()
+                            .filter(tag -> ! tag.isBlank())
+                            .toList();
+                    if ( ! tagValues.isEmpty()) {
+                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, tagValues));
+                    }
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    final var c = criterion.getAttributesCriterion();
+                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
+                    if (c.getValuesList().isEmpty()) {
+                        // key-only / existence search
+                        globalFilterList.add(Filters.exists(mapKey));
+                    } else {
+                        final List<String> values = c.getValuesList().stream()
+                                .filter(value -> ! value.isBlank())
+                                .toList();
+                        if ( ! values.isEmpty()) {
+                            globalFilterList.add(Filters.in(mapKey, values));
+                        }
                     }
                 }
 
                 case CRITERION_NOT_SET -> {
-                    // shouldn't happen since validation checks for this, but...
+                    // rejected by validation before the job runs, but log if one slips through
                     logger.error("executeQueryDataSets unexpected error criterion case not set");
                 }
             }
         }
 
-        if (globalFilterList.isEmpty() && criteriaFilterList.isEmpty()) {
-            // shouldn't happen since validation checks for this, but...
-            logger.debug("no search criteria specified in QueryDataSetsRequest filter");
-            return null;
-        }
+        // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
+        // queries, so there is deliberately no emptiness check here.
 
-        // create global filter to be combined with and operator (default matches all Annotations)
+        // create global filter to be combined with and operator (default matches all DataSets)
         Bson globalFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
         if (globalFilterList.size() > 0) {
             globalFilter = and(globalFilterList);
         }
 
-        // create criteria filter to be combined with or operator (default matches all Annotations)
+        // create criteria filter to be combined with or operator (default matches all DataSets)
         Bson criteriaFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
         if (criteriaFilterList.size() > 0) {
             criteriaFilter = or(criteriaFilterList);
@@ -276,18 +329,44 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // combine global filter with criteria filter using and operator
         final Bson queryFilter = and(globalFilter, criteriaFilter);
 
-        logger.debug("executing queryDataSets filter: " + queryFilter.toString());
+        logger.debug("executing queryDataSets filter: {}", queryFilter);
 
-        final MongoCursor<DataSetDocument> resultCursor = mongoCollectionDataSets
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID))
-                .cursor();
-
-        if (resultCursor == null) {
-            logger.error("executeQueryDataSets received null cursor from mongodb.find");
+        // The default limit is unconditional (#245): page size must not depend on any other
+        // request field.
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
+        int skip = 0;
+        if (!request.getPageToken().isBlank()) {
+            try {
+                skip = Integer.parseInt(
+                        new String(Base64.getDecoder().decode(request.getPageToken()), java.nio.charset.StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
+            }
         }
 
-        return resultCursor;
+        var query = mongoCollectionDataSets
+                .find(queryFilter)
+                .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID));
+
+        if (skip > 0) query = query.skip(skip);
+
+        final List<DataSetDocument> documents = new ArrayList<>();
+        try {
+            query.limit(limit + 1).into(documents);
+        } catch (Exception ex) {
+            logger.error("executeQueryDataSets: mongo exception: {}", ex.getMessage(), ex);
+            return null;
+        }
+
+        String nextPageToken = "";
+        if (documents.size() > limit) {
+            documents.remove(documents.size() - 1);
+            final int nextSkip = skip + limit;
+            nextPageToken = Base64.getEncoder().encodeToString(
+                    Integer.toString(nextSkip).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        return new DataSetQueryResult(documents, nextPageToken);
     }
 
     @Override
@@ -419,92 +498,127 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request) {
+    public AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request) {
 
-        // create query filter from request search criteria
+        // Create query filter from request search criteria.  Phase 1 of #248 (plan D4) preserves the
+        // legacy combination semantics verbatim: id / owner / dataSets / text criteria AND with
+        // everything (global bucket), annotations / tags / attributes criteria OR with each other
+        // (criteria bucket).  The NameCriterion, new in dp-grpc 1.16.0, has no legacy behavior to
+        // preserve and follows the proto contract instead -- criteria list entries AND -- so it
+        // joins the global bucket.  Phase 3 makes the combination all-AND for every criterion type.
         final List<Bson> globalFilterList = new ArrayList<>();
         final List<Bson> criteriaFilterList = new ArrayList<>();
-        final List<QueryAnnotationsRequest.QueryAnnotationsCriterion> criterionList = request.getCriteriaList();
-        for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : criterionList) {
+
+        for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : request.getCriteriaList()) {
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    // annotation id filter, combined with other filters by AND operator
-                    final String annotationId = criterion.getIdCriterion().getId();
-                    if ( ! annotationId.isBlank()) {
-                        Bson idFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId));
-                        globalFilterList.add(idFilter);
+                    // ids within a criterion are ORed; blank entries are skipped like the old
+                    // singular blank id was
+                    final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
+                            .filter(id -> ! id.isBlank())
+                            .map(ObjectId::new)
+                            .toList();
+                    if ( ! objectIds.isEmpty()) {
+                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ID, objectIds));
                     }
                 }
 
                 case OWNERCRITERION -> {
-                    // owner id filter, combined with other filters by AND operator
-                    final String ownerId = criterion.getOwnerCriterion().getOwnerId();
-                    if ( ! ownerId.isBlank()) {
-                        Bson ownerFilter = Filters.eq(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID, ownerId);
-                        globalFilterList.add(ownerFilter);
+                    final List<String> ownerIds = criterion.getOwnerCriterion().getOwnerIdsList().stream()
+                            .filter(ownerId -> ! ownerId.isBlank())
+                            .toList();
+                    if ( ! ownerIds.isEmpty()) {
+                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID, ownerIds));
                     }
                 }
 
                 case DATASETSCRITERION -> {
-                    // associated dataset id filter, combined with other filters by AND operator
-                    final String dataSetId = criterion.getDataSetsCriterion().getDataSetId();
-                    if ( ! dataSetId.isBlank()) {
-                        Bson dataSetIdFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetId);
-                        globalFilterList.add(dataSetIdFilter);
+                    // associated dataset ids filter, combined with other filters by AND operator
+                    final List<String> dataSetIds = criterion.getDataSetsCriterion().getDataSetIdsList().stream()
+                            .filter(dataSetId -> ! dataSetId.isBlank())
+                            .toList();
+                    if ( ! dataSetIds.isEmpty()) {
+                        globalFilterList.add(
+                                Filters.in(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetIds));
                     }
                 }
 
                 case ANNOTATIONSCRITERION -> {
-                    // assciated annotation ids filter, combined with other filters by OR operator
-                    final String annotationId = criterion.getAnnotationsCriterion().getAnnotationId();
-                    if ( ! annotationId.isBlank()) {
-                        Bson associatedAnnotationFilter = Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS, annotationId);
-                        criteriaFilterList.add(associatedAnnotationFilter);
+                    // associated annotation ids filter, combined with other filters by OR operator
+                    final List<String> annotationIds =
+                            criterion.getAnnotationsCriterion().getAnnotationIdsList().stream()
+                                    .filter(annotationId -> ! annotationId.isBlank())
+                                    .toList();
+                    if ( ! annotationIds.isEmpty()) {
+                        criteriaFilterList.add(
+                                Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS, annotationIds));
+                    }
+                }
+
+                case NAMECRITERION -> {
+                    final var c = criterion.getNameCriterion();
+                    final List<Bson> nameFilters = new ArrayList<>();
+                    if (!c.getExactList().isEmpty()) {
+                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_NAME, c.getExactList()));
+                    }
+                    for (String prefix : c.getPrefixList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME,
+                                "^" + java.util.regex.Pattern.quote(prefix)));
+                    }
+                    for (String contains : c.getContainsList()) {
+                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME,
+                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
+                    }
+                    if (!nameFilters.isEmpty()) {
+                        globalFilterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
                     }
                 }
 
                 case TEXTCRITERION -> {
-                    // name filter, combined with other filters by AND operator
-                    final String nameText = criterion.getTextCriterion().getText();
-                    if ( ! nameText.isBlank()) {
-                        final Bson nameFilter = Filters.text(nameText);
-                        globalFilterList.add(nameFilter);
+                    // full text search filter, combined with other filters by AND operator
+                    final String text = criterion.getTextCriterion().getText();
+                    if ( ! text.isBlank()) {
+                        globalFilterList.add(Filters.text(text));
                     }
                 }
 
                 case TAGSCRITERION -> {
                     // tags filter, combined with other filters by OR operator
-                    final String tagValue = criterion.getTagsCriterion().getTagValue();
-                    if ( ! tagValue.isBlank()) {
-                        Bson tagsFilter = Filters.in(BsonConstants.BSON_KEY_TAGS, tagValue);
-                        criteriaFilterList.add(tagsFilter);
+                    final List<String> tagValues = criterion.getTagsCriterion().getValuesList().stream()
+                            .filter(tag -> ! tag.isBlank())
+                            .toList();
+                    if ( ! tagValues.isEmpty()) {
+                        criteriaFilterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, tagValues));
                     }
                 }
 
                 case ATTRIBUTESCRITERION -> {
                     // attributes filter, combined with other filters by OR operator
-                    final String attributeKey = criterion.getAttributesCriterion().getKey();
-                    final String attributeValue = criterion.getAttributesCriterion().getValue();
-                    if ( ! attributeKey.isBlank() && ! attributeValue.isBlank()) {
-                        final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + attributeKey;
-                        Bson attributesFilter = Filters.eq(mapKey, attributeValue);
-                        criteriaFilterList.add(attributesFilter);
+                    final var c = criterion.getAttributesCriterion();
+                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
+                    if (c.getValuesList().isEmpty()) {
+                        // key-only / existence search
+                        criteriaFilterList.add(Filters.exists(mapKey));
+                    } else {
+                        final List<String> values = c.getValuesList().stream()
+                                .filter(value -> ! value.isBlank())
+                                .toList();
+                        if ( ! values.isEmpty()) {
+                            criteriaFilterList.add(Filters.in(mapKey, values));
+                        }
                     }
                 }
 
                 case CRITERION_NOT_SET -> {
-                    // shouldn't happen since validation checks for this, but...
+                    // rejected by validation before the job runs, but log if one slips through
                     logger.error("executeQueryAnnotations unexpected error criterion case not set");
                 }
             }
         }
 
-        if (globalFilterList.isEmpty() && criteriaFilterList.isEmpty()) {
-            // shouldn't happen since validation checks for this, but...
-            logger.debug("no search criteria specified in QueryAnnotationsRequest filter");
-            return null;
-        }
+        // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
+        // queries, so there is deliberately no emptiness check here.
 
         // create global filter to be combined with and operator (default matches all Annotations)
         Bson globalFilter = Filters.exists(BsonConstants.BSON_KEY_ANNOTATION_ID);
@@ -521,18 +635,44 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // combine global filter with criteria filter using and operator
         final Bson queryFilter = and(globalFilter, criteriaFilter);
 
-        logger.debug("executing queryAnnotations filter: " + queryFilter.toString());
+        logger.debug("executing queryAnnotations filter: {}", queryFilter);
 
-        final MongoCursor<AnnotationDocument> resultCursor = mongoCollectionAnnotations
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_ANNOTATION_ID))
-                .cursor();
-
-        if (resultCursor == null) {
-            logger.error("executeQueryAnnotations received null cursor from mongodb.find");
+        // The default limit is unconditional (#245): page size must not depend on any other
+        // request field.
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
+        int skip = 0;
+        if (!request.getPageToken().isBlank()) {
+            try {
+                skip = Integer.parseInt(
+                        new String(Base64.getDecoder().decode(request.getPageToken()), java.nio.charset.StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
+            }
         }
 
-        return resultCursor;
+        var query = mongoCollectionAnnotations
+                .find(queryFilter)
+                .sort(ascending(BsonConstants.BSON_KEY_ANNOTATION_ID));
+
+        if (skip > 0) query = query.skip(skip);
+
+        final List<AnnotationDocument> documents = new ArrayList<>();
+        try {
+            query.limit(limit + 1).into(documents);
+        } catch (Exception ex) {
+            logger.error("executeQueryAnnotations: mongo exception: {}", ex.getMessage(), ex);
+            return null;
+        }
+
+        String nextPageToken = "";
+        if (documents.size() > limit) {
+            documents.remove(documents.size() - 1);
+            final int nextSkip = skip + limit;
+            nextPageToken = Base64.getEncoder().encodeToString(
+                    Integer.toString(nextSkip).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        return new AnnotationQueryResult(documents, nextPageToken);
     }
 
     @Override

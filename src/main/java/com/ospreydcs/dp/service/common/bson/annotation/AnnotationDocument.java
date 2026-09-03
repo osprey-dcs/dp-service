@@ -1,12 +1,9 @@
 package com.ospreydcs.dp.service.common.bson.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
-import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
-import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
-import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import org.apache.commons.collections4.CollectionUtils;
 import org.bson.types.ObjectId;
@@ -21,7 +18,7 @@ public class AnnotationDocument extends DpBsonDocumentBase {
     private List<String> dataSetIds;
     private String name;
     private List<String> annotationIds;
-    private String comment;
+    private String description;
     private String calculationsId;
 
     public ObjectId getId() {
@@ -64,12 +61,12 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         this.annotationIds = annotationIds;
     }
 
-    public String getComment() {
-        return comment;
+    public String getDescription() {
+        return description;
     }
 
-    public void setComment(String comment) {
-        this.comment = comment;
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public String getCalculationsId() {
@@ -91,7 +88,7 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         document.setDataSetIds(request.getDataSetIdsList());
         document.setName(request.getName());
         document.setAnnotationIds(request.getAnnotationIdsList());
-        document.setComment(request.getComment());
+        document.setDescription(request.getDescription());
 
         // only set tags if specified in request
         if (request.getTagsCount() > 0) {
@@ -112,18 +109,33 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         return document;
     }
 
-    public QueryAnnotationsResponse.AnnotationsResult.Annotation toAnnotation(
-            List<DataSetDocument> dataSetDocuments, CalculationsDocument calculationsDocument) throws DpException {
+    /**
+     * Builds the protobuf Annotation for this document.
+     *
+     * <p>Returns references, not embedded content: dataSetIds and calculationsId are populated and the
+     * dataSets / calculations bodies are not.  The Annotation message no longer carries a dataSets
+     * field at all (dp-grpc #132), and queryAnnotations() deliberately leaves calculations empty so
+     * that listing annotations does not drag their full column sets along.  Callers fetch content
+     * with queryDataSets() over the gathered ids, or getCalculations().
+     *
+     * <p>calculationsId doubles as the presence indicator: empty means the Annotation has no
+     * calculations, non-empty with an empty calculations field means the content was not fetched by
+     * this method.
+     */
+    public Annotation toAnnotation() {
 
-        QueryAnnotationsResponse.AnnotationsResult.Annotation.Builder annotationBuilder =
-                QueryAnnotationsResponse.AnnotationsResult.Annotation.newBuilder();
+        Annotation.Builder annotationBuilder = Annotation.newBuilder();
 
         annotationBuilder.setId(this.getId().toString());
         annotationBuilder.setOwnerId(this.getOwnerId());
         annotationBuilder.addAllDataSetIds(this.getDataSetIds());
         annotationBuilder.setName(this.getName());
         annotationBuilder.addAllAnnotationIds(this.getAnnotationIds());
-        annotationBuilder.setComment(this.getComment());
+
+        // description is optional; a document saved without one leaves the proto field at its default
+        if (this.getDescription() != null) {
+            annotationBuilder.setDescription(this.getDescription());
+        }
 
         // only set tags if specified in document
         if (this.getTags() != null) {
@@ -135,14 +147,9 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             annotationBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(this.getAttributes()));
         }
 
-        // add content of related datasets
-        for (DataSetDocument dataSetDocument : dataSetDocuments) {
-            annotationBuilder.addDataSets(dataSetDocument.toDataSet());
-        }
-
-        // add calculations content
-        if (calculationsDocument != null) {
-            annotationBuilder.setCalculations(calculationsDocument.toCalculations());
+        // reference only; getCalculations() / getAnnotation() serve the content
+        if (this.getCalculationsId() != null) {
+            annotationBuilder.setCalculationsId(this.getCalculationsId());
         }
 
         return annotationBuilder.build();
@@ -184,10 +191,11 @@ public class AnnotationDocument extends DpBsonDocumentBase {
                             + " disjunction: " + annotationIdsDisjunction;
         }
 
-        // diff comment
-        if ( ! Objects.equals(request.getComment(), this.getComment())) {
-            final String msg = 
-                    "comment mismatch: " + this.getComment() + " expected: " + request.getComment();
+        // diff description
+        if ( ! Objects.equals(request.getDescription(), this.getDescription())) {
+            final String msg =
+                    "description mismatch: " + this.getDescription()
+                            + " expected: " + request.getDescription();
             diffs.add(msg);
         }
 

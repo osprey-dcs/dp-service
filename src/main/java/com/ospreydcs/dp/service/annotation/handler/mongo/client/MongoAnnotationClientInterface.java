@@ -17,8 +17,10 @@ import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.model.AnnotationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationActivationQueryResult;
 import com.ospreydcs.dp.service.common.model.ConfigurationQueryResult;
+import com.ospreydcs.dp.service.common.model.DataSetQueryResult;
 import com.ospreydcs.dp.service.common.model.MongoCountResult;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
@@ -37,13 +39,13 @@ public interface MongoAnnotationClientInterface {
 
     MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId);
 
-    MongoCursor<DataSetDocument> executeQueryDataSets(QueryDataSetsRequest request);
+    DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request);
 
     AnnotationDocument findAnnotation(String annotationId);
 
     MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String id);
 
-    MongoCursor<AnnotationDocument> executeQueryAnnotations(QueryAnnotationsRequest request);
+    AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request);
 
     MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument);
 

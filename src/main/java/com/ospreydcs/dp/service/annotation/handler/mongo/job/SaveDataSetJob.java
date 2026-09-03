@@ -52,7 +52,7 @@ public class SaveDataSetJob extends HandlerJob {
             return;
         }
         final DataSetDocument dataSetDocument = generateDataSetDocument(request);
-        final String existingDocumentId = request.getDataSet().getId();
+        final String existingDocumentId = request.getId();
         final MongoSaveResult result = this.mongoClient.saveDataSet(dataSetDocument, existingDocumentId);
         logger.debug("dispatching SaveDataSetJob id: {}", this.responseObserver.hashCode());
         dispatcher.handleResult(result);

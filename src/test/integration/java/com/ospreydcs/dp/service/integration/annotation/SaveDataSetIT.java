@@ -50,7 +50,7 @@ public class SaveDataSetIT extends AnnotationIntegrationTestIntermediate {
                     new AnnotationTestBase.SaveDataSetParams(dataSet);
 
             annotationServiceWrapper.sendAndVerifySaveDataSet(
-                    params, false, true, "DataSet name must be specified");
+                    params, false, true, "SaveDataSetRequest.name must be specified");
         }
 
         {

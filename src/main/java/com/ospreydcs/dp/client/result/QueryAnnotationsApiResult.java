@@ -1,13 +1,13 @@
 package com.ospreydcs.dp.client.result;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
 
 import java.util.List;
 
 public class QueryAnnotationsApiResult extends ApiResultBase {
     
     // instance variables
-    public final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotations;
+    public final List<Annotation> annotations;
 
     public QueryAnnotationsApiResult(boolean isError, String errorMessage) {
         super(isError, errorMessage);
@@ -19,7 +19,7 @@ public class QueryAnnotationsApiResult extends ApiResultBase {
         this.annotations = null;
     }
 
-    public QueryAnnotationsApiResult(List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotations) {
+    public QueryAnnotationsApiResult(List<Annotation> annotations) {
         super(false, "");
         this.annotations = annotations;
     }

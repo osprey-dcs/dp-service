@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -32,22 +34,20 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
     @Test
     public void testQueryAnnotationsNegative() {
 
-        // queryAnnotations() negative test: empty annotationId in query by IdCriterion
+        // queryAnnotations() negative test: IdCriterion with an empty ids list.  Built as a raw
+        // request: the params builder emits one entry per supplied value, so it cannot produce an
+        // empty criterion.
         {
-            final String blankAnnotationId = "";
-            final AnnotationTestBase.QueryAnnotationsParams queryParams =
-                    new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setIdCriterion(blankAnnotationId);
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setIdCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    new ArrayList<>());
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.IdCriterion must specify at least one id");
         }
 
         // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and TextCriterion
@@ -70,24 +70,19 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                     new ArrayList<>());
         }
 
-        // queryAnnotations() negative test: empty datasetId in query by OwnerCriterion and DataSetCriterion.
+        // queryAnnotations() negative test: DataSetsCriterion with an empty dataSetIds list, built
+        // as a raw request for the same reason as above.
         {
-            final String ownerId = "craigmcc";
-            final String blankDatasetId = "";
-            final AnnotationTestBase.QueryAnnotationsParams queryParams =
-                    new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setOwnerCriterion(ownerId);
-            queryParams.setDatasetsCriterion(blankDatasetId);
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setDataSetsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    new ArrayList<>());
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.DataSetsCriterion must specify at least one dataSetId");
         }
 
     }
@@ -152,7 +147,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
         }
 
         // queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
-        List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
+        List<Annotation> annotationsQueryResult = null;
         {
             /*
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
@@ -188,9 +183,13 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                  * pvNames and that each bucket has the expected begin time.
                  */
 
-                for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : annotationsQueryResult) {
+                for (Annotation resultAnnotation : annotationsQueryResult) {
 
-                    for (DataSet resultDataSet : resultAnnotation.getDataSetsList()) {
+                    // the annotation carries dataset references (dp-grpc #132); fetch each
+                    // referenced dataset's content from the database to drive the data query
+                    for (String resultDataSetId : resultAnnotation.getDataSetIdsList()) {
+
+                        final DataSet resultDataSet = mongoClient.findDataSet(resultDataSetId).toDataSet();
 
                         for (DataBlock queryResultBlock : resultDataSet.getDataBlocksList()) {
 
@@ -314,7 +313,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<QueryAnnotationsResponse.AnnotationsResult.Annotation> matchingAnnotations =
+            List<Annotation> matchingAnnotations =
                     annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                             queryParams,
                             expectReject,
@@ -322,7 +321,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                             List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
 
             // positive test for updating an annotation received in the query result
-            final QueryAnnotationsResponse.AnnotationsResult.Annotation annotation = matchingAnnotations.get(0);
+            final Annotation annotation = matchingAnnotations.get(0);
             final AnnotationTestBase.SaveAnnotationRequestParams createParams =
                     createAnnotationScenarioResult.annotationWithAllFieldsParams();
             final AnnotationTestBase.SaveAnnotationRequestParams updateParams =

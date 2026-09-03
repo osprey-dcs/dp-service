@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import org.junit.*;
 
@@ -39,31 +40,35 @@ public class QueryDataSetsIT extends AnnotationIntegrationTestIntermediate {
                     queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
         }
 
-        // queryDataSets() negative test - rejected because IdCriterion is empty
+        // queryDataSets() negative test - rejected because the IdCriterion ids list is empty.
+        // Built as a raw request: the params builder emits one entry per supplied value, so it
+        // cannot produce an empty criterion.
         {
-            final String blankDatasetId = "";
-            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
-            queryParams.setIdCriterion(blankDatasetId);
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setIdCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryDataSets(
-                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
+            annotationServiceWrapper.sendQueryDataSets(
+                    request,
+                    true,
+                    "QueryDataSetsRequest.criteria.IdCriterion must specify at least one id");
         }
 
-        // queryDataSets() negative test - rejected because PvNameCriterion is empty
+        // queryDataSets() negative test - rejected because the PvNameCriterion names list is empty,
+        // built as a raw request for the same reason as above.
         {
-            final String blankPvName = "";
-            final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
-            queryParams.setPvNameCriterion(blankPvName);
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setPvNameCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage ="QueryDataSetsRequest.criteria.PvNameCriterion name must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryDataSets(
-                    queryParams, expectReject, expectedRejectMessage, new ArrayList<>());
+            annotationServiceWrapper.sendQueryDataSets(
+                    request,
+                    true,
+                    "QueryDataSetsRequest.criteria.PvNameCriterion must specify at least one name");
         }
 
     }

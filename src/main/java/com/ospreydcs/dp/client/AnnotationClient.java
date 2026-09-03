@@ -151,7 +151,7 @@ public class AnnotationClient extends ServiceApiClientBase {
             String name,
             List<String> dataSetIds,
             List<String> annotationIds,
-            String comment,
+            String description,
             List<String> tags,
             Map<String, String> attributeMap,
             Calculations calculations
@@ -240,7 +240,7 @@ public class AnnotationClient extends ServiceApiClientBase {
     public static class QueryAnnotationsResponseObserver
             extends ApiResponseObserverBase<QueryAnnotationsResponse> {
 
-        private final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsList =
+        private final List<Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
 
         @Override
@@ -265,7 +265,7 @@ public class AnnotationClient extends ServiceApiClientBase {
             return true;
         }
 
-        public List<QueryAnnotationsResponse.AnnotationsResult.Annotation> getAnnotationsList() {
+        public List<Annotation> getAnnotationsList() {
             return annotationsList;
         }
     }
@@ -316,8 +316,9 @@ public class AnnotationClient extends ServiceApiClientBase {
 
     public static SaveDataSetRequest buildSaveDataSetRequest(SaveDataSetParams params) {
 
-        com.ospreydcs.dp.grpc.v1.annotation.DataSet.Builder dataSetBuilder
-                = com.ospreydcs.dp.grpc.v1.annotation.DataSet.newBuilder();
+        // SaveDataSetRequest is flat since dp-grpc #132: the dataset fields live directly on the
+        // request rather than on an embedded DataSet message
+        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
 
         for (AnnotationDataBlock block : params.dataSet.dataBlocks) {
 
@@ -334,23 +335,17 @@ public class AnnotationClient extends ServiceApiClientBase {
             dataBlockBuilder.setBeginTime(beginTimeBuilder);
             dataBlockBuilder.setEndTime(endTimeBuilder);
             dataBlockBuilder.addAllPvNames(block.pvNames);
-            dataBlockBuilder.build();
 
-            dataSetBuilder.addDataBlocks(dataBlockBuilder);
+            requestBuilder.addDataBlocks(dataBlockBuilder);
         }
 
         if (params.dataSet.id != null) {
-            dataSetBuilder.setId(params.dataSet.id);
+            requestBuilder.setId(params.dataSet.id);
         }
 
-        dataSetBuilder.setName(params.dataSet.name);
-        dataSetBuilder.setDescription(params.dataSet.description);
-        dataSetBuilder.setOwnerId(params.dataSet.ownerId);
-
-        dataSetBuilder.build();
-
-        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
-        requestBuilder.setDataSet(dataSetBuilder);
+        requestBuilder.setName(params.dataSet.name);
+        requestBuilder.setDescription(params.dataSet.description);
+        requestBuilder.setOwnerId(params.dataSet.ownerId);
 
         return requestBuilder.build();
     }
@@ -392,11 +387,11 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
         QueryDataSetsRequest.Builder requestBuilder = QueryDataSetsRequest.newBuilder();
 
-        // add id criteria
-        if (params.idCriterion != null) {
+        // add id criteria (blank values are omitted rather than sent -- see nonBlank())
+        if (params.idCriterion != null && !params.idCriterion.isBlank()) {
             QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion idCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion.newBuilder()
-                            .setId(params.idCriterion)
+                            .addIds(params.idCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion idQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -406,10 +401,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // add owner criteria
-        if (params.ownerCriterion != null) {
+        if (params.ownerCriterion != null && !params.ownerCriterion.isBlank()) {
             QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(params.ownerCriterion)
+                            .addOwnerIds(params.ownerCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion ownerQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -418,8 +413,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             requestBuilder.addCriteria(ownerQueryDataSetsCriterion);
         }
 
-        // add description criteria
-        if (params.textCriterion != null) {
+        // add text criteria
+        if (params.textCriterion != null && !params.textCriterion.isBlank()) {
             QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion textCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
                             .setText(params.textCriterion)
@@ -432,10 +427,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // add pvName criteria
-        if (params.pvNameCriterion != null) {
+        if (params.pvNameCriterion != null && !params.pvNameCriterion.isBlank()) {
             QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion pvNameCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion.newBuilder()
-                            .setName(params.pvNameCriterion)
+                            .addNames(params.pvNameCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion pvNameQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -495,8 +490,8 @@ public class AnnotationClient extends ServiceApiClientBase {
         if (params.annotationIds != null) {
             requestBuilder.addAllAnnotationIds(params.annotationIds);
         }
-        if (params.comment != null) {
-            requestBuilder.setComment(params.comment);
+        if (params.description != null) {
+            requestBuilder.setDescription(params.description);
         }
         if (params.tags != null) {
             requestBuilder.addAllTags(params.tags);
@@ -548,11 +543,11 @@ public class AnnotationClient extends ServiceApiClientBase {
     ) {
         QueryAnnotationsRequest.Builder requestBuilder = QueryAnnotationsRequest.newBuilder();
 
-        // handle IdCriterion
-        if (params.idCriterion != null) {
+        // handle IdCriterion (blank values are omitted rather than sent -- see nonBlank())
+        if (params.idCriterion != null && !params.idCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion idCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()
-                            .setId(params.idCriterion)
+                            .addIds(params.idCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion idQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -562,10 +557,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle OwnerCriterion
-        if (params.ownerCriterion != null) {
+        if (params.ownerCriterion != null && !params.ownerCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(params.ownerCriterion)
+                            .addOwnerIds(params.ownerCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -575,10 +570,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle DataSetsCriterion
-        if (params.datasetsCriterion != null) {
+        if (params.datasetsCriterion != null && !params.datasetsCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion dataSetsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()
-                            .setDataSetId(params.datasetsCriterion)
+                            .addDataSetIds(params.datasetsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion datasetIdQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -588,10 +583,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle AnnotationsCriterion
-        if (params.annotationsCriterion != null) {
+        if (params.annotationsCriterion != null && !params.annotationsCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion annotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion.newBuilder()
-                            .setAnnotationId(params.annotationsCriterion)
+                            .addAnnotationIds(params.annotationsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion associatedAnnotationQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -601,7 +596,7 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle TextCriterion
-        if (params.textCriterion != null) {
+        if (params.textCriterion != null && !params.textCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion textCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion.newBuilder()
                             .setText(params.textCriterion)
@@ -614,10 +609,10 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle TagsCriterion
-        if (params.tagsCriterion != null) {
+        if (params.tagsCriterion != null && !params.tagsCriterion.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion tagsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
-                            .setTagValue(params.tagsCriterion)
+                            .addValues(params.tagsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion tagsQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -627,11 +622,12 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         // handle AttributesCriterion
-        if (params.attributesCriterionKey != null && params.attributesCriterionValue != null) {
+        if (params.attributesCriterionKey != null && !isBlankKey(params.attributesCriterionKey)
+                && params.attributesCriterionValue != null && !params.attributesCriterionValue.isBlank()) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
                             .setKey(params.attributesCriterionKey)
-                            .setValue(params.attributesCriterionValue)
+                            .addValues(params.attributesCriterionValue)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion attributesQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()

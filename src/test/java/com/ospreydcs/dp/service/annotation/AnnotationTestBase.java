@@ -273,7 +273,7 @@ public class AnnotationTestBase {
         public final List<String> dataSetIds;
         public final String name;
         public final List<String> annotationIds;
-        public final String comment;
+        public final String description;
         public final List<String> tags;
         public final Map<String, String> attributeMap;
         public final Calculations calculations;
@@ -284,7 +284,7 @@ public class AnnotationTestBase {
             this.dataSetIds = dataSetIds;
             this.name = name;
             this.annotationIds = null;
-            this.comment = null;
+            this.description = null;
             this.tags = null;
             this.attributeMap = null;
             this.calculations = null;
@@ -296,7 +296,7 @@ public class AnnotationTestBase {
                 String name,
                 List<String> dataSetIds,
                 List<String> annotationIds,
-                String comment,
+                String description,
                 List<String> tags,
                 Map<String, String> attributeMap,
                 Calculations calculations
@@ -306,7 +306,7 @@ public class AnnotationTestBase {
             this.dataSetIds = dataSetIds;
             this.name = name;
             this.annotationIds = annotationIds;
-            this.comment = comment;
+            this.description = description;
             this.tags = tags;
             this.attributeMap = attributeMap;
             this.calculations = calculations;
@@ -462,7 +462,7 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
-        private final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsList =
+        private final List<Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
@@ -486,7 +486,7 @@ public class AnnotationTestBase {
             }
         }
 
-        public List<QueryAnnotationsResponse.AnnotationsResult.Annotation> getAnnotationsList() {
+        public List<Annotation> getAnnotationsList() {
             return annotationsList;
         }
 
@@ -508,7 +508,7 @@ public class AnnotationTestBase {
                 }
 
                 assertTrue(response.hasAnnotationsResult());
-                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> responseAnnotationList =
+                List<Annotation> responseAnnotationList =
                         response.getAnnotationsResult().getAnnotationsList();
 
                 // flag error if already received a response
@@ -640,8 +640,9 @@ public class AnnotationTestBase {
 
     public static SaveDataSetRequest buildSaveDataSetRequest(SaveDataSetParams params) {
 
-        DataSet.Builder dataSetBuilder
-                = DataSet.newBuilder();
+        // SaveDataSetRequest is flat since dp-grpc #132: the dataset fields live directly on the
+        // request rather than on an embedded DataSet message
+        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
 
         for (AnnotationDataBlock block : params.dataSet.dataBlocks) {
 
@@ -658,23 +659,17 @@ public class AnnotationTestBase {
             dataBlockBuilder.setBeginTime(beginTimeBuilder);
             dataBlockBuilder.setEndTime(endTimeBuilder);
             dataBlockBuilder.addAllPvNames(block.pvNames);
-            dataBlockBuilder.build();
 
-            dataSetBuilder.addDataBlocks(dataBlockBuilder);
+            requestBuilder.addDataBlocks(dataBlockBuilder);
         }
 
         if (params.dataSet.id != null) {
-            dataSetBuilder.setId(params.dataSet.id);
+            requestBuilder.setId(params.dataSet.id);
         }
 
-        dataSetBuilder.setName(params.dataSet.name);
-        dataSetBuilder.setDescription(params.dataSet.description);
-        dataSetBuilder.setOwnerId(params.dataSet.ownerId);
-
-        dataSetBuilder.build();
-
-        SaveDataSetRequest.Builder requestBuilder = SaveDataSetRequest.newBuilder();
-        requestBuilder.setDataSet(dataSetBuilder);
+        requestBuilder.setName(params.dataSet.name);
+        requestBuilder.setDescription(params.dataSet.description);
+        requestBuilder.setOwnerId(params.dataSet.ownerId);
 
         return requestBuilder.build();
     }
@@ -688,7 +683,7 @@ public class AnnotationTestBase {
         if (params.idCriterion != null) {
             QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion idCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion.newBuilder()
-                            .setId(params.idCriterion)
+                            .addIds(params.idCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion idQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -701,7 +696,7 @@ public class AnnotationTestBase {
         if (params.ownerCriterion != null) {
             QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(params.ownerCriterion)
+                            .addOwnerIds(params.ownerCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion ownerQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -727,7 +722,7 @@ public class AnnotationTestBase {
         if (params.pvNameCriterion != null) {
             QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion pvNameCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion.newBuilder()
-                            .setName(params.pvNameCriterion)
+                            .addNames(params.pvNameCriterion)
                             .build();
             QueryDataSetsRequest.QueryDataSetsCriterion pvNameQueryDataSetsCriterion =
                     QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
@@ -756,8 +751,8 @@ public class AnnotationTestBase {
         if (params.annotationIds != null) {
             requestBuilder.addAllAnnotationIds(params.annotationIds);
         }
-        if (params.comment != null) {
-            requestBuilder.setComment(params.comment);
+        if (params.description != null) {
+            requestBuilder.setDescription(params.description);
         }
         if (params.tags != null) {
             requestBuilder.addAllTags(params.tags);
@@ -781,7 +776,7 @@ public class AnnotationTestBase {
         if (params.idCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion idCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()
-                            .setId(params.idCriterion)
+                            .addIds(params.idCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion idQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -794,7 +789,7 @@ public class AnnotationTestBase {
         if (params.ownerCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
-                            .setOwnerId(params.ownerCriterion)
+                            .addOwnerIds(params.ownerCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion ownerQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -807,7 +802,7 @@ public class AnnotationTestBase {
         if (params.datasetsCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion dataSetsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()
-                            .setDataSetId(params.datasetsCriterion)
+                            .addDataSetIds(params.datasetsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion datasetIdQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -820,7 +815,7 @@ public class AnnotationTestBase {
         if (params.annotationsCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion annotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion.newBuilder()
-                            .setAnnotationId(params.annotationsCriterion)
+                            .addAnnotationIds(params.annotationsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion associatedAnnotationQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -846,7 +841,7 @@ public class AnnotationTestBase {
         if (params.tagsCriterion != null) {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion tagsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
-                            .setTagValue(params.tagsCriterion)
+                            .addValues(params.tagsCriterion)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion tagsQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
@@ -861,7 +856,7 @@ public class AnnotationTestBase {
             QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
                             .setKey(params.attributesCriterionKey)
-                            .setValue(params.attributesCriterionValue)
+                            .addValues(params.attributesCriterionValue)
                             .build();
             QueryAnnotationsRequest.QueryAnnotationsCriterion attributesQueryAnnotationsCriterion =
                     QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
