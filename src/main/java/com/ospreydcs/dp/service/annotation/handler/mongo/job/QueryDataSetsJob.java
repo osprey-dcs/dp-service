@@ -29,7 +29,7 @@ public class QueryDataSetsJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryDataSetsDispatcher(responseObserver, request);
+        dispatcher = new QueryDataSetsDispatcher(responseObserver);
     }
 
     @Override

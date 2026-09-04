@@ -29,7 +29,7 @@ public class QueryAnnotationsJob extends HandlerJob {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        dispatcher = new QueryAnnotationsDispatcher(responseObserver, request);
+        dispatcher = new QueryAnnotationsDispatcher(responseObserver);
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -16,14 +15,11 @@ public class QueryAnnotationsDispatcher extends Dispatcher {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryAnnotationsRequest request;
     private final StreamObserver<QueryAnnotationsResponse> responseObserver;
 
     public QueryAnnotationsDispatcher(
-            StreamObserver<QueryAnnotationsResponse> responseObserver,
-            QueryAnnotationsRequest request
+            StreamObserver<QueryAnnotationsResponse> responseObserver
     ) {
-        this.request = request;
         this.responseObserver = responseObserver;
     }
 
@@ -42,8 +38,18 @@ public class QueryAnnotationsDispatcher extends Dispatcher {
         // without batching or de-duplication across annotations sharing a dataset, plus one
         // findCalculations() per annotation.  Callers fetch content with queryDataSets() over the ids
         // gathered across the page, or getCalculations().
-        for (AnnotationDocument annotationDocument : queryResult.getDocuments()) {
-            annotationsResultBuilder.addAnnotations(annotationDocument.toAnnotation());
+        // A malformed stored document must produce a reportable error, never an unchecked throw: an
+        // escaped exception is swallowed by QueueHandlerBase's worker and the caller's response
+        // stream hangs until deadline with nothing sent.
+        try {
+            for (AnnotationDocument annotationDocument : queryResult.getDocuments()) {
+                annotationsResultBuilder.addAnnotations(annotationDocument.toAnnotation());
+            }
+        } catch (RuntimeException ex) {
+            final String errorMsg = "error converting AnnotationDocument to Annotation: " + ex.getMessage();
+            logger.error(errorMsg, ex);
+            handleError(errorMsg);
+            return;
         }
 
         annotationsResultBuilder.setNextPageToken(

@@ -185,6 +185,7 @@ public class AnnotationTestBase {
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<DataSet> dataSetsList =
                 Collections.synchronizedList(new ArrayList<>());
+        private volatile String nextPageToken = "";
 
         public void await() {
             try {
@@ -210,6 +211,8 @@ public class AnnotationTestBase {
         public List<DataSet> getDataSetsList() {
             return dataSetsList;
         }
+
+        public String getNextPageToken() { return nextPageToken; }
 
         @Override
         public void onNext(QueryDataSetsResponse response) {
@@ -241,6 +244,7 @@ public class AnnotationTestBase {
 
                 } else {
                     dataSetsList.addAll(responseDataSetsList);
+                    nextPageToken = response.getDataSetsResult().getNextPageToken();
                     finishLatch.countDown();
                 }
             }).start();
@@ -464,6 +468,7 @@ public class AnnotationTestBase {
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
         private final List<Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
+        private volatile String nextPageToken = "";
 
         public void await() {
             try {
@@ -489,6 +494,8 @@ public class AnnotationTestBase {
         public List<Annotation> getAnnotationsList() {
             return annotationsList;
         }
+
+        public String getNextPageToken() { return nextPageToken; }
 
         @Override
         public void onNext(QueryAnnotationsResponse response) {
@@ -520,6 +527,7 @@ public class AnnotationTestBase {
 
                 } else {
                     annotationsList.addAll(responseAnnotationList);
+                    nextPageToken = response.getAnnotationsResult().getNextPageToken();
                     finishLatch.countDown();
                 }
             }).start();

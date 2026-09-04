@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 
 import com.mongodb.MongoException;
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.IndexOptions;
@@ -65,17 +66,71 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     private static final Logger logger = LogManager.getLogger();
 
     /**
-     * Default page size applied by queryPvMetadata, queryConfigurations, and
-     * queryConfigurationActivations when the request's limit is 0/unset.
+     * Default page size applied by queryDataSets, queryAnnotations, queryPvMetadata,
+     * queryConfigurations, and queryConfigurationActivations when the request's limit is 0/unset.
      *
-     * <p>Shared by all three so a change to the default cannot land on two of the three.  It matters
-     * most for queryPvMetadata: since #245 made an empty criteria list match-all, an unset limit
-     * there would otherwise materialize every PV in the archive into an ArrayList, and because a
-     * nextPageToken is only produced when the page is full, the caller could not even detect it.
-     * The default is deliberately unconditional rather than applied only to the match-all case —
-     * see #245 plan D1.
+     * <p>Shared by all five so a change to the default cannot land on a subset of them.  It matters
+     * most for the match-all queries: since #245 (and #248 Phase 1 for the dataSets/annotations
+     * queries) made an empty criteria list match-all, an unset limit would otherwise materialize
+     * every matching document into an ArrayList, and because a nextPageToken is only produced when
+     * the page is full, the caller could not even detect it.  The default is deliberately
+     * unconditional rather than applied only to the match-all case — see #245 plan D1.
      */
     private static final int DEFAULT_QUERY_LIMIT = 100;
+
+    /**
+     * Documents for one page of a skip-paged query plus the token for the next page — the carrier
+     * returned by {@link #applySkipPaging}.  nextPageToken is empty on the last page.
+     */
+    private record PagedDocuments<T>(List<T> documents, String nextPageToken) {}
+
+    /**
+     * Decodes a skip-based page token produced by {@link #applySkipPaging}.  An unparseable token
+     * is ignored (page 0) rather than rejected; Phase 3 of #248 converts these interim tokens to
+     * opaque with reject-on-malformed per the proto contract.
+     */
+    private static int decodePageTokenSkip(String pageToken) {
+        if (pageToken == null || pageToken.isBlank()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(new String(Base64.getDecoder().decode(pageToken), StandardCharsets.UTF_8));
+        } catch (Exception ex) {
+            logger.warn("invalid page token, ignoring: {}", pageToken);
+            return 0;
+        }
+    }
+
+    /**
+     * Applies skip/limit paging to a prepared find (filter and sort already set), fetching one
+     * document past the page to detect whether a next page exists without an extra count query.
+     * The single implementation serves all five skip-paged queries so their token semantics cannot
+     * drift; Phase 3 of #248 replaces the interim Base64 skip tokens with opaque tokens here.
+     *
+     * <p>The probe guards limit + 1 against overflow: a client may send limit = Integer.MAX_VALUE
+     * (proto uint32), where a bare + 1 wraps negative and hands the driver an undefined page.
+     * Mongo exceptions propagate to the caller, which owns the per-method error result.
+     */
+    private static <T> PagedDocuments<T> applySkipPaging(FindIterable<T> query, int skip, int limit) {
+        if (skip > 0) {
+            query = query.skip(skip);
+        }
+        final int probeLimit = limit < Integer.MAX_VALUE ? limit + 1 : limit;
+        final List<T> documents = new ArrayList<>();
+        query.limit(probeLimit).into(documents);
+        String nextPageToken = "";
+        if (documents.size() > limit) {
+            documents.remove(documents.size() - 1);
+            // skip is bounded by a prior token and limit by the check above, but their sum can
+            // still exceed the int skip the driver accepts; past that point paging simply ends
+            final long nextSkip = (long) skip + (long) limit;
+            if (nextSkip <= Integer.MAX_VALUE) {
+                nextPageToken = Base64.getEncoder().encodeToString(
+                        Long.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        return new PagedDocuments<>(documents, nextPageToken);
+    }
 
     @Override
     public DataSetDocument findDataSet(String dataSetId) {
@@ -218,90 +273,55 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         final List<Bson> globalFilterList = new ArrayList<>();
         final List<Bson> criteriaFilterList = new ArrayList<>();
 
+        // Criterion contents are validated in AnnotationServiceImpl.queryDataSets() before the job
+        // is enqueued -- blank entries and non-ObjectId ids are rejected there -- so filters are
+        // built without re-filtering.  A blank entry silently dropped here would turn the criterion
+        // into a match-all (#243), and a malformed ObjectId would throw past the job into
+        // QueueHandlerBase, hanging the caller's response stream.
         for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : request.getCriteriaList()) {
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    // ids within a criterion are ORed; blank entries are skipped like the old
-                    // singular blank id was
+                    // ids within a criterion are ORed
                     final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
-                            .filter(id -> ! id.isBlank())
                             .map(ObjectId::new)
                             .toList();
-                    if ( ! objectIds.isEmpty()) {
-                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_ID, objectIds));
-                    }
+                    globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_ID, objectIds));
                 }
 
                 case OWNERCRITERION -> {
-                    final List<String> ownerIds = criterion.getOwnerCriterion().getOwnerIdsList().stream()
-                            .filter(ownerId -> ! ownerId.isBlank())
-                            .toList();
-                    if ( ! ownerIds.isEmpty()) {
-                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_OWNER_ID, ownerIds));
-                    }
+                    globalFilterList.add(Filters.in(
+                            BsonConstants.BSON_KEY_DATA_SET_OWNER_ID,
+                            criterion.getOwnerCriterion().getOwnerIdsList()));
                 }
 
                 case NAMECRITERION -> {
                     final var c = criterion.getNameCriterion();
-                    final List<Bson> nameFilters = new ArrayList<>();
-                    if (!c.getExactList().isEmpty()) {
-                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_NAME, c.getExactList()));
-                    }
-                    for (String prefix : c.getPrefixList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME,
-                                "^" + java.util.regex.Pattern.quote(prefix)));
-                    }
-                    for (String contains : c.getContainsList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_DATA_SET_NAME,
-                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
-                    }
-                    if (!nameFilters.isEmpty()) {
-                        globalFilterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
-                    }
+                    globalFilterList.add(MongoQueryFilterBuilder.nameMatchFilter(
+                            BsonConstants.BSON_KEY_DATA_SET_NAME,
+                            c.getExactList(), c.getPrefixList(), c.getContainsList()));
                 }
 
                 case TEXTCRITERION -> {
-                    final String text = criterion.getTextCriterion().getText();
-                    if ( ! text.isBlank()) {
-                        criteriaFilterList.add(Filters.text(text));
-                    }
+                    criteriaFilterList.add(Filters.text(criterion.getTextCriterion().getText()));
                 }
 
                 case PVNAMECRITERION -> {
                     // pv names within a criterion are ORed
-                    final List<String> names = criterion.getPvNameCriterion().getNamesList().stream()
-                            .filter(name -> ! name.isBlank())
-                            .toList();
-                    if ( ! names.isEmpty()) {
-                        criteriaFilterList.add(
-                                Filters.in(BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES, names));
-                    }
+                    criteriaFilterList.add(Filters.in(
+                            BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES,
+                            criterion.getPvNameCriterion().getNamesList()));
                 }
 
                 case TAGSCRITERION -> {
-                    final List<String> tagValues = criterion.getTagsCriterion().getValuesList().stream()
-                            .filter(tag -> ! tag.isBlank())
-                            .toList();
-                    if ( ! tagValues.isEmpty()) {
-                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, tagValues));
-                    }
+                    globalFilterList.add(MongoQueryFilterBuilder.tagsFilter(
+                            criterion.getTagsCriterion().getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
                     final var c = criterion.getAttributesCriterion();
-                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
-                    if (c.getValuesList().isEmpty()) {
-                        // key-only / existence search
-                        globalFilterList.add(Filters.exists(mapKey));
-                    } else {
-                        final List<String> values = c.getValuesList().stream()
-                                .filter(value -> ! value.isBlank())
-                                .toList();
-                        if ( ! values.isEmpty()) {
-                            globalFilterList.add(Filters.in(mapKey, values));
-                        }
-                    }
+                    globalFilterList.add(
+                            MongoQueryFilterBuilder.attributeFilter(c.getKey(), c.getValuesList()));
                 }
 
                 case CRITERION_NOT_SET -> {
@@ -334,39 +354,22 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // The default limit is unconditional (#245): page size must not depend on any other
         // request field.
         final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        int skip = 0;
-        if (!request.getPageToken().isBlank()) {
-            try {
-                skip = Integer.parseInt(
-                        new String(Base64.getDecoder().decode(request.getPageToken()), java.nio.charset.StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
-            }
-        }
+        final int skip = decodePageTokenSkip(request.getPageToken());
 
-        var query = mongoCollectionDataSets
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID));
-
-        if (skip > 0) query = query.skip(skip);
-
-        final List<DataSetDocument> documents = new ArrayList<>();
+        final PagedDocuments<DataSetDocument> page;
         try {
-            query.limit(limit + 1).into(documents);
+            page = applySkipPaging(
+                    mongoCollectionDataSets
+                            .find(queryFilter)
+                            .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID)),
+                    skip,
+                    limit);
         } catch (Exception ex) {
             logger.error("executeQueryDataSets: mongo exception: {}", ex.getMessage(), ex);
             return null;
         }
 
-        String nextPageToken = "";
-        if (documents.size() > limit) {
-            documents.remove(documents.size() - 1);
-            final int nextSkip = skip + limit;
-            nextPageToken = Base64.getEncoder().encodeToString(
-                    Integer.toString(nextSkip).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        }
-
-        return new DataSetQueryResult(documents, nextPageToken);
+        return new DataSetQueryResult(page.documents(), page.nextPageToken());
     }
 
     @Override
@@ -509,105 +512,65 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         final List<Bson> globalFilterList = new ArrayList<>();
         final List<Bson> criteriaFilterList = new ArrayList<>();
 
+        // Criterion contents are validated in AnnotationServiceImpl.queryAnnotations() before the
+        // job is enqueued -- blank entries and non-ObjectId ids are rejected there -- so filters are
+        // built without re-filtering.  A blank entry silently dropped here would turn the criterion
+        // into a match-all (#243), and a malformed ObjectId would throw past the job into
+        // QueueHandlerBase, hanging the caller's response stream.
         for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : request.getCriteriaList()) {
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    // ids within a criterion are ORed; blank entries are skipped like the old
-                    // singular blank id was
+                    // ids within a criterion are ORed
                     final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
-                            .filter(id -> ! id.isBlank())
                             .map(ObjectId::new)
                             .toList();
-                    if ( ! objectIds.isEmpty()) {
-                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ID, objectIds));
-                    }
+                    globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ID, objectIds));
                 }
 
                 case OWNERCRITERION -> {
-                    final List<String> ownerIds = criterion.getOwnerCriterion().getOwnerIdsList().stream()
-                            .filter(ownerId -> ! ownerId.isBlank())
-                            .toList();
-                    if ( ! ownerIds.isEmpty()) {
-                        globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID, ownerIds));
-                    }
+                    globalFilterList.add(Filters.in(
+                            BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID,
+                            criterion.getOwnerCriterion().getOwnerIdsList()));
                 }
 
                 case DATASETSCRITERION -> {
                     // associated dataset ids filter, combined with other filters by AND operator
-                    final List<String> dataSetIds = criterion.getDataSetsCriterion().getDataSetIdsList().stream()
-                            .filter(dataSetId -> ! dataSetId.isBlank())
-                            .toList();
-                    if ( ! dataSetIds.isEmpty()) {
-                        globalFilterList.add(
-                                Filters.in(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetIds));
-                    }
+                    globalFilterList.add(Filters.in(
+                            BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS,
+                            criterion.getDataSetsCriterion().getDataSetIdsList()));
                 }
 
                 case ANNOTATIONSCRITERION -> {
                     // associated annotation ids filter, combined with other filters by OR operator
-                    final List<String> annotationIds =
-                            criterion.getAnnotationsCriterion().getAnnotationIdsList().stream()
-                                    .filter(annotationId -> ! annotationId.isBlank())
-                                    .toList();
-                    if ( ! annotationIds.isEmpty()) {
-                        criteriaFilterList.add(
-                                Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS, annotationIds));
-                    }
+                    criteriaFilterList.add(Filters.in(
+                            BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS,
+                            criterion.getAnnotationsCriterion().getAnnotationIdsList()));
                 }
 
                 case NAMECRITERION -> {
                     final var c = criterion.getNameCriterion();
-                    final List<Bson> nameFilters = new ArrayList<>();
-                    if (!c.getExactList().isEmpty()) {
-                        nameFilters.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_NAME, c.getExactList()));
-                    }
-                    for (String prefix : c.getPrefixList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME,
-                                "^" + java.util.regex.Pattern.quote(prefix)));
-                    }
-                    for (String contains : c.getContainsList()) {
-                        nameFilters.add(Filters.regex(BsonConstants.BSON_KEY_ANNOTATION_NAME,
-                                ".*" + java.util.regex.Pattern.quote(contains) + ".*"));
-                    }
-                    if (!nameFilters.isEmpty()) {
-                        globalFilterList.add(nameFilters.size() == 1 ? nameFilters.get(0) : or(nameFilters));
-                    }
+                    globalFilterList.add(MongoQueryFilterBuilder.nameMatchFilter(
+                            BsonConstants.BSON_KEY_ANNOTATION_NAME,
+                            c.getExactList(), c.getPrefixList(), c.getContainsList()));
                 }
 
                 case TEXTCRITERION -> {
                     // full text search filter, combined with other filters by AND operator
-                    final String text = criterion.getTextCriterion().getText();
-                    if ( ! text.isBlank()) {
-                        globalFilterList.add(Filters.text(text));
-                    }
+                    globalFilterList.add(Filters.text(criterion.getTextCriterion().getText()));
                 }
 
                 case TAGSCRITERION -> {
                     // tags filter, combined with other filters by OR operator
-                    final List<String> tagValues = criterion.getTagsCriterion().getValuesList().stream()
-                            .filter(tag -> ! tag.isBlank())
-                            .toList();
-                    if ( ! tagValues.isEmpty()) {
-                        criteriaFilterList.add(Filters.in(BsonConstants.BSON_KEY_TAGS, tagValues));
-                    }
+                    criteriaFilterList.add(MongoQueryFilterBuilder.tagsFilter(
+                            criterion.getTagsCriterion().getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
                     // attributes filter, combined with other filters by OR operator
                     final var c = criterion.getAttributesCriterion();
-                    final String mapKey = BsonConstants.BSON_KEY_ATTRIBUTES + "." + c.getKey();
-                    if (c.getValuesList().isEmpty()) {
-                        // key-only / existence search
-                        criteriaFilterList.add(Filters.exists(mapKey));
-                    } else {
-                        final List<String> values = c.getValuesList().stream()
-                                .filter(value -> ! value.isBlank())
-                                .toList();
-                        if ( ! values.isEmpty()) {
-                            criteriaFilterList.add(Filters.in(mapKey, values));
-                        }
-                    }
+                    criteriaFilterList.add(
+                            MongoQueryFilterBuilder.attributeFilter(c.getKey(), c.getValuesList()));
                 }
 
                 case CRITERION_NOT_SET -> {
@@ -640,39 +603,22 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // The default limit is unconditional (#245): page size must not depend on any other
         // request field.
         final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        int skip = 0;
-        if (!request.getPageToken().isBlank()) {
-            try {
-                skip = Integer.parseInt(
-                        new String(Base64.getDecoder().decode(request.getPageToken()), java.nio.charset.StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
-            }
-        }
+        final int skip = decodePageTokenSkip(request.getPageToken());
 
-        var query = mongoCollectionAnnotations
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_ANNOTATION_ID));
-
-        if (skip > 0) query = query.skip(skip);
-
-        final List<AnnotationDocument> documents = new ArrayList<>();
+        final PagedDocuments<AnnotationDocument> page;
         try {
-            query.limit(limit + 1).into(documents);
+            page = applySkipPaging(
+                    mongoCollectionAnnotations
+                            .find(queryFilter)
+                            .sort(ascending(BsonConstants.BSON_KEY_ANNOTATION_ID)),
+                    skip,
+                    limit);
         } catch (Exception ex) {
             logger.error("executeQueryAnnotations: mongo exception: {}", ex.getMessage(), ex);
             return null;
         }
 
-        String nextPageToken = "";
-        if (documents.size() > limit) {
-            documents.remove(documents.size() - 1);
-            final int nextSkip = skip + limit;
-            nextPageToken = Base64.getEncoder().encodeToString(
-                    Integer.toString(nextSkip).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        }
-
-        return new AnnotationQueryResult(documents, nextPageToken);
+        return new AnnotationQueryResult(page.documents(), page.nextPageToken());
     }
 
     @Override
@@ -831,43 +777,24 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 ? Filters.exists(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)
                 : and(filterList);
 
-        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        int skip = 0;
-        if (!request.getPageToken().isBlank()) {
-            try {
-                skip = Integer.parseInt(
-                        new String(Base64.getDecoder().decode(request.getPageToken()), StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
-            }
-        }
-
-        var query = mongoCollectionPvMetadata
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME));
-
-        if (skip > 0) query = query.skip(skip);
-
-        // Fetch limit+1 to detect whether a next page exists without an extra count query.
         // limit is always positive (DEFAULT_QUERY_LIMIT when unset), so there is no unbounded path.
-        final List<PvMetadataDocument> documents = new ArrayList<>();
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
+        final int skip = decodePageTokenSkip(request.getPageToken());
+
+        final PagedDocuments<PvMetadataDocument> page;
         try {
-            query.limit(limit + 1).into(documents);
+            page = applySkipPaging(
+                    mongoCollectionPvMetadata
+                            .find(queryFilter)
+                            .sort(ascending(BsonConstants.BSON_KEY_PV_METADATA_PV_NAME)),
+                    skip,
+                    limit);
         } catch (Exception ex) {
-            logger.error("executeQueryPvMetadata: mongo exception: {}", ex.getMessage());
+            logger.error("executeQueryPvMetadata: mongo exception: {}", ex.getMessage(), ex);
             return null;
         }
 
-        // Determine next-page token: only produce one when the result set is full (has more).
-        String nextPageToken = "";
-        if (documents.size() > limit) {
-            documents.remove(documents.size() - 1); // trim the extra probe document
-            final int nextSkip = skip + limit;
-            nextPageToken = Base64.getEncoder().encodeToString(
-                    Integer.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
-        }
-
-        return new PvMetadataQueryResult(documents, nextPageToken);
+        return new PvMetadataQueryResult(page.documents(), page.nextPageToken());
     }
 
     /**
@@ -1110,39 +1037,22 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 : and(filterList);
 
         final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        int skip = 0;
-        if (!request.getPageToken().isBlank()) {
-            try {
-                skip = Integer.parseInt(
-                        new String(Base64.getDecoder().decode(request.getPageToken()), java.nio.charset.StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                logger.warn("invalid page token, ignoring: {}", request.getPageToken());
-            }
-        }
+        final int skip = decodePageTokenSkip(request.getPageToken());
 
-        var query = mongoCollectionConfigurations
-                .find(queryFilter)
-                .sort(ascending(BsonConstants.BSON_KEY_CONFIGURATION_NAME));
-
-        if (skip > 0) query = query.skip(skip);
-
-        final List<ConfigurationDocument> documents = new ArrayList<>();
+        final PagedDocuments<ConfigurationDocument> page;
         try {
-            query.limit(limit + 1).into(documents);
+            page = applySkipPaging(
+                    mongoCollectionConfigurations
+                            .find(queryFilter)
+                            .sort(ascending(BsonConstants.BSON_KEY_CONFIGURATION_NAME)),
+                    skip,
+                    limit);
         } catch (Exception ex) {
-            logger.error("executeQueryConfigurations: mongo exception: {}", ex.getMessage());
+            logger.error("executeQueryConfigurations: mongo exception: {}", ex.getMessage(), ex);
             return null;
         }
 
-        String nextPageToken = "";
-        if (documents.size() > limit) {
-            documents.remove(documents.size() - 1);
-            final int nextSkip = skip + limit;
-            nextPageToken = Base64.getEncoder().encodeToString(
-                    Integer.toString(nextSkip).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        }
-
-        return new ConfigurationQueryResult(documents, nextPageToken);
+        return new ConfigurationQueryResult(page.documents(), page.nextPageToken());
     }
 
     @Override
@@ -1384,39 +1294,23 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         final Bson filter = filterList.isEmpty() ? new org.bson.Document() : and(filterList);
 
         // pagination
-        final String pageToken = request.getPageToken();
-        int skip = 0;
-        if (pageToken != null && !pageToken.isBlank()) {
-            try {
-                skip = Integer.parseInt(new String(Base64.getDecoder().decode(pageToken), StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                logger.warn("executeQueryConfigurationActivations: invalid pageToken, ignoring: {}", pageToken);
-            }
-        }
-        int limit = request.getLimit();
-        if (limit <= 0) limit = DEFAULT_QUERY_LIMIT;
+        final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
+        final int skip = decodePageTokenSkip(request.getPageToken());
 
-        final List<ConfigurationActivationDocument> documents = new ArrayList<>();
+        final PagedDocuments<ConfigurationActivationDocument> page;
         try {
-            mongoCollectionConfigurationActivations.find(filter)
-                    .sort(ascending(BsonConstants.BSON_KEY_ACTIVATION_START_TIME))
-                    .skip(skip)
-                    .limit(limit + 1)
-                    .into(documents);
-        } catch (MongoException ex) {
-            logger.error("executeQueryConfigurationActivations: mongo exception: {}", ex.getMessage());
+            page = applySkipPaging(
+                    mongoCollectionConfigurationActivations
+                            .find(filter)
+                            .sort(ascending(BsonConstants.BSON_KEY_ACTIVATION_START_TIME)),
+                    skip,
+                    limit);
+        } catch (Exception ex) {
+            logger.error("executeQueryConfigurationActivations: mongo exception: {}", ex.getMessage(), ex);
             return null;
         }
 
-        String nextPageToken = "";
-        if (documents.size() > limit) {
-            documents.remove(documents.size() - 1);
-            final int nextSkip = skip + limit;
-            nextPageToken = Base64.getEncoder().encodeToString(
-                    Integer.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
-        }
-
-        return new ConfigurationActivationQueryResult(documents, nextPageToken);
+        return new ConfigurationActivationQueryResult(page.documents(), page.nextPageToken());
     }
 
     @Override

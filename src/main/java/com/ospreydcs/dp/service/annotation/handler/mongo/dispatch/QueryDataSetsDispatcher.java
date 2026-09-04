@@ -1,6 +1,5 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.dispatch;
 
-import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsResponse;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -16,14 +15,11 @@ public class QueryDataSetsDispatcher extends Dispatcher {
     private static final Logger logger = LogManager.getLogger();
 
     // instance variables
-    private final QueryDataSetsRequest request;
     private final StreamObserver<QueryDataSetsResponse> responseObserver;
 
     public QueryDataSetsDispatcher(
-            StreamObserver<QueryDataSetsResponse> responseObserver,
-            QueryDataSetsRequest request
+            StreamObserver<QueryDataSetsResponse> responseObserver
     ) {
-        this.request = request;
         this.responseObserver = responseObserver;
     }
 
@@ -36,8 +32,18 @@ public class QueryDataSetsDispatcher extends Dispatcher {
         final QueryDataSetsResponse.DataSetsResult.Builder dataSetsResultBuilder =
                 QueryDataSetsResponse.DataSetsResult.newBuilder();
 
-        for (DataSetDocument dataSetDocument : queryResult.getDocuments()) {
-            dataSetsResultBuilder.addDataSets(dataSetDocument.toDataSet());
+        // A malformed stored document must produce a reportable error, never an unchecked throw: an
+        // escaped exception is swallowed by QueueHandlerBase's worker and the caller's response
+        // stream hangs until deadline with nothing sent.
+        try {
+            for (DataSetDocument dataSetDocument : queryResult.getDocuments()) {
+                dataSetsResultBuilder.addDataSets(dataSetDocument.toDataSet());
+            }
+        } catch (RuntimeException ex) {
+            final String errorMsg = "error converting DataSetDocument to DataSet: " + ex.getMessage();
+            logger.error(errorMsg, ex);
+            handleError(errorMsg);
+            return;
         }
 
         dataSetsResultBuilder.setNextPageToken(

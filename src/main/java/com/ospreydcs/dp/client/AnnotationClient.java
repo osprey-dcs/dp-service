@@ -95,6 +95,11 @@ public class AnnotationClient extends ServiceApiClientBase {
         public String textCriterion = null;
         public String pvNameCriterion = null;
 
+        // limit is the page size (server default applied when 0) and pageToken continues a query
+        // from a prior result's nextPageToken
+        public int limit = 0;
+        public String pageToken = null;
+
         public void setIdCriterion(String idCriterion) {
             this.idCriterion = idCriterion;
         }
@@ -110,6 +115,14 @@ public class AnnotationClient extends ServiceApiClientBase {
         public void setPvNameCriterion(String pvNameCriterion) {
             this.pvNameCriterion = pvNameCriterion;
         }
+
+        public void setLimit(int limit) {
+            this.limit = limit;
+        }
+
+        public void setPageToken(String pageToken) {
+            this.pageToken = pageToken;
+        }
     }
 
     public static class QueryDataSetsResponseObserver
@@ -117,6 +130,7 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         private final List<DataSet> dataSetsList =
                 Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
 
         @Override
         protected boolean hasExceptionalResult(QueryDataSetsResponse response) {
@@ -137,11 +151,16 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
 
             dataSetsList.addAll(response.getDataSetsResult().getDataSetsList());
+            nextPageToken.set(response.getDataSetsResult().getNextPageToken());
             return true;
         }
 
         public List<DataSet> getDataSetsList() {
             return dataSetsList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
         }
     }
 
@@ -206,6 +225,11 @@ public class AnnotationClient extends ServiceApiClientBase {
         public String attributesCriterionValue = null;
         public String eventCriterion = null;
 
+        // limit is the page size (server default applied when 0) and pageToken continues a query
+        // from a prior result's nextPageToken
+        public int limit = 0;
+        public String pageToken = null;
+
         public void setIdCriterion(String idCriterion) {
             this.idCriterion = idCriterion;
         }
@@ -235,6 +259,14 @@ public class AnnotationClient extends ServiceApiClientBase {
             this.attributesCriterionValue = attributeCriterionValue;
         }
 
+        public void setLimit(int limit) {
+            this.limit = limit;
+        }
+
+        public void setPageToken(String pageToken) {
+            this.pageToken = pageToken;
+        }
+
     }
 
     public static class QueryAnnotationsResponseObserver
@@ -242,6 +274,7 @@ public class AnnotationClient extends ServiceApiClientBase {
 
         private final List<Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
+        private final AtomicReference<String> nextPageToken = new AtomicReference<>("");
 
         @Override
         protected boolean hasExceptionalResult(QueryAnnotationsResponse response) {
@@ -262,11 +295,16 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
 
             annotationsList.addAll(response.getAnnotationsResult().getAnnotationsList());
+            nextPageToken.set(response.getAnnotationsResult().getNextPageToken());
             return true;
         }
 
         public List<Annotation> getAnnotationsList() {
             return annotationsList;
+        }
+
+        public String getNextPageToken() {
+            return nextPageToken.get();
         }
     }
 
@@ -439,6 +477,14 @@ public class AnnotationClient extends ServiceApiClientBase {
             requestBuilder.addCriteria(pvNameQueryDataSetsCriterion);
         }
 
+        // paging: the server applies its default page size when limit is unset
+        if (params.limit > 0) {
+            requestBuilder.setLimit(params.limit);
+        }
+        if (params.pageToken != null && !params.pageToken.isBlank()) {
+            requestBuilder.setPageToken(params.pageToken);
+        }
+
         return requestBuilder.build();
     }
 
@@ -462,7 +508,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             return new QueryDataSetsApiResult(
                     true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
-            return new QueryDataSetsApiResult(responseObserver.getDataSetsList());
+            return new QueryDataSetsApiResult(
+                    responseObserver.getDataSetsList(), responseObserver.getNextPageToken());
         }
     }
 
@@ -636,6 +683,14 @@ public class AnnotationClient extends ServiceApiClientBase {
             requestBuilder.addCriteria(attributesQueryAnnotationsCriterion);
         }
 
+        // paging: the server applies its default page size when limit is unset
+        if (params.limit > 0) {
+            requestBuilder.setLimit(params.limit);
+        }
+        if (params.pageToken != null && !params.pageToken.isBlank()) {
+            requestBuilder.setPageToken(params.pageToken);
+        }
+
         return requestBuilder.build();
     }
 
@@ -659,7 +714,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             return new QueryAnnotationsApiResult(
                     true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
-            return new QueryAnnotationsApiResult(responseObserver.getAnnotationsList());
+            return new QueryAnnotationsApiResult(
+                    responseObserver.getAnnotationsList(), responseObserver.getNextPageToken());
         }
     }
 

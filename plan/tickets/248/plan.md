@@ -237,6 +237,37 @@ merged proto specifies (`annotation.proto:930-933`, `:1473-1476`); the interim B
 documented temporary divergence from that contract, not the end state. D6 is unchanged: the three
 metadata queries keep their skip tokens, follow-on ticket.
 
+### Phase 1 PR (#256) review adjustments
+
+The PR review (Claude + Copilot, 2026-09-04) tightened several Phase 1 behaviors beyond the plan as
+drafted; these are the settled shape, not deviations to re-litigate:
+
+- **Blank criterion entries are rejected server-side** (`RESULT_STATUS_REJECT`), not silently
+  dropped, on both rewritten queries. The draft preserved the interim blank-skip filters in the
+  Mongo client; review found that a blank-only criterion then vanished and turned the query into a
+  silent match-all (#243 class) while a blank singular id was previously *rejected*. Validation in
+  `AnnotationServiceImpl` now rejects blank entries in every criterion value list, including
+  `NameCriterion`'s three lists, and the Mongo client builds filters without re-filtering.
+- **`IdCriterion` ids are validated with `ObjectId.isValid()`**. Unvalidated, a malformed id threw
+  `IllegalArgumentException` from the `ObjectId` constructor inside the worker thread, where
+  `QueueHandlerBase` swallows it and the caller's stream hangs with no response ever sent.
+- **Criterion filters route through `MongoQueryFilterBuilder`** (`nameMatchFilter` / `tagsFilter` /
+  `attributeFilter`) instead of inline copies, per that class's single-implementation contract.
+- **The five skip-paged queries share `applySkipPaging()` / `decodePageTokenSkip()`** on
+  `MongoSyncAnnotationClient`; the helper also guards the `limit + 1` probe against int overflow at
+  `limit = Integer.MAX_VALUE`. Phase 3's opaque-token conversion happens in one place.
+- **`AnnotationClient` exposes paging** for `queryDataSets` / `queryAnnotations` (params `limit` /
+  `pageToken`, results carry `nextPageToken`) — without it the client silently truncated at the
+  server's default page size, the exact hazard D10 ships server paging to prevent.
+- **The query dispatchers contain document-conversion failures**: `toDataSet()` / `toAnnotation()`
+  run inside try/catch and dispatch an error, per the "malformed stored document must produce a
+  reportable error, never an unchecked throw" invariant.
+- **Known Phase 1 window**: `SaveDataSetRequest.tags` / `.attributes` are accepted and silently
+  dropped (`DataSetDocument.fromSaveDataSetRequest` copies neither) while `TagsCriterion` /
+  `AttributesCriterion` filtering ships — so a tag saved in this window can never be matched.
+  Accepted because Phase 2 lands the save half before any release is cut, extending the same
+  no-release reasoning as D9; do not cut a release between Phase 1 and Phase 2.
+
 ## Phases
 
 Each phase is one PR against #248, which stays open until the last lands.
