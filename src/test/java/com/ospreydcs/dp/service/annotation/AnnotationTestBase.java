@@ -47,7 +47,21 @@ public class AnnotationTestBase {
             String name,
             String ownerId,
             String description,
-            List<AnnotationDataBlock> dataBlocks) {
+            List<AnnotationDataBlock> dataBlocks,
+            List<String> tags,
+            Map<String, String> attributeMap,
+            String modifiedBy) {
+
+        // compatibility constructor predating the dp-grpc 1.16.0 tags/attributes/modifiedBy fields
+        public AnnotationDataSet(
+                String id,
+                String name,
+                String ownerId,
+                String description,
+                List<AnnotationDataBlock> dataBlocks
+        ) {
+            this(id, name, ownerId, description, dataBlocks, null, null, null);
+        }
     }
 
     public record SaveDataSetParams(AnnotationDataSet dataSet) {
@@ -282,6 +296,16 @@ public class AnnotationTestBase {
         public final Map<String, String> attributeMap;
         public final Calculations calculations;
 
+        // Added by a chained setter rather than a tenth positional argument: this class's
+        // constructors take many same-typed arguments, where a wrong-position argument compiles
+        // silently (the #252 lesson).
+        public String modifiedBy = null;
+
+        public SaveAnnotationRequestParams withModifiedBy(String modifiedBy) {
+            this.modifiedBy = modifiedBy;
+            return this;
+        }
+
         public SaveAnnotationRequestParams(String ownerId, String name, List<String> dataSetIds) {
             this.id = null;
             this.ownerId = ownerId;
@@ -326,6 +350,7 @@ public class AnnotationTestBase {
         private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
                 Collections.synchronizedList(new ArrayList<>());
         private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> calculationsIdList = Collections.synchronizedList(new ArrayList<>());
 
         public void await() {
             try {
@@ -361,6 +386,15 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Id of the saved Calculations document, null when the request carried no calculations. */
+        public String getCalculationsId() {
+            if (calculationsIdList.isEmpty() || calculationsIdList.get(0).isEmpty()) {
+                return null;
+            } else {
+                return calculationsIdList.get(0);
+            }
+        }
+
         @Override
         public void onNext(SaveAnnotationResponse response) {
 
@@ -392,6 +426,7 @@ public class AnnotationTestBase {
 
                 } else {
                     annotationIdList.add(result.getAnnotationId());
+                    calculationsIdList.add(result.getCalculationsId());
                     finishLatch.countDown();
                 }
             }).start();
@@ -679,6 +714,18 @@ public class AnnotationTestBase {
         requestBuilder.setDescription(params.dataSet.description);
         requestBuilder.setOwnerId(params.dataSet.ownerId);
 
+        // optional cataloging and audit fields, new in dp-grpc 1.16.0
+        if (params.dataSet.tags != null) {
+            requestBuilder.addAllTags(params.dataSet.tags);
+        }
+        if (params.dataSet.attributeMap != null) {
+            requestBuilder.addAllAttributes(
+                    AttributesUtility.attributeListFromMap(params.dataSet.attributeMap));
+        }
+        if (params.dataSet.modifiedBy != null) {
+            requestBuilder.setModifiedBy(params.dataSet.modifiedBy);
+        }
+
         return requestBuilder.build();
     }
 
@@ -770,6 +817,9 @@ public class AnnotationTestBase {
         }
         if (params.calculations != null) {
             requestBuilder.setCalculations(params.calculations);
+        }
+        if (params.modifiedBy != null) {
+            requestBuilder.setModifiedBy(params.modifiedBy);
         }
 
         return requestBuilder.build();
@@ -1648,6 +1698,292 @@ public class AnnotationTestBase {
             }).start();
         }
         @Override public void onCompleted() {}
+    }
+
+    // =========================================================================
+    // DataSet / Annotation / Calculations get, delete, and patch-stub observers
+    // and request builders (#248 Phase 2)
+    // =========================================================================
+
+    public static class GetDataSetResponseObserver implements StreamObserver<GetDataSetResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<DataSet> dataSetList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+        public DataSet getDataSet() { return dataSetList.isEmpty() ? null : dataSetList.get(0); }
+
+        @Override
+        public void onNext(GetDataSetResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasGetDataSetResult());
+                dataSetList.add(response.getGetDataSetResult().getDataSet());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class DeleteDataSetResponseObserver implements StreamObserver<DeleteDataSetResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<String> dataSetIdList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+        public String getDataSetId() { return dataSetIdList.isEmpty() ? null : dataSetIdList.get(0); }
+
+        @Override
+        public void onNext(DeleteDataSetResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasDeleteDataSetResult());
+                dataSetIdList.add(response.getDeleteDataSetResult().getDataSetId());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class GetAnnotationResponseObserver implements StreamObserver<GetAnnotationResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<Annotation> annotationList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+        public Annotation getAnnotation() { return annotationList.isEmpty() ? null : annotationList.get(0); }
+
+        @Override
+        public void onNext(GetAnnotationResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasGetAnnotationResult());
+                annotationList.add(response.getGetAnnotationResult().getAnnotation());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class DeleteAnnotationResponseObserver implements StreamObserver<DeleteAnnotationResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+        public String getAnnotationId() { return annotationIdList.isEmpty() ? null : annotationIdList.get(0); }
+
+        @Override
+        public void onNext(DeleteAnnotationResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasDeleteAnnotationResult());
+                annotationIdList.add(response.getDeleteAnnotationResult().getAnnotationId());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class GetCalculationsResponseObserver implements StreamObserver<GetCalculationsResponse> {
+
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<Calculations> calculationsList = Collections.synchronizedList(new ArrayList<>());
+
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+        public Calculations getCalculations() { return calculationsList.isEmpty() ? null : calculationsList.get(0); }
+
+        @Override
+        public void onNext(GetCalculationsResponse response) {
+            new Thread(() -> {
+                if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+                    isError.set(true);
+                    errorMessageList.add(response.getExceptionalResult().getMessage());
+                    finishLatch.countDown();
+                    return;
+                }
+                assertTrue(response.hasGetCalculationsResult());
+                calculationsList.add(response.getGetCalculationsResult().getCalculations());
+                finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onError(Throwable t) {
+            new Thread(() -> {
+                isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown();
+            }).start();
+        }
+        @Override public void onCompleted() {}
+    }
+
+    public static class PatchDataSetResponseObserver implements StreamObserver<PatchDataSetResponse> {
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        @Override public void onNext(PatchDataSetResponse response) {
+            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            finishLatch.countDown();
+        }
+        @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }
+        @Override public void onCompleted() {}
+    }
+
+    public static class PatchAnnotationResponseObserver implements StreamObserver<PatchAnnotationResponse> {
+        private final CountDownLatch finishLatch = new CountDownLatch(1);
+        private final AtomicBoolean isError = new AtomicBoolean(false);
+        private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        public void await() {
+            try { finishLatch.await(1, TimeUnit.MINUTES); }
+            catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
+        }
+        public boolean isError() { return isError.get(); }
+        public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        @Override public void onNext(PatchAnnotationResponse response) {
+            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            finishLatch.countDown();
+        }
+        @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }
+        @Override public void onCompleted() {}
+    }
+
+    public static GetDataSetRequest buildGetDataSetRequest(String dataSetId) {
+        return GetDataSetRequest.newBuilder().setDataSetId(dataSetId).build();
+    }
+
+    public static DeleteDataSetRequest buildDeleteDataSetRequest(String dataSetId) {
+        return DeleteDataSetRequest.newBuilder().setDataSetId(dataSetId).build();
+    }
+
+    public static GetAnnotationRequest buildGetAnnotationRequest(String annotationId) {
+        return GetAnnotationRequest.newBuilder().setAnnotationId(annotationId).build();
+    }
+
+    public static DeleteAnnotationRequest buildDeleteAnnotationRequest(String annotationId) {
+        return DeleteAnnotationRequest.newBuilder().setAnnotationId(annotationId).build();
+    }
+
+    public static GetCalculationsRequest buildGetCalculationsRequest(String calculationsId) {
+        return GetCalculationsRequest.newBuilder().setCalculationsId(calculationsId).build();
     }
 
     public static class GetConfigurationResponseObserver implements StreamObserver<GetConfigurationResponse> {

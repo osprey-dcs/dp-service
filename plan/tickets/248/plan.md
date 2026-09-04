@@ -11,8 +11,9 @@
 - **Supersedes**: #210, #211, #214.
 - **Status**: triaged 2026-09-01 against dp-service `7be9a05` and dp-grpc `6dfff3f`; re-verified
   2026-09-02 against the merged protos and `main` at `2ec58a8` — #254 merged as PR #255, so Phase 1
-  is **unblocked**. Not yet implemented; Phase 1 is partially drafted (see
-  [Work already done](#work-already-done)).
+  is **unblocked**. Phase 1 merged 2026-09-04 as PR #256. Phase 2 planned 2026-09-04 against `main`
+  at `04e8902` (see [Phase 2 planning](#phase-2-planning-2026-09-04)) and implemented on
+  `issue-248-phase-2-entity-audit-crud`.
 
 ## Overview
 
@@ -208,7 +209,8 @@ bounded regardless of how many annotations reference the dataset.
 **D8 — Fix orphaned Calculations forward only.**
 `SaveAnnotationJob` gains a delete path for a replaced annotation's previous calculations. Whether to
 sweep documents already orphaned in existing deployments is a deployment question, not a code one —
-file separately if any deployment is known to have them.
+file separately if any deployment is known to have them. *Moved from Phase 4 into Phase 2 during
+Phase 2 planning (D14): `deleteAnnotation` builds the calculations-delete machinery anyway.*
 
 **D9 — the annotations text index drops `event.description` in Phase 1, inside the no-migration window.**
 `MongoClientBase:275` still includes `BSON_KEY_EVENT_DESCRIPTION` ("event.description") in the
@@ -312,11 +314,67 @@ helpers cannot make the distinction:
   throws `IllegalArgumentException`, which `saveDataSet` deliberately routes to **error**
   (`MongoSyncAnnotationClient:125-130`); for a get/delete keyed on that id, a malformed id is a
   client mistake and arguably a **reject**. Pick one and document it — do not let the outcome fall
-  out of whichever catch block happens to be nearest.
+  out of whichever catch block happens to be nearest. *Resolved by D11 below: reject.*
 
 `getAnnotation` populates `Annotation.calculations` inline — the proto assigns that to
 `getAnnotation()` only (see Phase 1's denormalization row) — so it re-adds the calculations fetch
 `queryAnnotations` lost, this time bounded to a single annotation.
+
+#### Phase 2 planning (2026-09-04)
+
+Triage of the Phase 2 scope against `main` @ `04e8902` surfaced four findings beyond the plan as
+written above:
+
+1. **None of the 7 new RPCs was overridden at all** — they answered with gRPC's default
+   UNIMPLEMENTED status, not this repo's "not yet implemented" convention response.
+2. **`SaveAnnotationResult.calculationsId` (proto field 2) was not emitted.** The handoff (§6)
+   requires it and no phase owned it; `SaveAnnotationJob` already holds the id, so Phase 2 adds the
+   dispatcher/sender plumbing.
+3. **`MongoAnnotationHandler.validateSaveAnnotationRequest` used the swallowing `find*` helpers**,
+   so a Mongo outage during save validation read as "no DataSetDocument found with id" — the #235
+   inversion. Fixed with the promoted lookups; regression tests live in
+   `MongoSyncAnnotationClientLookupFailureTest`. A side effect: malformed ids in
+   `dataSetIds`/`annotationIds` are now rejected with a precise "contains invalid id" message
+   (D11) rather than masquerading as absence.
+4. **`AnnotationDocument.diffSaveAnnotationRequest` had two latent bugs** — the `dataSetIds` and
+   `annotationIds` branches built a mismatch message but never added it to the diffs list, so those
+   field mismatches were invisible to every wrapper verification. Fixed.
+
+Design decisions, continuing the numbering:
+
+- **D11 — malformed ObjectId on the new get/delete methods is a REJECT, validated in the job.**
+  Each new job checks blank + `ObjectId.isValid()` before any client call — a malformed id is a
+  client mistake, and validation also forecloses the `IllegalArgumentException`-in-worker-thread
+  hang. Matches Phase 1's `IdCriterion` validation. `saveDataSet`/`saveAnnotation` keep their
+  existing error classification for their internal lookups (documented divergence).
+- **D12 — Annotation tags adopt house normalization; migration v2 normalizes stored tags.**
+  (Ticket owner decision, 2026-09-04.) DataSet tags (clean slate — never persisted) and Annotation
+  tags (existing field, previously stored as-given) both normalize lowercase/dedupe/sort on save
+  via `DpBsonDocumentBase.normalizedTags()`, matching pvMetadata/configuration. Without a
+  migration, previously stored mixed-case annotation tags would be unreachable by normalized
+  `TagsCriterion` values — a #197-class silent wrong answer — so `V2NormalizeAnnotationTags` ships
+  with this phase (idempotent: normalization is a fixpoint; a no-op scan where no tags exist). If
+  no deployment holds annotation tags this migration is droppable, but it is safe regardless.
+- **D13 — `updatedTime` stays unset on create.** Matches the four shipped entity types
+  (pvMetadata, configuration, activation, sample status); the handoff §11's "equal on create"
+  wording loses to in-service consistency. Absent `updatedTime` means "never updated".
+- **D14 — D8 moves from Phase 4 into Phase 2.** (Ticket owner decision.) `deleteAnnotation` builds
+  the `deleteCalculations` machinery anyway, so `SaveAnnotationJob` gains the delete-the-previous
+  path now — covering both replace-with-new and the omit-clears case. Cleanup failure after a
+  successful save logs the orphaned id at error level; the response reflects the save's outcome (a
+  retry cannot remove the orphan, and reporting the save as failed would mislead).
+- **D15 — deleteAnnotation deletes the annotation first, then its calculations.** A failure
+  between the two leaves an orphaned calculations document (harmless, the known D8 class) rather
+  than a live annotation whose dangling `calculationsId` would break `getAnnotation`. If the
+  calculations delete fails, the error response names the orphaned id and states the annotation
+  itself was deleted.
+- **D16 — `getAnnotation` treats a dangling `calculationsId` as an ERROR, not empty content.** The
+  annotation asserts calculations exist; absence of the document is corruption, and silently-empty
+  content is exactly the wrong-answer failure mode this repo treats as the serious one.
+- **D17 — client scope: get wrappers only, no delete wrappers.** `AnnotationClient` gains
+  `getDataSet` / `getAnnotation` / `getCalculations` (per the `getConfiguration` pipeline) and the
+  save params carry the new fields; no entity has a client delete wrapper today, and adding
+  deletes across all entities is a follow-on.
 
 ### Phase 3 — paging, ordering, and criteria semantics
 
@@ -333,7 +391,8 @@ multi-criterion queries valid today.
 (CSV, XLSX) represent scalar columns only; array/binary are HDF5-only. Then inline `dataBlocks` as
 an export source, and `ColumnProvenance.derivedFrom` stored-not-interpreted.
 
-Independent of Phases 2–3 and the largest single chunk. Also carries D8.
+Independent of Phases 2–3 and the largest single chunk. (D8 originally sat here; Phase 2's D14
+pulled it forward.)
 
 ## Upgrade note (required for D3)
 

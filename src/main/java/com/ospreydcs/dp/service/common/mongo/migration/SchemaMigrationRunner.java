@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V1AnnotationCommentToDescription;
+import com.ospreydcs.dp.service.common.mongo.migration.migrations.V2NormalizeAnnotationTags;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -56,7 +57,7 @@ public class SchemaMigrationRunner {
      * version lines move at different rates and coupling them would mean either bumping this on
      * every release or maintaining a mapping.
      */
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     /**
      * Migrations in application order. Must be contiguous from 1 through {@link #SCHEMA_VERSION};
@@ -64,7 +65,8 @@ public class SchemaMigrationRunner {
      * discovered only against a real database.
      */
     public static final List<Migration> MIGRATIONS = List.of(
-            new V1AnnotationCommentToDescription()
+            new V1AnnotationCommentToDescription(),
+            new V2NormalizeAnnotationTags()
     );
 
     /**

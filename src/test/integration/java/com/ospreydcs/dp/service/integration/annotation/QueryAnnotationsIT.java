@@ -537,4 +537,38 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
         // the two pages together cover all three annotations with no repeats
         assertEquals(3, seenIds.size());
     }
+
+    @Test
+    public void testQueryAnnotationsEmitsAuditFields() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        // ingest some data, create a dataset, and save an annotation carrying modifiedBy
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult scenarioResult = createDataSetScenario(startSeconds);
+
+        final AnnotationTestBase.SaveAnnotationRequestParams params =
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        "craigmcc", "audit emission annotation",
+                        List.of(scenarioResult.firstHalfDataSetId()))
+                        .withModifiedBy("operator-1");
+        final String annotationId =
+                annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, "");
+
+        // query it back by id and verify the audit fields are emitted in query results
+        final AnnotationTestBase.QueryAnnotationsParams queryParams = new AnnotationTestBase.QueryAnnotationsParams();
+        queryParams.setIdCriterion(annotationId);
+        final QueryAnnotationsRequest request = AnnotationTestBase.buildQueryAnnotationsRequest(queryParams);
+        final List<Annotation> resultAnnotations =
+                annotationServiceWrapper.sendQueryAnnotations(request, false, null);
+
+        assertEquals(1, resultAnnotations.size());
+        final Annotation resultAnnotation = resultAnnotations.get(0);
+        assertEquals("operator-1", resultAnnotation.getModifiedBy());
+        assertTrue(resultAnnotation.hasCreatedTime());
+        assertFalse(resultAnnotation.hasUpdatedTime());
+
+        // queryAnnotations() returns references only: calculations content stays empty
+        assertFalse(resultAnnotation.hasCalculations());
+    }
 }

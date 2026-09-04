@@ -368,4 +368,39 @@ public class QueryDataSetsIT extends AnnotationIntegrationTestIntermediate {
         assertEquals(3, seenIds.size());
     }
 
+    @Test
+    public void testQueryDataSetsEmitsCatalogingAndAuditFields() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        // ingest some data and save a dataset carrying the dp-grpc 1.16.0 cataloging/audit fields
+        annotationIngestionScenario(startSeconds);
+
+        final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = List.of(
+                new AnnotationTestBase.AnnotationDataBlock(
+                        startSeconds, 0L, startSeconds + 1, 0L, List.of("S01-GCC01", "S01-BPM01")));
+        final AnnotationTestBase.AnnotationDataSet dataSet =
+                new AnnotationTestBase.AnnotationDataSet(
+                        null, "query emission dataset", "craigmcc", "query emission test", dataBlocks,
+                        List.of("Beam Loss", "OUTAGE"),
+                        java.util.Map.of("sector", "01"),
+                        "operator-1");
+        final String dataSetId = annotationServiceWrapper.sendAndVerifySaveDataSet(
+                new AnnotationTestBase.SaveDataSetParams(dataSet), false, false, "");
+
+        // query it back by id and verify the fields are emitted in query results, not only by get
+        final AnnotationTestBase.QueryDataSetsParams queryParams = new AnnotationTestBase.QueryDataSetsParams();
+        queryParams.setIdCriterion(dataSetId);
+        final QueryDataSetsRequest request = AnnotationTestBase.buildQueryDataSetsRequest(queryParams);
+        final List<DataSet> resultDataSets = annotationServiceWrapper.sendQueryDataSets(request, false, null);
+
+        assertEquals(1, resultDataSets.size());
+        final DataSet resultDataSet = resultDataSets.get(0);
+        assertEquals(List.of("beam loss", "outage"), resultDataSet.getTagsList());
+        assertEquals(1, resultDataSet.getAttributesCount());
+        assertEquals("operator-1", resultDataSet.getModifiedBy());
+        assertTrue(resultDataSet.hasCreatedTime());
+        assertFalse(resultDataSet.hasUpdatedTime());
+    }
+
 }
