@@ -199,6 +199,7 @@ version does not match the database still refuses to start. Use it only when mig
 | Version | Change | Notes |
 |---|---|---|
 | 1 | Rename annotation `comment` → `description`; replace its text index | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 1 |
+| 2 | Normalize annotation `tags` to lowercase/deduplicated/sorted | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 2 |
 
 ### Note on version 1
 
@@ -227,6 +228,20 @@ db.annotations.find({comment: {$exists: true}, description: {$exists: true}})
 ```
 
 Resolve each by hand, then restart.
+
+### Note on version 2
+
+Annotation saves normalize tags (lowercase, deduplicated, sorted) as of #248 Phase 2, matching the
+pvMetadata and configuration collections. This migration brings previously stored annotation tags
+into line: without it, a stored mixed-case tag can never be matched by a normalized `TagsCriterion`
+value — a silent empty result, not an error. The migration is a no-op scan on databases whose
+annotations carry no tags or only already-normalized tags.
+
+Verify afterwards:
+
+```js
+db.annotations.find({tags: {$exists: true}}, {tags: 1})   // all lowercase, sorted, no duplicates
+```
 
 ---
 

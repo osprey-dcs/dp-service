@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
+import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.apache.commons.collections4.CollectionUtils;
 import org.bson.types.ObjectId;
 
@@ -20,6 +21,7 @@ public class AnnotationDocument extends DpBsonDocumentBase {
     private List<String> annotationIds;
     private String description;
     private String calculationsId;
+    private String modifiedBy;
 
     public ObjectId getId() {
         return id;
@@ -77,6 +79,14 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         this.calculationsId = calculationsId;
     }
 
+    public String getModifiedBy() {
+        return modifiedBy;
+    }
+
+    public void setModifiedBy(String modifiedBy) {
+        this.modifiedBy = modifiedBy;
+    }
+
     public static AnnotationDocument fromSaveAnnotationRequest(
             final SaveAnnotationRequest request,
             String calculationsDocumentId
@@ -90,9 +100,14 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         document.setAnnotationIds(request.getAnnotationIdsList());
         document.setDescription(request.getDescription());
 
-        // only set tags if specified in request
+        if (!request.getModifiedBy().isBlank()) {
+            document.setModifiedBy(request.getModifiedBy());
+        }
+
+        // only set tags if specified in request; normalized per the house convention (lowercase,
+        // deduplicated, sorted) as of #248 Phase 2 -- the v2 schema migration normalizes stored tags
         if (request.getTagsCount() > 0) {
-            document.setTags(request.getTagsList());
+            document.setTags(normalizedTags(request.getTagsList()));
         }
 
         // only set attributes if specified in request
@@ -152,6 +167,18 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             annotationBuilder.setCalculationsId(this.getCalculationsId());
         }
 
+        if (this.getModifiedBy() != null) {
+            annotationBuilder.setModifiedBy(this.getModifiedBy());
+        }
+
+        if (this.getCreatedAt() != null) {
+            annotationBuilder.setCreatedTime(TimestampUtility.getTimestampFromInstant(this.getCreatedAt()));
+        }
+
+        if (this.getUpdatedAt() != null) {
+            annotationBuilder.setUpdatedTime(TimestampUtility.getTimestampFromInstant(this.getUpdatedAt()));
+        }
+
         return annotationBuilder.build();
     }
 
@@ -168,12 +195,13 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         }
 
         // diff dataSetIds list
-        final Collection<String> dataSetIdsDisjunction = 
+        final Collection<String> dataSetIdsDisjunction =
                 CollectionUtils.disjunction(request.getDataSetIdsList(), this.getDataSetIds());
         if ( ! dataSetIdsDisjunction.isEmpty()) {
             final String msg =
                     "dataSetIds mismatch: " + this.getDataSetIds()
                     + " disjunction: " + dataSetIdsDisjunction;
+            diffs.add(msg);
         }
         
         // diff name
@@ -189,6 +217,7 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             final String msg =
                     "annotationIds mismatch: " + this.getAnnotationIds()
                             + " disjunction: " + annotationIdsDisjunction;
+            diffs.add(msg);
         }
 
         // diff description
@@ -199,10 +228,19 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             diffs.add(msg);
         }
 
-        // diff tags list
+        // diff modifiedBy (blank in request is stored as null)
+        final String requestModifiedBy = request.getModifiedBy().isBlank() ? null : request.getModifiedBy();
+        if ( ! Objects.equals(requestModifiedBy, this.getModifiedBy())) {
+            final String msg =
+                    "modifiedBy mismatch: " + this.getModifiedBy()
+                            + " expected: " + request.getModifiedBy();
+            diffs.add(msg);
+        }
+
+        // diff tags list against the normalized form the save path stores
         if (this.getTags() != null) {
             final Collection<String> tagsDisjunction =
-                    CollectionUtils.disjunction(request.getTagsList(), this.getTags());
+                    CollectionUtils.disjunction(normalizedTags(request.getTagsList()), this.getTags());
             if (!tagsDisjunction.isEmpty()) {
                 final String msg =
                         "tags mismatch: " + this.getTags()

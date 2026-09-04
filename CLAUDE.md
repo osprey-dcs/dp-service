@@ -200,11 +200,14 @@ Documents that need tags, attributes, or managed timestamps extend `DpBsonDocume
 
 ### Standard Conventions
 
-**Tag normalization:** Lowercase, deduplicated, sorted on save:
-```java
-List<String> normalizedTags = new ArrayList<>(
-    new TreeSet<>(request.getTagsList().stream().map(String::toLowerCase).toList()));
-```
+**Tag normalization:** Lowercase, deduplicated, sorted on save — the shared helper is
+`DpBsonDocumentBase.normalizedTags()`. As of #248 Phase 2 this applies to **all four** tagged
+entities: pvMetadata and configuration (their `fromSaveRequest` factories), and dataSets and
+annotations (likewise). Annotations previously stored tags as-given, so schema migration v2
+(`V2NormalizeAnnotationTags`) normalizes stored annotation tags — without it, a stored mixed-case
+tag is unreachable by any normalized `TagsCriterion` value, a #197-class silent wrong answer. Any
+new save path for a tagged entity must normalize through the shared helper, and any diff/verify
+helper must compare against the normalized form.
 
 **Upsert with `createdAt` preservation:** On first save, set `createdAt = Instant.now()`. On update, preserve `createdAt` and set `updatedAt = Instant.now()`.
 
@@ -294,6 +297,44 @@ Test `matchedCount`, not `modifiedCount`, when checking whether a `replaceOne` f
 `modifiedCount` is also 0 when the replacement leaves the stored document unchanged, which is a
 successful save. (These documents carry an always-refreshed `updatedAt`, so that case does not arise
 today — but the check should not depend on that.)
+
+### DataSet / Annotation / Calculations CRUD invariants (issue #248 Phase 2)
+
+Phase 2 implemented `getDataSet`, `getAnnotation`, `getCalculations`, `deleteDataSet`,
+`deleteAnnotation`, and the `patchDataSet`/`patchAnnotation` deferred stubs, plus audit/entity
+fields (`modifiedBy`, `createdTime`/`updatedTime` emission, `DataSet` tags/attributes). The
+invariants that outlive the ticket:
+
+- **A malformed ObjectId in a get/delete request is a REJECT, validated in the job** before any
+  client call (blank check + `ObjectId.isValid()`). Unvalidated, the `ObjectId` constructor throws
+  `IllegalArgumentException` inside the worker thread, where `QueueHandlerBase` swallows it and the
+  caller's stream hangs. `validateSaveAnnotationRequest` applies the same check to
+  `dataSetIds`/`annotationIds` entries. (The save methods' *internal* lookups still classify a
+  malformed id as error — documented divergence, predating Phase 2.)
+- **`deleteDataSet` is rejected while any annotation references the dataset**; the rejection names
+  one referencing annotation id plus the total count (one id is enough to act on, the count says
+  whether to expect more, the message stays bounded).
+- **`deleteAnnotation` cascades to the annotation's calculations document** (lifecycle belongs to
+  the owner) and is NOT blocked by incoming `annotationIds`/provenance references — soft links may
+  dangle. The annotation is deleted **before** its calculations: a failure between the two leaves a
+  harmless orphan rather than a live annotation whose dangling `calculationsId` would break
+  `getAnnotation`. Do not reverse that order.
+- **`getAnnotation` is the only method that populates `Annotation.calculations`**, and a
+  `calculationsId` that resolves to no document is an ERROR, never silently-empty content — the
+  annotation asserts calculations exist, so absence is corruption.
+- **`SaveAnnotationResult.calculationsId` is returned whenever the request carried calculations**
+  — it is the addressing key for `getCalculations`, `CalculationsSpec`, and provenance links.
+- **`SaveAnnotationJob` deletes a replaced or cleared annotation's previous calculations document**
+  (D8/D14) after a successful save. Cleanup failure logs the orphaned id but does not fail the
+  response — the save succeeded, and a retry cannot remove the orphan.
+- **`updatedTime` stays unset on create** for all entity types; it is set on the first
+  full-replace update, with `createdAt` preserved. An absent `updatedTime` means "never updated".
+- Lookup helpers: `lookupDataSet`/`lookupAnnotation`/`lookupCalculations` are the interface-level
+  throwing variants (`DpException` on query failure, null only for genuine absence); the `find*`
+  variants collapse both to null and remain only for callers that cannot act on the distinction.
+  `MongoSyncAnnotationClientLookupFailureTest` pins the classification for the new paths too.
+- Test-side: asserting a document was **deleted** must use the `findXxxNoRetry` variants on
+  `MongoTestClient` — the retry finders wait ~30s before reporting absence.
 
 ### Pagination Pattern
 

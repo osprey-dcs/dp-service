@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.job.*;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -16,6 +17,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.types.ObjectId;
 
 import java.util.*;
 
@@ -146,6 +148,40 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
     }
 
+    @Override
+    public void handleGetDataSet(
+            GetDataSetRequest request,
+            StreamObserver<GetDataSetResponse> responseObserver
+    ) {
+        final GetDataSetJob job = new GetDataSetJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding GetDataSetJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleDeleteDataSet(
+            DeleteDataSetRequest request,
+            StreamObserver<DeleteDataSetResponse> responseObserver
+    ) {
+        final DeleteDataSetJob job = new DeleteDataSetJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding DeleteDataSetJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
 
         // create list of unique pv names in the request's DataBlocks using a set, convert set to list
@@ -205,16 +241,35 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     public ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) {
 
+        // Use the throwing lookup variants, not find*: a failed query must not read as "your id
+        // does not exist" — that inverts the caller's retry decision (#235 reject-vs-error
+        // invariant). The job routes this ResultStatus to a rejection either way today, but the
+        // message must at least say the lookup failed rather than assert the record is absent.
+
         // check that each id in dataSetIds exists in database
         for (String dataSetId : request.getDataSetIdsList()) {
 
             if (dataSetId.isBlank()) {
-                final String errorMsg = "CreateAnnotationRequest.dataSetIds contains blank id string";
+                final String errorMsg = "SaveAnnotationRequest.dataSetIds contains blank id string";
+                return new ResultStatus(true, errorMsg);
+            }
+
+            // a malformed id is a client mistake, rejected with a precise message rather than
+            // surfacing as a lookup failure (#248 plan D11)
+            if (!ObjectId.isValid(dataSetId)) {
+                final String errorMsg = "SaveAnnotationRequest.dataSetIds contains invalid id: " + dataSetId;
                 return new ResultStatus(true, errorMsg);
             }
 
             // execute query to retrieve DataSetDocument with specified id
-            final DataSetDocument dataSetDocument = mongoAnnotationClient.findDataSet(dataSetId);
+            final DataSetDocument dataSetDocument;
+            try {
+                dataSetDocument = mongoAnnotationClient.lookupDataSet(dataSetId);
+            } catch (DpException ex) {
+                return new ResultStatus(
+                        true,
+                        "error looking up DataSetDocument with id " + dataSetId + ": " + ex.getMessage());
+            }
             if (dataSetDocument == null) {
                 return new ResultStatus(
                         true,
@@ -226,11 +281,25 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         for (String annotationId : request.getAnnotationIdsList()) {
 
             if (annotationId.isBlank()) {
-                final String errorMsg = "CreateAnnotationRequest.annotationIds contains blank id string";
+                final String errorMsg = "SaveAnnotationRequest.annotationIds contains blank id string";
                 return new ResultStatus(true, errorMsg);
             }
 
-            final AnnotationDocument annotationDocument = mongoAnnotationClient.findAnnotation(annotationId);
+            // a malformed id is a client mistake, rejected with a precise message rather than
+            // surfacing as a lookup failure (#248 plan D11)
+            if (!ObjectId.isValid(annotationId)) {
+                final String errorMsg = "SaveAnnotationRequest.annotationIds contains invalid id: " + annotationId;
+                return new ResultStatus(true, errorMsg);
+            }
+
+            final AnnotationDocument annotationDocument;
+            try {
+                annotationDocument = mongoAnnotationClient.lookupAnnotation(annotationId);
+            } catch (DpException ex) {
+                return new ResultStatus(
+                        true,
+                        "error looking up AnnotationDocument with id " + annotationId + ": " + ex.getMessage());
+            }
             if (annotationDocument == null) {
                 return new ResultStatus(
                         true,
@@ -251,6 +320,57 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 new QueryAnnotationsJob(request, responseObserver, mongoAnnotationClient);
 
         logger.debug("adding queryAnnotations job id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleGetAnnotation(
+            GetAnnotationRequest request,
+            StreamObserver<GetAnnotationResponse> responseObserver
+    ) {
+        final GetAnnotationJob job = new GetAnnotationJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding GetAnnotationJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleDeleteAnnotation(
+            DeleteAnnotationRequest request,
+            StreamObserver<DeleteAnnotationResponse> responseObserver
+    ) {
+        final DeleteAnnotationJob job = new DeleteAnnotationJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding DeleteAnnotationJob id: {} to queue", responseObserver.hashCode());
+
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException waiting for requestQueue.put");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public void handleGetCalculations(
+            GetCalculationsRequest request,
+            StreamObserver<GetCalculationsResponse> responseObserver
+    ) {
+        final GetCalculationsJob job = new GetCalculationsJob(request, responseObserver, mongoAnnotationClient);
+
+        logger.debug("adding GetCalculationsJob id: {} to queue", responseObserver.hashCode());
 
         try {
             requestQueue.put(job);

@@ -1,10 +1,24 @@
 package com.ospreydcs.dp.service.common.bson;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 
 public abstract class DpBsonDocumentBase {
+
+    /**
+     * Normalizes a tag list to the house convention: lowercase, deduplicated, sorted.  Save paths
+     * and diffs must share this so a diff compares stored tags against what a save would store.
+     */
+    public static List<String> normalizedTags(List<String> tags) {
+        final TreeSet<String> normalized = new TreeSet<>();
+        for (String tag : tags) {
+            normalized.add(tag.toLowerCase());
+        }
+        return new ArrayList<>(normalized);
+    }
 
     // instance variables
     private List<String> tags;

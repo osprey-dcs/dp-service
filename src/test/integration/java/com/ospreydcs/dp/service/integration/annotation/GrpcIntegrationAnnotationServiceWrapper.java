@@ -77,6 +77,11 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     protected Map<AnnotationTestBase.SaveDataSetParams, String> saveDataSetParamsIdMap;
     protected Map<AnnotationTestBase.SaveAnnotationRequestParams, String> saveAnnotationParamsIdMap;
 
+    // calculationsId from the most recent successful saveAnnotation response, null when that
+    // request carried no calculations — set by sendSaveAnnotation, checked against database state
+    // by sendAndVerifySaveAnnotation
+    protected String lastSaveAnnotationCalculationsId;
+
 
     public void init(MongoTestClient mongoClient) {
         // init data structures
@@ -335,6 +340,11 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+
+            // SaveAnnotationResult returns calculationsId exactly when the request carried
+            // calculations (#248 Phase 2)
+            assertEquals(request.hasCalculations(), responseObserver.getCalculationsId() != null);
+            lastSaveAnnotationCalculationsId = responseObserver.getCalculationsId();
         }
 
         return responseObserver.getAnnotationId();
@@ -372,6 +382,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         // validate calculations if specified
         if (params.calculations != null) {
             assertNotNull(annotationDocument.getCalculationsId());
+            assertEquals(annotationDocument.getCalculationsId(), lastSaveAnnotationCalculationsId);
             final CalculationsDocument calculationsDocument =
                     mongoClient.findCalculations(annotationDocument.getCalculationsId());
             assertNotNull(calculationsDocument);
@@ -529,6 +540,209 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         }
 
         return resultAnnotations;
+    }
+
+    // =========================================================================
+    // DataSet / Annotation / Calculations get, delete, and patch-stub helpers
+    // (#248 Phase 2)
+    // =========================================================================
+
+    public DataSet sendAndVerifyGetDataSet(
+            String dataSetId,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final GetDataSetRequest request = AnnotationTestBase.buildGetDataSetRequest(dataSetId);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.GetDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.GetDataSetResponseObserver();
+
+        new Thread(() -> asyncStub.getDataSet(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final DataSet dataSet = responseObserver.getDataSet();
+        assertNotNull(dataSet);
+        assertEquals(dataSetId, dataSet.getId());
+        return dataSet;
+    }
+
+    public String sendAndVerifyDeleteDataSet(
+            String dataSetId,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final DeleteDataSetRequest request = AnnotationTestBase.buildDeleteDataSetRequest(dataSetId);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.DeleteDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.DeleteDataSetResponseObserver();
+
+        new Thread(() -> asyncStub.deleteDataSet(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final String deletedId = responseObserver.getDataSetId();
+        assertEquals(dataSetId, deletedId);
+
+        // verify database state — the no-retry finder, since we are asserting absence
+        assertNull(mongoClient.findDataSetNoRetry(dataSetId));
+
+        return deletedId;
+    }
+
+    public Annotation sendAndVerifyGetAnnotation(
+            String annotationId,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final GetAnnotationRequest request = AnnotationTestBase.buildGetAnnotationRequest(annotationId);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.GetAnnotationResponseObserver responseObserver =
+                new AnnotationTestBase.GetAnnotationResponseObserver();
+
+        new Thread(() -> asyncStub.getAnnotation(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final Annotation annotation = responseObserver.getAnnotation();
+        assertNotNull(annotation);
+        assertEquals(annotationId, annotation.getId());
+
+        // getAnnotation() is the one method that returns calculations content inline: a non-empty
+        // calculationsId must come with populated content, and vice versa
+        assertEquals(!annotation.getCalculationsId().isEmpty(), annotation.hasCalculations());
+
+        return annotation;
+    }
+
+    public String sendAndVerifyDeleteAnnotation(
+            String annotationId,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        // capture the annotation's calculations reference before deleting, so the cascade to the
+        // calculations document can be verified afterward
+        String calculationsId = null;
+        if (!expectReject) {
+            final AnnotationDocument existingDocument = mongoClient.findAnnotationNoRetry(annotationId);
+            assertNotNull(existingDocument);
+            calculationsId = existingDocument.getCalculationsId();
+        }
+
+        final DeleteAnnotationRequest request = AnnotationTestBase.buildDeleteAnnotationRequest(annotationId);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.DeleteAnnotationResponseObserver responseObserver =
+                new AnnotationTestBase.DeleteAnnotationResponseObserver();
+
+        new Thread(() -> asyncStub.deleteAnnotation(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final String deletedId = responseObserver.getAnnotationId();
+        assertEquals(annotationId, deletedId);
+
+        // verify database state — the no-retry finders, since we are asserting absence; the
+        // annotation's calculations document is deleted with it (lifecycle belongs to the owner)
+        assertNull(mongoClient.findAnnotationNoRetry(annotationId));
+        if (calculationsId != null) {
+            assertNull(mongoClient.findCalculationsNoRetry(calculationsId));
+        }
+
+        return deletedId;
+    }
+
+    public Calculations sendAndVerifyGetCalculations(
+            String calculationsId,
+            boolean expectReject,
+            String expectedRejectMessage
+    ) {
+        final GetCalculationsRequest request = AnnotationTestBase.buildGetCalculationsRequest(calculationsId);
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.GetCalculationsResponseObserver responseObserver =
+                new AnnotationTestBase.GetCalculationsResponseObserver();
+
+        new Thread(() -> asyncStub.getCalculations(request, responseObserver)).start();
+        responseObserver.await();
+
+        if (expectReject) {
+            assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            return null;
+        }
+
+        assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
+        final Calculations calculations = responseObserver.getCalculations();
+        assertNotNull(calculations);
+        assertEquals(calculationsId, calculations.getId());
+        return calculations;
+    }
+
+    public void sendAndVerifyPatchDataSetStub(String dataSetId) {
+        final PatchDataSetRequest request = PatchDataSetRequest.newBuilder()
+                .setDataSetId(dataSetId).build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.PatchDataSetResponseObserver responseObserver =
+                new AnnotationTestBase.PatchDataSetResponseObserver();
+        new Thread(() -> asyncStub.patchDataSet(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
+    }
+
+    public void sendAndVerifyPatchAnnotationStub(String annotationId) {
+        final PatchAnnotationRequest request = PatchAnnotationRequest.newBuilder()
+                .setAnnotationId(annotationId).build();
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub = DpAnnotationServiceGrpc.newStub(channel);
+        final AnnotationTestBase.PatchAnnotationResponseObserver responseObserver =
+                new AnnotationTestBase.PatchAnnotationResponseObserver();
+        new Thread(() -> asyncStub.patchAnnotation(request, responseObserver)).start();
+        responseObserver.await();
+        assertTrue(responseObserver.isError());
+        assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
     public ExportDataResponse.ExportDataResult sendExportData(

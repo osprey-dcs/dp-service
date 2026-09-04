@@ -1,14 +1,18 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.client;
 
+import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
+import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -122,5 +126,107 @@ public class MongoSyncAnnotationClientLookupFailureTest {
         assertNotNull(result);
         assertFalse("an absent record is not an error at this layer", result.isError);
         assertNull("an absent record is signalled by a null identifier", result.deletedIdentifier);
+    }
+
+    @Test
+    public void testDeleteAnnotationLookupFailureReturnsErrorResult() throws Exception {
+
+        final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
+        when(client.lookupAnnotation(anyString()))
+                .thenThrow(new DpException("error querying AnnotationDocument by id: connection refused"));
+        when(client.deleteAnnotation(anyString())).thenCallRealMethod();
+
+        final MongoDeleteResult result = client.deleteAnnotation("66a1b2c3d4e5f60718293a4b");
+
+        assertNotNull("deleteAnnotation returned null instead of a result", result);
+        assertTrue("a failed lookup must be flagged as a failure", result.isError);
+        assertFalse(
+                "a failed lookup must not be reported as a rejection - that inverts the retry decision",
+                result.isReject);
+        assertTrue(
+                "error message should identify the failing lookup, was: " + result.message,
+                result.message.contains("error looking up AnnotationDocument"));
+    }
+
+    @Test
+    public void testDeleteAnnotationAbsentRecordIsNotAnError() throws Exception {
+
+        // the contrast case: a lookup that succeeds and finds nothing is the not-found signal,
+        // which the dispatcher converts to a rejection - not an error
+        final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
+        when(client.lookupAnnotation(anyString())).thenReturn(null);
+        when(client.deleteAnnotation(anyString())).thenCallRealMethod();
+
+        final MongoDeleteResult result = client.deleteAnnotation("66a1b2c3d4e5f60718293a4b");
+
+        assertNotNull(result);
+        assertFalse("an absent record is not an error at this layer", result.isError);
+        assertNull("an absent record is signalled by a null identifier", result.deletedIdentifier);
+    }
+
+    // ------------------------------------------------------------------
+    // save-validation lookups (MongoAnnotationHandler.validateSaveAnnotationRequest)
+    // ------------------------------------------------------------------
+
+    private static SaveAnnotationRequest saveAnnotationRequest() {
+        return SaveAnnotationRequest.newBuilder()
+                .setOwnerId("craigmcc")
+                .setName("lookup failure test")
+                .addAllDataSetIds(List.of("66a1b2c3d4e5f60718293a4b"))
+                .build();
+    }
+
+    @Test
+    public void testSaveAnnotationValidationLookupFailureReportsErrorNotAbsence() throws Exception {
+
+        // A Mongo outage during save validation must not read as "your dataSetId does not exist" —
+        // that message asserts a fact the lookup never established, and inverts the retry decision.
+        final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
+        when(client.lookupDataSet(anyString()))
+                .thenThrow(new DpException("error querying DataSetDocument by id: connection refused"));
+        final MongoAnnotationHandler handler = new MongoAnnotationHandler(client, null);
+
+        final ResultStatus resultStatus = handler.validateSaveAnnotationRequest(saveAnnotationRequest());
+
+        assertTrue("a failed lookup must fail validation", resultStatus.isError);
+        assertTrue(
+                "message should identify the failing lookup, was: " + resultStatus.msg,
+                resultStatus.msg.contains("error looking up DataSetDocument"));
+        assertFalse(
+                "a failed lookup must not be reported as an absent document",
+                resultStatus.msg.contains("no DataSetDocument found"));
+    }
+
+    @Test
+    public void testSaveAnnotationValidationAbsentDataSetStillRejects() throws Exception {
+
+        // the contrast case: a lookup that succeeds and finds nothing is a genuine absence
+        final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
+        when(client.lookupDataSet(anyString())).thenReturn(null);
+        final MongoAnnotationHandler handler = new MongoAnnotationHandler(client, null);
+
+        final ResultStatus resultStatus = handler.validateSaveAnnotationRequest(saveAnnotationRequest());
+
+        assertTrue(resultStatus.isError);
+        assertTrue(
+                "message should name the missing document, was: " + resultStatus.msg,
+                resultStatus.msg.contains("no DataSetDocument found"));
+    }
+
+    // ------------------------------------------------------------------
+    // lookupCalculations (findCalculations previously collapsed absent / failed / malformed)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void testFindCalculationsCollapsesLookupFailureToNull() throws Exception {
+
+        // findCalculations keeps the legacy swallow-to-null contract for callers that cannot act
+        // on the distinction; lookupCalculations is the checked variant for those that must
+        final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
+        when(client.lookupCalculations(anyString()))
+                .thenThrow(new DpException("error querying CalculationsDocument by id: connection refused"));
+        when(client.findCalculations(anyString())).thenCallRealMethod();
+
+        assertNull(client.findCalculations("66a1b2c3d4e5f60718293a4b"));
     }
 }

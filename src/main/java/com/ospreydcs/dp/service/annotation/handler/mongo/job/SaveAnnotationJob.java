@@ -9,7 +9,9 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.SaveAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
@@ -52,6 +54,27 @@ public class SaveAnnotationJob extends HandlerJob {
         if (resultStatus.isError) {
             dispatcher.handleValidationError(resultStatus);
             return;
+        }
+
+        // When replacing an existing annotation, capture its current calculationsId up front so the
+        // replaced document can be deleted after a successful save (#248 plan D14) — full-replace
+        // semantics apply to calculations like every other field, and without this the previous
+        // document is orphaned. A lookup failure here is an error, not "no previous calculations":
+        // proceeding would silently skip the cleanup this fix exists to perform.
+        String previousCalculationsId = null;
+        if (!request.getId().isBlank()) {
+            final AnnotationDocument previousDocument;
+            try {
+                previousDocument = this.mongoClient.lookupAnnotation(request.getId());
+            } catch (DpException ex) {
+                dispatcher.handleError("error looking up existing Annotation: " + ex.getMessage());
+                return;
+            }
+            // A null previousDocument means the id does not exist; let saveAnnotation() produce its
+            // usual rejection rather than duplicating that logic here.
+            if (previousDocument != null) {
+                previousCalculationsId = previousDocument.getCalculationsId();
+            }
         }
 
         // handle calculations, if specified
@@ -97,8 +120,23 @@ public class SaveAnnotationJob extends HandlerJob {
                 AnnotationDocument.fromSaveAnnotationRequest(request, calculationsDocumentId);
         final MongoSaveResult result = this.mongoClient.saveAnnotation(annotationDocument, request.getId());
 
+        // The save replaced (or cleared) the annotation's calculations reference, so delete the
+        // previous calculations document (#248 plan D14). Only after a successful save — on a
+        // rejected or failed save the stored annotation still references it. A cleanup failure is
+        // logged with the orphaned id but does not fail the response: the save itself succeeded,
+        // a retry cannot remove the orphan, and reporting an error would mislead the caller.
+        if (!result.isError && !result.isReject
+                && previousCalculationsId != null
+                && !previousCalculationsId.equals(calculationsDocumentId)) {
+            final MongoDeleteResult cleanupResult = this.mongoClient.deleteCalculations(previousCalculationsId);
+            if (cleanupResult.isError) {
+                logger.error("saveAnnotation id: {} replaced calculations document {} but deleting it failed: {}",
+                        result.documentId, previousCalculationsId, cleanupResult.message);
+            }
+        }
+
         // dispatch result in API response stream
         logger.debug("dispatching SaveAnnotationJob id: {}", this.responseObserver.hashCode());
-        dispatcher.handleResult(result);
+        dispatcher.handleResult(result, calculationsDocumentId);
     }
 }

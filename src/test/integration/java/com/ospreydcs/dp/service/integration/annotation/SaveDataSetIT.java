@@ -1,11 +1,15 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import org.junit.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
+import static org.junit.Assert.*;
 
 public class SaveDataSetIT extends AnnotationIntegrationTestIntermediate {
 
@@ -94,5 +98,62 @@ public class SaveDataSetIT extends AnnotationIntegrationTestIntermediate {
 
         // positive test case defined in super class so it can be used to generate datasets for other tests
         createDataSetScenario(startSeconds);
+    }
+
+    @Test
+    public void testSaveDataSetAuditFields() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        // ingest some data
+        annotationIngestionScenario(startSeconds);
+
+        final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = List.of(
+                new AnnotationTestBase.AnnotationDataBlock(
+                        startSeconds, 0L, startSeconds + 1, 0L, List.of("S01-GCC01", "S01-BPM01")));
+
+        String dataSetId;
+        Instant createdAt;
+        {
+            // saveDataSet() positive test - create with tags/attributes/modifiedBy; tags are
+            // normalized on save, and updatedTime stays unset on create (#248 plan D12, D13)
+
+            final AnnotationTestBase.AnnotationDataSet dataSet =
+                    new AnnotationTestBase.AnnotationDataSet(
+                            null, "audit fields dataset", "craigmcc", "audit field test", dataBlocks,
+                            List.of("Beam Loss", "OUTAGE", "beam loss"),
+                            Map.of("sector", "01"),
+                            "operator-1");
+            dataSetId = annotationServiceWrapper.sendAndVerifySaveDataSet(
+                    new AnnotationTestBase.SaveDataSetParams(dataSet), false, false, "");
+
+            final DataSetDocument document = mongoClient.findDataSet(dataSetId);
+            assertEquals(List.of("beam loss", "outage"), document.getTags());
+            assertEquals(Map.of("sector", "01"), document.getAttributes());
+            assertEquals("operator-1", document.getModifiedBy());
+            assertNotNull(document.getCreatedAt());
+            assertNull(document.getUpdatedAt());
+            createdAt = document.getCreatedAt();
+        }
+
+        {
+            // saveDataSet() positive test - full-replace update preserves createdTime and sets
+            // updatedTime; modifiedBy is replaced with the new writer
+
+            final AnnotationTestBase.AnnotationDataSet updatedDataSet =
+                    new AnnotationTestBase.AnnotationDataSet(
+                            dataSetId, "audit fields dataset", "craigmcc", "audit field test", dataBlocks,
+                            List.of("recalibrated"),
+                            Map.of("sector", "02"),
+                            "operator-2");
+            annotationServiceWrapper.sendAndVerifySaveDataSet(
+                    new AnnotationTestBase.SaveDataSetParams(updatedDataSet), true, false, "");
+
+            final DataSetDocument document = mongoClient.findDataSet(dataSetId);
+            assertEquals(List.of("recalibrated"), document.getTags());
+            assertEquals("operator-2", document.getModifiedBy());
+            assertEquals(createdAt, document.getCreatedAt());
+            assertNotNull(document.getUpdatedAt());
+        }
     }
 }
