@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 
@@ -121,16 +122,10 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     ) {
         logger.info("id: {} saveDataSet request received", responseObserver.hashCode());
 
-        final DataSet dataSet = request.getDataSet();
-        if (dataSet == null) {
-            final String errorMsg = "SaveDataSetRequest.dataSet must be specified";
-            sendSaveDataSetResponseReject(errorMsg, responseObserver);
-        }
-
-        // validate DataSet
-        ResultStatus resultStatus = AnnotationValidationUtility.validateDataSet(dataSet);
+        // validate request
+        ResultStatus resultStatus = AnnotationValidationUtility.validateSaveDataSetRequest(request);
         if (resultStatus.isError) {
-            logger.debug("id: {} SaveDataSetRequest.dataSet validation failed: {}",
+            logger.debug("id: {} SaveDataSetRequest validation failed: {}",
                     responseObserver.hashCode(),
                     resultStatus.msg);
             sendSaveDataSetResponseReject(
@@ -204,6 +199,25 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         responseObserver.onCompleted();
     }
 
+    /**
+     * True when any entry in a criterion value list is blank.  A blank entry must be rejected, not
+     * silently dropped: the query filter builder treats validated lists as-is, and a blank entry
+     * that survives to a prefix/contains regex or vanishes from an in() filter turns the criterion
+     * into a silent match-all (#243) -- a wrong answer wearing the appearance of a filter.
+     */
+    private static boolean containsBlank(List<String> values) {
+        return values.stream().anyMatch(String::isBlank);
+    }
+
+    /**
+     * True when any entry is not a parseable ObjectId hex string.  An unvalidated id would throw
+     * IllegalArgumentException from the ObjectId constructor inside the worker thread, where
+     * QueueHandlerBase swallows it and the caller's response stream hangs until deadline.
+     */
+    private static boolean containsInvalidObjectId(List<String> ids) {
+        return ids.stream().anyMatch(id -> !ObjectId.isValid(id));
+    }
+
     @Override
     public void queryDataSets(
             QueryDataSetsRequest request,
@@ -211,44 +225,70 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     ) {
         logger.info("id: {} queryDataSets request received", responseObserver.hashCode());
 
-        // check that request contains non-empty list of criteria
-        final List<QueryDataSetsRequest.QueryDataSetsCriterion> criterionList = request.getCriteriaList();
-        if (criterionList.size() == 0) {
-            final String errorMsg = "QueryDataSetsRequest.criteria list must not be empty";
-            sendQueryDataSetsResponseReject(errorMsg, responseObserver);
-        }
+        // An empty criteria list is match-all by contract, not an error, so there is deliberately
+        // no list-level emptiness check here.  Per-criterion validation below is unaffected: a
+        // criterion that IS supplied must still be well-formed.
 
         // validate query criteria
-        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : criterionList) {
+        for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : request.getCriteriaList()) {
 
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.IdCriterion idCriterion
-                            = criterion.getIdCriterion();
-                    if (idCriterion.getId().isBlank()) {
+                    if (criterion.getIdCriterion().getIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryDataSetsRequest.criteria.IdCriterion id must be specified";
+                                "QueryDataSetsRequest.criteria.IdCriterion must specify at least one id";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsInvalidObjectId(criterion.getIdCriterion().getIdsList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.IdCriterion ids must be valid ObjectId hex strings";
                         sendQueryDataSetsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case OWNERCRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.OwnerCriterion ownerCriterion
-                            = criterion.getOwnerCriterion();
-                    if (ownerCriterion.getOwnerId().isBlank()) {
+                    if (criterion.getOwnerCriterion().getOwnerIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryDataSetsRequest.criteria.OwnerCriterion ownerId must be specified";
+                                "QueryDataSetsRequest.criteria.OwnerCriterion must specify at least one ownerId";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getOwnerCriterion().getOwnerIdsList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.OwnerCriterion ownerIds must not contain blank entries";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case NAMECRITERION -> {
+                    final QueryDataSetsRequest.QueryDataSetsCriterion.NameCriterion nameCriterion =
+                            criterion.getNameCriterion();
+                    if (nameCriterion.getExactList().isEmpty()
+                            && nameCriterion.getPrefixList().isEmpty()
+                            && nameCriterion.getContainsList().isEmpty()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.NameCriterion must specify at least one of: exact, prefix, contains";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    // A blank prefix/contains entry would build a match-everything regex (#243), so
+                    // blank entries in any of the three lists are rejected, never dropped.
+                    if (containsBlank(nameCriterion.getExactList())
+                            || containsBlank(nameCriterion.getPrefixList())
+                            || containsBlank(nameCriterion.getContainsList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.NameCriterion entries must not be blank";
                         sendQueryDataSetsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case TEXTCRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion textCriterion
-                            = criterion.getTextCriterion();
-                    if (textCriterion.getText().isBlank()) {
+                    if (criterion.getTextCriterion().getText().isBlank()) {
                         final String errorMsg =
                                 "QueryDataSetsRequest.criteria.TextCriterion text must be specified";
                         sendQueryDataSetsResponseReject(errorMsg, responseObserver);
@@ -257,11 +297,46 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 }
 
                 case PVNAMECRITERION -> {
-                    final QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion pvNameCriterion
-                            = criterion.getPvNameCriterion();
-                    if (pvNameCriterion.getName().isBlank()) {
+                    if (criterion.getPvNameCriterion().getNamesList().isEmpty()) {
                         final String errorMsg =
-                                "QueryDataSetsRequest.criteria.PvNameCriterion name must be specified";
+                                "QueryDataSetsRequest.criteria.PvNameCriterion must specify at least one name";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getPvNameCriterion().getNamesList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.PvNameCriterion names must not contain blank entries";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case TAGSCRITERION -> {
+                    if (criterion.getTagsCriterion().getValuesList().isEmpty()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.TagsCriterion must specify at least one value";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getTagsCriterion().getValuesList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.TagsCriterion values must not contain blank entries";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case ATTRIBUTESCRITERION -> {
+                    if (criterion.getAttributesCriterion().getKey().isBlank()) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.AttributesCriterion key must be specified";
+                        sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    // an empty values list is a legitimate key-existence search; blank entries are not
+                    if (containsBlank(criterion.getAttributesCriterion().getValuesList())) {
+                        final String errorMsg =
+                                "QueryDataSetsRequest.criteria.AttributesCriterion values must not contain blank entries";
                         sendQueryDataSetsResponseReject(errorMsg, responseObserver);
                         return;
                     }
@@ -447,67 +522,100 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     ) {
         logger.info("id: {} queryAnnotations request received", responseObserver.hashCode());
 
-        // check that request contains non-empty list of criteria
-        final List<QueryAnnotationsRequest.QueryAnnotationsCriterion> criterionList = request.getCriteriaList();
-        if (criterionList.size() == 0) {
-            final String errorMsg = "QueryAnnotationsRequest.criteria list must not be empty";
-            sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
-            return;
-        }
+        // An empty criteria list is match-all by contract, not an error, so there is deliberately
+        // no list-level emptiness check here.  Per-criterion validation below is unaffected: a
+        // criterion that IS supplied must still be well-formed.
 
         // validate query criteria
-        for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : criterionList) {
+        for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : request.getCriteriaList()) {
 
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion idCriterion
-                            = criterion.getIdCriterion();
-                    if (idCriterion.getId().isBlank()) {
+                    if (criterion.getIdCriterion().getIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
+                                "QueryAnnotationsRequest.criteria.IdCriterion must specify at least one id";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsInvalidObjectId(criterion.getIdCriterion().getIdsList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.IdCriterion ids must be valid ObjectId hex strings";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case OWNERCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion ownerCriterion
-                            = criterion.getOwnerCriterion();
-                    if (ownerCriterion.getOwnerId().isBlank()) {
+                    if (criterion.getOwnerCriterion().getOwnerIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.OwnerCriterion ownerId must be specified";
+                                "QueryAnnotationsRequest.criteria.OwnerCriterion must specify at least one ownerId";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getOwnerCriterion().getOwnerIdsList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.OwnerCriterion ownerIds must not contain blank entries";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case DATASETSCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion dataSetsCriterion
-                            = criterion.getDataSetsCriterion();
-                    if (dataSetsCriterion.getDataSetId().isBlank()) {
+                    if (criterion.getDataSetsCriterion().getDataSetIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
+                                "QueryAnnotationsRequest.criteria.DataSetsCriterion must specify at least one dataSetId";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getDataSetsCriterion().getDataSetIdsList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.DataSetsCriterion dataSetIds must not contain blank entries";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case ANNOTATIONSCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion annotationsCriterion
-                            = criterion.getAnnotationsCriterion();
-                    if (annotationsCriterion.getAnnotationId().isBlank()) {
+                    if (criterion.getAnnotationsCriterion().getAnnotationIdsList().isEmpty()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.AssociatedAnnotationIdCriterion id must be specified";
+                                "QueryAnnotationsRequest.criteria.AnnotationsCriterion must specify at least one annotationId";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getAnnotationsCriterion().getAnnotationIdsList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.AnnotationsCriterion annotationIds must not contain blank entries";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                }
+
+                case NAMECRITERION -> {
+                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion nameCriterion =
+                            criterion.getNameCriterion();
+                    if (nameCriterion.getExactList().isEmpty()
+                            && nameCriterion.getPrefixList().isEmpty()
+                            && nameCriterion.getContainsList().isEmpty()) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.NameCriterion must specify at least one of: exact, prefix, contains";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    // A blank prefix/contains entry would build a match-everything regex (#243), so
+                    // blank entries in any of the three lists are rejected, never dropped.
+                    if (containsBlank(nameCriterion.getExactList())
+                            || containsBlank(nameCriterion.getPrefixList())
+                            || containsBlank(nameCriterion.getContainsList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.NameCriterion entries must not be blank";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case TEXTCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion commentCriterion
-                            = criterion.getTextCriterion();
-                    if (commentCriterion.getText().isBlank()) {
+                    if (criterion.getTextCriterion().getText().isBlank()) {
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.TextCriterion text must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
@@ -516,28 +624,31 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
                 }
 
                 case TAGSCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion tagsCriterion
-                            = criterion.getTagsCriterion();
-                    if (tagsCriterion.getTagValue().isBlank()) {
+                    if (criterion.getTagsCriterion().getValuesList().isEmpty()) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.TagsCriterion tagValue must be specified";
+                                "QueryAnnotationsRequest.criteria.TagsCriterion must specify at least one value";
+                        sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+                        return;
+                    }
+                    if (containsBlank(criterion.getTagsCriterion().getValuesList())) {
+                        final String errorMsg =
+                                "QueryAnnotationsRequest.criteria.TagsCriterion values must not contain blank entries";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
                 }
 
                 case ATTRIBUTESCRITERION -> {
-                    final QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion attributesCriterion
-                            = criterion.getAttributesCriterion();
-                    if (attributesCriterion.getKey().isBlank()) {
+                    if (criterion.getAttributesCriterion().getKey().isBlank()) {
                         final String errorMsg =
                                 "QueryAnnotationsRequest.criteria.AttributesCriterion key must be specified";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }
-                    if (attributesCriterion.getValue().isBlank()) {
+                    // an empty values list is a legitimate key-existence search; blank entries are not
+                    if (containsBlank(criterion.getAttributesCriterion().getValuesList())) {
                         final String errorMsg =
-                                "QueryAnnotationsRequest.criteria.AttributesCriterion value must be specified";
+                                "QueryAnnotationsRequest.criteria.AttributesCriterion values must not contain blank entries";
                         sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
                         return;
                     }

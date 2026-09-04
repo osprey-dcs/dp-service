@@ -267,12 +267,15 @@ public abstract class MongoClientBase {
         // NOTE - reordering so that owner id comes before the text index can lead to an error message like this:
         // "if text index is compound, are equality predicates given for all prefix fields?"
         // discussed here: https://stackoverflow.com/questions/35260539/combine-full-text-with-other-index
+        // Text fields are name and description, matching the TextCriterion contract in
+        // annotation.proto. event.description, a leftover from the removed eventMetadata feature,
+        // was dropped before the version-1 migration ever shipped in a release, so the migration's
+        // replacement index never existed with that field in any deployment (#248 plan D9).
         createMongoIndexAnnotations(
                 Indexes.compoundIndex(
                         Indexes.compoundIndex(
                             Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
-                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_DESCRIPTION),
-                            Indexes.text(BsonConstants.BSON_KEY_EVENT_DESCRIPTION)),
+                            Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_DESCRIPTION)),
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
 
         return true;

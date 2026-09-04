@@ -36,7 +36,7 @@ public class MongoIndexTest {
                                 "annotationIds_1",
                                 "tags_1",
                                 "attributes.$**_1",
-                                "name_text_comment_text_event.description_text_ownerId_1"
+                                "name_text_description_text_ownerId_1"
                         );
                 assertEquals(expectedIndexNames, annotationsIndexNames);
             }

@@ -86,8 +86,7 @@ public class V1AnnotationCommentToDescriptionTest {
                 Indexes.compoundIndex(
                         Indexes.compoundIndex(
                                 Indexes.text(BsonConstants.BSON_KEY_ANNOTATION_NAME),
-                                Indexes.text("description"),
-                                Indexes.text(BsonConstants.BSON_KEY_EVENT_DESCRIPTION)),
+                                Indexes.text("description")),
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)));
     }
 

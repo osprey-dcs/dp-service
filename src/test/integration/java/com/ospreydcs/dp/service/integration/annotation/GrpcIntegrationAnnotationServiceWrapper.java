@@ -390,7 +390,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return annotationId;
     }
 
-    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendQueryAnnotations(
+    protected List<Annotation> sendQueryAnnotations(
             QueryAnnotationsRequest request,
             boolean expectReject,
             String expectedRejectMessage
@@ -419,7 +419,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         return responseObserver.getAnnotationsList();
     }
 
-    protected List<QueryAnnotationsResponse.AnnotationsResult.Annotation> sendAndVerifyQueryAnnotations(
+    protected List<Annotation> sendAndVerifyQueryAnnotations(
             AnnotationTestBase.QueryAnnotationsParams queryParams,
             boolean expectReject,
             String expectedRejectMessage,
@@ -428,7 +428,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         final QueryAnnotationsRequest request =
                 AnnotationTestBase.buildQueryAnnotationsRequest(queryParams);
 
-        final List<QueryAnnotationsResponse.AnnotationsResult.Annotation> resultAnnotations =
+        final List<Annotation> resultAnnotations =
                 sendQueryAnnotations(request, expectReject, expectedRejectMessage);
 
         if (expectReject || expectedQueryResult.isEmpty()) {
@@ -441,8 +441,8 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         // find each expected result in actual result list and match field values against request
         for (AnnotationTestBase.SaveAnnotationRequestParams requestParams : expectedQueryResult) {
             boolean found = false;
-            QueryAnnotationsResponse.AnnotationsResult.Annotation foundAnnotation = null;
-            for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : resultAnnotations) {
+            Annotation foundAnnotation = null;
+            for (Annotation resultAnnotation : resultAnnotations) {
                 if (
                         (requestParams.ownerId.equals(resultAnnotation.getOwnerId())) &&
                         (Objects.equals(requestParams.dataSetIds, resultAnnotation.getDataSetIdsList())) &&
@@ -489,7 +489,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             // check TextCriterion
             if (queryParams.textCriterion != null) {
                 assertTrue(
-                        foundAnnotation.getComment().contains(queryParams.textCriterion)
+                        foundAnnotation.getDescription().contains(queryParams.textCriterion)
                                 || foundAnnotation.getName().contains(queryParams.textCriterion));
             }
 
@@ -507,44 +507,24 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
                         resultAttributeMap.get(queryParams.attributesCriterionKey), queryParams.attributesCriterionValue);
             }
 
-           // compare dataset content from result with dataset in database
-            for (DataSet responseDataSet : foundAnnotation.getDataSetsList()) {
-                final DataSetDocument dbDataSetDocument = mongoClient.findDataSet(responseDataSet.getId());
-                final DataSet dbDataSet = dbDataSetDocument.toDataSet();
-                assertEquals(dbDataSet.getDataBlocksList().size(), responseDataSet.getDataBlocksCount());
-                assertTrue(dbDataSet.getName().equals(responseDataSet.getName()));
-                assertTrue(dbDataSet.getOwnerId().equals(responseDataSet.getOwnerId()));
-                assertTrue(dbDataSet.getDescription().equals(responseDataSet.getDescription()));
-                for (DataBlock dbDataBlock : dbDataSet.getDataBlocksList()) {
-                    boolean responseBlockFound = false;
-                    for (DataBlock responseBlock : responseDataSet.getDataBlocksList()) {
-                        if (
-                                (Objects.equals(dbDataBlock.getBeginTime().getEpochSeconds(), responseBlock.getBeginTime().getEpochSeconds()))
-                                        && (Objects.equals(dbDataBlock.getBeginTime().getNanoseconds(), responseBlock.getBeginTime().getNanoseconds()))
-                                        && (Objects.equals(dbDataBlock.getEndTime().getEpochSeconds(), responseBlock.getEndTime().getEpochSeconds()))
-                                        && (Objects.equals(dbDataBlock.getEndTime().getNanoseconds(), responseBlock.getEndTime().getNanoseconds()))
-                                        && (Objects.equals(dbDataBlock.getPvNamesList(), responseBlock.getPvNamesList()))
-                        ) {
-                            responseBlockFound = true;
-                            break;
-                        }
-                    }
-                    assertTrue(responseBlockFound);
-                }
+            // The response carries dataset references, not content (dp-grpc #132): verify each
+            // referenced dataset exists in the database.  Content equality is covered by the
+            // queryDataSets verification, which is the API callers now use to fetch it.
+            for (String responseDataSetId : foundAnnotation.getDataSetIdsList()) {
+                final DataSetDocument dbDataSetDocument = mongoClient.findDataSet(responseDataSetId);
+                assertNotNull(dbDataSetDocument);
             }
 
-            // compare calculations content from result with calculations document in database
+            // The response carries a calculations reference, not content (dp-grpc #132):
+            // queryAnnotations() leaves the calculations field empty and populates calculationsId;
+            // getCalculations() / getAnnotation() serve the content.
             if (requestParams.calculations != null) {
-                assertTrue(foundAnnotation.hasCalculations());
-                final Calculations resultCalculations = foundAnnotation.getCalculations();
+                assertFalse(foundAnnotation.hasCalculations());
+                final String resultCalculationsId = foundAnnotation.getCalculationsId();
+                assertFalse(resultCalculationsId.isBlank());
                 final CalculationsDocument dbCalculationsDocument =
-                        mongoClient.findCalculations(resultCalculations.getId());
-                try {
-                    final Calculations dbCalculations = dbCalculationsDocument.toCalculations();
-                    assertEquals(dbCalculations, resultCalculations);
-                } catch (DpException e) {
-                    fail("exception in CalculationsDocument.toCalculations(): " + e.getMessage());
-                }
+                        mongoClient.findCalculations(resultCalculationsId);
+                assertNotNull(dbCalculationsDocument);
             }
         }
 
@@ -718,7 +698,7 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
                 for (Calculations.CalculationsDataFrame requestCalculationsFrame :
                         calculationsRequestParams.getCalculationDataFramesList()) {
                     final String requestCalculationsFrameName = requestCalculationsFrame.getName();
-                    for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                    for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getFrame().getDataColumnsList()) {
                         expectedCalculationsColumnNames.add(requestCalculationsFrameColumn.getName());
                     }
                 }
@@ -743,8 +723,8 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
             for (Calculations.CalculationsDataFrame requestCalculationsFrame :
                     calculationsRequestParams.getCalculationDataFramesList()) {
                 final DataTimestamps requestCalculationsFrameDataTimestamps =
-                        requestCalculationsFrame.getDataTimestamps();
-                for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getDataColumnsList()) {
+                        requestCalculationsFrame.getFrame().getDataTimestamps();
+                for (DataColumn requestCalculationsFrameColumn : requestCalculationsFrame.getFrame().getDataColumnsList()) {
                     final String requestCalculationsFrameColumnName = requestCalculationsFrameColumn.getName();
                     if (expectedCalculationsColumnNames.contains(requestCalculationsFrameColumnName)) {
                         calculationsValidationMap.put(

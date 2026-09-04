@@ -148,21 +148,17 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     public ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
 
-        // create list of unique pv names in DataSet's DataBlocks using a set, convert set to list
+        // create list of unique pv names in the request's DataBlocks using a set, convert set to list
         final Set<String> uniquePvNames = new TreeSet<>();
-        if (request.getDataSet() == null) {
-            return new ResultStatus(true, "SaveDataSetRequest must contain a DataSet");
-        }
-        final DataSet dataSet = request.getDataSet();
-        final List<DataBlock> dataBlocks = dataSet.getDataBlocksList();
-        if (dataBlocks == null || dataBlocks.isEmpty()) {
-            return new ResultStatus(true, "SaveDataSetRequest.DataSet must contain DataBlocks");
+        final List<DataBlock> dataBlocks = request.getDataBlocksList();
+        if (dataBlocks.isEmpty()) {
+            return new ResultStatus(true, "SaveDataSetRequest must contain dataBlocks");
         }
         for (DataBlock dataBlock : dataBlocks) {
             List<String> blockPvNames = dataBlock.getPvNamesList();
-            if (blockPvNames == null || blockPvNames.isEmpty()) {
+            if (blockPvNames.isEmpty()) {
                 return new ResultStatus(
-                        true, "SaveDataSetRequest.DataSet.DataBlock must contain pvNames");
+                        true, "SaveDataSetRequest.DataBlock must contain pvNames");
             }
             uniquePvNames.addAll(blockPvNames);
         }

@@ -3,9 +3,11 @@ package com.ospreydcs.dp.service.integration.annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
+import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataFrame;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
@@ -103,8 +105,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
 
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -152,8 +155,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(invalidDatatimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(invalidDatatimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -202,8 +206,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(invalidDatatimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(invalidDatatimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -248,8 +253,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(emptyDataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(emptyDataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -300,8 +306,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -352,8 +359,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -404,8 +412,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -456,8 +465,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -508,8 +518,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -564,8 +575,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -595,14 +607,14 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                         new AnnotationTestBase.QueryAnnotationsParams();
                 queryAnnotationsParams.setTextCriterion(nameText);
 
-                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> queryResultAnnotations =
+                List<Annotation> queryResultAnnotations =
                         annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                                 queryAnnotationsParams,
                                 expectReject,
                                 expectedRejectMessage,
                                 List.of(createAnnotationRequestParams));
                 assertEquals(1, queryResultAnnotations.size());
-                calculationsId = queryResultAnnotations.get(0).getCalculations().getId();
+                calculationsId = queryResultAnnotations.get(0).getCalculationsId();
             }
 
             // positive export test: export of dataset with calculations to csv.
@@ -1066,8 +1078,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -1097,14 +1110,14 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                         new AnnotationTestBase.QueryAnnotationsParams();
                 queryAnnotationsParams.setTextCriterion(nameText);
 
-                List<QueryAnnotationsResponse.AnnotationsResult.Annotation> queryResultAnnotations =
+                List<Annotation> queryResultAnnotations =
                         annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                                 queryAnnotationsParams,
                                 expectReject,
                                 expectedRejectMessage,
                                 List.of(createAnnotationRequestParams));
                 assertEquals(1, queryResultAnnotations.size());
-                calculationsId = queryResultAnnotations.get(0).getCalculations().getId();
+                calculationsId = queryResultAnnotations.get(0).getCalculationsId();
             }
 
             // Positive export test: export where time range of calculations doesn't overlap time range of dataset.
@@ -1161,8 +1174,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }
@@ -1217,8 +1231,9 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                 // create data frame
                 final Calculations.CalculationsDataFrame dataFrame = Calculations.CalculationsDataFrame.newBuilder()
                         .setName("frame-" + i)
-                        .setDataTimestamps(dataTimestamps)
-                        .addAllDataColumns(dataColumns)
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addAllDataColumns(dataColumns))
                         .build();
                 calculationsBuilder.addCalculationDataFrames(dataFrame);
             }

@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.common.bson.calculations;
 
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.DataFrame;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -49,12 +50,12 @@ public class CalculationsDataFrameDocument {
 
         // handle DataTimestamps
         DataTimestampsDocument dataTimestampsDocument =
-                DataTimestampsDocument.fromDataTimestamps(dataFrame.getDataTimestamps());
+                DataTimestampsDocument.fromDataTimestamps(dataFrame.getFrame().getDataTimestamps());
         dataFrameDocument.setDataTimestamps(dataTimestampsDocument);
 
         // handle DataColumns
         List<DataColumnDocument> dataColumnDocuments = new ArrayList<>();
-        for (DataColumn dataColumn : dataFrame.getDataColumnsList()) {
+        for (DataColumn dataColumn : dataFrame.getFrame().getDataColumnsList()) {
             DataColumnDocument dataColumnDocument = DataColumnDocument.fromDataColumn(dataColumn);
             dataColumnDocuments.add(dataColumnDocument);
         }
@@ -70,11 +71,15 @@ public class CalculationsDataFrameDocument {
 
         dataFrameBuilder.setName(getName());
 
-        dataFrameBuilder.setDataTimestamps(this.dataTimestamps.toDataTimestamps());
+        final DataFrame.Builder frameBuilder = DataFrame.newBuilder();
+
+        frameBuilder.setDataTimestamps(this.dataTimestamps.toDataTimestamps());
 
         for (DataColumnDocument dataColumnDocument : this.dataColumns) {
-            dataFrameBuilder.addDataColumns(dataColumnDocument.toDataColumn());
+            frameBuilder.addDataColumns(dataColumnDocument.toDataColumn());
         }
+
+        dataFrameBuilder.setFrame(frameBuilder);
 
         return dataFrameBuilder.build();
     }

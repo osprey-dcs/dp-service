@@ -221,6 +221,8 @@ List<String> normalizedTags = new ArrayList<>(
 - `PvMetadataQueryResult` — `List<PvMetadataDocument>` and `String nextPageToken`
 - `ConfigurationQueryResult` — `List<ConfigurationDocument>` and `String nextPageToken`
 - `ConfigurationActivationQueryResult` — `List<ConfigurationActivationDocument>` and `String nextPageToken`
+- `DataSetQueryResult` — `List<DataSetDocument>` and `String nextPageToken`
+- `AnnotationQueryResult` — `List<AnnotationDocument>` and `String nextPageToken`
 
 ### Reject vs. Error in the Mongo Client (issue #235)
 
@@ -322,14 +324,15 @@ Multiple match types within one criterion are combined with `Filters.or()`.
 
 ### Empty Criteria Is Match-All, and Every Query Is Bounded (issue #245)
 
-An empty criteria list on `queryPvMetadata`, `queryConfigurations`, and
-`queryConfigurationActivations` means **match-all**, not an error. The three `Query*Job` classes
+An empty criteria list on `queryPvMetadata`, `queryConfigurations`, `queryConfigurationActivations`,
+and — since #248 Phase 1 — `queryDataSets` and `queryAnnotations` means **match-all**, not an error.
+The `Query*Job` classes (and the two annotation-query validation switches in `AnnotationServiceImpl`)
 deliberately have no list-level emptiness check; each carries a comment saying so, because the
 absence of a validation block reads like an omission. Per-criterion validation is untouched: a
 criterion that *is* supplied must still be well-formed, so "no filters requested" and "a filter was
 requested but is malformed" stay distinguishable.
 
-`MongoSyncAnnotationClient.DEFAULT_QUERY_LIMIT` (100) is applied by all three when `limit` is unset,
+`MongoSyncAnnotationClient.DEFAULT_QUERY_LIMIT` (100) is applied by all five when `limit` is unset,
 and **the default is unconditional** — it does not depend on whether criteria were supplied. Making
 it conditional would couple page size to an unrelated request field: a client removing its last
 filter would silently switch from "everything" to "first 100 with a token". There is deliberately no
@@ -337,8 +340,21 @@ unbounded path left in `executeQueryPvMetadata`; before #245 an unset limit ther
 match with an **always-blank `nextPageToken`**, so the caller could not detect the unbounded read.
 Reintroducing a `limit > 0 ? ... : 0` branch restores exactly that hazard.
 
-Keep the constant shared across all three call sites. It replaced two hardcoded `100` literals plus
-`queryPvMetadata`'s `0`, so a future change to the default cannot land on two of the three.
+Keep the constant shared across all call sites — it replaced hardcoded literals so a future change to
+the default cannot land on a subset — and keep the skip/probe/token mechanics in the shared
+`applySkipPaging()`/`decodePageTokenSkip()` helpers on `MongoSyncAnnotationClient`, which all five
+queries route through. The helper also guards `limit + 1` against int overflow (proto `uint32` limit
+of `Integer.MAX_VALUE`); a hand-rolled paging block reintroduces both the drift and the overflow.
+Phase 3 of #248 converts these interim Base64 skip tokens to opaque reject-on-malformed in one place.
+
+**queryDataSets/queryAnnotations reject blank criterion entries** (`RESULT_STATUS_REJECT`) rather
+than dropping them — a dropped blank entry turns the criterion into a silent match-all (#243 class),
+and a malformed `IdCriterion` ObjectId would otherwise throw `IllegalArgumentException` inside the
+worker thread, where `QueueHandlerBase` swallows it and the caller's stream hangs with no response.
+Validation in `AnnotationServiceImpl` checks `ObjectId.isValid()` on ids and rejects blank entries in
+every criterion value list; `MongoSyncAnnotationClient` then builds filters without re-filtering,
+via the shared `MongoQueryFilterBuilder` helpers. (The pvMetadata/configuration queries instead rely
+on the #243 client-side guard plus blank-exact-matches-nothing semantics — a known asymmetry.)
 
 **This interacts with the #243 blank-criterion guard, and the interaction is subtle.** Before #245, a
 blank-only criterion was observably a *rejection*: `nonBlank()` dropped the blank entry, the

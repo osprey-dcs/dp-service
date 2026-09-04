@@ -9,8 +9,10 @@
 - **Companion, already landed**: #252 / PR #253 removed `DataValue.ValueStatus` (dp-grpc #143), the
   other half of the same breaking release.
 - **Supersedes**: #210, #211, #214.
-- **Status**: triaged 2026-09-01 against dp-service `7be9a05` and dp-grpc `6dfff3f`. Not yet
-  implemented; Phase 1 is drafted (see [Work already done](#work-already-done)) and blocked on #254.
+- **Status**: triaged 2026-09-01 against dp-service `7be9a05` and dp-grpc `6dfff3f`; re-verified
+  2026-09-02 against the merged protos and `main` at `2ec58a8` — #254 merged as PR #255, so Phase 1
+  is **unblocked**. Not yet implemented; Phase 1 is partially drafted (see
+  [Work already done](#work-already-done)).
 
 ## Overview
 
@@ -96,7 +98,7 @@ The proto wins, per this ticket's own "where this ticket and the merged protos d
 win." The handoff simply predates #245, which settled exactly this question for the other three
 annotation queries and merged as #251 on 2026-09-01.
 
-So the two `return null` blocks — `MongoSyncAnnotationClient:258-262` (datasets) and `:503-507`
+So the two `return null` blocks — `MongoSyncAnnotationClient:258-262` (datasets) and `:502-506`
 (annotations) — are **removed**, not preserved, and the two service-layer emptiness checks
 (`AnnotationServiceImpl:217-220` and the annotations equivalent) are deleted — exactly as #245 deleted the three in `Query*Job`.
 Carry the same explanatory comment those three now have, since an absent validation block reads
@@ -106,41 +108,54 @@ like an omission.
 queries) extends to these two. Per #245's rationale the default is **unconditional** — never applied
 only when criteria are absent, or a client removing its last filter silently changes page size.
 
-### 4. Two live fall-through bugs in the service layer, on `main` today
+### 4. Two fall-through reject paths in the service layer — one live, one dead code
 
 Independent of the proto change, and the same defect the handoff flagged in the dispatcher:
 
-- `AnnotationServiceImpl:126` — `saveDataSet` calls `sendSaveDataSetResponseReject(...)` on a null
-  `dataSet` **without `return`**, then falls through to `handler.handleSaveDataSet(...)`.
-- `AnnotationServiceImpl:217-220` — `queryDataSets` does the same on its empty-criteria check.
+- `AnnotationServiceImpl:127` — `saveDataSet` calls `sendSaveDataSetResponseReject(...)` **without
+  `return`** when `request.getDataSet()` is null. But that guard is dead code: protobuf message
+  getters never return null, so the branch cannot fire — today an unset `dataSet` is caught, with a
+  misleading message, by `validateDataSet`'s blank-name check. This plan's first draft prescribed
+  "add the missing `return`", which would have preserved permanently unreachable code. The block is
+  deleted in Phase 1 regardless — the flat `SaveDataSetRequest` has no `dataSet` field — and what
+  it leaves behind is the live requirement: the rewritten flat-request validation must `return`
+  after every reject. (`AnnotationValidationUtility.validateDataSet:17,23` carries the same
+  misapprehension — null checks on string getters, which also never return null; the `isBlank()`
+  disjuncts are what actually work.)
+- `AnnotationServiceImpl:218` — `queryDataSets` rejects on its empty-criteria check without
+  `return`, then enqueues the job anyway: a genuine live fall-through, producing a second response
+  on a closed observer. It disappears with the empty-criteria removal (§3).
 
-Both send a rejection and then enqueue the job, producing a second response on a closed observer.
-The second disappears with the empty-criteria removal (§3); the first must be fixed deliberately.
-Neither is caught today because no test exercises the path past the first response.
+These are the only two such sites in the file — every other reject in both validation switches has
+its `return`. Neither is caught today because no test exercises the path past the first response.
 
 The dispatcher has three more of the same shape (`QueryAnnotationsDispatcher:68`, `:83`, `:96`);
 those disappear with the denormalization removal in Phase 1.
 
-### 5. Every criterion changed shape — validation switches are rewrites
+### 5. Nearly every criterion changed shape — validation switches are rewrites
 
-All criterion fields went singular → repeated, and three new criterion types were added to each query:
+Most criterion fields went singular → repeated, and three new criterion types were added to each
+query. Two rows below are corrections over this plan's first draft, verified against the merged
+proto: `TextCriterion` did **not** change shape, and the exact/prefix/contains lists belong to the
+new `NameCriterion`, not to `PvNameCriterion` (which is DataSets-only):
 
 | | Old | New |
 |---|---|---|
 | `IdCriterion` | `string id` | `repeated string ids` |
 | `OwnerCriterion` | `string ownerId` | `repeated string ownerIds` |
-| `TextCriterion` | `string text` | `repeated string text` |
-| `PvNameCriterion` | `string name` | exact / prefix / contains lists |
+| `TextCriterion` | `string text` | **unchanged** — still `string text`, both queries |
+| `PvNameCriterion` (DataSets only) | `string name` | `repeated string names` |
 | `DataSetsCriterion` | `string dataSetId` | `repeated string dataSetIds` |
 | `AnnotationsCriterion` | `string annotationId` | `repeated string annotationIds` |
-| `NameCriterion`, `TagsCriterion`, `AttributesCriterion` | — | new on both queries |
+| `NameCriterion` (exact / prefix / contains lists), `TagsCriterion`, `AttributesCriterion` | — | new on both queries |
 
 The `isBlank()`-per-criterion validation in `AnnotationServiceImpl` (~60 lines for datasets, ~90 for
 annotations) is rewritten wholesale. The target shape already exists: the PV-metadata and
 configuration validators handle exactly these repeated types, including the `isBlankKey()` guard
 from #243. Copy those rather than adapting the legacy switches.
 
-**The #243 invariant applies to the new `prefix` / `contains` lists.** A blank string there builds
+**The #243 invariant applies to `NameCriterion`'s `prefix` / `contains` lists** (on both queries;
+`PvNameCriterion` has no prefix/contains). A blank string there builds
 `"^" + Pattern.quote("")`, which matches everything — a silent match-all wearing the appearance of a
 filter. Client-side, `AnnotationClient.nonBlank()` is the single source for this and must guard the
 new dataset/annotation criterion builders too.
@@ -150,12 +165,14 @@ new dataset/annotation criterion builders too.
 **D1 — Phase 1 is "make it compile", and it is allowed to be mechanical.**
 The repo currently has no CI signal at all. Restoring compilation is worth its own PR even though it
 delivers no new capability, because every later phase is unverifiable without it. Phase 1
-deliberately does *not* add RPCs, paging, or typed columns.
+deliberately does *not* add RPCs, opaque page tokens, or typed columns. It does carry mechanical
+skip-based paging for the two rewritten queries — D10 explains why leaving them limit-capped but
+unpageable would be worse.
 
 **D2 — Behavior changes forced by the proto go in Phase 1; optional ones do not.**
 Some changes cannot be deferred: the `Annotation` message has no `dataSets` field, so the embedding
-must go, and with it the N+1 fetch. Others *can* be deferred and are: paging, new RPCs, typed
-columns. The test is "does `main` compile without it," not "is it in the same handoff section."
+must go, and with it the N+1 fetch. Others *can* be deferred and are: opaque page tokens, new
+RPCs, typed columns. The test is "does `main` compile without it," not "is it in the same handoff section."
 
 **D3 — `comment` → `description` renames storage, not just the proto boundary.**
 Decided by the ticket owner on 2026-09-01, choosing the deeper of two options. The BSON field, the
@@ -193,6 +210,64 @@ bounded regardless of how many annotations reference the dataset.
 sweep documents already orphaned in existing deployments is a deployment question, not a code one —
 file separately if any deployment is known to have them.
 
+**D9 — the annotations text index drops `event.description` in Phase 1, inside the no-migration window.**
+`MongoClientBase:275` still includes `BSON_KEY_EVENT_DESCRIPTION` ("event.description") in the
+annotations text index — a field `AnnotationDocument` has never had, left over from the
+`eventMetadata` feature now removed from the protos entirely. The merged proto's `TextCriterion`
+doc names the indexed fields as `name` and `description` for both queries, matching the dataSets
+index; the ticket states the same target. Timing matters: the version-1 migration has never shipped
+in a release (latest is 1.15.0, pre-#254), so changing the replacement index now costs nothing —
+the migration identifies the index it drops by `comment` in `weights`, which this does not touch.
+Once a release ships v1, the same change needs a version-2 drop-and-recreate migration. Sites:
+`MongoClientBase:275` and the `createNewTextIndex()` fixture in
+`V1AnnotationCommentToDescriptionTest` (which documents itself as mirroring `MongoClientBase`);
+`doc/schema-migration.md` nowhere enumerates the replacement index's fields, so it needs no change.
+
+**D10 — skip-based paging ships in Phase 1; Phase 3 converts tokens to opaque.**
+This plan's first draft had Phase 1 apply `DEFAULT_QUERY_LIMIT` while deferring all paging to
+Phase 3. That combination creates a silently-truncated interim: both queries would return the first
+100 records with a blank `nextPageToken` and no way to fetch the rest — an undetectable partial
+result, the same class of wrong answer #245 just eliminated for `queryPvMetadata` (there the hazard
+was an undetectable unbounded read; here it would be an undetectable truncation). Since Phase 1
+rewrites both query methods anyway, it ships the proven mechanical pattern instead, copied from
+`executeQueryConfigurations` (`:910`): limit resolution against `DEFAULT_QUERY_LIMIT`, Base64
+skip-token decode, sort, `.skip()`, the `limit + 1` probe, trim and re-encode `nextPageToken`.
+Phase 3 then converts these two queries' tokens to opaque with reject-on-malformed, which the
+merged proto specifies (`annotation.proto:930-933`, `:1473-1476`); the interim Base64 tokens are a
+documented temporary divergence from that contract, not the end state. D6 is unchanged: the three
+metadata queries keep their skip tokens, follow-on ticket.
+
+### Phase 1 PR (#256) review adjustments
+
+The PR review (Claude + Copilot, 2026-09-04) tightened several Phase 1 behaviors beyond the plan as
+drafted; these are the settled shape, not deviations to re-litigate:
+
+- **Blank criterion entries are rejected server-side** (`RESULT_STATUS_REJECT`), not silently
+  dropped, on both rewritten queries. The draft preserved the interim blank-skip filters in the
+  Mongo client; review found that a blank-only criterion then vanished and turned the query into a
+  silent match-all (#243 class) while a blank singular id was previously *rejected*. Validation in
+  `AnnotationServiceImpl` now rejects blank entries in every criterion value list, including
+  `NameCriterion`'s three lists, and the Mongo client builds filters without re-filtering.
+- **`IdCriterion` ids are validated with `ObjectId.isValid()`**. Unvalidated, a malformed id threw
+  `IllegalArgumentException` from the `ObjectId` constructor inside the worker thread, where
+  `QueueHandlerBase` swallows it and the caller's stream hangs with no response ever sent.
+- **Criterion filters route through `MongoQueryFilterBuilder`** (`nameMatchFilter` / `tagsFilter` /
+  `attributeFilter`) instead of inline copies, per that class's single-implementation contract.
+- **The five skip-paged queries share `applySkipPaging()` / `decodePageTokenSkip()`** on
+  `MongoSyncAnnotationClient`; the helper also guards the `limit + 1` probe against int overflow at
+  `limit = Integer.MAX_VALUE`. Phase 3's opaque-token conversion happens in one place.
+- **`AnnotationClient` exposes paging** for `queryDataSets` / `queryAnnotations` (params `limit` /
+  `pageToken`, results carry `nextPageToken`) — without it the client silently truncated at the
+  server's default page size, the exact hazard D10 ships server paging to prevent.
+- **The query dispatchers contain document-conversion failures**: `toDataSet()` / `toAnnotation()`
+  run inside try/catch and dispatch an error, per the "malformed stored document must produce a
+  reportable error, never an unchecked throw" invariant.
+- **Known Phase 1 window**: `SaveDataSetRequest.tags` / `.attributes` are accepted and silently
+  dropped (`DataSetDocument.fromSaveDataSetRequest` copies neither) while `TagsCriterion` /
+  `AttributesCriterion` filtering ships — so a tag saved in this window can never be matched.
+  Accepted because Phase 2 lands the save half before any release is cut, extending the same
+  no-release reasoning as D9; do not cut a release between Phase 1 and Phase 2.
+
 ## Phases
 
 Each phase is one PR against #248, which stays open until the last lands.
@@ -204,16 +279,18 @@ Fixes all 58+ main-source errors and whatever the test sources add behind them.
 | Area | Work |
 |---|---|
 | `Annotation` hoist | Retarget 5 references from `QueryAnnotationsResponse.AnnotationsResult.Annotation` to top-level `Annotation` |
-| `comment` → `description` | `AnnotationDocument` field/accessors/`fromSaveAnnotationRequest`/`diffSaveAnnotationRequest`; `BsonConstants.BSON_KEY_ANNOTATION_COMMENT` → `…_DESCRIPTION`; text index in `MongoClientBase:256` (D3) |
-| Denormalization removal | `AnnotationDocument.toAnnotation()` loses its `dataSetDocuments` / `calculationsDocument` parameters and returns references only — **forced**, the proto field is gone. Deletes `QueryAnnotationsDispatcher`'s per-annotation `findDataSet` loop and its 3 no-`return` bugs, plus the now-dead `mongoClient` dependency |
+| `comment` → `description` | `AnnotationDocument` field/accessors/`fromSaveAnnotationRequest`/`diffSaveAnnotationRequest` (D3). The `BsonConstants` key and `MongoClientBase` text index halves already landed with #254, which is exactly why this half is mandatory — see [Migration strategy](#migration-strategy-resolved-by-254) |
+| Text index target | Drop `event.description` (`BSON_KEY_EVENT_DESCRIPTION`) from the annotations text index at `MongoClientBase:275` and from `V1AnnotationCommentToDescriptionTest.createNewTextIndex()`, leaving text over `name` + `description` with ascending `ownerId` (D9) |
+| Denormalization removal | `AnnotationDocument.toAnnotation()` loses its `dataSetDocuments` / `calculationsDocument` parameters and returns references only. The `dataSets` removal is **forced** — the proto field is gone. Dropping embedded calculations content is the query-path *contract*: `Annotation.calculations` still exists, but the proto has `queryAnnotations()` leave it empty and only `getAnnotation()` populate it — keep a seam for Phase 2 to set it. Deletes `QueryAnnotationsDispatcher`'s per-annotation `findDataSet` loop and its 3 no-`return` bugs, plus the now-dead `mongoClient` dependency |
 | Flat `SaveDataSetRequest` | `DataSetDocument.fromSaveRequest`/`diffRequest`: `request.getDataSet().getX()` → `request.getX()`; `SaveDataSetJob:55` |
 | `CalculationsDataFrame.frame` | `CalculationsDataFrameDocument` and `AnnotationValidationUtility`: `frame.getX()` → `frame.getFrame().getX()` (§2 — indirection only) |
-| Criterion accessors | Singular → repeated at every site in `AnnotationServiceImpl`, `MongoSyncAnnotationClient`, `MongoAnnotationHandler`, `AnnotationClient`. **Semantics preserved** (D4): a repeated field with one value behaves as the old singular one |
-| Empty criteria | Remove the `return null` at `MongoSyncAnnotationClient:258-262` and `:503-507`, plus the two service-layer checks; apply `DEFAULT_QUERY_LIMIT` unconditionally (§3, D5) |
-| Fall-through bug | Add the missing `return` at `AnnotationServiceImpl:126` (§4) |
+| Criterion accessors | Singular → repeated at every site in `AnnotationServiceImpl`, `MongoSyncAnnotationClient`, `MongoAnnotationHandler`, `AnnotationClient` (§5 — `TextCriterion` alone keeps its old shape). **Semantics preserved** (D4): a repeated field with one value behaves as the old singular one |
+| Empty criteria | Remove the `return null` at `MongoSyncAnnotationClient:258-262` and `:502-506`, plus the two service-layer checks (§3, D5) |
+| Skip-based paging | Convert both queries from unbounded cursors to the paged `List` pattern of `executeQueryConfigurations` (`:910`): limit resolution applying `DEFAULT_QUERY_LIMIT` unconditionally, Base64 skip token, `limit + 1` probe, `nextPageToken` (D10) |
+| Fall-through bug | The old null-`dataSet` guard is dead code, deleted with the flat-request rewrite; every reject in the rewritten `saveDataSet` validation gets a `return` (§4) |
 | Tests | Update `AnnotationTestBase` (2467 lines), `GrpcIntegrationAnnotationServiceWrapper` (1745), `QueryAnnotationsIT`, `AnnotationCalculationsIT`, and the client ITs for the renamed field and repeated criteria |
 
-**Exit criterion**: `mvn clean verify` green, CI green, no new RPCs, no paging, no typed columns.
+**Exit criterion**: `mvn clean verify` green, CI green, no new RPCs, no opaque tokens, no typed columns.
 
 ### Phase 2 — entity and audit fields, new CRUD methods
 
@@ -221,11 +298,33 @@ Fixes all 58+ main-source errors and whatever the test sources add behind them.
 `getAnnotation`, `getCalculations`, `deleteDataSet` (D7), `deleteAnnotation`, and the two `patch*`
 deferred stubs. `GetConfigurationJob` / `GetConfigurationDispatcher` are the template.
 
+Two prerequisites in the Mongo client, both consequences of the #235 reject-vs-error invariant — a
+get/delete must report not-found as `REJECT` and a query failure as `ERROR`, and the current
+helpers cannot make the distinction:
+
+- The throwing lookup variants `lookupDataSet` / `lookupAnnotation` exist but are **private**;
+  promote them or add interface-level equivalents. `findCalculations`
+  (`MongoSyncAnnotationClient:561`) has no throwing variant at all — it catches bare `Exception`,
+  logs without the exception object (pre-#191 style), and returns null for "absent", "query
+  failed", and "malformed id" alike — so `getCalculations` needs a `lookupCalculations` that
+  throws `DpException`.
+- Decide how a malformed ObjectId classifies for the new get/delete methods: `new ObjectId(id)`
+  throws `IllegalArgumentException`, which `saveDataSet` deliberately routes to **error**
+  (`MongoSyncAnnotationClient:125-130`); for a get/delete keyed on that id, a malformed id is a
+  client mistake and arguably a **reject**. Pick one and document it — do not let the outcome fall
+  out of whichever catch block happens to be nearest.
+
+`getAnnotation` populates `Annotation.calculations` inline — the proto assigns that to
+`getAnnotation()` only (see Phase 1's denormalization row) — so it re-adds the calculations fetch
+`queryAnnotations` lost, this time bounded to a single annotation.
+
 ### Phase 3 — paging, ordering, and criteria semantics
 
-Opaque tokens for the two queries (D6), documented ordering with the activation tiebreaker, and the
-all-AND criteria change (D4) with repeated `IdCriterion` compiling to `$in`. The AND change needs
-its own release-note line: it silently changes results for multi-criterion queries valid today.
+Converts the two queries' Base64 skip tokens (shipped in Phase 1, D10) to opaque tokens with
+reject-on-malformed per the proto contract (D6), adds the documented ordering with the activation
+tiebreaker, and makes the all-AND criteria change (D4) with repeated `IdCriterion` compiling to
+`$in`. The AND change needs its own release-note line: it silently changes results for
+multi-criterion queries valid today.
 
 ### Phase 4 — typed calculation columns and export
 
@@ -244,16 +343,21 @@ delivered by the migration mechanism in
 [Migration strategy](#migration-strategy-resolved-by-254) below.
 
 Its version-1 migration performs both halves: a `$rename` of `comment` → `description` on the
-`annotations` collection, and a drop of the old compound text index. The drop is by key-spec match
-rather than by name, since the literal
-`name_text_comment_text_event.description_text_ownerId_1` is Mongo's default derivation from the
-key spec and may differ if the index was ever created explicitly.
+`annotations` collection, and a drop of the old compound text index. The drop identifies the index
+by the presence of `comment` in its `weights` document — not by name (the default-derived
+`name_text_comment_text_event.description_text_ownerId_1` may differ if the index was ever created
+explicitly), and not by key spec, which cannot work: MongoDB stores every text index with the same
+key document and moves the indexed text fields into `weights`, so the old and new indexes' keys are
+identical.
 
 **The drop is not optional, and it is not merely a performance matter.** Mongo permits only one text
 index per collection, so on an existing deployment `createMongoIndexesAnnotations()` cannot create
 the new index while the old one exists — it fails. #254 therefore orders the migration runner before
 all `createMongoIndexes*()` calls in `MongoClientBase.init()`. The earlier draft of this note, which
 treated the stale index as write overhead the service tolerates, was wrong on this point.
+
+The replacement index the service then builds is text over `name` + `description` with ascending
+`ownerId` — `event.description` is dropped per D9.
 
 Verify the end state with `db.annotations.getIndexes().map(i => i.name)`, and the applied schema
 version with `db.serviceMetadata.findOne({_id: "schemaVersion"})`.
@@ -279,16 +383,36 @@ The outcome, for Phase 1's purposes:
   that, which also fixes a pre-existing bug in which a failed Mongo init leaves a service serving
   requests against an uninitialized handler.
 
-**Sequencing consequence for this ticket:** Phase 1 no longer merges on a runbook, so it waits on
-#254. Since Phase 1 is what restores compilation, `main` stays red for the duration and #254 is
-developed against a non-compiling tree — see #254's plan for how that is handled.
+**#254 merged 2026-09-02 (PR #255), which discharges the blocker — and tightened the coupling in a
+way this plan's first draft did not anticipate.** #254 shipped three of the rename's four halves:
+the version-1 migration, the `BsonConstants` key, and the `MongoClientBase` text index all say
+`description`. The fourth half — the `AnnotationDocument` POJO field — belongs to this ticket and
+still reads and writes `comment`: there are no `@BsonProperty` annotations anywhere in the
+codebase, so the POJO codec derives the BSON field name from the Java property name. If that
+combination ever ran, every post-migration save would land in `comment` while the text index and
+every `TextCriterion` search consult `description` — silently empty text-search results,
+intermittently "healed" by the idempotent `$rename` on the next restart. It cannot run today only
+because `main` does not compile. Two consequences:
+
+- Phase 1's D3 rename is **required to make the already-merged migration correct**, not
+  modernization. The stash's `AnnotationDocument` rename (see
+  [Work already done](#work-already-done)) is the missing half.
+- **No release may be cut between #254 and Phase 1.** The latest release is 1.15.0, pre-#254, so
+  nothing inconsistent has shipped — and this same fact is what holds D9's no-new-migration window
+  open.
 
 ## Work already done
 
-Phase 1 is partially drafted, on branch `issue-248-phase-a-restore-compilation`
-(stashed, not committed) — the client retargeting, the D3 storage rename, and the
-`toAnnotation()` / dispatcher rewrite including the N+1 removal. It compiles as far as the
-`DataSetDocument` cluster. Resume there rather than restarting.
+Phase 1 is partially drafted, in `stash@{0}` (created on the now-superseded
+`issue-248-phase-a-restore-compilation` branch; work continues on
+`issue-248-phase-1-restore-compilation`, based on post-#254 `main`) — the client retargeting, the
+D3 storage rename, and the `toAnnotation()` / dispatcher rewrite including the N+1 removal. Resume
+there rather than restarting — but sized honestly: the stash covers five files and none of the four
+largest error clusters (`DataSetDocument`, `AnnotationServiceImpl`, `MongoSyncAnnotationClient`,
+`AnnotationValidationUtility`), and its base (`7be9a05`) predates #254. It touches none of #254's
+files, so it applies cleanly onto a branch off current `main`; its `AnnotationDocument` rename is
+the half that closes the migration inconsistency described in
+[Migration strategy](#migration-strategy-resolved-by-254).
 
 ## Out of scope
 
@@ -308,8 +432,8 @@ query methods Phase 1 also touches, so it should follow Phase 1 rather than run 
 
 dp-grpc is already merged (`6dfff3f`); there is no upstream dependency remaining.
 
-**Phase 1 is blocked by [#254](https://github.com/osprey-dcs/dp-service/issues/254)**, which owns the
-migration mechanism its D3 storage rename requires — see
-[Migration strategy](#migration-strategy-resolved-by-254). #254's version-1 migration is written
-against the pre-rename schema, so it does not depend on Phase 1's code; the dependency runs one way
-only. The practical effect is that `main` stays red until both land.
+**The #254 blocker is discharged** — it merged 2026-09-02 as PR #255 and Phase 1 consumes its
+version-1 migration. What replaces it is a constraint, not a dependency: **no release between #254
+and Phase 1**, because the merged migration renames a stored field that the POJO on `main` still
+writes under its old name — see
+[Migration strategy](#migration-strategy-resolved-by-254). `main` stays red until Phase 1 lands.

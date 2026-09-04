@@ -2,6 +2,9 @@ package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
+import com.ospreydcs.dp.grpc.v1.annotation.Annotation;
+import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
+import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryAnnotationsResponse;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
@@ -11,10 +14,14 @@ import org.junit.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
@@ -32,22 +39,20 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
     @Test
     public void testQueryAnnotationsNegative() {
 
-        // queryAnnotations() negative test: empty annotationId in query by IdCriterion
+        // queryAnnotations() negative test: IdCriterion with an empty ids list.  Built as a raw
+        // request: the params builder emits one entry per supplied value, so it cannot produce an
+        // empty criterion.
         {
-            final String blankAnnotationId = "";
-            final AnnotationTestBase.QueryAnnotationsParams queryParams =
-                    new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setIdCriterion(blankAnnotationId);
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setIdCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "QueryAnnotationsRequest.criteria.IdCriterion id must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    new ArrayList<>());
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.IdCriterion must specify at least one id");
         }
 
         // queryAnnotations() negative test: empty comment text in query by OwnerCriterion and TextCriterion
@@ -70,24 +75,19 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                     new ArrayList<>());
         }
 
-        // queryAnnotations() negative test: empty datasetId in query by OwnerCriterion and DataSetCriterion.
+        // queryAnnotations() negative test: DataSetsCriterion with an empty dataSetIds list, built
+        // as a raw request for the same reason as above.
         {
-            final String ownerId = "craigmcc";
-            final String blankDatasetId = "";
-            final AnnotationTestBase.QueryAnnotationsParams queryParams =
-                    new AnnotationTestBase.QueryAnnotationsParams();
-            queryParams.setOwnerCriterion(ownerId);
-            queryParams.setDatasetsCriterion(blankDatasetId);
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setDataSetsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()))
+                    .build();
 
-            final boolean expectReject = true;
-            final String expectedRejectMessage =
-                    "QueryAnnotationsRequest.criteria.DataSetCriterion dataSetId must be specified";
-
-            annotationServiceWrapper.sendAndVerifyQueryAnnotations(
-                    queryParams,
-                    expectReject,
-                    expectedRejectMessage,
-                    new ArrayList<>());
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.DataSetsCriterion must specify at least one dataSetId");
         }
 
     }
@@ -152,7 +152,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
         }
 
         // queryAnnotations() positive test for query by OwnerCriterion and TextCriterion (over comment field).
-        List<QueryAnnotationsResponse.AnnotationsResult.Annotation> annotationsQueryResult = null;
+        List<Annotation> annotationsQueryResult = null;
         {
             /*
              * This test scenario utilizes the annotations created above, which include 10 annotations for each of two
@@ -188,9 +188,13 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                  * pvNames and that each bucket has the expected begin time.
                  */
 
-                for (QueryAnnotationsResponse.AnnotationsResult.Annotation resultAnnotation : annotationsQueryResult) {
+                for (Annotation resultAnnotation : annotationsQueryResult) {
 
-                    for (DataSet resultDataSet : resultAnnotation.getDataSetsList()) {
+                    // the annotation carries dataset references (dp-grpc #132); fetch each
+                    // referenced dataset's content from the database to drive the data query
+                    for (String resultDataSetId : resultAnnotation.getDataSetIdsList()) {
+
+                        final DataSet resultDataSet = mongoClient.findDataSet(resultDataSetId).toDataSet();
 
                         for (DataBlock queryResultBlock : resultDataSet.getDataBlocksList()) {
 
@@ -314,7 +318,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
             final boolean expectReject = false;
             final String expectedRejectMessage ="";
 
-            List<QueryAnnotationsResponse.AnnotationsResult.Annotation> matchingAnnotations =
+            List<Annotation> matchingAnnotations =
                     annotationServiceWrapper.sendAndVerifyQueryAnnotations(
                             queryParams,
                             expectReject,
@@ -322,7 +326,7 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                             List.of(createAnnotationScenarioResult.annotationWithAllFieldsParams()));
 
             // positive test for updating an annotation received in the query result
-            final QueryAnnotationsResponse.AnnotationsResult.Annotation annotation = matchingAnnotations.get(0);
+            final Annotation annotation = matchingAnnotations.get(0);
             final AnnotationTestBase.SaveAnnotationRequestParams createParams =
                     createAnnotationScenarioResult.annotationWithAllFieldsParams();
             final AnnotationTestBase.SaveAnnotationRequestParams updateParams =
@@ -341,5 +345,196 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                     updateParams, true, false, "");
         }
 
+    }
+
+    /**
+     * Blank or malformed criterion entries are rejected rather than silently dropped: a blank entry
+     * that vanishes from a filter would turn the criterion into a match-all (#243), and a malformed
+     * ObjectId would otherwise throw in the worker thread with no response ever sent.  All built as
+     * raw requests: the params builder cannot produce blank entries.
+     */
+    @Test
+    public void testQueryAnnotationsRejectBlankCriterionEntries() {
+
+        // IdCriterion: entry that is not a parseable ObjectId (a blank entry fails the same check)
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setIdCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.IdCriterion.newBuilder()
+                                            .addIds("not-an-objectid")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.IdCriterion ids must be valid ObjectId hex strings");
+        }
+
+        // OwnerCriterion: blank entry
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setOwnerCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.OwnerCriterion.newBuilder()
+                                            .addOwnerIds("")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.OwnerCriterion ownerIds must not contain blank entries");
+        }
+
+        // DataSetsCriterion: blank entry
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setDataSetsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.DataSetsCriterion.newBuilder()
+                                            .addDataSetIds("")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.DataSetsCriterion dataSetIds must not contain blank entries");
+        }
+
+        // AnnotationsCriterion: blank entry
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAnnotationsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AnnotationsCriterion.newBuilder()
+                                            .addAnnotationIds(" ")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.AnnotationsCriterion annotationIds must not contain blank entries");
+        }
+
+        // NameCriterion: blank contains entry (would build a match-everything regex)
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setNameCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.NameCriterion.newBuilder()
+                                            .addContains("")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.NameCriterion entries must not be blank");
+        }
+
+        // TagsCriterion: blank entry
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.TagsCriterion values must not contain blank entries");
+        }
+
+        // AttributesCriterion: blank value entry (an empty values list is a key-existence search
+        // and stays legal)
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAttributesCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
+                                            .setKey("sector")
+                                            .addValues("")))
+                    .build();
+            annotationServiceWrapper.sendQueryAnnotations(
+                    request,
+                    true,
+                    "QueryAnnotationsRequest.criteria.AttributesCriterion values must not contain blank entries");
+        }
+    }
+
+    /**
+     * An empty criteria list is match-all, not a rejection -- the #245 contract extended to
+     * queryAnnotations by #248 Phase 1.
+     */
+    @Test
+    public void testQueryAnnotationsEmptyCriteriaMatchesAll() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult dataSetScenario = createDataSetScenario(startSeconds);
+
+        // save 3 annotations against the scenario's first dataset
+        for (final String name : List.of("match all A", "match all B", "match all C")) {
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            "craigmcc", name, List.of(dataSetScenario.firstHalfDataSetId())),
+                    false, false, "");
+        }
+
+        final List<Annotation> resultAnnotations = annotationServiceWrapper.sendQueryAnnotations(
+                QueryAnnotationsRequest.newBuilder().build(), false, null);
+        assertEquals(3, resultAnnotations.size());
+    }
+
+    /**
+     * Skip-token paging: limit-sized pages, a non-blank nextPageToken while more pages exist, a
+     * blank one on the last page, and no document repeated or dropped across pages.
+     */
+    @Test
+    public void testQueryAnnotationsPagination() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult dataSetScenario = createDataSetScenario(startSeconds);
+
+        for (final String name : List.of("page annotation A", "page annotation B", "page annotation C")) {
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            "craigmcc", name, List.of(dataSetScenario.firstHalfDataSetId())),
+                    false, false, "");
+        }
+
+        final Set<String> seenIds = new HashSet<>();
+
+        // page 1: limit=2, expect 2 results and a non-blank nextPageToken
+        final AnnotationTestBase.QueryAnnotationsResponseObserver page1Observer =
+                new AnnotationTestBase.QueryAnnotationsResponseObserver();
+        final QueryAnnotationsRequest page1Request = QueryAnnotationsRequest.newBuilder()
+                .setLimit(2)
+                .build();
+        new Thread(() -> DpAnnotationServiceGrpc
+                .newStub(annotationServiceWrapper.getChannel())
+                .queryAnnotations(page1Request, page1Observer)).start();
+        page1Observer.await();
+        assertFalse(page1Observer.getErrorMessage(), page1Observer.isError());
+        assertEquals(2, page1Observer.getAnnotationsList().size());
+        page1Observer.getAnnotationsList().forEach(annotation -> seenIds.add(annotation.getId()));
+        final String nextPageToken = page1Observer.getNextPageToken();
+        assertNotNull(nextPageToken);
+        assertFalse(nextPageToken.isBlank());
+
+        // page 2: use nextPageToken, expect 1 result and a blank nextPageToken (last page)
+        final AnnotationTestBase.QueryAnnotationsResponseObserver page2Observer =
+                new AnnotationTestBase.QueryAnnotationsResponseObserver();
+        final QueryAnnotationsRequest page2Request = QueryAnnotationsRequest.newBuilder()
+                .setLimit(2)
+                .setPageToken(nextPageToken)
+                .build();
+        new Thread(() -> DpAnnotationServiceGrpc
+                .newStub(annotationServiceWrapper.getChannel())
+                .queryAnnotations(page2Request, page2Observer)).start();
+        page2Observer.await();
+        assertFalse(page2Observer.getErrorMessage(), page2Observer.isError());
+        assertEquals(1, page2Observer.getAnnotationsList().size());
+        page2Observer.getAnnotationsList().forEach(annotation -> seenIds.add(annotation.getId()));
+        assertTrue("expected blank nextPageToken on last page", page2Observer.getNextPageToken().isBlank());
+
+        // the two pages together cover all three annotations with no repeats
+        assertEquals(3, seenIds.size());
     }
 }

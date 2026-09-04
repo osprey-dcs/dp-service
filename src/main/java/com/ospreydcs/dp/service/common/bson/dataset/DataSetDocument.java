@@ -61,15 +61,15 @@ public class DataSetDocument extends DpBsonDocumentBase {
         DataSetDocument document = new DataSetDocument();
 
         final List<DataBlockDocument> dataBlocks = new ArrayList<>();
-        for (DataBlock dataBlock : request.getDataSet().getDataBlocksList()) {
+        for (DataBlock dataBlock : request.getDataBlocksList()) {
             DataBlockDocument documentBlock = DataBlockDocument.fromDataBlock(dataBlock);
             dataBlocks.add(documentBlock);
         }
         document.setDataBlocks(dataBlocks);
 
-        document.setName(request.getDataSet().getName());
-        document.setOwnerId(request.getDataSet().getOwnerId());
-        document.setDescription(request.getDataSet().getDescription());
+        document.setName(request.getName());
+        document.setOwnerId(request.getOwnerId());
+        document.setDescription(request.getDescription());
 
         return document;
     }
@@ -97,28 +97,28 @@ public class DataSetDocument extends DpBsonDocumentBase {
         final List<String> diffs = new ArrayList<>();
         
         // diff name
-        if (! Objects.equals(request.getDataSet().getName(), this.getName())) {
+        if (! Objects.equals(request.getName(), this.getName())) {
             final String msg =
-                    "name: " + request.getDataSet().getName() + " mismatch: " + this.getName();
+                    "name: " + request.getName() + " mismatch: " + this.getName();
             diffs.add(msg);
         }
 
         // diff description
-        if (! Objects.equals(request.getDataSet().getDescription(), this.getDescription())) {
+        if (! Objects.equals(request.getDescription(), this.getDescription())) {
             final String msg =
-                    "description: " + request.getDataSet().getDescription() + " mismatch: " + this.getDescription();
+                    "description: " + request.getDescription() + " mismatch: " + this.getDescription();
             diffs.add(msg);
         }
 
         // diff DataSet
-        if (request.getDataSet().getDataBlocksList().size() != getDataBlocks().size()) {
+        if (request.getDataBlocksList().size() != getDataBlocks().size()) {
             final String msg = "DataSet DataBlocks list size mismatch: " + getDataBlocks().size()
-                    + " expected: " + request.getDataSet().getDataBlocksList().size();
+                    + " expected: " + request.getDataBlocksList().size();
             diffs.add(msg);
         }
-        for (int blockIndex = 0 ; blockIndex < request.getDataSet().getDataBlocksList().size() ; ++blockIndex) {
+        for (int blockIndex = 0 ; blockIndex < request.getDataBlocksList().size() ; ++blockIndex) {
             final com.ospreydcs.dp.grpc.v1.annotation.DataBlock requestDataBlock =
-                    request.getDataSet().getDataBlocksList().get(blockIndex);
+                    request.getDataBlocksList().get(blockIndex);
             final DataBlockDocument dataBlockDocument = this.getDataBlocks().get(blockIndex);
             diffs.addAll(dataBlockDocument.diffDataBlock(requestDataBlock));
         }
