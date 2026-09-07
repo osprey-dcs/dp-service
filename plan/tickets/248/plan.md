@@ -13,7 +13,8 @@
   2026-09-02 against the merged protos and `main` at `2ec58a8` — #254 merged as PR #255, so Phase 1
   is **unblocked**. Phase 1 merged 2026-09-04 as PR #256. Phase 2 planned 2026-09-04 against `main`
   at `04e8902` (see [Phase 2 planning](#phase-2-planning-2026-09-04)) and implemented on
-  `issue-248-phase-2-entity-audit-crud`.
+  `issue-248-phase-2-entity-audit-crud`; merged 2026-09-06 as PR #261. Phase 3 planned 2026-09-07
+  against `main` at `d5c5928` (see [Phase 3 planning](#phase-3-planning-2026-09-07)).
 
 ## Overview
 
@@ -421,6 +422,93 @@ reject-on-malformed per the proto contract (D6), adds the documented ordering wi
 tiebreaker, and makes the all-AND criteria change (D4) with repeated `IdCriterion` compiling to
 `$in`. The AND change needs its own release-note line: it silently changes results for
 multi-criterion queries valid today.
+
+#### Phase 3 planning (2026-09-07)
+
+Triage of the Phase 3 scope against `main` @ `d5c5928` surfaced five findings:
+
+1. **The two queries' ordering is already done.** Phase 1's paging shipped `sort(ascending(_id))`
+   for both (`MongoSyncAnnotationClient:365`, `:714`), and the handoff's D8 table marks them
+   "none — already correct". The "activation tiebreaker" in this phase's summary belongs to
+   `queryConfigurationActivations`: it sorts on `startTime` alone (`:1497`), which is not unique,
+   so ties can drop or duplicate rows across skip-page boundaries. The merged proto already
+   documents the fix as contract: `startTime` asc, then `configurationName` asc, then id asc.
+2. **Repeated `IdCriterion` → `$in` is already done.** Both criterion switches compile an
+   `IdCriterion` to `Filters.in` on `_id` (Phase 1); under all-AND, multiple `IdCriterion`
+   entries intersect, matching the proto. No code change — test coverage only.
+3. **Two `$text` clauses cannot be ANDed** — verified against a throwaway MongoDB 8.0 container:
+   `$and: [{$text: A}, {$text: B}]` fails server-side with "Too many text expressions". Under
+   all-AND, a request with two `TextCriterion` entries would surface that as
+   `RESULT_STATUS_ERROR` — a client mistake misclassified as a retryable service failure (the
+   #235 inversion). It must be a validation REJECT (D21).
+4. **`$text` under `$or` requires every other clause indexed** (same container check: planner
+   error "Failed to produce a solution for TEXT under OR"). Today's queryDataSets OR bucket
+   (`text OR pvName`) survives only because `dataBlocks.pvNames` happens to be indexed — the
+   all-AND collapse removes that fragility class entirely. Keyset resume (`$text` AND `_id > x`,
+   sort `_id` asc) composes fine — verified in the same session.
+5. **Only one implementation site.** `MongoAnnotationClientInterface` has a single implementor
+   (`MongoSyncAnnotationClient`; the async annotation client no longer exists), so the
+   signature change for passing a decoded resume position is contained. The `AnnotationClient`
+   wrappers treat tokens as opaque pass-through already — no client change.
+
+Design decisions, continuing the numbering:
+
+- **D18 — keyset tokens by `_id`, not an opaque envelope around a skip offset.** The token
+  encodes the last-returned id; resume filters `_id > lastId`. This is the token type the
+  handoff's D7 names (`SampleStatusPageToken` precedent), it is stable while documents are
+  inserted or deleted mid-pagination (a skip offset drifts — the proto's "makes paging stable"
+  language), and resume is O(1) instead of O(skip). The rejected alternative — wrapping the skip
+  offset in a validatable envelope — satisfies reject-on-malformed but keeps both drift and the
+  linear scan. The three metadata queries keep their skip tokens (D6, unchanged).
+- **D19 — the token carries a query discriminator, and a wrong-query token is rejected.** The two
+  tokens are otherwise structurally identical (one ObjectId hex), so a queryDataSets token pasted
+  into queryAnnotations would decode cleanly and silently skip an arbitrary prefix of results —
+  the silent-wrong-answer class this repo treats as the serious one. `SampleStatusPageToken`
+  carries no discriminator only because a single method family consumes it.
+- **D20 — token decode and rejection live in the job**, following `QuerySampleStatusesJob`
+  verbatim: blank token → first page; undecodable or wrong-query token →
+  `dispatcher.handleValidationError` (both query dispatchers gain `handleValidationError`); the
+  decoded position passes to the client as an `ObjectId resumeAfterId` parameter. Criterion
+  validation stays in `AnnotationServiceImpl` (Phase 1 shape) — the split matches sample status,
+  where the request validator never sees the token either.
+- **D21 — at most one `TextCriterion` per request; a second is a validation REJECT** in
+  `AnnotationServiceImpl`, for both queries (triage finding 3). Nothing that works today is
+  narrowed: two text criteria already fail on both queries (AND bucket for annotations, TEXT
+  under OR for datasets) — they fail as errors; this makes the outcome honest.
+- **D22 — the bucket collapse produces one filter list**: empty list → match-all (the #245
+  contract, untouched), otherwise `Filters.and(list)`, with the keyset resume filter ANDed in
+  after. The `Filters.exists(_id)` placeholder-and-`or()` scaffolding goes away in both methods.
+- **D23 — the activation tiebreaker is added to `executeQueryConfigurationActivations` only.**
+  The internal `getActiveConfigurations` also sorts bare `startTime`, but it is unpaged and
+  carries no ordering contract; touching it would widen the diff for no behavioral need.
+- **D24 — the AND change is its own commit, whose diff is exactly the collapse plus its tests.**
+  D4 demanded the change be reviewable in isolation; within a one-PR phase, commit granularity is
+  what delivers that. The release-note line lands in a new `doc/release-notes/rel-1.16.0.md`
+  draft (none exists yet for 1.16.0; the file starts with the #248 behavior changes).
+
+Implementation tasks:
+
+- `annotation/handler/model/AnnotationQueryPageToken.java` (new) — record `(String query, String
+  lastId)` with `encode()`/`decode(token, expectedQuery)` per `SampleStatusPageToken`; decode
+  returns null unless parseable, `lastId` is valid ObjectId hex, and the discriminator matches.
+  Discriminator constants for the two queries live on the record. Unit test beside
+  `SampleStatusPageToken`'s.
+- `MongoAnnotationClientInterface` / `MongoSyncAnnotationClient` — add `ObjectId resumeAfterId`
+  to both query signatures; new `applyKeysetPaging()` helper beside `applySkipPaging()` (same
+  `limit + 1` probe and trim, token from the last returned document's id); collapse the criterion
+  buckets (D22); tiebreaker sort in `executeQueryConfigurationActivations` (D23); update the
+  helper javadocs that describe Phase 3 as future work.
+- `QueryDataSetsJob` / `QueryAnnotationsJob` — decode/reject per D20; `QueryDataSetsDispatcher` /
+  `QueryAnnotationsDispatcher` gain `handleValidationError`.
+- `AnnotationServiceImpl` — multiple-`TextCriterion` reject in both validation switches (D21).
+- Tests — `QueryDataSetsIT` / `QueryAnnotationsIT`: malformed-token reject, wrong-query-token
+  reject, two-`TagsCriterion` intersection, cross-type AND (datasets: text+pvName; annotations:
+  tags+attributes), two-`TextCriterion` reject; existing pagination tests are token-agnostic and
+  must pass unchanged. `ConfigurationIT`: activations sharing a `startTime` return in
+  documented order and page stably across the tie.
+- Docs — CLAUDE.md pagination/#245 sections (the two queries no longer use skip tokens; the
+  "Phase 3 converts" sentences become past tense); `doc/release-notes/rel-1.16.0.md` draft with
+  the AND-semantics line (D24).
 
 ### Phase 4 — typed calculation columns and export
 
