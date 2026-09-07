@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.annotation.GetCalculationsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.GetCalculationsResponse;
+import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.GetCalculationsDispatcher;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
@@ -37,20 +38,11 @@ public class GetCalculationsJob extends HandlerJob {
     public void execute() {
         logger.debug("executing GetCalculationsJob id: {}", responseObserver.hashCode());
 
-        if (request.getCalculationsId().isBlank()) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true, "GetCalculationsRequest.calculationsId must be specified"));
-            return;
-        }
-
-        // A malformed id is a client mistake, rejected here (#248 plan D11). Unvalidated, it would
-        // throw IllegalArgumentException from the ObjectId constructor inside the worker thread,
-        // where QueueHandlerBase swallows it and the caller's stream hangs with no response.
-        if (!ObjectId.isValid(request.getCalculationsId())) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true,
-                            "GetCalculationsRequest.calculationsId is not a valid id: "
-                                    + request.getCalculationsId()));
+        // blank/malformed id handling is shared: see validateRequiredObjectId (#248 plan D11)
+        final ResultStatus idStatus = AnnotationValidationUtility.validateRequiredObjectId(
+                "GetCalculationsRequest.calculationsId", request.getCalculationsId());
+        if (idStatus.isError) {
+            dispatcher.handleValidationError(idStatus);
             return;
         }
 

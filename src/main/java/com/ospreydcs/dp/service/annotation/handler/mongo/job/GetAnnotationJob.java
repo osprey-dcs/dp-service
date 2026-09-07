@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.annotation.GetAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.GetAnnotationResponse;
+import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.GetAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -38,19 +39,11 @@ public class GetAnnotationJob extends HandlerJob {
     public void execute() {
         logger.debug("executing GetAnnotationJob id: {}", responseObserver.hashCode());
 
-        if (request.getAnnotationId().isBlank()) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true, "GetAnnotationRequest.annotationId must be specified"));
-            return;
-        }
-
-        // A malformed id is a client mistake, rejected here (#248 plan D11). Unvalidated, it would
-        // throw IllegalArgumentException from the ObjectId constructor inside the worker thread,
-        // where QueueHandlerBase swallows it and the caller's stream hangs with no response.
-        if (!ObjectId.isValid(request.getAnnotationId())) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true,
-                            "GetAnnotationRequest.annotationId is not a valid id: " + request.getAnnotationId()));
+        // blank/malformed id handling is shared: see validateRequiredObjectId (#248 plan D11)
+        final ResultStatus idStatus = AnnotationValidationUtility.validateRequiredObjectId(
+                "GetAnnotationRequest.annotationId", request.getAnnotationId());
+        if (idStatus.isError) {
+            dispatcher.handleValidationError(idStatus);
             return;
         }
 

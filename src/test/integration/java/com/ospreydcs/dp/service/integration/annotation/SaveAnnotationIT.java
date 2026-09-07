@@ -140,6 +140,33 @@ public class SaveAnnotationIT extends AnnotationIntegrationTestIntermediate {
                     params, false, expectReject, expectedRejectMessage);
         }
 
+        {
+            // saveAnnotation() negative test - request includes a well-formed associated annotation
+            // id that matches no record (the annotationIds analog of the missing-dataSetId case)
+
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+            final String missingAnnotationId = new ObjectId().toHexString();
+            final List<String> annotationIds = List.of(missingAnnotationId);
+
+            AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            annotationIds,
+                            null,
+                            null,
+                            null,
+                            null);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage = "no AnnotationDocument found with id: " + missingAnnotationId;
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                    params, false, expectReject, expectedRejectMessage);
+        }
+
     }
 
     @Test

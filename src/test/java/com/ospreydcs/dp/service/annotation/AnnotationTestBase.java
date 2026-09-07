@@ -711,7 +711,9 @@ public class AnnotationTestBase {
         }
 
         requestBuilder.setName(params.dataSet.name);
-        requestBuilder.setDescription(params.dataSet.description);
+        if (params.dataSet.description != null) {
+            requestBuilder.setDescription(params.dataSet.description);
+        }
         requestBuilder.setOwnerId(params.dataSet.ownerId);
 
         // optional cataloging and audit fields, new in dp-grpc 1.16.0
@@ -1934,14 +1936,24 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         public void await() {
             try { finishLatch.await(1, TimeUnit.MINUTES); }
             catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         @Override public void onNext(PatchDataSetResponse response) {
-            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+                resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+            }
             finishLatch.countDown();
         }
         @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }
@@ -1952,14 +1964,24 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         public void await() {
             try { finishLatch.await(1, TimeUnit.MINUTES); }
             catch (InterruptedException e) { isError.set(true); errorMessageList.add("await interrupted"); }
         }
         public boolean isError() { return isError.get(); }
         public String getErrorMessage() { return errorMessageList.isEmpty() ? "" : errorMessageList.get(0); }
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
         @Override public void onNext(PatchAnnotationResponse response) {
-            if (response.hasExceptionalResult()) { isError.set(true); errorMessageList.add(response.getExceptionalResult().getMessage()); }
+            if (response.hasExceptionalResult()) {
+                isError.set(true);
+                errorMessageList.add(response.getExceptionalResult().getMessage());
+                resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
+            }
             finishLatch.countDown();
         }
         @Override public void onError(Throwable t) { isError.set(true); errorMessageList.add("onError: " + Status.fromThrowable(t)); finishLatch.countDown(); }

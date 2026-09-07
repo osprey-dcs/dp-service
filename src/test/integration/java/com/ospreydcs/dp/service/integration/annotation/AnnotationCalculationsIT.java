@@ -896,7 +896,7 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
                                 0,
                                 validationMap,
                                 true,
-                                "CalculationsDocument with id abcde12345 not found");
+                                "ExportDataRequest.calculationsSpec.calculationsId is not a valid id: abcde12345");
             }
 
             // negative export test: empty column name list in CalculationsSpec column map for

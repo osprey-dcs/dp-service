@@ -14,6 +14,7 @@ import org.bson.Document;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.TreeSet;
 
 /**
@@ -30,6 +31,12 @@ import java.util.TreeSet;
  * <p><b>Idempotency.</b> Normalization is a fixpoint: applying it to an already-normalized list
  * yields the same list, and the update is only issued for documents whose stored list differs from
  * its normalized form, so a re-run matches nothing and writes nothing.
+ *
+ * <p>Lowercasing deliberately duplicates {@code DpBsonDocumentBase.normalizedTags()} rather than
+ * calling it — a migration's behavior must stay frozen while the live classes evolve — but must
+ * agree with it byte-for-byte, including the {@link Locale#ROOT} lowercasing: a default-locale
+ * fold would bake locale-variant bytes into stored data that the save path (and any client's
+ * normalized query value) could then never match.
  */
 public class V2NormalizeAnnotationTags implements Migration {
 
@@ -56,19 +63,34 @@ public class V2NormalizeAnnotationTags implements Migration {
         long normalizedCount = 0;
         try {
             for (Document document : annotations.find(Filters.exists(FIELD_TAGS))) {
-                final List<String> storedTags = document.getList(FIELD_TAGS, String.class);
-                if (storedTags == null || storedTags.isEmpty()) {
-                    continue;
+                // A corrupt tags array (a non-string or null element) throws an unchecked
+                // ClassCastException/NullPointerException from getList/toLowerCase. Fail closed,
+                // but name the document: an operator repairing a legacy database needs to know
+                // which of possibly many annotations to fix (the corrupt-bucket convention).
+                try {
+                    final List<String> storedTags = document.getList(FIELD_TAGS, String.class);
+                    if (storedTags == null || storedTags.isEmpty()) {
+                        continue;
+                    }
+                    final List<String> normalizedTags = new ArrayList<>(new TreeSet<>(
+                            storedTags.stream().map(tag -> tag.toLowerCase(Locale.ROOT)).toList()));
+                    if (normalizedTags.equals(storedTags)) {
+                        continue;
+                    }
+                    annotations.updateOne(
+                            Filters.eq("_id", document.getObjectId("_id")),
+                            Updates.set(FIELD_TAGS, normalizedTags));
+                    normalizedCount++;
+                } catch (MongoException ex) {
+                    // MongoException extends RuntimeException; rethrow so a database failure is
+                    // classified by the outer catch, not reported as a malformed document
+                    throw ex;
+                } catch (RuntimeException ex) {
+                    final String errorMsg = "annotation " + document.get("_id")
+                            + " has a malformed tags array: " + ex.getMessage();
+                    logger.error("V2NormalizeAnnotationTags: {}", errorMsg, ex);
+                    throw new DpException(errorMsg, ex);
                 }
-                final List<String> normalizedTags = new ArrayList<>(new TreeSet<>(
-                        storedTags.stream().map(String::toLowerCase).toList()));
-                if (normalizedTags.equals(storedTags)) {
-                    continue;
-                }
-                annotations.updateOne(
-                        Filters.eq("_id", document.getObjectId("_id")),
-                        Updates.set(FIELD_TAGS, normalizedTags));
-                normalizedCount++;
             }
         } catch (MongoException ex) {
             logger.error("V2NormalizeAnnotationTags: mongo exception normalizing tags: {}", ex.getMessage(), ex);

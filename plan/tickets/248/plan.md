@@ -376,6 +376,44 @@ Design decisions, continuing the numbering:
   save params carry the new fields; no entity has a client delete wrapper today, and adding
   deletes across all entities is a follow-on.
 
+### Phase 2 PR (#261) review adjustments
+
+The PR review (Claude + Copilot, 2026-09-07) tightened several Phase 2 behaviors beyond the plan as
+drafted; these are the settled shape, not deviations to re-litigate:
+
+- **Tag lowercasing is `Locale.ROOT`** in `DpBsonDocumentBase.normalizedTags()` and migration v2 —
+  the default-locale fold is environment-dependent (Turkish dotless i) and would bake locale-variant
+  bytes into stored data no normalized `TagsCriterion` value could match. The three pre-existing
+  inline normalization copies (pvMetadata / configuration / configurationActivation) converged onto
+  the shared helper at the same time.
+- **The D14 cleanup moved into `saveAnnotation()` (client)**, beside the lookup that captures the
+  previous document — where `deleteAnnotation`'s cascade already lives — removing the job's
+  duplicate lookup on every update-path save.
+- **A rejected save deletes the calculations document it just inserted** (both reject paths precede
+  any annotation write, so the compensating delete is safe); a save *error* only logs the possibly
+  orphaned id, because deleting under an ambiguous write state could dangle a live annotation's
+  `calculationsId` (the D16 corruption).
+- **`validateSaveAnnotationRequest` throws `DpException` on lookup failure**, dispatched as
+  `RESULT_STATUS_ERROR`. The Phase 2 draft fixed the #235 inversion in the message text only; the
+  wire status still said REJECT, which is what clients branch on.
+- **Reference ids are stored canonical** (lowercase hex): `deleteDataSet`'s referential-integrity
+  check and the queryAnnotations dataSets/annotations criteria match strings while validation
+  parses binary ObjectIds, so a case-variant id passed validation yet bypassed every reference
+  check. Saves canonicalize; **migration v3** (`V3CanonicalizeAnnotationReferenceIds`) converts
+  previously stored references; the delete check and criteria canonicalize their inputs.
+- **`ExportDataJobBase` uses `lookupCalculations()`** — the last caller of the swallowing
+  `findCalculations()` that could act on the failed-vs-absent distinction.
+- **Migration v2/v3 name the offending document** when a stored array is malformed (non-string or
+  null element), instead of failing startup with a bare unchecked exception.
+- **`deleteDataSet`'s check-then-delete race** with concurrent `saveAnnotation` is documented at
+  the check as an accepted v1 limitation, like `overlapExists()`. The losing-save orphan race on
+  concurrent same-id saves remains possible and benign (an unreferenced calculations document).
+- Mechanical: the 27-copy `requestQueue.put` boilerplate in `MongoAnnotationHandler` collapsed into
+  `QueueHandlerBase.enqueueJob()` (which also fixes the #191 logging-convention violation); the five
+  new jobs share `AnnotationValidationUtility.validateRequiredObjectId()`; patch-stub ITs pin
+  `RESULT_STATUS_ERROR` on the wire; the save-annotation wrapper clears its calculationsId capture
+  before each send so a rejected save cannot leave a stale value.
+
 ### Phase 3 — paging, ordering, and criteria semantics
 
 Converts the two queries' Base64 skip tokens (shipped in Phase 1, D10) to opaque tokens with

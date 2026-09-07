@@ -49,32 +49,19 @@ public class SaveAnnotationJob extends HandlerJob {
 
         logger.debug("executing SaveAnnotationJob id: {}", this.responseObserver.hashCode());
 
-        // validate request, e.g., that ids for associated datasets and annotations exist in the database
-        final ResultStatus resultStatus = this.handler.validateSaveAnnotationRequest(request);
+        // validate request, e.g., that ids for associated datasets and annotations exist in the
+        // database. A lookup failure during validation is an infrastructure failure, dispatched as
+        // an ERROR — sending it as a rejection would invert the caller's retry decision (#235).
+        final ResultStatus resultStatus;
+        try {
+            resultStatus = this.handler.validateSaveAnnotationRequest(request);
+        } catch (DpException ex) {
+            dispatcher.handleError("error validating SaveAnnotationRequest: " + ex.getMessage());
+            return;
+        }
         if (resultStatus.isError) {
             dispatcher.handleValidationError(resultStatus);
             return;
-        }
-
-        // When replacing an existing annotation, capture its current calculationsId up front so the
-        // replaced document can be deleted after a successful save (#248 plan D14) — full-replace
-        // semantics apply to calculations like every other field, and without this the previous
-        // document is orphaned. A lookup failure here is an error, not "no previous calculations":
-        // proceeding would silently skip the cleanup this fix exists to perform.
-        String previousCalculationsId = null;
-        if (!request.getId().isBlank()) {
-            final AnnotationDocument previousDocument;
-            try {
-                previousDocument = this.mongoClient.lookupAnnotation(request.getId());
-            } catch (DpException ex) {
-                dispatcher.handleError("error looking up existing Annotation: " + ex.getMessage());
-                return;
-            }
-            // A null previousDocument means the id does not exist; let saveAnnotation() produce its
-            // usual rejection rather than duplicating that logic here.
-            if (previousDocument != null) {
-                previousCalculationsId = previousDocument.getCalculationsId();
-            }
         }
 
         // handle calculations, if specified
@@ -119,19 +106,29 @@ public class SaveAnnotationJob extends HandlerJob {
         final AnnotationDocument annotationDocument =
                 AnnotationDocument.fromSaveAnnotationRequest(request, calculationsDocumentId);
         final MongoSaveResult result = this.mongoClient.saveAnnotation(annotationDocument, request.getId());
+        // (on a successful update, saveAnnotation() itself deletes a replaced or cleared previous
+        // calculations document — #248 plan D14)
 
-        // The save replaced (or cleared) the annotation's calculations reference, so delete the
-        // previous calculations document (#248 plan D14). Only after a successful save — on a
-        // rejected or failed save the stored annotation still references it. A cleanup failure is
-        // logged with the orphaned id but does not fail the response: the save itself succeeded,
-        // a retry cannot remove the orphan, and reporting an error would mislead the caller.
-        if (!result.isError && !result.isReject
-                && previousCalculationsId != null
-                && !previousCalculationsId.equals(calculationsDocumentId)) {
-            final MongoDeleteResult cleanupResult = this.mongoClient.deleteCalculations(previousCalculationsId);
-            if (cleanupResult.isError) {
-                logger.error("saveAnnotation id: {} replaced calculations document {} but deleting it failed: {}",
-                        result.documentId, previousCalculationsId, cleanupResult.message);
+        // A failed save must not silently orphan the calculations document inserted above. On a
+        // rejection the compensating delete is safe: both reject paths in saveAnnotation() (update
+        // id not found, and the concurrent-delete race) fire before any annotation write, so
+        // nothing can reference the new document. On an error the write state is ambiguous — the
+        // annotation may have been stored despite the reported failure — and deleting would risk
+        // the dangling-calculationsId corruption getAnnotation treats as an error (plan D16), so
+        // log the possibly-orphaned id instead of acting.
+        if (result.isError && calculationsDocumentId != null) {
+            if (result.isReject) {
+                final MongoDeleteResult compensationResult =
+                        this.mongoClient.deleteCalculations(calculationsDocumentId);
+                if (compensationResult.isError) {
+                    logger.error(
+                            "saveAnnotation was rejected and deleting its inserted calculations document {} failed: {}",
+                            calculationsDocumentId, compensationResult.message);
+                }
+            } else {
+                logger.error(
+                        "saveAnnotation failed after inserting calculations document {}; it may be orphaned: {}",
+                        calculationsDocumentId, result.message);
             }
         }
 

@@ -87,6 +87,19 @@ public class AnnotationDocument extends DpBsonDocumentBase {
         this.modifiedBy = modifiedBy;
     }
 
+    /**
+     * Canonicalizes reference-id strings to the lowercase hex form {@link ObjectId#toHexString()}
+     * emits. Stored references are matched as <i>strings</i> (deleteDataSet's referential-integrity
+     * check, the queryAnnotations dataSets criterion) while validation lookups parse them as binary
+     * ObjectIds, which accept either hex case — so an id stored in a case variant would pass
+     * validation yet be invisible to every string-matched reference check, a dangling reference
+     * waiting to happen. Callers guarantee validity: save validation rejects any entry that fails
+     * ObjectId.isValid(). Schema migration v3 canonicalizes previously stored reference ids.
+     */
+    private static List<String> canonicalObjectIds(List<String> ids) {
+        return ids.stream().map(id -> new ObjectId(id).toHexString()).toList();
+    }
+
     public static AnnotationDocument fromSaveAnnotationRequest(
             final SaveAnnotationRequest request,
             String calculationsDocumentId
@@ -95,9 +108,9 @@ public class AnnotationDocument extends DpBsonDocumentBase {
 
         // set request fields in document
         document.setOwnerId(request.getOwnerId());
-        document.setDataSetIds(request.getDataSetIdsList());
+        document.setDataSetIds(canonicalObjectIds(request.getDataSetIdsList()));
         document.setName(request.getName());
-        document.setAnnotationIds(request.getAnnotationIdsList());
+        document.setAnnotationIds(canonicalObjectIds(request.getAnnotationIdsList()));
         document.setDescription(request.getDescription());
 
         if (!request.getModifiedBy().isBlank()) {
@@ -194,9 +207,9 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             diffs.add(msg);
         }
 
-        // diff dataSetIds list
+        // diff dataSetIds list against the canonical form the save path stores
         final Collection<String> dataSetIdsDisjunction =
-                CollectionUtils.disjunction(request.getDataSetIdsList(), this.getDataSetIds());
+                CollectionUtils.disjunction(canonicalObjectIds(request.getDataSetIdsList()), this.getDataSetIds());
         if ( ! dataSetIdsDisjunction.isEmpty()) {
             final String msg =
                     "dataSetIds mismatch: " + this.getDataSetIds()
@@ -210,9 +223,9 @@ public class AnnotationDocument extends DpBsonDocumentBase {
             diffs.add(msg);
         }
 
-        // diff annotationIds list
+        // diff annotationIds list against the canonical form the save path stores
         final Collection<String> annotationIdsDisjunction =
-                CollectionUtils.disjunction(request.getAnnotationIdsList(), this.getAnnotationIds());
+                CollectionUtils.disjunction(canonicalObjectIds(request.getAnnotationIdsList()), this.getAnnotationIds());
         if ( ! annotationIdsDisjunction.isEmpty()) {
             final String msg =
                     "annotationIds mismatch: " + this.getAnnotationIds()

@@ -31,6 +31,24 @@ public abstract class QueueHandlerBase {
         return ConfigurationManager.getInstance();
     }
 
+    /**
+     * Enqueues a job for the worker pool, blocking while the queue is full. Shared so the
+     * interrupt handling lives in one place: on interrupt the job is dropped — the caller's
+     * response stream is never answered, acceptable only because the interrupt reaches this
+     * thread during shutdown, when the stream is being torn down anyway — and the interrupt
+     * flag is restored for the caller.
+     */
+    protected void enqueueJob(HandlerJob job, int jobId) {
+        logger.debug("adding {} id: {} to queue", job.getClass().getSimpleName(), jobId);
+        try {
+            requestQueue.put(job);
+        } catch (InterruptedException e) {
+            logger.error("InterruptedException adding {} id: {} to requestQueue, job dropped",
+                    job.getClass().getSimpleName(), jobId, e);
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private class QueueWorker implements Runnable {
 
         private final BlockingQueue queue;

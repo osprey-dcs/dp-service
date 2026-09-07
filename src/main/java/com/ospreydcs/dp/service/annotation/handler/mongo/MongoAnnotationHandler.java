@@ -120,14 +120,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding SaveDataSetJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -138,14 +131,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final QueryDataSetsJob job =
                 new QueryDataSetsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding queryDataSets job id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -155,14 +141,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final GetDataSetJob job = new GetDataSetJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetDataSetJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -172,14 +151,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final DeleteDataSetJob job = new DeleteDataSetJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeleteDataSetJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     public ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
@@ -229,22 +201,15 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 mongoAnnotationClient,
                 this);
 
-        logger.debug("adding SaveAnnotationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
-    public ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) {
+    public ResultStatus validateSaveAnnotationRequest(SaveAnnotationRequest request) throws DpException {
 
         // Use the throwing lookup variants, not find*: a failed query must not read as "your id
         // does not exist" — that inverts the caller's retry decision (#235 reject-vs-error
-        // invariant). The job routes this ResultStatus to a rejection either way today, but the
-        // message must at least say the lookup failed rather than assert the record is absent.
+        // invariant). A lookup failure propagates as DpException, which the job dispatches as an
+        // ERROR; the ResultStatus return carries only genuine validation rejections.
 
         // check that each id in dataSetIds exists in database
         for (String dataSetId : request.getDataSetIdsList()) {
@@ -266,9 +231,8 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             try {
                 dataSetDocument = mongoAnnotationClient.lookupDataSet(dataSetId);
             } catch (DpException ex) {
-                return new ResultStatus(
-                        true,
-                        "error looking up DataSetDocument with id " + dataSetId + ": " + ex.getMessage());
+                throw new DpException(
+                        "error looking up DataSetDocument with id " + dataSetId + ": " + ex.getMessage(), ex);
             }
             if (dataSetDocument == null) {
                 return new ResultStatus(
@@ -296,9 +260,8 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             try {
                 annotationDocument = mongoAnnotationClient.lookupAnnotation(annotationId);
             } catch (DpException ex) {
-                return new ResultStatus(
-                        true,
-                        "error looking up AnnotationDocument with id " + annotationId + ": " + ex.getMessage());
+                throw new DpException(
+                        "error looking up AnnotationDocument with id " + annotationId + ": " + ex.getMessage(), ex);
             }
             if (annotationDocument == null) {
                 return new ResultStatus(
@@ -319,14 +282,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final QueryAnnotationsJob job =
                 new QueryAnnotationsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding queryAnnotations job id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -336,14 +292,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final GetAnnotationJob job = new GetAnnotationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetAnnotationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -353,14 +302,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final DeleteAnnotationJob job = new DeleteAnnotationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeleteAnnotationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -370,14 +312,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final GetCalculationsJob job = new GetCalculationsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetCalculationsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -407,14 +342,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         }
         Objects.requireNonNull(job);
 
-        logger.debug("adding ExportDataJobBase id: {} to queue", handlerRequest.responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, handlerRequest.responseObserver.hashCode());
     }
 
     @Override
@@ -424,14 +352,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final SavePvMetadataJob job = new SavePvMetadataJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding SavePvMetadataJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -441,14 +362,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final QueryPvMetadataJob job = new QueryPvMetadataJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding QueryPvMetadataJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -458,14 +372,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final GetPvMetadataJob job = new GetPvMetadataJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetPvMetadataJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -475,14 +382,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final DeletePvMetadataJob job = new DeletePvMetadataJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeletePvMetadataJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -492,14 +392,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final SaveConfigurationJob job = new SaveConfigurationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding SaveConfigurationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -509,14 +402,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final GetConfigurationJob job = new GetConfigurationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetConfigurationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -526,14 +412,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final QueryConfigurationsJob job = new QueryConfigurationsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding QueryConfigurationsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -543,14 +422,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
     ) {
         final DeleteConfigurationJob job = new DeleteConfigurationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeleteConfigurationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -561,14 +433,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final SaveConfigurationActivationJob job =
                 new SaveConfigurationActivationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding SaveConfigurationActivationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -579,14 +444,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final GetConfigurationActivationJob job =
                 new GetConfigurationActivationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetConfigurationActivationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -597,14 +455,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final QueryConfigurationActivationsJob job =
                 new QueryConfigurationActivationsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding QueryConfigurationActivationsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -615,14 +466,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final DeleteConfigurationActivationJob job =
                 new DeleteConfigurationActivationJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeleteConfigurationActivationJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -633,14 +477,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final GetActiveConfigurationsJob job =
                 new GetActiveConfigurationsJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding GetActiveConfigurationsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -651,14 +488,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final SaveSampleStatusesJob job =
                 new SaveSampleStatusesJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding SaveSampleStatusesJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -669,14 +499,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final QuerySampleStatusesJob job =
                 new QuerySampleStatusesJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding QuerySampleStatusesJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -687,14 +510,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final QuerySampleStatusesStreamJob job =
                 new QuerySampleStatusesStreamJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding QuerySampleStatusesStreamJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -705,14 +521,7 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         final DeleteSampleStatusesJob job =
                 new DeleteSampleStatusesJob(request, responseObserver, mongoAnnotationClient);
 
-        logger.debug("adding DeleteSampleStatusesJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
 }

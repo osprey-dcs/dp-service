@@ -88,8 +88,6 @@ public class GetDataSetIT extends AnnotationIntegrationTestIntermediate {
     @Test
     public void testGetDataSetRejects() {
 
-        final long startSeconds = Instant.now().getEpochSecond();
-
         // no data needed: every case below is rejected before any dataset is consulted, except the
         // not-found case, which needs only an id that matches nothing
         {

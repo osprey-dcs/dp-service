@@ -180,21 +180,23 @@ public class MongoSyncAnnotationClientLookupFailureTest {
     public void testSaveAnnotationValidationLookupFailureReportsErrorNotAbsence() throws Exception {
 
         // A Mongo outage during save validation must not read as "your dataSetId does not exist" —
-        // that message asserts a fact the lookup never established, and inverts the retry decision.
+        // that inverts the retry decision. The failure propagates as DpException so the job
+        // dispatches RESULT_STATUS_ERROR; a ResultStatus return would be routed to
+        // handleValidationError and reach the wire as a rejection (#235).
         final MongoSyncAnnotationClient client = mock(MongoSyncAnnotationClient.class);
         when(client.lookupDataSet(anyString()))
                 .thenThrow(new DpException("error querying DataSetDocument by id: connection refused"));
         final MongoAnnotationHandler handler = new MongoAnnotationHandler(client, null);
 
-        final ResultStatus resultStatus = handler.validateSaveAnnotationRequest(saveAnnotationRequest());
+        final DpException thrown = assertThrows(
+                DpException.class, () -> handler.validateSaveAnnotationRequest(saveAnnotationRequest()));
 
-        assertTrue("a failed lookup must fail validation", resultStatus.isError);
         assertTrue(
-                "message should identify the failing lookup, was: " + resultStatus.msg,
-                resultStatus.msg.contains("error looking up DataSetDocument"));
+                "message should identify the failing lookup, was: " + thrown.getMessage(),
+                thrown.getMessage().contains("error looking up DataSetDocument"));
         assertFalse(
                 "a failed lookup must not be reported as an absent document",
-                resultStatus.msg.contains("no DataSetDocument found"));
+                thrown.getMessage().contains("no DataSetDocument found"));
     }
 
     @Test

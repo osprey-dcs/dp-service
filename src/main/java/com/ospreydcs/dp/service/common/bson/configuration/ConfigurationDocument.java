@@ -7,8 +7,6 @@ import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.bson.types.ObjectId;
 
-import java.util.ArrayList;
-import java.util.TreeSet;
 
 public class ConfigurationDocument extends DpBsonDocumentBase {
 
@@ -90,13 +88,9 @@ public class ConfigurationDocument extends DpBsonDocumentBase {
             document.setModifiedBy(request.getModifiedBy());
         }
 
-        // normalize tags: lowercase, unique, sorted
+        // normalized per the house convention (lowercase, deduplicated, sorted) via the shared helper
         if (!request.getTagsList().isEmpty()) {
-            final TreeSet<String> normalizedTags = new TreeSet<>();
-            for (String tag : request.getTagsList()) {
-                normalizedTags.add(tag.toLowerCase());
-            }
-            document.setTags(new ArrayList<>(normalizedTags));
+            document.setTags(normalizedTags(request.getTagsList()));
         }
 
         if (!request.getAttributesList().isEmpty()) {

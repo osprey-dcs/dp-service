@@ -380,16 +380,30 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // (annotation.proto deleteDataSet contract). Name one referencing id plus the total count
         // (#248 plan D7): one id is enough to act on, the count says whether to expect more, and
         // the message stays bounded regardless of how many annotations reference the dataset.
+        //
+        // Like overlapExists(), this check-then-act sequence is not atomic with concurrent writers
+        // (the handler runs multiple workers, and this client uses no sessions/transactions): a
+        // saveAnnotation validated before this count can commit a reference to the dataset after
+        // the delete below. Accepted v1 limitation, same as the activation overlap constraint.
         final long referencingCount;
         AnnotationDocument referencingAnnotation = null;
         try {
-            final Bson referenceFilter = eq(BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, dataSetId);
+            // Stored dataSetIds are canonical lowercase hex (AnnotationDocument save path, schema
+            // migration v3). Canonicalize the incoming id to match: an uppercase variant of the
+            // same id parses to the same binary ObjectId — so the delete below would still remove
+            // the dataset — but as a raw string it would match no stored reference, silently
+            // bypassing the check this filter exists to enforce.
+            final Bson referenceFilter = eq(
+                    BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, new ObjectId(dataSetId).toHexString());
             referencingCount = mongoCollectionAnnotations.countDocuments(referenceFilter);
             if (referencingCount > 0) {
                 referencingAnnotation = mongoCollectionAnnotations.find(referenceFilter).limit(1).first();
             }
-        } catch (MongoException ex) {
-            final String errorMsg = "MongoException checking annotations referencing dataSetId '"
+        } catch (Exception ex) {
+            // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+            // from the ObjectId constructor. The job validates the id first, but an escapee here
+            // would be swallowed by QueueHandlerBase and hang the caller's stream.
+            final String errorMsg = "exception checking annotations referencing dataSetId '"
                     + dataSetId + "': " + ex.getMessage();
             logger.error("deleteDataSet reference check error: {}", ex.getMessage(), ex);
             return new MongoDeleteResult(true, errorMsg, null);
@@ -419,8 +433,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return new MongoDeleteResult(false, "", null);
             }
             return new MongoDeleteResult(false, "", dataSetId);
-        } catch (MongoException ex) {
-            final String errorMsg = "MongoException deleting DataSetDocument: " + ex.getMessage();
+        } catch (Exception ex) {
+            // broad for the same reason as the reference check above
+            final String errorMsg = "exception deleting DataSetDocument: " + ex.getMessage();
             logger.error("deleteDataSet error: {}", ex.getMessage(), ex);
             return new MongoDeleteResult(true, errorMsg, null);
         }
@@ -551,8 +566,39 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
+            // The replace succeeded, so the stored annotation no longer references the previous
+            // calculations document when the reference changed; delete it rather than orphaning it
+            // (#248 plan D14). The cleanup lives here, beside the lookup that captured the previous
+            // document, for the same reason deleteAnnotation's cascade does: the calculations
+            // lifecycle belongs to the owning annotation. A cleanup failure is logged with the
+            // orphaned id but does not fail the save — the save itself succeeded, and a retry
+            // cannot remove the orphan.
+            final String previousCalculationsId = existingDocument.getCalculationsId();
+            if (previousCalculationsId != null
+                    && !previousCalculationsId.equals(annotationDocument.getCalculationsId())) {
+                final MongoDeleteResult cleanupResult = deleteCalculations(previousCalculationsId);
+                if (cleanupResult.isError) {
+                    logger.error(
+                            "saveAnnotation id: {} replaced calculations document {} but deleting it failed: {}",
+                            existingDocumentId, previousCalculationsId, cleanupResult.message);
+                }
+            }
+
             return new MongoSaveResult(false, "", existingDocumentId, false);
         }
+    }
+
+    /**
+     * Canonicalizes reference-id criterion values to the lowercase hex form stored on annotation
+     * documents (see AnnotationDocument.canonicalObjectIds), so a case-variant id still finds its
+     * references. A value that is not a valid ObjectId is passed through unchanged — as a raw
+     * string filter it matches nothing, which is the pre-existing behavior for such values (these
+     * criteria are validated for blankness, not ObjectId validity).
+     */
+    private static List<String> canonicalReferenceIdValues(List<String> ids) {
+        return ids.stream()
+                .map(id -> ObjectId.isValid(id) ? new ObjectId(id).toHexString() : id)
+                .toList();
     }
 
     @Override
@@ -593,14 +639,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     // associated dataset ids filter, combined with other filters by AND operator
                     globalFilterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS,
-                            criterion.getDataSetsCriterion().getDataSetIdsList()));
+                            canonicalReferenceIdValues(criterion.getDataSetsCriterion().getDataSetIdsList())));
                 }
 
                 case ANNOTATIONSCRITERION -> {
                     // associated annotation ids filter, combined with other filters by OR operator
                     criteriaFilterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS,
-                            criterion.getAnnotationsCriterion().getAnnotationIdsList()));
+                            canonicalReferenceIdValues(criterion.getAnnotationsCriterion().getAnnotationIdsList())));
                 }
 
                 case NAMECRITERION -> {

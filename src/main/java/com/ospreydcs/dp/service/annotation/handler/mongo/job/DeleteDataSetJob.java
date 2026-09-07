@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.annotation.DeleteDataSetRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.DeleteDataSetResponse;
+import com.ospreydcs.dp.service.annotation.handler.AnnotationValidationUtility;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.DeleteDataSetDispatcher;
 import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
@@ -36,19 +37,11 @@ public class DeleteDataSetJob extends HandlerJob {
     public void execute() {
         logger.debug("executing DeleteDataSetJob id: {}", responseObserver.hashCode());
 
-        if (request.getDataSetId().isBlank()) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true, "DeleteDataSetRequest.dataSetId must be specified"));
-            return;
-        }
-
-        // A malformed id is a client mistake, rejected here (#248 plan D11). Unvalidated, it would
-        // throw IllegalArgumentException from the ObjectId constructor inside the worker thread,
-        // where QueueHandlerBase swallows it and the caller's stream hangs with no response.
-        if (!ObjectId.isValid(request.getDataSetId())) {
-            dispatcher.handleValidationError(
-                    new ResultStatus(true,
-                            "DeleteDataSetRequest.dataSetId is not a valid id: " + request.getDataSetId()));
+        // blank/malformed id handling is shared: see validateRequiredObjectId (#248 plan D11)
+        final ResultStatus idStatus = AnnotationValidationUtility.validateRequiredObjectId(
+                "DeleteDataSetRequest.dataSetId", request.getDataSetId());
+        if (idStatus.isError) {
+            dispatcher.handleValidationError(idStatus);
             return;
         }
 

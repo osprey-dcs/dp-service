@@ -316,6 +316,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
     protected String sendSaveAnnotation(
             SaveAnnotationRequest request, boolean expectReject, String expectedRejectMessage
     ) {
+        // cleared up front so a rejected save cannot leave the id from an earlier save behind —
+        // a test reading this field after a rejection would silently validate the wrong document
+        lastSaveAnnotationCalculationsId = null;
+
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(channel);
 
@@ -730,6 +734,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         new Thread(() -> asyncStub.patchDataSet(request, responseObserver)).start();
         responseObserver.await();
         assertTrue(responseObserver.isError());
+        assertEquals(
+                "stub methods answer RESULT_STATUS_ERROR on the wire, not a rejection",
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                responseObserver.getExceptionalResultStatus());
         assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
@@ -742,6 +750,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         new Thread(() -> asyncStub.patchAnnotation(request, responseObserver)).start();
         responseObserver.await();
         assertTrue(responseObserver.isError());
+        assertEquals(
+                "stub methods answer RESULT_STATUS_ERROR on the wire, not a rejection",
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR,
+                responseObserver.getExceptionalResultStatus());
         assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
