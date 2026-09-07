@@ -19,6 +19,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.QuerySampleStatusesRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveSampleStatusesRequest;
 import com.ospreydcs.dp.grpc.v1.common.SampleStatusColumn;
 import com.ospreydcs.dp.grpc.v1.common.SampleStatusFrame;
+import com.ospreydcs.dp.service.annotation.handler.model.AnnotationQueryPageToken;
 import com.ospreydcs.dp.service.annotation.handler.model.SampleStatusPageToken;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
@@ -51,6 +52,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.function.Function;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -86,8 +88,10 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
     /**
      * Decodes a skip-based page token produced by {@link #applySkipPaging}.  An unparseable token
-     * is ignored (page 0) rather than rejected; Phase 3 of #248 converts these interim tokens to
-     * opaque with reject-on-malformed per the proto contract.
+     * is ignored (page 0) rather than rejected.  Serves the three metadata queries only since
+     * #248 Phase 3 moved queryDataSets/queryAnnotations to keyset tokens
+     * ({@link AnnotationQueryPageToken}); converting these three to opaque reject-on-malformed
+     * tokens is a follow-on (#248 plan D6).
      */
     private static int decodePageTokenSkip(String pageToken) {
         if (pageToken == null || pageToken.isBlank()) {
@@ -104,8 +108,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     /**
      * Applies skip/limit paging to a prepared find (filter and sort already set), fetching one
      * document past the page to detect whether a next page exists without an extra count query.
-     * The single implementation serves all five skip-paged queries so their token semantics cannot
-     * drift; Phase 3 of #248 replaces the interim Base64 skip tokens with opaque tokens here.
+     * The single implementation serves the three skip-paged metadata queries so their token
+     * semantics cannot drift (queryDataSets/queryAnnotations page by keyset instead, see
+     * {@link #applyKeysetPaging}).
      *
      * <p>The probe guards limit + 1 against overflow: a client may send limit = Integer.MAX_VALUE
      * (proto uint32), where a bare + 1 wraps negative and hands the driver an undefined page.
@@ -128,6 +133,34 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 nextPageToken = Base64.getEncoder().encodeToString(
                         Long.toString(nextSkip).getBytes(StandardCharsets.UTF_8));
             }
+        }
+        return new PagedDocuments<>(documents, nextPageToken);
+    }
+
+    /**
+     * Applies keyset paging to a prepared find (filter — including the resume lower bound — and
+     * the ascending-id sort already set), fetching one document past the page to detect whether a
+     * next page exists.  When it does, the token encodes the last returned document's id: the sort
+     * key is unique, so the resume position is exact and stays stable while documents are inserted
+     * or deleted mid-pagination, where a skip offset drifts (#248 Phase 3, plan D18).
+     *
+     * <p>The probe guards limit + 1 against overflow like {@link #applySkipPaging}.  Mongo
+     * exceptions propagate to the caller, which owns the per-method error result.
+     */
+    private static <T> PagedDocuments<T> applyKeysetPaging(
+            FindIterable<T> query,
+            int limit,
+            String tokenQuery,
+            Function<T, ObjectId> documentId
+    ) {
+        final int probeLimit = limit < Integer.MAX_VALUE ? limit + 1 : limit;
+        final List<T> documents = new ArrayList<>();
+        query.limit(probeLimit).into(documents);
+        String nextPageToken = "";
+        if (documents.size() > limit) {
+            documents.remove(documents.size() - 1);
+            final ObjectId lastId = documentId.apply(documents.get(documents.size() - 1));
+            nextPageToken = new AnnotationQueryPageToken(tokenQuery, lastId.toHexString()).encode();
         }
         return new PagedDocuments<>(documents, nextPageToken);
     }
@@ -263,7 +296,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request) {
+    public DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request, ObjectId resumeAfterId) {
 
         // Create query filter from request search criteria.  Criteria list entries combine with
         // AND per the proto contract (#248 Phase 3, plan D4/D22); values within one criterion OR.
@@ -333,25 +366,30 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
         // queries, so there is deliberately no emptiness check here.
 
-        final Bson queryFilter = filterList.isEmpty()
+        Bson queryFilter = filterList.isEmpty()
                 ? Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID)
                 : and(filterList);
+
+        // resume strictly after the last id the previous page returned (keyset paging, plan D18)
+        if (resumeAfterId != null) {
+            queryFilter = and(queryFilter, Filters.gt(BsonConstants.BSON_KEY_DATA_SET_ID, resumeAfterId));
+        }
 
         logger.debug("executing queryDataSets filter: {}", queryFilter);
 
         // The default limit is unconditional (#245): page size must not depend on any other
         // request field.
         final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        final int skip = decodePageTokenSkip(request.getPageToken());
 
         final PagedDocuments<DataSetDocument> page;
         try {
-            page = applySkipPaging(
+            page = applyKeysetPaging(
                     mongoCollectionDataSets
                             .find(queryFilter)
                             .sort(ascending(BsonConstants.BSON_KEY_DATA_SET_ID)),
-                    skip,
-                    limit);
+                    limit,
+                    AnnotationQueryPageToken.QUERY_DATA_SETS,
+                    DataSetDocument::getId);
         } catch (Exception ex) {
             logger.error("executeQueryDataSets: mongo exception: {}", ex.getMessage(), ex);
             return null;
@@ -589,7 +627,7 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
-    public AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request) {
+    public AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request, ObjectId resumeAfterId) {
 
         // Create query filter from request search criteria.  Criteria list entries combine with
         // AND per the proto contract (#248 Phase 3, plan D4/D22); values within one criterion OR.
@@ -666,25 +704,30 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
         // queries, so there is deliberately no emptiness check here.
 
-        final Bson queryFilter = filterList.isEmpty()
+        Bson queryFilter = filterList.isEmpty()
                 ? Filters.exists(BsonConstants.BSON_KEY_ANNOTATION_ID)
                 : and(filterList);
+
+        // resume strictly after the last id the previous page returned (keyset paging, plan D18)
+        if (resumeAfterId != null) {
+            queryFilter = and(queryFilter, Filters.gt(BsonConstants.BSON_KEY_ANNOTATION_ID, resumeAfterId));
+        }
 
         logger.debug("executing queryAnnotations filter: {}", queryFilter);
 
         // The default limit is unconditional (#245): page size must not depend on any other
         // request field.
         final int limit = request.getLimit() > 0 ? request.getLimit() : DEFAULT_QUERY_LIMIT;
-        final int skip = decodePageTokenSkip(request.getPageToken());
 
         final PagedDocuments<AnnotationDocument> page;
         try {
-            page = applySkipPaging(
+            page = applyKeysetPaging(
                     mongoCollectionAnnotations
                             .find(queryFilter)
                             .sort(ascending(BsonConstants.BSON_KEY_ANNOTATION_ID)),
-                    skip,
-                    limit);
+                    limit,
+                    AnnotationQueryPageToken.QUERY_ANNOTATIONS,
+                    AnnotationDocument::getId);
         } catch (Exception ex) {
             logger.error("executeQueryAnnotations: mongo exception: {}", ex.getMessage(), ex);
             return null;
@@ -1462,10 +1505,16 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
         final PagedDocuments<ConfigurationActivationDocument> page;
         try {
+            // startTime is not unique, so ties could drop or duplicate rows across skip-page
+            // boundaries; the configurationName and id tiebreakers make the order total, per the
+            // proto ordering contract (#248 Phase 3, plan D23).
             page = applySkipPaging(
                     mongoCollectionConfigurationActivations
                             .find(filter)
-                            .sort(ascending(BsonConstants.BSON_KEY_ACTIVATION_START_TIME)),
+                            .sort(ascending(
+                                    BsonConstants.BSON_KEY_ACTIVATION_START_TIME,
+                                    BsonConstants.BSON_KEY_ACTIVATION_CONFIGURATION_NAME,
+                                    BsonConstants.BSON_KEY_ACTIVATION_ID)),
                     skip,
                     limit);
         } catch (Exception ex) {

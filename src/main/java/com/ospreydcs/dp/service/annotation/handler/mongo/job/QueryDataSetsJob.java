@@ -2,11 +2,14 @@ package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsResponse;
+import com.ospreydcs.dp.service.annotation.handler.model.AnnotationQueryPageToken;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.QueryDataSetsDispatcher;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.common.model.DataSetQueryResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
+import org.bson.types.ObjectId;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,7 +39,23 @@ public class QueryDataSetsJob extends HandlerJob {
     public void execute() {
 
         logger.debug("executing QueryDataSetsJob id: {}", this.responseObserver.hashCode());
-        final DataSetQueryResult queryResult = this.mongoClient.executeQueryDataSets(this.request);
+
+        // a non-empty pageToken must be one this server issued for this query; unparseable and
+        // wrong-query tokens are rejected per the API contract
+        ObjectId resumeAfterId = null;
+        if (!request.getPageToken().isBlank()) {
+            final AnnotationQueryPageToken pageToken = AnnotationQueryPageToken.decode(
+                    request.getPageToken(), AnnotationQueryPageToken.QUERY_DATA_SETS);
+            if (pageToken == null) {
+                dispatcher.handleValidationError(new ResultStatus(
+                        true, "QueryDataSetsRequest.pageToken is not a valid page token"));
+                return;
+            }
+            resumeAfterId = new ObjectId(pageToken.lastId());
+        }
+
+        final DataSetQueryResult queryResult =
+                this.mongoClient.executeQueryDataSets(this.request, resumeAfterId);
         if (queryResult == null) {
             dispatcher.handleError("error executing dataSets query");
             return;

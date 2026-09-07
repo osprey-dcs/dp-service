@@ -28,6 +28,8 @@ import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.PvMetadataQueryResult;
 import com.ospreydcs.dp.service.common.model.SampleStatusQueryResult;
 
+import org.bson.types.ObjectId;
+
 import java.time.Instant;
 
 public interface MongoAnnotationClientInterface {
@@ -46,7 +48,11 @@ public interface MongoAnnotationClientInterface {
 
     MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId);
 
-    DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request);
+    /**
+     * Runs the dataSets query, resuming strictly after resumeAfterId when non-null (the decoded
+     * keyset page token; the caller owns token decode and rejection).
+     */
+    DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request, ObjectId resumeAfterId);
 
     /**
      * Deletes the DataSet with the specified id. Rejected while any Annotation references the
@@ -65,7 +71,11 @@ public interface MongoAnnotationClientInterface {
 
     MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String id);
 
-    AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request);
+    /**
+     * Runs the annotations query, resuming strictly after resumeAfterId when non-null (the decoded
+     * keyset page token; the caller owns token decode and rejection).
+     */
+    AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request, ObjectId resumeAfterId);
 
     /**
      * Deletes the Annotation with the specified id, along with its Calculations document if it has

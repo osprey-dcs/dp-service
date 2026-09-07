@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.annotation.handler.model.AnnotationQueryPageToken;
 import org.junit.*;
 
 import java.time.Instant;
@@ -533,6 +534,38 @@ public class QueryDataSetsIT extends AnnotationIntegrationTestIntermediate {
                 request,
                 true,
                 "QueryDataSetsRequest.criteria may contain at most one TextCriterion");
+    }
+
+
+    /**
+     * pageToken is an opaque keyset token and a malformed one is rejected per the proto contract
+     * (#248 Phase 3, plan D18/D19) — including a legacy Base64 skip offset and a token issued for
+     * the other query, which would otherwise decode cleanly and silently skip results.
+     */
+    @Test
+    public void testQueryDataSetsRejectMalformedPageToken() {
+
+        final String expectedRejectMessage = "QueryDataSetsRequest.pageToken is not a valid page token";
+
+        // not a token at all
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken("not-a-valid-token").build(),
+                true, expectedRejectMessage);
+
+        // a legacy Base64 skip-offset token (the pre-Phase-3 format, still used by the metadata
+        // queries) is not a valid keyset token
+        final String skipOffsetToken = java.util.Base64.getEncoder()
+                .encodeToString("100".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken(skipOffsetToken).build(),
+                true, expectedRejectMessage);
+
+        // a queryAnnotations token is rejected by the query discriminator
+        final String wrongQueryToken = new AnnotationQueryPageToken(
+                AnnotationQueryPageToken.QUERY_ANNOTATIONS, "65f0123456789abcdef01234").encode();
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken(wrongQueryToken).build(),
+                true, expectedRejectMessage);
     }
 
 }

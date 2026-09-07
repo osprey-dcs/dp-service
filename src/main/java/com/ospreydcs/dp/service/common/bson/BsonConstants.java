@@ -88,6 +88,7 @@ public class BsonConstants {
     public static final String BSON_KEY_CONFIGURATION_MODIFIED_BY = "modifiedBy";
 
     // configurationActivations collection
+    public static final String BSON_KEY_ACTIVATION_ID = "_id";
     public static final String BSON_KEY_ACTIVATION_CLIENT_ID = "clientActivationId";
     public static final String BSON_KEY_ACTIVATION_CONFIGURATION_NAME = "configurationName";
     public static final String BSON_KEY_ACTIVATION_INTERNAL_CATEGORY = "internalCategory";
