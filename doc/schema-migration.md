@@ -4,7 +4,9 @@ The services apply pending database schema migrations at startup, and **refuse t
 they cannot handle. This document covers what an operator needs to know: how to read the current
 version, what each startup failure means, and how to recover from an interrupted migration.
 
-Implemented under [issue #254](https://github.com/osprey-dcs/dp-service/issues/254).
+Implemented under [issue #254](https://github.com/osprey-dcs/dp-service/issues/254). To rehearse
+the migrations against a copy of a production database before upgrading it, see
+[schema-migration-rehearsal.md](schema-migration-rehearsal.md).
 
 ---
 
