@@ -571,4 +571,172 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
         // queryAnnotations() returns references only: calculations content stays empty
         assertFalse(resultAnnotation.hasCalculations());
     }
+
+    /**
+     * Criteria list entries combine with AND (#248 Phase 3, plan D4): a TagsCriterion and an
+     * AttributesCriterion intersect.  Under the legacy two-bucket semantics these two criterion
+     * types ORed, which would return every annotation matching either.
+     */
+    @Test
+    public void testQueryAnnotationsCriteriaCombineWithAnd() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = List.of(
+                new AnnotationTestBase.AnnotationDataBlock(
+                        startSeconds, 0L, startSeconds + 1, 0L, List.of("S01-GCC01")));
+        final AnnotationTestBase.AnnotationDataSet dataSet =
+                new AnnotationTestBase.AnnotationDataSet(
+                        null, "and semantics dataset", "craigmcc", "for AND semantics test", dataBlocks);
+        final String dataSetId = annotationServiceWrapper.sendAndVerifySaveDataSet(
+                new AnnotationTestBase.SaveDataSetParams(dataSet), false, false, "");
+
+        final String matchingAnnotationId = annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "and-both", List.of(dataSetId), null, "tag and attribute",
+                        List.of("alpha"), java.util.Map.of("env", "prod"), null),
+                false, false, "");
+        annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "and-tag-only", List.of(dataSetId), null, "tag only",
+                        List.of("alpha"), java.util.Map.of("env", "dev"), null),
+                false, false, "");
+        annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "and-attribute-only", List.of(dataSetId), null, "attribute only",
+                        List.of("beta"), java.util.Map.of("env", "prod"), null),
+                false, false, "");
+
+        // sanity check that each criterion alone matches two annotations, so the intersection
+        // below is doing the narrowing
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")))
+                    .build();
+            assertEquals(2, annotationServiceWrapper.sendQueryAnnotations(request, false, null).size());
+        }
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAttributesCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
+                                            .setKey("env")
+                                            .addValues("prod")))
+                    .build();
+            assertEquals(2, annotationServiceWrapper.sendQueryAnnotations(request, false, null).size());
+        }
+
+        // tags AND attributes: only the annotation matching both remains
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")))
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setAttributesCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.AttributesCriterion.newBuilder()
+                                            .setKey("env")
+                                            .addValues("prod")))
+                    .build();
+            final List<Annotation> resultAnnotations =
+                    annotationServiceWrapper.sendQueryAnnotations(request, false, null);
+            assertEquals(1, resultAnnotations.size());
+            assertEquals(matchingAnnotationId, resultAnnotations.get(0).getId());
+        }
+    }
+
+    /**
+     * Values within one TagsCriterion OR; separate TagsCriterion entries AND (#248 Phase 3, plan
+     * D4).  The same two tag values produce different results depending on which side of that
+     * line they sit.
+     */
+    @Test
+    public void testQueryAnnotationsTagsCriteriaIntersect() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = List.of(
+                new AnnotationTestBase.AnnotationDataBlock(
+                        startSeconds, 0L, startSeconds + 1, 0L, List.of("S01-GCC01")));
+        final AnnotationTestBase.AnnotationDataSet dataSet =
+                new AnnotationTestBase.AnnotationDataSet(
+                        null, "tags intersect dataset", "craigmcc", "for tags intersection test", dataBlocks);
+        final String dataSetId = annotationServiceWrapper.sendAndVerifySaveDataSet(
+                new AnnotationTestBase.SaveDataSetParams(dataSet), false, false, "");
+
+        final String bothTagsAnnotationId = annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "tags-both", List.of(dataSetId), null, "carries alpha and beta",
+                        List.of("alpha", "beta"), null, null),
+                false, false, "");
+        annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "tags-alpha", List.of(dataSetId), null, "carries alpha only",
+                        List.of("alpha"), null, null),
+                false, false, "");
+        annotationServiceWrapper.sendAndVerifySaveAnnotation(
+                new AnnotationTestBase.SaveAnnotationRequestParams(
+                        null, "craigmcc", "tags-beta", List.of(dataSetId), null, "carries beta only",
+                        List.of("beta"), null, null),
+                false, false, "");
+
+        // one TagsCriterion listing both values ORs them: all three annotations match
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")
+                                            .addValues("beta")))
+                    .build();
+            assertEquals(3, annotationServiceWrapper.sendQueryAnnotations(request, false, null).size());
+        }
+
+        // two TagsCriterion entries AND: only the annotation carrying both tags matches
+        {
+            final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")))
+                    .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryAnnotationsRequest.QueryAnnotationsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("beta")))
+                    .build();
+            final List<Annotation> resultAnnotations =
+                    annotationServiceWrapper.sendQueryAnnotations(request, false, null);
+            assertEquals(1, resultAnnotations.size());
+            assertEquals(bothTagsAnnotationId, resultAnnotations.get(0).getId());
+        }
+    }
+
+    /**
+     * Criteria combine with AND and Mongo permits a single $text expression per query, so a
+     * second TextCriterion is a validation REJECT rather than a server error ("Too many text
+     * expressions") surfacing as RESULT_STATUS_ERROR.
+     */
+    @Test
+    public void testQueryAnnotationsRejectMultipleTextCriteria() {
+
+        final QueryAnnotationsRequest request = QueryAnnotationsRequest.newBuilder()
+                .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                        .setTextCriterion(
+                                QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion.newBuilder()
+                                        .setText("first")))
+                .addCriteria(QueryAnnotationsRequest.QueryAnnotationsCriterion.newBuilder()
+                        .setTextCriterion(
+                                QueryAnnotationsRequest.QueryAnnotationsCriterion.TextCriterion.newBuilder()
+                                        .setText("second")))
+                .build();
+        annotationServiceWrapper.sendQueryAnnotations(
+                request,
+                true,
+                "QueryAnnotationsRequest.criteria may contain at most one TextCriterion");
+    }
+
 }

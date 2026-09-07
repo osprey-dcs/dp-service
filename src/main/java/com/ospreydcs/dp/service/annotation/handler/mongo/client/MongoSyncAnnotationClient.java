@@ -265,14 +265,12 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request) {
 
-        // Create query filter from request search criteria.  Phase 1 of #248 (plan D4) preserves the
-        // legacy combination semantics verbatim: id / owner criteria AND with everything (global
-        // bucket), text / pvName criteria OR with each other (criteria bucket).  Criterion types new
-        // in dp-grpc 1.16.0 (name, tags, attributes) have no legacy behavior to preserve and follow
-        // the proto contract instead -- criteria list entries AND -- so they join the global bucket.
-        // Phase 3 makes the combination all-AND for every criterion type.
-        final List<Bson> globalFilterList = new ArrayList<>();
-        final List<Bson> criteriaFilterList = new ArrayList<>();
+        // Create query filter from request search criteria.  Criteria list entries combine with
+        // AND per the proto contract (#248 Phase 3, plan D4/D22); values within one criterion OR.
+        // At most one TextCriterion can be accepted per request: two $text clauses cannot be ANDed
+        // (Mongo rejects the query with "Too many text expressions"), so validation rejects the
+        // second before the job is enqueued.
+        final List<Bson> filterList = new ArrayList<>();
 
         // Criterion contents are validated in AnnotationServiceImpl.queryDataSets() before the job
         // is enqueued -- blank entries and non-ObjectId ids are rejected there -- so filters are
@@ -283,45 +281,45 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    // ids within a criterion are ORed
+                    // ids within a criterion are ORed; multiple IdCriterion entries intersect
                     final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
                             .map(ObjectId::new)
                             .toList();
-                    globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_ID, objectIds));
+                    filterList.add(Filters.in(BsonConstants.BSON_KEY_DATA_SET_ID, objectIds));
                 }
 
                 case OWNERCRITERION -> {
-                    globalFilterList.add(Filters.in(
+                    filterList.add(Filters.in(
                             BsonConstants.BSON_KEY_DATA_SET_OWNER_ID,
                             criterion.getOwnerCriterion().getOwnerIdsList()));
                 }
 
                 case NAMECRITERION -> {
                     final var c = criterion.getNameCriterion();
-                    globalFilterList.add(MongoQueryFilterBuilder.nameMatchFilter(
+                    filterList.add(MongoQueryFilterBuilder.nameMatchFilter(
                             BsonConstants.BSON_KEY_DATA_SET_NAME,
                             c.getExactList(), c.getPrefixList(), c.getContainsList()));
                 }
 
                 case TEXTCRITERION -> {
-                    criteriaFilterList.add(Filters.text(criterion.getTextCriterion().getText()));
+                    filterList.add(Filters.text(criterion.getTextCriterion().getText()));
                 }
 
                 case PVNAMECRITERION -> {
                     // pv names within a criterion are ORed
-                    criteriaFilterList.add(Filters.in(
+                    filterList.add(Filters.in(
                             BsonConstants.BSON_KEY_DATA_SET_BLOCK_PV_NAMES,
                             criterion.getPvNameCriterion().getNamesList()));
                 }
 
                 case TAGSCRITERION -> {
-                    globalFilterList.add(MongoQueryFilterBuilder.tagsFilter(
+                    filterList.add(MongoQueryFilterBuilder.tagsFilter(
                             criterion.getTagsCriterion().getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
                     final var c = criterion.getAttributesCriterion();
-                    globalFilterList.add(
+                    filterList.add(
                             MongoQueryFilterBuilder.attributeFilter(c.getKey(), c.getValuesList()));
                 }
 
@@ -335,20 +333,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
         // queries, so there is deliberately no emptiness check here.
 
-        // create global filter to be combined with and operator (default matches all DataSets)
-        Bson globalFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
-        if (globalFilterList.size() > 0) {
-            globalFilter = and(globalFilterList);
-        }
-
-        // create criteria filter to be combined with or operator (default matches all DataSets)
-        Bson criteriaFilter = Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID);
-        if (criteriaFilterList.size() > 0) {
-            criteriaFilter = or(criteriaFilterList);
-        }
-
-        // combine global filter with criteria filter using and operator
-        final Bson queryFilter = and(globalFilter, criteriaFilter);
+        final Bson queryFilter = filterList.isEmpty()
+                ? Filters.exists(BsonConstants.BSON_KEY_DATA_SET_ID)
+                : and(filterList);
 
         logger.debug("executing queryDataSets filter: {}", queryFilter);
 
@@ -604,14 +591,12 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     @Override
     public AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request) {
 
-        // Create query filter from request search criteria.  Phase 1 of #248 (plan D4) preserves the
-        // legacy combination semantics verbatim: id / owner / dataSets / text criteria AND with
-        // everything (global bucket), annotations / tags / attributes criteria OR with each other
-        // (criteria bucket).  The NameCriterion, new in dp-grpc 1.16.0, has no legacy behavior to
-        // preserve and follows the proto contract instead -- criteria list entries AND -- so it
-        // joins the global bucket.  Phase 3 makes the combination all-AND for every criterion type.
-        final List<Bson> globalFilterList = new ArrayList<>();
-        final List<Bson> criteriaFilterList = new ArrayList<>();
+        // Create query filter from request search criteria.  Criteria list entries combine with
+        // AND per the proto contract (#248 Phase 3, plan D4/D22); values within one criterion OR.
+        // At most one TextCriterion can be accepted per request: two $text clauses cannot be ANDed
+        // (Mongo rejects the query with "Too many text expressions"), so validation rejects the
+        // second before the job is enqueued.
+        final List<Bson> filterList = new ArrayList<>();
 
         // Criterion contents are validated in AnnotationServiceImpl.queryAnnotations() before the
         // job is enqueued -- blank entries and non-ObjectId ids are rejected there -- so filters are
@@ -622,55 +607,52 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
             switch (criterion.getCriterionCase()) {
 
                 case IDCRITERION -> {
-                    // ids within a criterion are ORed
+                    // ids within a criterion are ORed; multiple IdCriterion entries intersect
                     final List<ObjectId> objectIds = criterion.getIdCriterion().getIdsList().stream()
                             .map(ObjectId::new)
                             .toList();
-                    globalFilterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ID, objectIds));
+                    filterList.add(Filters.in(BsonConstants.BSON_KEY_ANNOTATION_ID, objectIds));
                 }
 
                 case OWNERCRITERION -> {
-                    globalFilterList.add(Filters.in(
+                    filterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID,
                             criterion.getOwnerCriterion().getOwnerIdsList()));
                 }
 
                 case DATASETSCRITERION -> {
-                    // associated dataset ids filter, combined with other filters by AND operator
-                    globalFilterList.add(Filters.in(
+                    // associated dataset ids within a criterion are ORed
+                    filterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS,
                             canonicalReferenceIdValues(criterion.getDataSetsCriterion().getDataSetIdsList())));
                 }
 
                 case ANNOTATIONSCRITERION -> {
-                    // associated annotation ids filter, combined with other filters by OR operator
-                    criteriaFilterList.add(Filters.in(
+                    // associated annotation ids within a criterion are ORed
+                    filterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS,
                             canonicalReferenceIdValues(criterion.getAnnotationsCriterion().getAnnotationIdsList())));
                 }
 
                 case NAMECRITERION -> {
                     final var c = criterion.getNameCriterion();
-                    globalFilterList.add(MongoQueryFilterBuilder.nameMatchFilter(
+                    filterList.add(MongoQueryFilterBuilder.nameMatchFilter(
                             BsonConstants.BSON_KEY_ANNOTATION_NAME,
                             c.getExactList(), c.getPrefixList(), c.getContainsList()));
                 }
 
                 case TEXTCRITERION -> {
-                    // full text search filter, combined with other filters by AND operator
-                    globalFilterList.add(Filters.text(criterion.getTextCriterion().getText()));
+                    filterList.add(Filters.text(criterion.getTextCriterion().getText()));
                 }
 
                 case TAGSCRITERION -> {
-                    // tags filter, combined with other filters by OR operator
-                    criteriaFilterList.add(MongoQueryFilterBuilder.tagsFilter(
+                    filterList.add(MongoQueryFilterBuilder.tagsFilter(
                             criterion.getTagsCriterion().getValuesList()));
                 }
 
                 case ATTRIBUTESCRITERION -> {
-                    // attributes filter, combined with other filters by OR operator
                     final var c = criterion.getAttributesCriterion();
-                    criteriaFilterList.add(
+                    filterList.add(
                             MongoQueryFilterBuilder.attributeFilter(c.getKey(), c.getValuesList()));
                 }
 
@@ -684,20 +666,9 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
         // An empty criteria list is match-all, not an error -- same contract as the #245 metadata
         // queries, so there is deliberately no emptiness check here.
 
-        // create global filter to be combined with and operator (default matches all Annotations)
-        Bson globalFilter = Filters.exists(BsonConstants.BSON_KEY_ANNOTATION_ID);
-        if (globalFilterList.size() > 0) {
-            globalFilter = and(globalFilterList);
-        }
-
-        // create criteria filter to be combined with or operator (default matches all Annotations)
-        Bson criteriaFilter = Filters.exists(BsonConstants.BSON_KEY_ANNOTATION_ID);
-        if (criteriaFilterList.size() > 0) {
-            criteriaFilter = or(criteriaFilterList);
-        }
-
-        // combine global filter with criteria filter using and operator
-        final Bson queryFilter = and(globalFilter, criteriaFilter);
+        final Bson queryFilter = filterList.isEmpty()
+                ? Filters.exists(BsonConstants.BSON_KEY_ANNOTATION_ID)
+                : and(filterList);
 
         logger.debug("executing queryAnnotations filter: {}", queryFilter);
 
