@@ -150,7 +150,8 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
      * response depends on it — a missing document is a business-rule rejection, a failed query is
      * an infrastructure error — must use this method.
      */
-    private DataSetDocument lookupDataSet(String dataSetId) throws DpException {
+    @Override
+    public DataSetDocument lookupDataSet(String dataSetId) throws DpException {
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has a dataSetId, it already exists in the database.
         final List<DataSetDocument> matchingDocuments = new ArrayList<>();
@@ -373,6 +374,74 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
+    public MongoDeleteResult deleteDataSet(String dataSetId) {
+
+        // Reject while any annotation references the dataset — a containment-strength association
+        // (annotation.proto deleteDataSet contract). Name one referencing id plus the total count
+        // (#248 plan D7): one id is enough to act on, the count says whether to expect more, and
+        // the message stays bounded regardless of how many annotations reference the dataset.
+        //
+        // Like overlapExists(), this check-then-act sequence is not atomic with concurrent writers
+        // (the handler runs multiple workers, and this client uses no sessions/transactions): a
+        // saveAnnotation validated before this count can commit a reference to the dataset after
+        // the delete below. Accepted v1 limitation, same as the activation overlap constraint.
+        final long referencingCount;
+        AnnotationDocument referencingAnnotation = null;
+        try {
+            // Stored dataSetIds are canonical lowercase hex (AnnotationDocument save path, schema
+            // migration v3). Canonicalize the incoming id to match: an uppercase variant of the
+            // same id parses to the same binary ObjectId — so the delete below would still remove
+            // the dataset — but as a raw string it would match no stored reference, silently
+            // bypassing the check this filter exists to enforce.
+            final Bson referenceFilter = eq(
+                    BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS, new ObjectId(dataSetId).toHexString());
+            referencingCount = mongoCollectionAnnotations.countDocuments(referenceFilter);
+            if (referencingCount > 0) {
+                referencingAnnotation = mongoCollectionAnnotations.find(referenceFilter).limit(1).first();
+            }
+        } catch (Exception ex) {
+            // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+            // from the ObjectId constructor. The job validates the id first, but an escapee here
+            // would be swallowed by QueueHandlerBase and hang the caller's stream.
+            final String errorMsg = "exception checking annotations referencing dataSetId '"
+                    + dataSetId + "': " + ex.getMessage();
+            logger.error("deleteDataSet reference check error: {}", ex.getMessage(), ex);
+            return new MongoDeleteResult(true, errorMsg, null);
+        }
+        if (referencingCount > 0) {
+            // The count is non-zero but the sampled document may have been deleted between the two
+            // reads; the count alone still justifies the rejection.
+            final String exampleId = (referencingAnnotation == null)
+                    ? "(concurrently deleted)" : referencingAnnotation.getId().toString();
+            final String rejectMsg = "cannot delete dataSetId '" + dataSetId + "': referenced by "
+                    + referencingCount + " annotation(s) including id: " + exampleId
+                    + "; delete or update those annotations first";
+            logger.debug(rejectMsg);
+            return MongoDeleteResult.reject(rejectMsg);
+        }
+
+        try {
+            final Bson filter = eq(BsonConstants.BSON_KEY_DATA_SET_ID, new ObjectId(dataSetId));
+            final DeleteResult result = mongoCollectionDataSets.deleteOne(filter);
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "deleteOne not acknowledged for DataSetDocument id: " + dataSetId;
+                logger.error(errorMsg);
+                return new MongoDeleteResult(true, errorMsg, null);
+            }
+            if (result.getDeletedCount() == 0) {
+                // not found — signal via null deletedIdentifier
+                return new MongoDeleteResult(false, "", null);
+            }
+            return new MongoDeleteResult(false, "", dataSetId);
+        } catch (Exception ex) {
+            // broad for the same reason as the reference check above
+            final String errorMsg = "exception deleting DataSetDocument: " + ex.getMessage();
+            logger.error("deleteDataSet error: {}", ex.getMessage(), ex);
+            return new MongoDeleteResult(true, errorMsg, null);
+        }
+    }
+
+    @Override
     public AnnotationDocument findAnnotation(String annotationId) {
         // Collapses "absent" and "query failed" to null. Callers that must tell the two apart —
         // saveAnnotation, which reports the former as a rejection — use lookupAnnotation() instead.
@@ -388,7 +457,8 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
      * Looks up an AnnotationDocument by id, distinguishing an absent document (null) from a failed
      * query (DpException). See {@link #lookupDataSet} for why the distinction matters.
      */
-    private AnnotationDocument lookupAnnotation(String annotationId) throws DpException {
+    @Override
+    public AnnotationDocument lookupAnnotation(String annotationId) throws DpException {
 
         // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
         // sending request has an annotationId, it already exists in the database.
@@ -496,8 +566,39 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                 return MongoSaveResult.reject(rejectMsg, existingDocumentId, false);
             }
 
+            // The replace succeeded, so the stored annotation no longer references the previous
+            // calculations document when the reference changed; delete it rather than orphaning it
+            // (#248 plan D14). The cleanup lives here, beside the lookup that captured the previous
+            // document, for the same reason deleteAnnotation's cascade does: the calculations
+            // lifecycle belongs to the owning annotation. A cleanup failure is logged with the
+            // orphaned id but does not fail the save — the save itself succeeded, and a retry
+            // cannot remove the orphan.
+            final String previousCalculationsId = existingDocument.getCalculationsId();
+            if (previousCalculationsId != null
+                    && !previousCalculationsId.equals(annotationDocument.getCalculationsId())) {
+                final MongoDeleteResult cleanupResult = deleteCalculations(previousCalculationsId);
+                if (cleanupResult.isError) {
+                    logger.error(
+                            "saveAnnotation id: {} replaced calculations document {} but deleting it failed: {}",
+                            existingDocumentId, previousCalculationsId, cleanupResult.message);
+                }
+            }
+
             return new MongoSaveResult(false, "", existingDocumentId, false);
         }
+    }
+
+    /**
+     * Canonicalizes reference-id criterion values to the lowercase hex form stored on annotation
+     * documents (see AnnotationDocument.canonicalObjectIds), so a case-variant id still finds its
+     * references. A value that is not a valid ObjectId is passed through unchanged — as a raw
+     * string filter it matches nothing, which is the pre-existing behavior for such values (these
+     * criteria are validated for blankness, not ObjectId validity).
+     */
+    private static List<String> canonicalReferenceIdValues(List<String> ids) {
+        return ids.stream()
+                .map(id -> ObjectId.isValid(id) ? new ObjectId(id).toHexString() : id)
+                .toList();
     }
 
     @Override
@@ -538,14 +639,14 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
                     // associated dataset ids filter, combined with other filters by AND operator
                     globalFilterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_DATASET_IDS,
-                            criterion.getDataSetsCriterion().getDataSetIdsList()));
+                            canonicalReferenceIdValues(criterion.getDataSetsCriterion().getDataSetIdsList())));
                 }
 
                 case ANNOTATIONSCRITERION -> {
                     // associated annotation ids filter, combined with other filters by OR operator
                     criteriaFilterList.add(Filters.in(
                             BsonConstants.BSON_KEY_ANNOTATION_ANNOTATION_IDS,
-                            criterion.getAnnotationsCriterion().getAnnotationIdsList()));
+                            canonicalReferenceIdValues(criterion.getAnnotationsCriterion().getAnnotationIdsList())));
                 }
 
                 case NAMECRITERION -> {
@@ -622,6 +723,60 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
     }
 
     @Override
+    public MongoDeleteResult deleteAnnotation(String annotationId) {
+
+        // Fetch the annotation first to learn its calculationsId; the calculations document's
+        // lifecycle belongs to the owning annotation, so the delete cascades to it.
+        final AnnotationDocument existingDocument;
+        try {
+            existingDocument = lookupAnnotation(annotationId);
+        } catch (DpException ex) {
+            final String errorMsg = "error looking up AnnotationDocument by id: " + ex.getMessage();
+            logger.error("deleteAnnotation lookup error: {}", ex.getMessage(), ex);
+            return new MongoDeleteResult(true, errorMsg, null);
+        }
+        if (existingDocument == null) {
+            // not found — signal via null deletedIdentifier
+            return new MongoDeleteResult(false, "", null);
+        }
+
+        // Delete the annotation before its calculations: a failure between the two leaves an
+        // orphaned calculations document (harmless, the known #248 D8 class) rather than a live
+        // annotation whose dangling calculationsId would break getAnnotation (plan D15).
+        try {
+            final Bson filter = eq(BsonConstants.BSON_KEY_ANNOTATION_ID, new ObjectId(annotationId));
+            final DeleteResult result = mongoCollectionAnnotations.deleteOne(filter);
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "deleteOne not acknowledged for AnnotationDocument id: " + annotationId;
+                logger.error(errorMsg);
+                return new MongoDeleteResult(true, errorMsg, null);
+            }
+            if (result.getDeletedCount() == 0) {
+                // deleted between the lookup above and this write — not found
+                return new MongoDeleteResult(false, "", null);
+            }
+        } catch (MongoException ex) {
+            final String errorMsg = "MongoException deleting AnnotationDocument: " + ex.getMessage();
+            logger.error("deleteAnnotation error: {}", ex.getMessage(), ex);
+            return new MongoDeleteResult(true, errorMsg, null);
+        }
+
+        if (existingDocument.getCalculationsId() != null) {
+            final MongoDeleteResult calculationsResult = deleteCalculations(existingDocument.getCalculationsId());
+            if (calculationsResult.isError) {
+                // The annotation itself is already deleted; say so, and name the orphan.
+                final String errorMsg = "annotation " + annotationId
+                        + " was deleted but deleting its calculations document "
+                        + existingDocument.getCalculationsId() + " failed: " + calculationsResult.message;
+                logger.error(errorMsg);
+                return new MongoDeleteResult(true, errorMsg, null);
+            }
+        }
+
+        return new MongoDeleteResult(false, "", annotationId);
+    }
+
+    @Override
     public MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument) {
 
         logger.debug("inserting CalculationsDocument id: {}", calculationsDocument.getId());
@@ -645,24 +800,61 @@ public class MongoSyncAnnotationClient extends MongoSyncClient implements MongoA
 
     @Override
     public CalculationsDocument findCalculations(String calculationsId) {
+        // Collapses "absent" and "query failed" to null. Callers that must tell the two apart —
+        // getCalculations and getAnnotation, which report the former as a rejection or corruption
+        // error — use lookupCalculations() instead.
+        try {
+            return lookupCalculations(calculationsId);
+        } catch (DpException ex) {
+            // already logged with its stack trace in lookupCalculations()
+            return null;
+        }
+    }
 
-        // TODO: do we need to wrap this in a retry loop?  I'm not adding it now, my reasoning is that if the caller
-        // sending request has a calculationsId, it already exists in the database.
-        List<CalculationsDocument> matchingDocuments = new ArrayList<>();
+    /**
+     * Looks up a CalculationsDocument by id, distinguishing an absent document (null) from a failed
+     * query (DpException). See {@link #lookupDataSet} for why the distinction matters.
+     */
+    @Override
+    public CalculationsDocument lookupCalculations(String calculationsId) throws DpException {
+
+        final List<CalculationsDocument> matchingDocuments = new ArrayList<>();
 
         // wrap this in a try/catch because otherwise we take out the thread if mongo throws an exception
         try {
             mongoCollectionCalculations.find(
                     eq(BsonConstants.BSON_KEY_CALCULATIONS_ID, new ObjectId(calculationsId))).into(matchingDocuments);
         } catch (Exception ex) {
-            logger.error("findCalculations: mongo exception in find(): {}", ex.getMessage());
-            return null;
+            // log here with the trace: DpException carries only the message onward
+            logger.error("lookupCalculations: mongo exception in find(): {}", ex.getMessage(), ex);
+            throw new DpException("error querying CalculationsDocument by id: " + ex.getMessage());
         }
 
-        if (!matchingDocuments.isEmpty()) {
-            return matchingDocuments.get(0);
-        } else {
-            return null;
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
+    }
+
+    @Override
+    public MongoDeleteResult deleteCalculations(String calculationsId) {
+
+        try {
+            final Bson filter = eq(BsonConstants.BSON_KEY_CALCULATIONS_ID, new ObjectId(calculationsId));
+            final DeleteResult result = mongoCollectionCalculations.deleteOne(filter);
+            if (!result.wasAcknowledged()) {
+                final String errorMsg = "deleteOne not acknowledged for CalculationsDocument id: " + calculationsId;
+                logger.error(errorMsg);
+                return new MongoDeleteResult(true, errorMsg, null);
+            }
+            if (result.getDeletedCount() == 0) {
+                // not found — benign for the lifecycle-cleanup callers, signaled via null deletedIdentifier
+                return new MongoDeleteResult(false, "", null);
+            }
+            return new MongoDeleteResult(false, "", calculationsId);
+        } catch (Exception ex) {
+            // Not necessarily a MongoException: an unparseable id throws IllegalArgumentException
+            // from the ObjectId constructor.
+            final String errorMsg = "exception deleting CalculationsDocument: " + ex.getMessage();
+            logger.error("deleteCalculations error: {}", ex.getMessage(), ex);
+            return new MongoDeleteResult(true, errorMsg, null);
         }
     }
 

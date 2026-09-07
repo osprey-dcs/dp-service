@@ -171,38 +171,51 @@ public class MongoTestClient extends MongoSyncClient {
 
     public DataSetDocument findDataSet(String dataSetId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-            List<DataSetDocument> matchingDocuments = new ArrayList<>();
-            mongoCollectionDataSets.find(eq("_id", new ObjectId(dataSetId))).into(matchingDocuments);
-            if (matchingDocuments.size() > 0) {
-                return matchingDocuments.get(0);
-            } else {
-                try {
-                    logger.info("findDataSet id: " + dataSetId + " retrying");
-                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                } catch (InterruptedException ex) {
-                    // ignore and just retry
-                }
+            final DataSetDocument document = findDataSetNoRetry(dataSetId);
+            if (document != null) {
+                return document;
+            }
+            try {
+                logger.info("findDataSet id: " + dataSetId + " retrying");
+                Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+            } catch (InterruptedException ex) {
+                // ignore and just retry
             }
         }
         return null;
     }
 
+    /**
+     * Single-shot lookup, no retry loop. The retry finders wait ~30s before reporting absence, so
+     * a test asserting a document was deleted must use this variant instead.
+     */
+    public DataSetDocument findDataSetNoRetry(String dataSetId) {
+        final List<DataSetDocument> matchingDocuments = new ArrayList<>();
+        mongoCollectionDataSets.find(eq("_id", new ObjectId(dataSetId))).into(matchingDocuments);
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
+    }
+
     public AnnotationDocument findAnnotation(String annotationId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-            final List<AnnotationDocument> matchingAnnotations = new ArrayList<>();
-            mongoCollectionAnnotations.find(eq("_id", new ObjectId(annotationId))).into(matchingAnnotations);
-            if (matchingAnnotations.size() > 0) {
-                return matchingAnnotations.get(0);
-            } else {
-                try {
-                    logger.info("findAnnotation id: " + annotationId + " retrying");
-                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                } catch (InterruptedException ex) {
-                    // ignore and just retry
-                }
+            final AnnotationDocument document = findAnnotationNoRetry(annotationId);
+            if (document != null) {
+                return document;
+            }
+            try {
+                logger.info("findAnnotation id: " + annotationId + " retrying");
+                Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+            } catch (InterruptedException ex) {
+                // ignore and just retry
             }
         }
         return null;
+    }
+
+    /** Single-shot lookup, no retry loop — see {@link #findDataSetNoRetry}. */
+    public AnnotationDocument findAnnotationNoRetry(String annotationId) {
+        final List<AnnotationDocument> matchingDocuments = new ArrayList<>();
+        mongoCollectionAnnotations.find(eq("_id", new ObjectId(annotationId))).into(matchingDocuments);
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
     }
 
     public PvMetadataDocument findPvMetadata(String pvName) {
@@ -302,19 +315,29 @@ public class MongoTestClient extends MongoSyncClient {
         return null;
     }
 
+    /** Removes a calculations document directly, for tests that manufacture a dangling reference. */
+    public void deleteCalculationsDocument(String calculationsId) {
+        mongoCollectionCalculations.deleteOne(eq("_id", new ObjectId(calculationsId)));
+    }
+
+    /** Single-shot lookup, no retry loop — see {@link #findDataSetNoRetry}. */
+    public CalculationsDocument findCalculationsNoRetry(String calculationsId) {
+        final List<CalculationsDocument> matchingDocuments = new ArrayList<>();
+        mongoCollectionCalculations.find(eq("_id", new ObjectId(calculationsId))).into(matchingDocuments);
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
+    }
+
     public CalculationsDocument findCalculations(String calculationsId) {
         for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
-            final List<CalculationsDocument> matchingDocuments = new ArrayList<>();
-            mongoCollectionCalculations.find(eq("_id", new ObjectId(calculationsId))).into(matchingDocuments);
-            if (matchingDocuments.size() > 0) {
-                return matchingDocuments.get(0);
-            } else {
-                try {
-                    logger.info("findCalculations id: " + calculationsId + " retrying");
-                    Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
-                } catch (InterruptedException ex) {
-                    // ignore and just retry
-                }
+            final CalculationsDocument document = findCalculationsNoRetry(calculationsId);
+            if (document != null) {
+                return document;
+            }
+            try {
+                logger.info("findCalculations id: " + calculationsId + " retrying");
+                Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+            } catch (InterruptedException ex) {
+                // ignore and just retry
             }
         }
         return null;

@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataDisp
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import org.apache.logging.log4j.LogManager;
@@ -101,7 +102,16 @@ public abstract class ExportDataJobBase extends HandlerJob {
             final String calculationsId = calculationsSpec.getCalculationsId();
             requestFrameColumnNamesMap = calculationsSpec.getDataFrameColumnsMap().isEmpty() ?
                     null : calculationsSpec.getDataFrameColumnsMap();
-            calculationsDocument = mongoAnnotationClient.findCalculations(calculationsId);
+            // lookupCalculations, not findCalculations: this caller can act on the distinction
+            // between a failed query and a genuine absence, and reporting an outage as "not found"
+            // would invert the caller's retry decision (#235)
+            try {
+                calculationsDocument = mongoAnnotationClient.lookupCalculations(calculationsId);
+            } catch (DpException ex) {
+                this.dispatcher.handleError(
+                        "error looking up CalculationsDocument with id " + calculationsId + ": " + ex.getMessage());
+                return;
+            }
             if (calculationsDocument == null) {
                 final String errorMsg = "CalculationsDocument with id " + calculationsId + " not found";
                 this.dispatcher.handleError(errorMsg);

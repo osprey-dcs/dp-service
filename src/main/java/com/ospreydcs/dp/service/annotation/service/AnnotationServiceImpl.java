@@ -354,6 +354,134 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         handler.handleQueryDataSets(request, responseObserver);
     }
 
+    // =========================================================
+    // getDataSet
+    // =========================================================
+
+    private static GetDataSetResponse getDataSetResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return GetDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendGetDataSetResponseReject(
+            String msg, StreamObserver<GetDataSetResponse> responseObserver) {
+        responseObserver.onNext(getDataSetResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetDataSetResponseError(
+            String msg, StreamObserver<GetDataSetResponse> responseObserver) {
+        responseObserver.onNext(getDataSetResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetDataSetResponseSuccess(
+            DataSet dataSet,
+            StreamObserver<GetDataSetResponse> responseObserver) {
+        final GetDataSetResponse.GetDataSetResult result =
+                GetDataSetResponse.GetDataSetResult.newBuilder()
+                        .setDataSet(dataSet)
+                        .build();
+        responseObserver.onNext(GetDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setGetDataSetResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getDataSet(
+            GetDataSetRequest request,
+            StreamObserver<GetDataSetResponse> responseObserver
+    ) {
+        logger.info("id: {} getDataSet request received dataSetId: {}",
+                responseObserver.hashCode(), request.getDataSetId());
+        handler.handleGetDataSet(request, responseObserver);
+    }
+
+    // =========================================================
+    // deleteDataSet
+    // =========================================================
+
+    private static DeleteDataSetResponse deleteDataSetResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return DeleteDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendDeleteDataSetResponseReject(
+            String msg, StreamObserver<DeleteDataSetResponse> responseObserver) {
+        responseObserver.onNext(deleteDataSetResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteDataSetResponseError(
+            String msg, StreamObserver<DeleteDataSetResponse> responseObserver) {
+        responseObserver.onNext(deleteDataSetResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteDataSetResponseSuccess(
+            String dataSetId, StreamObserver<DeleteDataSetResponse> responseObserver) {
+        final DeleteDataSetResponse.DeleteDataSetResult result =
+                DeleteDataSetResponse.DeleteDataSetResult.newBuilder()
+                        .setDataSetId(dataSetId)
+                        .build();
+        responseObserver.onNext(DeleteDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setDeleteDataSetResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void deleteDataSet(
+            DeleteDataSetRequest request,
+            StreamObserver<DeleteDataSetResponse> responseObserver
+    ) {
+        logger.info("id: {} deleteDataSet request received dataSetId: {}",
+                responseObserver.hashCode(), request.getDataSetId());
+        handler.handleDeleteDataSet(request, responseObserver);
+    }
+
+    // =========================================================
+    // patchDataSet (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void patchDataSet(
+            PatchDataSetRequest request,
+            StreamObserver<PatchDataSetResponse> responseObserver
+    ) {
+        logger.info("id: {} patchDataSet request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("patchDataSet() is not yet implemented")
+                .build();
+        responseObserver.onNext(PatchDataSetResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
+    }
+
     private static SaveAnnotationResponse saveAnnotationResponseReject(String msg) {
         final ExceptionalResult exceptionalResult =
                 ExceptionalResult.newBuilder()
@@ -403,11 +531,20 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         responseObserver.onCompleted();
     }
 
-    private static SaveAnnotationResponse saveAnnotationResponseSuccess(String annotationId) {
+    private static SaveAnnotationResponse saveAnnotationResponseSuccess(String annotationId, String calculationsId) {
 
-        final SaveAnnotationResponse.SaveAnnotationResult result =
+        final SaveAnnotationResponse.SaveAnnotationResult.Builder resultBuilder =
                 SaveAnnotationResponse.SaveAnnotationResult.newBuilder()
-                        .setAnnotationId(annotationId)
+                        .setAnnotationId(annotationId);
+
+        // calculationsId is returned alongside annotationId when the request carried calculations,
+        // so the addressing key used by getCalculations(), CalculationsSpec, and ColumnProvenance
+        // is available without a further round trip (annotation.proto SaveAnnotationResult)
+        if (calculationsId != null) {
+            resultBuilder.setCalculationsId(calculationsId);
+        }
+
+        final SaveAnnotationResponse.SaveAnnotationResult result = resultBuilder
                         .build();
 
         final SaveAnnotationResponse response = SaveAnnotationResponse.newBuilder()
@@ -419,8 +556,11 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
     }
 
     public static void sendSaveAnnotationResponseSuccess(
-            String annotationId, StreamObserver<SaveAnnotationResponse> responseObserver) {
-        final SaveAnnotationResponse response = saveAnnotationResponseSuccess(annotationId);
+            String annotationId,
+            String calculationsId,
+            StreamObserver<SaveAnnotationResponse> responseObserver
+    ) {
+        final SaveAnnotationResponse response = saveAnnotationResponseSuccess(annotationId, calculationsId);
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
@@ -664,6 +804,188 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         }
 
         handler.handleQueryAnnotations(request, responseObserver);
+    }
+
+    // =========================================================
+    // getAnnotation
+    // =========================================================
+
+    private static GetAnnotationResponse getAnnotationResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return GetAnnotationResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendGetAnnotationResponseReject(
+            String msg, StreamObserver<GetAnnotationResponse> responseObserver) {
+        responseObserver.onNext(getAnnotationResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetAnnotationResponseError(
+            String msg, StreamObserver<GetAnnotationResponse> responseObserver) {
+        responseObserver.onNext(getAnnotationResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetAnnotationResponseSuccess(
+            Annotation annotation,
+            StreamObserver<GetAnnotationResponse> responseObserver) {
+        final GetAnnotationResponse.GetAnnotationResult result =
+                GetAnnotationResponse.GetAnnotationResult.newBuilder()
+                        .setAnnotation(annotation)
+                        .build();
+        responseObserver.onNext(GetAnnotationResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setGetAnnotationResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getAnnotation(
+            GetAnnotationRequest request,
+            StreamObserver<GetAnnotationResponse> responseObserver
+    ) {
+        logger.info("id: {} getAnnotation request received annotationId: {}",
+                responseObserver.hashCode(), request.getAnnotationId());
+        handler.handleGetAnnotation(request, responseObserver);
+    }
+
+    // =========================================================
+    // deleteAnnotation
+    // =========================================================
+
+    private static DeleteAnnotationResponse deleteAnnotationResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return DeleteAnnotationResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendDeleteAnnotationResponseReject(
+            String msg, StreamObserver<DeleteAnnotationResponse> responseObserver) {
+        responseObserver.onNext(deleteAnnotationResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteAnnotationResponseError(
+            String msg, StreamObserver<DeleteAnnotationResponse> responseObserver) {
+        responseObserver.onNext(deleteAnnotationResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendDeleteAnnotationResponseSuccess(
+            String annotationId, StreamObserver<DeleteAnnotationResponse> responseObserver) {
+        final DeleteAnnotationResponse.DeleteAnnotationResult result =
+                DeleteAnnotationResponse.DeleteAnnotationResult.newBuilder()
+                        .setAnnotationId(annotationId)
+                        .build();
+        responseObserver.onNext(DeleteAnnotationResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setDeleteAnnotationResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void deleteAnnotation(
+            DeleteAnnotationRequest request,
+            StreamObserver<DeleteAnnotationResponse> responseObserver
+    ) {
+        logger.info("id: {} deleteAnnotation request received annotationId: {}",
+                responseObserver.hashCode(), request.getAnnotationId());
+        handler.handleDeleteAnnotation(request, responseObserver);
+    }
+
+    // =========================================================
+    // patchAnnotation (stub — not yet implemented)
+    // =========================================================
+
+    @Override
+    public void patchAnnotation(
+            PatchAnnotationRequest request,
+            StreamObserver<PatchAnnotationResponse> responseObserver
+    ) {
+        logger.info("id: {} patchAnnotation request received", responseObserver.hashCode());
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR)
+                .setMessage("patchAnnotation() is not yet implemented")
+                .build();
+        responseObserver.onNext(PatchAnnotationResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    // =========================================================
+    // getCalculations
+    // =========================================================
+
+    private static GetCalculationsResponse getCalculationsResponseExceptionalResult(
+            String msg, ExceptionalResult.ExceptionalResultStatus status) {
+        final ExceptionalResult exceptionalResult = ExceptionalResult.newBuilder()
+                .setExceptionalResultStatus(status)
+                .setMessage(msg)
+                .build();
+        return GetCalculationsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setExceptionalResult(exceptionalResult)
+                .build();
+    }
+
+    public static void sendGetCalculationsResponseReject(
+            String msg, StreamObserver<GetCalculationsResponse> responseObserver) {
+        responseObserver.onNext(getCalculationsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetCalculationsResponseError(
+            String msg, StreamObserver<GetCalculationsResponse> responseObserver) {
+        responseObserver.onNext(getCalculationsResponseExceptionalResult(
+                msg, ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR));
+        responseObserver.onCompleted();
+    }
+
+    public static void sendGetCalculationsResponseSuccess(
+            Calculations calculations,
+            StreamObserver<GetCalculationsResponse> responseObserver) {
+        final GetCalculationsResponse.GetCalculationsResult result =
+                GetCalculationsResponse.GetCalculationsResult.newBuilder()
+                        .setCalculations(calculations)
+                        .build();
+        responseObserver.onNext(GetCalculationsResponse.newBuilder()
+                .setResponseTime(TimestampUtility.getTimestampNow())
+                .setGetCalculationsResult(result)
+                .build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getCalculations(
+            GetCalculationsRequest request,
+            StreamObserver<GetCalculationsResponse> responseObserver
+    ) {
+        logger.info("id: {} getCalculations request received calculationsId: {}",
+                responseObserver.hashCode(), request.getCalculationsId());
+        handler.handleGetCalculations(request, responseObserver);
     }
 
     private static ExportDataResponse exportDataResponseReject(String msg) {

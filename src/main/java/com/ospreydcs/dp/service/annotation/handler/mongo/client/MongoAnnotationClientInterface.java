@@ -37,19 +37,59 @@ public interface MongoAnnotationClientInterface {
 
     DataSetDocument findDataSet(String dataSetId);
 
+    /**
+     * Returns null if no DataSet has this id; throws if the query itself failed. Callers whose
+     * response depends on the distinction — a missing document is a business-rule rejection, a
+     * failed query is an infrastructure error — must use this instead of {@link #findDataSet}.
+     */
+    DataSetDocument lookupDataSet(String dataSetId) throws DpException;
+
     MongoSaveResult saveDataSet(DataSetDocument dataSetDocument, String existingDocumentId);
 
     DataSetQueryResult executeQueryDataSets(QueryDataSetsRequest request);
 
+    /**
+     * Deletes the DataSet with the specified id. Rejected while any Annotation references the
+     * dataset in its dataSetIds; the rejection names one referencing annotation id and the total
+     * count. A delete matching nothing returns a null deletedIdentifier (not-found).
+     */
+    MongoDeleteResult deleteDataSet(String dataSetId);
+
     AnnotationDocument findAnnotation(String annotationId);
+
+    /**
+     * Returns null if no Annotation has this id; throws if the query itself failed. See
+     * {@link #lookupDataSet} for why callers must distinguish the two.
+     */
+    AnnotationDocument lookupAnnotation(String annotationId) throws DpException;
 
     MongoSaveResult saveAnnotation(AnnotationDocument annotationDocument, String id);
 
     AnnotationQueryResult executeQueryAnnotations(QueryAnnotationsRequest request);
 
+    /**
+     * Deletes the Annotation with the specified id, along with its Calculations document if it has
+     * one — calculations lifecycle belongs to the owning annotation. Not blocked by incoming soft
+     * references (annotationIds, provenance links), which are permitted to dangle.
+     */
+    MongoDeleteResult deleteAnnotation(String annotationId);
+
     MongoInsertOneResult insertCalculations(CalculationsDocument calculationsDocument);
 
     CalculationsDocument findCalculations(String calculationsId);
+
+    /**
+     * Returns null if no Calculations document has this id; throws if the query itself failed. See
+     * {@link #lookupDataSet} for why callers must distinguish the two.
+     */
+    CalculationsDocument lookupCalculations(String calculationsId) throws DpException;
+
+    /**
+     * Deletes a Calculations document. Used for lifecycle cleanup (deleteAnnotation, and
+     * saveAnnotation replacing or clearing an annotation's calculations); not-found is benign for
+     * those callers and is reported as a null deletedIdentifier, not an error.
+     */
+    MongoDeleteResult deleteCalculations(String calculationsId);
 
     MongoSaveResult savePvMetadata(PvMetadataDocument document);
 

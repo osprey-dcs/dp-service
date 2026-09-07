@@ -46,7 +46,21 @@ public class AnnotationClient extends ServiceApiClientBase {
             String name,
             String ownerId,
             String description,
-            List<AnnotationDataBlock> dataBlocks) {
+            List<AnnotationDataBlock> dataBlocks,
+            List<String> tags,
+            Map<String, String> attributeMap,
+            String modifiedBy) {
+
+        // compatibility constructor predating the dp-grpc 1.16.0 tags/attributes/modifiedBy fields
+        public AnnotationDataSet(
+                String id,
+                String name,
+                String ownerId,
+                String description,
+                List<AnnotationDataBlock> dataBlocks
+        ) {
+            this(id, name, ownerId, description, dataBlocks, null, null, null);
+        }
     }
 
     public record SaveDataSetParams(AnnotationDataSet dataSet) {
@@ -173,14 +187,32 @@ public class AnnotationClient extends ServiceApiClientBase {
             String description,
             List<String> tags,
             Map<String, String> attributeMap,
-            Calculations calculations
+            Calculations calculations,
+            String modifiedBy
     ) {
+
+        // compatibility constructor predating the dp-grpc 1.16.0 modifiedBy field
+        public SaveAnnotationRequestParams(
+                String id,
+                String ownerId,
+                String name,
+                List<String> dataSetIds,
+                List<String> annotationIds,
+                String description,
+                List<String> tags,
+                Map<String, String> attributeMap,
+                Calculations calculations
+        ) {
+            this(id, ownerId, name, dataSetIds, annotationIds, description, tags, attributeMap,
+                    calculations, null);
+        }
     }
 
     public static class SaveAnnotationResponseObserver
             extends ApiResponseObserverBase<SaveAnnotationResponse> {
 
         private final List<String> annotationIdList = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> calculationsIdList = Collections.synchronizedList(new ArrayList<>());
 
         @Override
         protected boolean hasExceptionalResult(SaveAnnotationResponse response) {
@@ -201,6 +233,7 @@ public class AnnotationClient extends ServiceApiClientBase {
             }
 
             annotationIdList.add(response.getSaveAnnotationResult().getAnnotationId());
+            calculationsIdList.add(response.getSaveAnnotationResult().getCalculationsId());
             return true;
         }
 
@@ -209,6 +242,17 @@ public class AnnotationClient extends ServiceApiClientBase {
                 return null;
             } else {
                 return annotationIdList.get(0);
+            }
+        }
+
+        /**
+         * Id of the saved Calculations document, null when the request carried no calculations.
+         */
+        public String getCalculationsId() {
+            if (calculationsIdList.isEmpty() || calculationsIdList.get(0).isEmpty()) {
+                return null;
+            } else {
+                return calculationsIdList.get(0);
             }
         }
     }
@@ -382,8 +426,21 @@ public class AnnotationClient extends ServiceApiClientBase {
         }
 
         requestBuilder.setName(params.dataSet.name);
-        requestBuilder.setDescription(params.dataSet.description);
+        if (params.dataSet.description != null) {
+            requestBuilder.setDescription(params.dataSet.description);
+        }
         requestBuilder.setOwnerId(params.dataSet.ownerId);
+
+        // optional cataloging and audit fields, new in dp-grpc 1.16.0
+        if (params.dataSet.tags != null) {
+            requestBuilder.addAllTags(params.dataSet.tags);
+        }
+        if (params.dataSet.attributeMap != null) {
+            requestBuilder.addAllAttributes(AttributesUtility.attributeListFromMap(params.dataSet.attributeMap));
+        }
+        if (params.dataSet.modifiedBy != null) {
+            requestBuilder.setModifiedBy(params.dataSet.modifiedBy);
+        }
 
         return requestBuilder.build();
     }
@@ -549,6 +606,9 @@ public class AnnotationClient extends ServiceApiClientBase {
         if (params.calculations != null) {
             requestBuilder.setCalculations(params.calculations);
         }
+        if (params.modifiedBy != null) {
+            requestBuilder.setModifiedBy(params.modifiedBy);
+        }
 
         return requestBuilder.build();
     }
@@ -573,7 +633,8 @@ public class AnnotationClient extends ServiceApiClientBase {
             return new SaveAnnotationApiResult(
                     true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
-            return new SaveAnnotationApiResult(responseObserver.getAnnotationId());
+            return new SaveAnnotationApiResult(
+                    responseObserver.getAnnotationId(), responseObserver.getCalculationsId());
         }
     }
 
@@ -725,6 +786,268 @@ public class AnnotationClient extends ServiceApiClientBase {
         final QueryAnnotationsRequest request = buildQueryAnnotationsRequest(queryParams);
 
         return sendQueryAnnotations(request);
+    }
+
+    // =========================================================
+    // getDataSet / getAnnotation / getCalculations
+    // =========================================================
+
+    public static class GetDataSetResponseObserver
+            extends ApiResponseObserverBase<GetDataSetResponse> {
+
+        private final List<DataSet> dataSetList = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(GetDataSetResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetDataSetResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(GetDataSetResponse response) {
+
+            if (!response.hasGetDataSetResult()) {
+                recordFailure(observerName() + " response does not contain GetDataSetResult");
+                return false;
+            }
+
+            dataSetList.add(response.getGetDataSetResult().getDataSet());
+            return true;
+        }
+
+        public DataSet getDataSet() {
+            if (dataSetList.isEmpty()) {
+                return null;
+            } else {
+                return dataSetList.get(0);
+            }
+        }
+    }
+
+    public static class GetAnnotationResponseObserver
+            extends ApiResponseObserverBase<GetAnnotationResponse> {
+
+        private final List<Annotation> annotationList = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(GetAnnotationResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetAnnotationResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(GetAnnotationResponse response) {
+
+            if (!response.hasGetAnnotationResult()) {
+                recordFailure(observerName() + " response does not contain GetAnnotationResult");
+                return false;
+            }
+
+            annotationList.add(response.getGetAnnotationResult().getAnnotation());
+            return true;
+        }
+
+        public Annotation getAnnotation() {
+            if (annotationList.isEmpty()) {
+                return null;
+            } else {
+                return annotationList.get(0);
+            }
+        }
+    }
+
+    public static class GetCalculationsResponseObserver
+            extends ApiResponseObserverBase<GetCalculationsResponse> {
+
+        private final List<Calculations> calculationsList = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        protected boolean hasExceptionalResult(GetCalculationsResponse response) {
+            return response.hasExceptionalResult();
+        }
+
+        @Override
+        protected ExceptionalResult getExceptionalResult(GetCalculationsResponse response) {
+            return response.getExceptionalResult();
+        }
+
+        @Override
+        protected boolean handleResult(GetCalculationsResponse response) {
+
+            if (!response.hasGetCalculationsResult()) {
+                recordFailure(observerName() + " response does not contain GetCalculationsResult");
+                return false;
+            }
+
+            calculationsList.add(response.getGetCalculationsResult().getCalculations());
+            return true;
+        }
+
+        public Calculations getCalculations() {
+            if (calculationsList.isEmpty()) {
+                return null;
+            } else {
+                return calculationsList.get(0);
+            }
+        }
+    }
+
+    public static GetDataSetRequest buildGetDataSetRequest(String dataSetId) {
+
+        final GetDataSetRequest.Builder requestBuilder = GetDataSetRequest.newBuilder();
+
+        if (dataSetId != null) {
+            requestBuilder.setDataSetId(dataSetId);
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetAnnotationRequest buildGetAnnotationRequest(String annotationId) {
+
+        final GetAnnotationRequest.Builder requestBuilder = GetAnnotationRequest.newBuilder();
+
+        if (annotationId != null) {
+            requestBuilder.setAnnotationId(annotationId);
+        }
+
+        return requestBuilder.build();
+    }
+
+    public static GetCalculationsRequest buildGetCalculationsRequest(String calculationsId) {
+
+        final GetCalculationsRequest.Builder requestBuilder = GetCalculationsRequest.newBuilder();
+
+        if (calculationsId != null) {
+            requestBuilder.setCalculationsId(calculationsId);
+        }
+
+        return requestBuilder.build();
+    }
+
+    public GetDataSetApiResult sendGetDataSet(
+            GetDataSetRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetDataSetResponseObserver responseObserver = new GetDataSetResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.getDataSet(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetDataSetApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new GetDataSetApiResult(responseObserver.getDataSet());
+        }
+    }
+
+    /**
+     * Retrieves a single DataSet by id.
+     *
+     * Note that a missing record is NOT reported as an empty successful result.  The server rejects
+     * the request, so an id that does not exist returns resultStatus.isError == true with the
+     * message "no DataSet record found for id: <id>".  A caller using this method as an existence
+     * check should branch on isReject() rather than isError() — see getConfiguration() for the
+     * convention shared by all single-record getters in this API.
+     */
+    public GetDataSetApiResult getDataSet(
+            String dataSetId
+    ) {
+        final GetDataSetRequest request = buildGetDataSetRequest(dataSetId);
+        return sendGetDataSet(request);
+    }
+
+    public GetAnnotationApiResult sendGetAnnotation(
+            GetAnnotationRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetAnnotationResponseObserver responseObserver = new GetAnnotationResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.getAnnotation(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetAnnotationApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new GetAnnotationApiResult(responseObserver.getAnnotation());
+        }
+    }
+
+    /**
+     * Retrieves a single Annotation by id, with its Calculations content populated inline — the
+     * only method that returns calculations content within an Annotation.  Associated DataSets are
+     * returned as ids (dataSetIds), not content; use getDataSet() or queryDataSets() to retrieve
+     * them.
+     *
+     * A missing record is a rejected request, not an empty result — see getDataSet().
+     */
+    public GetAnnotationApiResult getAnnotation(
+            String annotationId
+    ) {
+        final GetAnnotationRequest request = buildGetAnnotationRequest(annotationId);
+        return sendGetAnnotation(request);
+    }
+
+    public GetCalculationsApiResult sendGetCalculations(
+            GetCalculationsRequest request
+    ) {
+        final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
+                DpAnnotationServiceGrpc.newStub(channel);
+
+        final GetCalculationsResponseObserver responseObserver = new GetCalculationsResponseObserver();
+
+        // send request in separate thread to better simulate out of process grpc,
+        // otherwise service handles request in this thread
+        new Thread(() -> {
+            asyncStub.getCalculations(request, responseObserver);
+        }).start();
+
+        responseObserver.await();
+
+        if (responseObserver.isError()) {
+            return new GetCalculationsApiResult(
+                    true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
+        } else {
+            return new GetCalculationsApiResult(responseObserver.getCalculations());
+        }
+    }
+
+    /**
+     * Retrieves a single Calculations object by id, without loading the owning Annotation.  Obtain
+     * calculationsId from SaveAnnotationApiResult.calculationsId, from Annotation.calculationsId in
+     * query or get results, or from a ColumnProvenance link.
+     *
+     * A missing record is a rejected request, not an empty result — see getDataSet().
+     */
+    public GetCalculationsApiResult getCalculations(
+            String calculationsId
+    ) {
+        final GetCalculationsRequest request = buildGetCalculationsRequest(calculationsId);
+        return sendGetCalculations(request);
     }
 
     public static ExportDataRequest buildExportDataRequest(

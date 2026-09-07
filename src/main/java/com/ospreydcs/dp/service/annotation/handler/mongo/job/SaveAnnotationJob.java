@@ -9,7 +9,9 @@ import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationC
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.SaveAnnotationDispatcher;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.common.model.MongoDeleteResult;
 import com.ospreydcs.dp.service.common.model.MongoInsertOneResult;
 import com.ospreydcs.dp.service.common.model.MongoSaveResult;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
@@ -47,8 +49,16 @@ public class SaveAnnotationJob extends HandlerJob {
 
         logger.debug("executing SaveAnnotationJob id: {}", this.responseObserver.hashCode());
 
-        // validate request, e.g., that ids for associated datasets and annotations exist in the database
-        final ResultStatus resultStatus = this.handler.validateSaveAnnotationRequest(request);
+        // validate request, e.g., that ids for associated datasets and annotations exist in the
+        // database. A lookup failure during validation is an infrastructure failure, dispatched as
+        // an ERROR — sending it as a rejection would invert the caller's retry decision (#235).
+        final ResultStatus resultStatus;
+        try {
+            resultStatus = this.handler.validateSaveAnnotationRequest(request);
+        } catch (DpException ex) {
+            dispatcher.handleError("error validating SaveAnnotationRequest: " + ex.getMessage());
+            return;
+        }
         if (resultStatus.isError) {
             dispatcher.handleValidationError(resultStatus);
             return;
@@ -96,9 +106,34 @@ public class SaveAnnotationJob extends HandlerJob {
         final AnnotationDocument annotationDocument =
                 AnnotationDocument.fromSaveAnnotationRequest(request, calculationsDocumentId);
         final MongoSaveResult result = this.mongoClient.saveAnnotation(annotationDocument, request.getId());
+        // (on a successful update, saveAnnotation() itself deletes a replaced or cleared previous
+        // calculations document — #248 plan D14)
+
+        // A failed save must not silently orphan the calculations document inserted above. On a
+        // rejection the compensating delete is safe: both reject paths in saveAnnotation() (update
+        // id not found, and the concurrent-delete race) fire before any annotation write, so
+        // nothing can reference the new document. On an error the write state is ambiguous — the
+        // annotation may have been stored despite the reported failure — and deleting would risk
+        // the dangling-calculationsId corruption getAnnotation treats as an error (plan D16), so
+        // log the possibly-orphaned id instead of acting.
+        if (result.isError && calculationsDocumentId != null) {
+            if (result.isReject) {
+                final MongoDeleteResult compensationResult =
+                        this.mongoClient.deleteCalculations(calculationsDocumentId);
+                if (compensationResult.isError) {
+                    logger.error(
+                            "saveAnnotation was rejected and deleting its inserted calculations document {} failed: {}",
+                            calculationsDocumentId, compensationResult.message);
+                }
+            } else {
+                logger.error(
+                        "saveAnnotation failed after inserting calculations document {}; it may be orphaned: {}",
+                        calculationsDocumentId, result.message);
+            }
+        }
 
         // dispatch result in API response stream
         logger.debug("dispatching SaveAnnotationJob id: {}", this.responseObserver.hashCode());
-        dispatcher.handleResult(result);
+        dispatcher.handleResult(result, calculationsDocumentId);
     }
 }

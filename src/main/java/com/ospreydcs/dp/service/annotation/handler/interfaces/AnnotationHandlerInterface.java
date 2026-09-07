@@ -17,12 +17,32 @@ public interface AnnotationHandlerInterface {
 
     void handleQueryDataSets(QueryDataSetsRequest request, StreamObserver<QueryDataSetsResponse> responseObserver);
 
+    void handleGetDataSet(
+            GetDataSetRequest request,
+            StreamObserver<GetDataSetResponse> responseObserver);
+
+    void handleDeleteDataSet(
+            DeleteDataSetRequest request,
+            StreamObserver<DeleteDataSetResponse> responseObserver);
+
     void handleSaveAnnotation(
             SaveAnnotationRequest request,
             StreamObserver<SaveAnnotationResponse> responseObserver);
 
     void handleQueryAnnotations(
             QueryAnnotationsRequest request, StreamObserver<QueryAnnotationsResponse> responseObserver);
+
+    void handleGetAnnotation(
+            GetAnnotationRequest request,
+            StreamObserver<GetAnnotationResponse> responseObserver);
+
+    void handleDeleteAnnotation(
+            DeleteAnnotationRequest request,
+            StreamObserver<DeleteAnnotationResponse> responseObserver);
+
+    void handleGetCalculations(
+            GetCalculationsRequest request,
+            StreamObserver<GetCalculationsResponse> responseObserver);
 
     void handleExportData(HandlerExportDataRequest handlerRequest);
 

@@ -9,7 +9,6 @@ import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TreeSet;
 
 public class PvMetadataDocument extends DpBsonDocumentBase {
 
@@ -81,13 +80,9 @@ public class PvMetadataDocument extends DpBsonDocumentBase {
             document.setModifiedBy(request.getModifiedBy());
         }
 
-        // normalize tags: lowercase, unique, sorted
+        // normalized per the house convention (lowercase, deduplicated, sorted) via the shared helper
         if (!request.getTagsList().isEmpty()) {
-            final TreeSet<String> normalizedTags = new TreeSet<>();
-            for (String tag : request.getTagsList()) {
-                normalizedTags.add(tag.toLowerCase());
-            }
-            document.setTags(new ArrayList<>(normalizedTags));
+            document.setTags(normalizedTags(request.getTagsList()));
         }
 
         if (!request.getAttributesList().isEmpty()) {

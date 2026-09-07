@@ -6,10 +6,31 @@ import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.SamplingClock;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 
 public class AnnotationValidationUtility {
+
+    /**
+     * Validates a required ObjectId-typed request field: present (non-blank) and parseable as an
+     * ObjectId. A malformed id is a client mistake, rejected with a precise message (#248 plan
+     * D11); unvalidated, it would throw IllegalArgumentException from the ObjectId constructor
+     * inside the worker thread, where QueueHandlerBase swallows it and the caller's stream hangs
+     * with no response. Every get/delete/patch job over an id-keyed entity must call this before
+     * touching the mongo client.
+     *
+     * @param fieldName the request-qualified field name for messages, e.g. "GetDataSetRequest.dataSetId"
+     */
+    public static ResultStatus validateRequiredObjectId(String fieldName, String value) {
+        if (value.isBlank()) {
+            return new ResultStatus(true, fieldName + " must be specified");
+        }
+        if (!ObjectId.isValid(value)) {
+            return new ResultStatus(true, fieldName + " is not a valid id: " + value);
+        }
+        return new ResultStatus(false, "");
+    }
 
     public static ResultStatus validateSaveDataSetRequest(SaveDataSetRequest request) {
 
@@ -188,9 +209,10 @@ public class AnnotationValidationUtility {
         if (request.hasCalculationsSpec()) {
 
             final CalculationsSpec calculationsSpec = request.getCalculationsSpec();
-            if (calculationsSpec.getCalculationsId().isBlank()) {
-                final String errorMsg = "ExportDataRequest.calculationsSpec.calculationsId must be specified";
-                return new ResultStatus(true, errorMsg);
+            final ResultStatus calculationsIdStatus = validateRequiredObjectId(
+                    "ExportDataRequest.calculationsSpec.calculationsId", calculationsSpec.getCalculationsId());
+            if (calculationsIdStatus.isError) {
+                return calculationsIdStatus;
             }
 
             for (var mapEntries : calculationsSpec.getDataFrameColumnsMap().entrySet()) {

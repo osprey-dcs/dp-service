@@ -200,11 +200,18 @@ Documents that need tags, attributes, or managed timestamps extend `DpBsonDocume
 
 ### Standard Conventions
 
-**Tag normalization:** Lowercase, deduplicated, sorted on save:
-```java
-List<String> normalizedTags = new ArrayList<>(
-    new TreeSet<>(request.getTagsList().stream().map(String::toLowerCase).toList()));
-```
+**Tag normalization:** Lowercase, deduplicated, sorted on save — the shared helper is
+`DpBsonDocumentBase.normalizedTags()`, and as of the #248 Phase 2 review fixes every tagged
+entity's `fromSaveRequest` factory calls it (pvMetadata, configuration, configurationActivation,
+dataSet, annotation — the first three previously carried inline copies, which is exactly the drift
+a shared helper exists to prevent). Lowercasing is `Locale.ROOT`: the default-locale overload folds
+case differently under some locales (Turkish dotless i), making the stored form — and what a
+`TagsCriterion` value can match — depend on the server JVM's locale. Annotations previously stored
+tags as-given, so schema migration v2 (`V2NormalizeAnnotationTags`) normalizes stored annotation
+tags, lowercasing the same way — without it, a stored mixed-case tag is unreachable by any
+normalized `TagsCriterion` value, a #197-class silent wrong answer. Any new save path for a tagged
+entity must normalize through the shared helper, and any diff/verify helper must compare against
+the normalized form.
 
 **Upsert with `createdAt` preservation:** On first save, set `createdAt = Instant.now()`. On update, preserve `createdAt` and set `updatedAt = Instant.now()`.
 
@@ -294,6 +301,68 @@ Test `matchedCount`, not `modifiedCount`, when checking whether a `replaceOne` f
 `modifiedCount` is also 0 when the replacement leaves the stored document unchanged, which is a
 successful save. (These documents carry an always-refreshed `updatedAt`, so that case does not arise
 today — but the check should not depend on that.)
+
+### DataSet / Annotation / Calculations CRUD invariants (issue #248 Phase 2)
+
+Phase 2 implemented `getDataSet`, `getAnnotation`, `getCalculations`, `deleteDataSet`,
+`deleteAnnotation`, and the `patchDataSet`/`patchAnnotation` deferred stubs, plus audit/entity
+fields (`modifiedBy`, `createdTime`/`updatedTime` emission, `DataSet` tags/attributes). The
+invariants that outlive the ticket:
+
+- **A malformed ObjectId in a get/delete request is a REJECT, validated in the job** before any
+  client call, via the shared `AnnotationValidationUtility.validateRequiredObjectId()` (blank check
+  + `ObjectId.isValid()`) — new id-keyed jobs (Phase 4 patch included) must call it rather than
+  hand-rolling the block. Unvalidated, the `ObjectId` constructor throws `IllegalArgumentException`
+  inside the worker thread, where `QueueHandlerBase` swallows it and the caller's stream hangs.
+  `validateSaveAnnotationRequest` applies the same check to `dataSetIds`/`annotationIds` entries.
+  (The save methods' *internal* lookups still classify a malformed id as error — documented
+  divergence, predating Phase 2.)
+- **`deleteDataSet` is rejected while any annotation references the dataset**; the rejection names
+  one referencing annotation id plus the total count (one id is enough to act on, the count says
+  whether to expect more, the message stays bounded).
+- **`deleteAnnotation` cascades to the annotation's calculations document** (lifecycle belongs to
+  the owner) and is NOT blocked by incoming `annotationIds`/provenance references — soft links may
+  dangle. The annotation is deleted **before** its calculations: a failure between the two leaves a
+  harmless orphan rather than a live annotation whose dangling `calculationsId` would break
+  `getAnnotation`. Do not reverse that order.
+- **`getAnnotation` is the only method that populates `Annotation.calculations`**, and a
+  `calculationsId` that resolves to no document is an ERROR, never silently-empty content — the
+  annotation asserts calculations exist, so absence is corruption.
+- **`SaveAnnotationResult.calculationsId` is returned whenever the request carried calculations**
+  — it is the addressing key for `getCalculations`, `CalculationsSpec`, and provenance links.
+- **`saveAnnotation()` (client) deletes a replaced or cleared annotation's previous calculations
+  document** (D8/D14) after a successful replace — the cleanup lives in the client beside the
+  lookup that captures the previous document, matching where `deleteAnnotation`'s cascade lives.
+  Cleanup failure logs the orphaned id but does not fail the response — the save succeeded, and a
+  retry cannot remove the orphan.
+- **A rejected save compensates for the calculations document it just inserted** (`SaveAnnotationJob`):
+  both reject paths in `saveAnnotation()` fire before any annotation write, so the job deletes the
+  freshly inserted document rather than orphaning it. On an *error* the write state is ambiguous —
+  deleting could dangle a live annotation's `calculationsId` (the D16 corruption) — so the job logs
+  the possibly-orphaned id instead. Do not "clean up" on the error branch.
+- **`validateSaveAnnotationRequest` throws `DpException` on a lookup failure**, which the job
+  dispatches as `RESULT_STATUS_ERROR`; the `ResultStatus` return carries only genuine validation
+  rejections. Folding a lookup failure into `ResultStatus` routes it through
+  `handleValidationError()` → REJECT, inverting the retry decision (#235) at the wire-status level
+  even when the message says "error".
+- **Annotation reference ids are stored canonical** — `dataSetIds`/`annotationIds` are lowercased
+  to `ObjectId.toHexString()` form on save, and `deleteDataSet`'s reference check plus the
+  queryAnnotations dataSets/annotations criteria canonicalize their inputs to match. These checks
+  match *strings* while validation parses *binary* ObjectIds (hex-case-insensitive), so a
+  case-variant id would otherwise pass validation yet bypass every reference check — deleting a
+  dataset a stored annotation still references. Schema migration v3
+  (`V3CanonicalizeAnnotationReferenceIds`) canonicalizes previously stored references.
+- **`deleteDataSet`'s reference check-then-delete is not atomic** with a concurrent
+  `saveAnnotation` (multiple workers, no transactions): a validated save can commit a reference
+  after the count. Accepted v1 limitation, documented at the check like `overlapExists()`.
+- **`updatedTime` stays unset on create** for all entity types; it is set on the first
+  full-replace update, with `createdAt` preserved. An absent `updatedTime` means "never updated".
+- Lookup helpers: `lookupDataSet`/`lookupAnnotation`/`lookupCalculations` are the interface-level
+  throwing variants (`DpException` on query failure, null only for genuine absence); the `find*`
+  variants collapse both to null and remain only for callers that cannot act on the distinction.
+  `MongoSyncAnnotationClientLookupFailureTest` pins the classification for the new paths too.
+- Test-side: asserting a document was **deleted** must use the `findXxxNoRetry` variants on
+  `MongoTestClient` — the retry finders wait ~30s before reporting absence.
 
 ### Pagination Pattern
 

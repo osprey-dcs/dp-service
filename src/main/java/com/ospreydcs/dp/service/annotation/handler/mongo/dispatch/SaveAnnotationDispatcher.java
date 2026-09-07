@@ -40,7 +40,7 @@ public class SaveAnnotationDispatcher extends Dispatcher {
                 this.responseObserver);
     }
 
-    public void handleResult(MongoSaveResult result) {
+    public void handleResult(MongoSaveResult result, String calculationsId) {
 
         // A rejection means the request violated a business rule (e.g. it referenced a document
         // that does not exist), as opposed to the service failing to handle it.
@@ -57,8 +57,9 @@ public class SaveAnnotationDispatcher extends Dispatcher {
             return;
         }
 
-        // insert was successful, return a response with the id
-        AnnotationServiceImpl.sendSaveAnnotationResponseSuccess(result.documentId, responseObserver);
+        // insert was successful, return a response with the annotation id, plus the id of the saved
+        // calculations document when the request carried calculations
+        AnnotationServiceImpl.sendSaveAnnotationResponseSuccess(result.documentId, calculationsId, responseObserver);
     }
 
 }
