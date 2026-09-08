@@ -54,5 +54,25 @@ subsequent tabular export with no response. A frame carrying only typed columns 
 `dataColumns`) is now accepted; previously it was wrongly rejected by a legacy-list-only
 emptiness check.
 
+### Inline dataBlocks as an exportData source (#248 Phase 4)
+
+`exportData` accepts a new repeated `dataBlocks` field — the same time-range-plus-PV-names
+building block a DataSet contains — as an inline, ad-hoc export source. At least one of
+`dataSetId`, `dataBlocks`, or `calculationsSpec` must now be supplied (previously: one of the
+first and last two). Inline blocks are validated like saveDataSet blocks, merged after any
+stored dataset's blocks into one effective block list, and nothing is persisted. An
+inline-only export's output file is keyed by a generated ObjectId, since there is no stored id
+to name it by.
+
+### BEHAVIOR CHANGE: export client mistakes are rejected, not errored (#248 Phase 4)
+
+`exportData` failures caused by the request — a `dataSetId` or `calculationsId` matching no
+record, a `calculationsSpec.dataFrameColumns` filter naming a frame or column the calculations
+object does not contain, and a malformed `dataSetId` (now detected in validation rather than
+reading as "not found") — are now reported with `RESULT_STATUS_REJECT` instead of
+`RESULT_STATUS_ERROR`, per the #235 classification. Service-side failures (database errors,
+file I/O, the tabular export file size limit) remain errors. Clients branching on the
+exceptional status will see the changed classification; messages are unchanged.
+
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*

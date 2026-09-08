@@ -765,10 +765,24 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
         assertTrue(responseObserver.getErrorMessage().contains("not yet implemented"));
     }
 
+    /** Failure expectation defaults to wire status REJECT — the classification for client
+     * mistakes (#248 plan D30). Failures that remain service errors (e.g. the tabular export
+     * file size limit) use the status-explicit overload. */
     public ExportDataResponse.ExportDataResult sendExportData(
             ExportDataRequest request,
             boolean expectReject,
             String expectedRejectMessage
+    ) {
+        return sendExportData(
+                request, expectReject, expectedRejectMessage,
+                ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT);
+    }
+
+    public ExportDataResponse.ExportDataResult sendExportData(
+            ExportDataRequest request,
+            boolean expectFailure,
+            String expectedFailureMessage,
+            ExceptionalResult.ExceptionalResultStatus expectedFailureStatus
     ) {
         final DpAnnotationServiceGrpc.DpAnnotationServiceStub asyncStub =
                 DpAnnotationServiceGrpc.newStub(channel);
@@ -794,9 +808,14 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         System.out.println("export format " + request.getOutputFormat().name() + " elapsed seconds: " + secondsElapsed);
 
-        if (expectReject) {
+        if (expectFailure) {
             assertTrue(responseObserver.isError());
-            assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
+            // wire status must match the naming: a reject that arrives as RESULT_STATUS_ERROR is
+            // the #235 inversion, which is exactly what #248 plan D30 fixed for export
+            assertEquals(
+                    expectedFailureStatus,
+                    responseObserver.getExceptionalResultStatus());
+            assertTrue(responseObserver.getErrorMessage().contains(expectedFailureMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
         }

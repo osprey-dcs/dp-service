@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.annotation.handler;
 
 import com.google.protobuf.ByteString;
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
+import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
+import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
@@ -342,5 +344,83 @@ public class AnnotationValidationUtilityTest {
         assertRejectContains(validate(calculations),
                 "SaveAnnotationRequest.calculations.calculationDataFrames[0].doubleColumns[0]"
                         + ".metadata.provenance.source length exceeds maximum");
+    }
+
+    // -----------------------------------------------------------------------
+    // validateExportDataRequest: three-source rule, dataSetId shape, inline blocks (D30/D31)
+    // -----------------------------------------------------------------------
+
+    private static DataBlock validDataBlock() {
+        return DataBlock.newBuilder()
+                .setBeginTime(Timestamp.newBuilder().setEpochSeconds(START_SECONDS))
+                .setEndTime(Timestamp.newBuilder().setEpochSeconds(START_SECONDS + 1))
+                .addPvNames("pv1")
+                .build();
+    }
+
+    @Test
+    public void testExportNoSourceRejected() {
+        final ExportDataRequest request = ExportDataRequest.newBuilder()
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(request),
+                "ExportDataRequest must specify at least one of dataSetId, dataBlocks, or calculationsSpec");
+    }
+
+    @Test
+    public void testExportInlineDataBlocksAloneAccepted() {
+        final ExportDataRequest request = ExportDataRequest.newBuilder()
+                .addDataBlocks(validDataBlock())
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        final ResultStatus status = AnnotationValidationUtility.validateExportDataRequest(request);
+        assertFalse("expected acceptance, got: " + status.msg, status.isError);
+    }
+
+    @Test
+    public void testExportMalformedDataSetIdRejected() {
+        // malformed must read as malformed, not "not found" (D30)
+        final ExportDataRequest request = ExportDataRequest.newBuilder()
+                .setDataSetId("junk-id")
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(request),
+                "ExportDataRequest.dataSetId is not a valid id: junk-id");
+    }
+
+    @Test
+    public void testExportInlineDataBlockValidatedLikeSaveDataSetBlocks() {
+        final ExportDataRequest noPvNames = ExportDataRequest.newBuilder()
+                .addDataBlocks(validDataBlock().toBuilder().clearPvNames())
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(noPvNames),
+                "ExportDataRequest.dataBlocks.pvNames must not be empty");
+
+        final ExportDataRequest zeroBegin = ExportDataRequest.newBuilder()
+                .addDataBlocks(validDataBlock().toBuilder().clearBeginTime())
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(zeroBegin),
+                "ExportDataRequest.dataBlocks.beginTime must be non-zero");
+
+        final ExportDataRequest zeroEnd = ExportDataRequest.newBuilder()
+                .addDataBlocks(validDataBlock().toBuilder().clearEndTime())
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(zeroEnd),
+                "ExportDataRequest.dataBlocks.endTime must be non-zero");
+    }
+
+    @Test
+    public void testSaveDataSetBlockMessagesUnchangedByExtraction() {
+        // the validateDataBlock() extraction must not change the save-path messages
+        final com.ospreydcs.dp.grpc.v1.annotation.SaveDataSetRequest request =
+                com.ospreydcs.dp.grpc.v1.annotation.SaveDataSetRequest.newBuilder()
+                        .setName("ds").setOwnerId("owner")
+                        .addDataBlocks(validDataBlock().toBuilder().clearPvNames())
+                        .build();
+        assertRejectContains(AnnotationValidationUtility.validateSaveDataSetRequest(request),
+                "SaveDataSetRequest.DataBlock.pvNames must not be empty");
     }
 }

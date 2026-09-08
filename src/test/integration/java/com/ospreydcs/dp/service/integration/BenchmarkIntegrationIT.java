@@ -679,13 +679,14 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
         {
             System.out.println();
             System.out.println("========== running large export to excel ==========");
+            // the size-limit failure is a service-side ERROR, not a reject (#248 plan D30)
             ExportDataResponse.ExportDataResult exportResult =
-                    annotationServiceWrapper.sendAndVerifyExportData(
-                            datasetId,
-                            null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX,
-                            60 * pvCount, // 60 buckets per pv
-                            0, null, true,
-                            "export file size limit");
+                    annotationServiceWrapper.sendExportData(
+                            AnnotationTestBase.buildExportDataRequest(
+                                    datasetId, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_XLSX),
+                            true,
+                            "export file size limit",
+                            ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
             System.out.println("========== large export to excel completed ==========");
             System.out.println();
         }
@@ -694,13 +695,14 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
         {
             System.out.println();
             System.out.println("========== running large export to csv ==========");
+            // the size-limit failure is a service-side ERROR, not a reject (#248 plan D30)
             ExportDataResponse.ExportDataResult exportResult =
-                    annotationServiceWrapper.sendAndVerifyExportData(
-                            datasetId,
-                            null, null, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV,
-                            60 * pvCount, // 60 buckets per pv
-                            0, null, true,
-                            "export file size limit");
+                    annotationServiceWrapper.sendExportData(
+                            AnnotationTestBase.buildExportDataRequest(
+                                    datasetId, null, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV),
+                            true,
+                            "export file size limit",
+                            ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_ERROR);
             System.out.println("========== large export to csv completed ==========");
             System.out.println();
         }

@@ -611,6 +611,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -643,6 +645,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         @Override
         public void onNext(ExportDataResponse response) {
 
@@ -651,6 +658,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -950,11 +958,25 @@ public class AnnotationTestBase {
             CalculationsSpec calculationsSpec,
             ExportDataRequest.ExportOutputFormat outputFormat
     ) {
+        return buildExportDataRequest(dataSetId, null, calculationsSpec, outputFormat);
+    }
+
+    public static ExportDataRequest buildExportDataRequest(
+            String dataSetId,
+            List<DataBlock> dataBlocks,
+            CalculationsSpec calculationsSpec,
+            ExportDataRequest.ExportOutputFormat outputFormat
+    ) {
         ExportDataRequest.Builder requestBuilder = ExportDataRequest.newBuilder();
 
         // set datasetId if specified
         if (dataSetId != null) {
             requestBuilder.setDataSetId(dataSetId);
+        }
+
+        // add inline dataBlocks if specified (#248 plan D31)
+        if (dataBlocks != null) {
+            requestBuilder.addAllDataBlocks(dataBlocks);
         }
 
         // create calculationsSpec if calculationsId is specified

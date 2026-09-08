@@ -78,30 +78,44 @@ public class AnnotationValidationUtility {
 
         // validate each DataBlock
         for (DataBlock dataBlock : requestDataBlocks) {
-
-            // validate beginTime
-            final Timestamp blockBeginTime = dataBlock.getBeginTime();
-            if (blockBeginTime.getEpochSeconds() < 1) {
-                final String errorMsg = "SaveDataSetRequest.DataBlock.beginTime must be non-zero";
-                return new ResultStatus(true, errorMsg);
-            }
-
-            // validate endTime
-            final Timestamp blockEndTime = dataBlock.getEndTime();
-            if (blockEndTime.getEpochSeconds() < 1) {
-                final String errorMsg = "SaveDataSetRequest.DataBlock.endTime must be non-zero";
-                return new ResultStatus(true, errorMsg);
-            }
-
-            // validate pvNames list not empty
-            final List<String> blockPvNames = dataBlock.getPvNamesList();
-            if (blockPvNames.isEmpty()) {
-                final String errorMsg = "SaveDataSetRequest.DataBlock.pvNames must not be empty";
-                return new ResultStatus(true, errorMsg);
+            final ResultStatus blockStatus = validateDataBlock("SaveDataSetRequest.DataBlock", dataBlock);
+            if (blockStatus.isError) {
+                return blockStatus;
             }
         }
 
         // validation successful
+        return new ResultStatus(false, "");
+    }
+
+    /**
+     * Validates one DataBlock: non-zero begin/end times and a non-empty pvNames list. Shared by
+     * validateSaveDataSetRequest and the exportData inline-dataBlocks path (#248 plan D31); the
+     * fieldPath names the block's position in the caller's request.
+     */
+    public static ResultStatus validateDataBlock(String fieldPath, DataBlock dataBlock) {
+
+        // validate beginTime
+        final Timestamp blockBeginTime = dataBlock.getBeginTime();
+        if (blockBeginTime.getEpochSeconds() < 1) {
+            final String errorMsg = fieldPath + ".beginTime must be non-zero";
+            return new ResultStatus(true, errorMsg);
+        }
+
+        // validate endTime
+        final Timestamp blockEndTime = dataBlock.getEndTime();
+        if (blockEndTime.getEpochSeconds() < 1) {
+            final String errorMsg = fieldPath + ".endTime must be non-zero";
+            return new ResultStatus(true, errorMsg);
+        }
+
+        // validate pvNames list not empty
+        final List<String> blockPvNames = dataBlock.getPvNamesList();
+        if (blockPvNames.isEmpty()) {
+            final String errorMsg = fieldPath + ".pvNames must not be empty";
+            return new ResultStatus(true, errorMsg);
+        }
+
         return new ResultStatus(false, "");
     }
 
@@ -478,11 +492,33 @@ public class AnnotationValidationUtility {
 
     public static ResultStatus validateExportDataRequest(ExportDataRequest request) {
 
-        // either dataSetId or calculationsSpec is required
+        // at least one data source is required: a saved dataset, inline dataBlocks, or
+        // calculations (#248 plan D31)
         final String dataSetId = request.getDataSetId();
-        if ((dataSetId == null || dataSetId.isBlank()) && ( ! request.hasCalculationsSpec())) {
-            final String errorMsg = "ExportDataRequest either dataSetId or calculationsSpec must be specified";
+        if (dataSetId.isBlank()
+                && request.getDataBlocksList().isEmpty()
+                && ( ! request.hasCalculationsSpec())) {
+            final String errorMsg =
+                    "ExportDataRequest must specify at least one of dataSetId, dataBlocks, or calculationsSpec";
             return new ResultStatus(true, errorMsg);
+        }
+
+        // a non-blank dataSetId must be a well-formed ObjectId, so a malformed id reads as
+        // malformed rather than "not found" (#248 plan D30)
+        if ( ! dataSetId.isBlank()) {
+            final ResultStatus dataSetIdStatus =
+                    validateRequiredObjectId("ExportDataRequest.dataSetId", dataSetId);
+            if (dataSetIdStatus.isError) {
+                return dataSetIdStatus;
+            }
+        }
+
+        // validate each inline DataBlock, same rules as saveDataSet blocks (#248 plan D31)
+        for (DataBlock dataBlock : request.getDataBlocksList()) {
+            final ResultStatus blockStatus = validateDataBlock("ExportDataRequest.dataBlocks", dataBlock);
+            if (blockStatus.isError) {
+                return blockStatus;
+            }
         }
 
         // calculationsSpec is optional, but validate content if specified
