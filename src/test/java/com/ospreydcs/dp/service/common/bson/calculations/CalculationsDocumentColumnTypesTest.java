@@ -45,7 +45,11 @@ public class CalculationsDocumentColumnTypesTest {
         testClient.fini();
     }
 
-    /** One frame carrying a column of each of the 16 types over a two-sample clock. */
+    /**
+     * One frame carrying a column of each of the 16 types over a two-sample clock, shaped to
+     * satisfy the D28 count rules (arrays flattened to sampleCount * elementCount; one
+     * struct/image entry per sample) so the fixture models data the save path accepts.
+     */
     private static Calculations allColumnTypesCalculations() {
         final ArrayDimensions dims = ArrayDimensions.newBuilder().addDims(2).build();
         final ImageDescriptor descriptor = ImageDescriptor.newBuilder()
@@ -72,23 +76,30 @@ public class CalculationsDocumentColumnTypesTest {
                 .addStringColumns(StringColumn.newBuilder().setName("calc:string").addValues("a").addValues("b"))
                 .addEnumColumns(EnumColumn.newBuilder().setName("calc:enum").addValues(0).addValues(1))
                 .addDoubleArrayColumns(DoubleArrayColumn.newBuilder()
-                        .setName("calc:doubleArray").setDimensions(dims).addValues(1.0).addValues(2.0))
+                        .setName("calc:doubleArray").setDimensions(dims)
+                        .addValues(1.0).addValues(2.0).addValues(3.0).addValues(4.0))
                 .addFloatArrayColumns(FloatArrayColumn.newBuilder()
-                        .setName("calc:floatArray").setDimensions(dims).addValues(2.0f).addValues(3.0f))
+                        .setName("calc:floatArray").setDimensions(dims)
+                        .addValues(2.0f).addValues(3.0f).addValues(4.0f).addValues(5.0f))
                 .addInt32ArrayColumns(Int32ArrayColumn.newBuilder()
-                        .setName("calc:int32Array").setDimensions(dims).addValues(7).addValues(8))
+                        .setName("calc:int32Array").setDimensions(dims)
+                        .addValues(7).addValues(8).addValues(9).addValues(10))
                 .addInt64ArrayColumns(Int64ArrayColumn.newBuilder()
-                        .setName("calc:int64Array").setDimensions(dims).addValues(9L).addValues(10L))
+                        .setName("calc:int64Array").setDimensions(dims)
+                        .addValues(9L).addValues(10L).addValues(11L).addValues(12L))
                 .addBoolArrayColumns(BoolArrayColumn.newBuilder()
-                        .setName("calc:boolArray").setDimensions(dims).addValues(true).addValues(false))
+                        .setName("calc:boolArray").setDimensions(dims)
+                        .addValues(true).addValues(false).addValues(true).addValues(false))
                 .addStructColumns(StructColumn.newBuilder()
                         .setName("calc:struct")
                         .setSchemaId("schema-1")
-                        .addValues(ByteString.copyFrom(new byte[]{1, 2, 3})))
+                        .addValues(ByteString.copyFrom(new byte[]{1, 2, 3}))
+                        .addValues(ByteString.copyFrom(new byte[]{4, 5, 6})))
                 .addImageColumns(ImageColumn.newBuilder()
                         .setName("calc:image")
                         .setImageDescriptor(descriptor)
-                        .addImages(ByteString.copyFrom(new byte[]{1, 2, 3, 4})))
+                        .addImages(ByteString.copyFrom(new byte[]{1, 2, 3, 4}))
+                        .addImages(ByteString.copyFrom(new byte[]{5, 6, 7, 8})))
                 .build();
 
         return Calculations.newBuilder()

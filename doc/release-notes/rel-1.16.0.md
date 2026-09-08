@@ -38,5 +38,21 @@ id ascending, per the proto ordering contract. Previously the sort was `startTim
 is not unique, so activations sharing a start time could be dropped or duplicated across page
 boundaries.
 
+### BEHAVIOR CHANGE: saveAnnotation validates calculations content fully (#248 Phase 4)
+
+`saveAnnotation` now validates the complete shape of a `Calculations` payload: every column of
+every type must have a non-blank name and non-empty values, and **its value count must equal the
+frame's timestamp count** (for array columns, timestamp count times the dims product;
+`SerializedDataColumn` entries carry no countable values and get name checks only). Column names
+must be unique across all column types within a frame, and frame names must be unique within the
+Calculations object — both are addressing keys for `CalculationsSpec` and provenance links.
+Column metadata is checked against the same limits as ingestion.
+
+This narrows what was previously accepted for legacy `DataColumn` lists: a column shorter or
+longer than its frame's timestamp axis used to be stored as-is — and a short column would hang a
+subsequent tabular export with no response. A frame carrying only typed columns (no legacy
+`dataColumns`) is now accepted; previously it was wrongly rejected by a legacy-list-only
+emptiness check.
+
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*

@@ -9,6 +9,7 @@ import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataFrame;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.DoubleColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
@@ -274,7 +275,7 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
 
             final boolean expectReject = true;
             final String expectedRejectMessage =
-                    "CalculationDataFrame.dataColumns must not be empty";
+                    "CalculationDataFrame must include at least one column of any type: frame-0";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
         }
 
@@ -540,6 +541,126 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns contains a DataColumn with no values";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: column value count doesn't match frame timestamp count (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            // sampling clock specifies 2 samples, but the column carries 3 values
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 500_000_000L, 250_000_000L, 2);
+            final DataColumn shortColumn =
+                    DataColumnUtility.dataColumnWithDoubleValues("calc-0-0", List.of(0.0, 1.1, 2.2));
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-0")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(shortColumn)))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "CalculationDataFrame.dataColumns values count mismatch: expected 2, got: 3 for column: calc-0-0";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: duplicate frame names (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0; i < 2; i++) {
+                final DataTimestamps dataTimestamps =
+                        DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                                startSeconds + i, 500_000_000L, 250_000_000L, 2);
+                final DataColumn dataColumn =
+                        DataColumnUtility.dataColumnWithDoubleValues("calc-" + i, List.of(0.0, 1.1));
+                calculationsBuilder.addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("duplicate-frame")
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addDataColumns(dataColumn)));
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SaveAnnotationRequest.calculations.calculationDataFrames contains duplicate frame name: duplicate-frame";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: duplicate column names within a frame (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            // duplicate name across column types: a legacy DataColumn and a DoubleColumn
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 500_000_000L, 250_000_000L, 2);
+            final DataColumn dataColumn =
+                    DataColumnUtility.dataColumnWithDoubleValues("calc-dup", List.of(0.0, 1.1));
+            final DoubleColumn doubleColumn = DoubleColumn.newBuilder()
+                    .setName("calc-dup")
+                    .addAllValues(List.of(2.2, 3.3))
+                    .build();
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-0")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(dataColumn)
+                                    .addDoubleColumns(doubleColumn)))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "CalculationDataFrame contains duplicate column name: calc-dup in frame: frame-0";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
         }
 
