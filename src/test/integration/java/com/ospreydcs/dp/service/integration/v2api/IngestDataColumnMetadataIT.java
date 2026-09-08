@@ -305,4 +305,67 @@ public class IngestDataColumnMetadataIT extends GrpcIntegrationTestBase {
                     metadata, queriedColumn.getMetadata());
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Test 6: derivedFrom provenance links persist and round-trip (#248 Phase 4, D29)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testIngestDoubleColumnWithDerivedFromProvenance() {
+        final String providerName = "metadata-provider-derived";
+        final String providerId = ingestionServiceWrapper.registerProvider(providerName, null);
+
+        final String pvName = "pv:meta:derived";
+        final long startSeconds = Instant.now().getEpochSecond();
+        final long startNanos = 0L;
+        final int numSamples = 2;
+
+        // both derivedFrom arms: an archived-PV input with a source interval, and a
+        // calculations-column input; links are stored as supplied and may dangle
+        ColumnMetadata metadata = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder()
+                        .setSource("diff-calc")
+                        .setProcess("subtract")
+                        .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                                .setPvName("pv:raw:input")
+                                .setTimeRange(TimeRange.newBuilder()
+                                        .setBeginTime(Timestamp.newBuilder()
+                                                .setEpochSeconds(startSeconds - 60).setNanoseconds(0))
+                                        .setEndTime(Timestamp.newBuilder()
+                                                .setEpochSeconds(startSeconds).setNanoseconds(0))))
+                        .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                                .setCalculationsColumn(ColumnProvenance.CalculationsColumn.newBuilder()
+                                        .setCalculationsId("66a1b2c3d4e5f60718293a4b")
+                                        .setFrameName("frame-1")
+                                        .setColumnName("mean"))))
+                .build();
+
+        DoubleColumn column = IngestionTestBase.buildDoubleColumnWithMetadata(
+                pvName, Arrays.asList(1.1, 2.2), metadata);
+
+        IngestionTestBase.IngestionRequestParams params = buildParams(
+                providerId, "req-derived-meta", startSeconds, startNanos, numSamples,
+                Collections.singletonList(pvName),
+                Collections.singletonList(column));
+
+        IngestDataRequest request = IngestionTestBase.buildIngestionRequest(params);
+        List<BucketDocument> buckets = ingestionServiceWrapper.sendAndVerifyIngestData(params, request);
+
+        assertEquals(1, buckets.size());
+        GrpcIntegrationIngestionServiceWrapper.verifyBucketColumnMetadata(buckets.get(0), metadata);
+
+        // verify derivedFrom survives the gRPC query API round-trip (applyMetadataToProto() path)
+        {
+            QueryTestBase.QueryDataRequestParams queryParams = new QueryTestBase.QueryDataRequestParams(
+                    Collections.singletonList(pvName),
+                    startSeconds, startNanos,
+                    startSeconds + 1L, 0L);
+            List<DataBucket> queryBuckets = queryServiceWrapper.queryData(queryParams, false, "");
+            assertEquals(1, queryBuckets.size());
+            DoubleColumn queriedColumn = queryBuckets.get(0).getDataValues().getDoubleColumn();
+            assertTrue("metadata must be present in query result column", queriedColumn.hasMetadata());
+            assertEquals("derivedFrom links returned by query must equal originally ingested",
+                    metadata, queriedColumn.getMetadata());
+        }
+    }
 }

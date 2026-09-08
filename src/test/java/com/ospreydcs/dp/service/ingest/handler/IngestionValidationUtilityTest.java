@@ -950,6 +950,23 @@ public class IngestionValidationUtilityTest extends IngestionTestBase {
     }
 
     /**
+     * derivedFrom provenance link with over-long pvName — rejected with the ingestion field path.
+     */
+    @Test
+    public void testValidateColumnMetadata_derivedFromPvNameTooLong() {
+        ColumnMetadata meta = ColumnMetadata.newBuilder()
+                .setProvenance(ColumnProvenance.newBuilder()
+                        .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                                .setPvName(longString(257))))
+                .build();
+        DoubleColumn col = DoubleColumn.newBuilder().setName("pv").addValues(1.0).setMetadata(meta).build();
+        ResultStatus result = IngestionValidationUtility.validateIngestionRequest(buildRequestWithDoubleColumn(col));
+        assertTrue(result.isError);
+        assertTrue(result.msg, result.msg.contains(
+                "ingestionDataFrame.doubleColumns[0].metadata.provenance.derivedFrom[0].pvName length exceeds maximum"));
+    }
+
+    /**
      * DoubleArrayColumn with provenance.source too long — validates the array column metadata path.
      */
     @Test
