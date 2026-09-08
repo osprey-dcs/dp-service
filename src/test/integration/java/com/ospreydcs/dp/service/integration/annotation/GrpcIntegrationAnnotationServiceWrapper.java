@@ -218,6 +218,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());
@@ -426,6 +430,10 @@ public class GrpcIntegrationAnnotationServiceWrapper extends GrpcIntegrationServ
 
         if (expectReject) {
             assertTrue(responseObserver.isError());
+            assertEquals(
+                    "business-rule and validation failures must be sent as REJECT, not ERROR",
+                    ExceptionalResult.ExceptionalResultStatus.RESULT_STATUS_REJECT,
+                    responseObserver.getExceptionalResultStatus());
             assertTrue(responseObserver.getErrorMessage().contains(expectedRejectMessage));
         } else {
             assertFalse(responseObserver.getErrorMessage(), responseObserver.isError());

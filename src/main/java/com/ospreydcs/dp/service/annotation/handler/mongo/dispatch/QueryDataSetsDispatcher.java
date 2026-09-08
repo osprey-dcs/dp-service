@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.DataSetQueryResult;
+import com.ospreydcs.dp.service.common.model.ResultStatus;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,6 +22,10 @@ public class QueryDataSetsDispatcher extends Dispatcher {
             StreamObserver<QueryDataSetsResponse> responseObserver
     ) {
         this.responseObserver = responseObserver;
+    }
+
+    public void handleValidationError(ResultStatus resultStatus) {
+        AnnotationServiceImpl.sendQueryDataSetsResponseReject(resultStatus.msg, responseObserver);
     }
 
     public void handleError(String errorMsg) {

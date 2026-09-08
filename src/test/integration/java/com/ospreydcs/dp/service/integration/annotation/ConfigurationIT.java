@@ -1228,4 +1228,58 @@ public class ConfigurationIT extends AnnotationIntegrationTestIntermediate {
         annotationServiceWrapper.sendAndVerifyBulkSaveConfigurationActivationStub();
     }
 
+
+    /**
+     * Activations sharing a startTime return in the documented order — startTime asc, then
+     * configurationName asc, then id (#248 Phase 3, plan D23) — and page stably across the tie.
+     * Without the tiebreakers the sort is not total, and skip paging over equal startTimes could
+     * drop or duplicate rows at page boundaries.
+     */
+    @Test
+    public void testQueryConfigurationActivationsOrderingTiebreaker() {
+
+        // three configurations in three categories so their activations may share a startTime
+        // (the overlap constraint spans both configurationName and internalCategory); saved in
+        // non-alphabetical order so the tiebreaker is observable
+        saveConfigForActivationTests("config-TB2", "tb-cat2");
+        saveConfigForActivationTests("config-TB3", "tb-cat3");
+        saveConfigForActivationTests("config-TB1", "tb-cat1");
+        for (String configName : List.of("config-TB2", "config-TB3", "config-TB1")) {
+            annotationServiceWrapper.sendAndVerifySaveConfigurationActivation(
+                    new AnnotationTestBase.SaveConfigurationActivationParams(
+                            "tb-act-" + configName, configName,
+                            ts(T0_SECONDS, T0_NANOS), ts(T1_SECONDS, T1_NANOS),
+                            null, null, null, null),
+                    false, null);
+        }
+
+        // match-all query: all three share a startTime, ordered by configurationName
+        final List<ConfigurationActivation> results = annotationServiceWrapper
+                .sendAndVerifyQueryConfigurationActivations(List.of(), 0, null, false, null, 3);
+        assertEquals(
+                List.of("config-TB1", "config-TB2", "config-TB3"),
+                results.stream().map(ConfigurationActivation::getConfigurationName).toList());
+
+        // page across the tie with limit 2: no row dropped or repeated
+        final AnnotationTestBase.QueryConfigurationActivationsResponseObserver page1Observer =
+                new AnnotationTestBase.QueryConfigurationActivationsResponseObserver();
+        new Thread(() -> com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc
+                .newStub(annotationServiceWrapper.getChannel())
+                .queryConfigurationActivations(
+                        AnnotationTestBase.buildQueryConfigurationActivationsRequest(List.of(), 2, null),
+                        page1Observer)).start();
+        page1Observer.await();
+        assertFalse(page1Observer.getErrorMessage(), page1Observer.isError());
+        assertEquals(
+                List.of("config-TB1", "config-TB2"),
+                page1Observer.getActivationList().stream()
+                        .map(ConfigurationActivation::getConfigurationName).toList());
+        final String nextPageToken = page1Observer.getNextPageToken();
+        assertFalse(nextPageToken.isBlank());
+
+        final List<ConfigurationActivation> page2Results = annotationServiceWrapper
+                .sendAndVerifyQueryConfigurationActivations(List.of(), 2, nextPageToken, false, null, 1);
+        assertEquals("config-TB3", page2Results.get(0).getConfigurationName());
+    }
+
 }

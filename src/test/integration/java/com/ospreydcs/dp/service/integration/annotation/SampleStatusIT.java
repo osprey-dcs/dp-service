@@ -479,6 +479,12 @@ public class SampleStatusIT extends AnnotationIntegrationTestIntermediate {
         annotationServiceWrapper.sendAndVerifyQuerySampleStatuses(
                 queryRequest(tick(0), tick(10), null, null, null, 0, "bogus-token"),
                 true, "not a valid page token", 0);
+
+        // a whitespace-only token is malformed, not "no token": the server never issues one,
+        // so it must reject rather than silently restart at the first page
+        annotationServiceWrapper.sendAndVerifyQuerySampleStatuses(
+                queryRequest(tick(0), tick(10), null, null, null, 0, " "),
+                true, "not a valid page token", 0);
     }
 
     @Test

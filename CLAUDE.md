@@ -366,14 +366,21 @@ invariants that outlive the ticket:
 
 ### Pagination Pattern
 
-```java
-int skipOffset = (pageToken == null || pageToken.isEmpty()) ? 0
-    : Integer.parseInt(new String(Base64.getDecoder().decode(pageToken)));
-// collection.find(filter).sort(...).skip(skipOffset).limit(limit)
-String nextPageToken = (skipOffset + results.size() < totalCount)
-    ? Base64.getEncoder().encodeToString(String.valueOf(skipOffset + results.size()).getBytes())
-    : null;
-```
+Two token families exist, split by API generation (#248 Phase 3, plan D6/D18):
+
+- **Skip tokens** — `queryPvMetadata`, `queryConfigurations`, `queryConfigurationActivations`:
+  Base64 of a decimal skip offset, decoded by `decodePageTokenSkip()` and applied by
+  `applySkipPaging()` on `MongoSyncAnnotationClient` (limit+1 probe, trim, re-encode). An
+  unparseable token silently resets to page 0. Converting these to opaque reject-on-malformed is
+  a follow-on.
+- **Keyset tokens** — `queryDataSets`, `queryAnnotations`: `AnnotationQueryPageToken`, Base64 JSON
+  of `{query, lastId}`; resume filters `_id > lastId` and `applyKeysetPaging()` emits the next
+  token from the last returned document's id. The **jobs** decode and REJECT malformed tokens
+  before the client call (sample-status pattern); the client method takes the decoded
+  `ObjectId resumeAfterId`. The `query` discriminator makes a cross-query token a rejection —
+  without it, a queryDataSets token pasted into queryAnnotations decodes cleanly and silently
+  skips results. `querySampleStatuses` uses the same keyset scheme with its own token type
+  (`SampleStatusPageToken`).
 
 ### Query Criteria → MongoDB Filter Pattern
 
@@ -390,6 +397,14 @@ Build a compound `Filters.and()` from criteria list:
 | Timestamp overlap | `lte(startTime, ts)` AND (`gt(endTime, ts)` OR `exists(endTime, false)`) |
 
 Multiple match types within one criterion are combined with `Filters.or()`.
+
+Criteria list entries combine with **AND**; values within one criterion OR (#248 Phase 3, plan
+D4 — the legacy two-bucket AND/OR scheme is gone). At most one `TextCriterion` is accepted per
+request, rejected in `AnnotationServiceImpl` validation: two `$text` clauses cannot be ANDed
+(Mongo fails the query with "Too many text expressions", so the client mistake would otherwise
+surface as `RESULT_STATUS_ERROR` — the #235 inversion). `queryConfigurationActivations` sorts
+(`startTime`, `configurationName`, `_id`) — startTime alone is not unique, and under skip paging
+a non-total order drops or duplicates rows at page boundaries.
 
 ### Empty Criteria Is Match-All, and Every Query Is Bounded (issue #245)
 
@@ -410,11 +425,11 @@ match with an **always-blank `nextPageToken`**, so the caller could not detect t
 Reintroducing a `limit > 0 ? ... : 0` branch restores exactly that hazard.
 
 Keep the constant shared across all call sites — it replaced hardcoded literals so a future change to
-the default cannot land on a subset — and keep the skip/probe/token mechanics in the shared
-`applySkipPaging()`/`decodePageTokenSkip()` helpers on `MongoSyncAnnotationClient`, which all five
-queries route through. The helper also guards `limit + 1` against int overflow (proto `uint32` limit
-of `Integer.MAX_VALUE`); a hand-rolled paging block reintroduces both the drift and the overflow.
-Phase 3 of #248 converts these interim Base64 skip tokens to opaque reject-on-malformed in one place.
+the default cannot land on a subset — and keep the probe/token mechanics in the shared
+`applySkipPaging()`/`applyKeysetPaging()` helpers on `MongoSyncAnnotationClient` (see Pagination
+Pattern above for which queries use which). Both helpers guard `limit + 1` against int overflow
+(proto `uint32` limit of `Integer.MAX_VALUE`); a hand-rolled paging block reintroduces both the
+drift and the overflow.
 
 **queryDataSets/queryAnnotations reject blank criterion entries** (`RESULT_STATUS_REJECT`) rather
 than dropping them — a dropped blank entry turns the criterion into a silent match-all (#243 class),

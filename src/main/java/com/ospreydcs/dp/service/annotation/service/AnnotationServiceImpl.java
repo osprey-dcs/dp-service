@@ -229,6 +229,20 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         // no list-level emptiness check here.  Per-criterion validation below is unaffected: a
         // criterion that IS supplied must still be well-formed.
 
+        // Criteria combine with AND, and Mongo permits a single $text expression per query
+        // ("Too many text expressions"), so a second TextCriterion is a client mistake --
+        // rejected here rather than surfacing as a server error from the driver.
+        final long textCriterionCount = request.getCriteriaList().stream()
+                .filter(c -> c.getCriterionCase()
+                        == QueryDataSetsRequest.QueryDataSetsCriterion.CriterionCase.TEXTCRITERION)
+                .count();
+        if (textCriterionCount > 1) {
+            final String errorMsg =
+                    "QueryDataSetsRequest.criteria may contain at most one TextCriterion";
+            sendQueryDataSetsResponseReject(errorMsg, responseObserver);
+            return;
+        }
+
         // validate query criteria
         for (QueryDataSetsRequest.QueryDataSetsCriterion criterion : request.getCriteriaList()) {
 
@@ -665,6 +679,20 @@ public class AnnotationServiceImpl extends DpAnnotationServiceGrpc.DpAnnotationS
         // An empty criteria list is match-all by contract, not an error, so there is deliberately
         // no list-level emptiness check here.  Per-criterion validation below is unaffected: a
         // criterion that IS supplied must still be well-formed.
+
+        // Criteria combine with AND, and Mongo permits a single $text expression per query
+        // ("Too many text expressions"), so a second TextCriterion is a client mistake --
+        // rejected here rather than surfacing as a server error from the driver.
+        final long textCriterionCount = request.getCriteriaList().stream()
+                .filter(c -> c.getCriterionCase()
+                        == QueryAnnotationsRequest.QueryAnnotationsCriterion.CriterionCase.TEXTCRITERION)
+                .count();
+        if (textCriterionCount > 1) {
+            final String errorMsg =
+                    "QueryAnnotationsRequest.criteria may contain at most one TextCriterion";
+            sendQueryAnnotationsResponseReject(errorMsg, responseObserver);
+            return;
+        }
 
         // validate query criteria
         for (QueryAnnotationsRequest.QueryAnnotationsCriterion criterion : request.getCriteriaList()) {

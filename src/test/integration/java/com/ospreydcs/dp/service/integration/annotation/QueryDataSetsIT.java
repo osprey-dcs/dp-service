@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.DataSet;
 import com.ospreydcs.dp.grpc.v1.annotation.DpAnnotationServiceGrpc;
 import com.ospreydcs.dp.grpc.v1.annotation.QueryDataSetsRequest;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.annotation.handler.model.AnnotationQueryPageToken;
 import org.junit.*;
 
 import java.time.Instant;
@@ -401,6 +402,176 @@ public class QueryDataSetsIT extends AnnotationIntegrationTestIntermediate {
         assertEquals("operator-1", resultDataSet.getModifiedBy());
         assertTrue(resultDataSet.hasCreatedTime());
         assertFalse(resultDataSet.hasUpdatedTime());
+    }
+
+
+    /**
+     * Criteria list entries combine with AND (#248 Phase 3, plan D4): a TextCriterion matching
+     * both scenario datasets intersected with a PvNameCriterion matching only one returns only
+     * that one.  Under the legacy two-bucket semantics these two criterion types ORed, which
+     * returned both.
+     */
+    @Test
+    public void testQueryDataSetsCriteriaCombineWithAnd() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult scenarioResult = createDataSetScenario(startSeconds);
+
+        // sanity check that the text term alone matches both datasets ("dataset" appears in both
+        // names), so the intersection below is doing the narrowing
+        {
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setTextCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
+                                            .setText("dataset")))
+                    .build();
+            final List<DataSet> resultDataSets =
+                    annotationServiceWrapper.sendQueryDataSets(request, false, null);
+            assertEquals(2, resultDataSets.size());
+        }
+
+        // text AND pvName: only the first-half dataset carries S01-GCC01
+        {
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setTextCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
+                                            .setText("dataset")))
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setPvNameCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.PvNameCriterion.newBuilder()
+                                            .addNames("S01-GCC01")))
+                    .build();
+            final List<DataSet> resultDataSets =
+                    annotationServiceWrapper.sendQueryDataSets(request, false, null);
+            assertEquals(1, resultDataSets.size());
+            assertEquals(scenarioResult.firstHalfDataSetId(), resultDataSets.get(0).getId());
+        }
+    }
+
+    /**
+     * Values within one TagsCriterion OR; separate TagsCriterion entries AND (#248 Phase 3, plan
+     * D4).  The same two tag values produce different results depending on which side of that
+     * line they sit.
+     */
+    @Test
+    public void testQueryDataSetsTagsCriteriaIntersect() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+        annotationIngestionScenario(startSeconds);
+        final List<AnnotationTestBase.AnnotationDataBlock> dataBlocks = List.of(
+                new AnnotationTestBase.AnnotationDataBlock(
+                        startSeconds, 0L, startSeconds + 1, 0L, List.of("S01-GCC01")));
+
+        final AnnotationTestBase.AnnotationDataSet bothTagsDataSet =
+                new AnnotationTestBase.AnnotationDataSet(
+                        null, "both tags dataset", "craigmcc", "carries alpha and beta", dataBlocks,
+                        List.of("alpha", "beta"), null, null);
+        final String bothTagsDataSetId = annotationServiceWrapper.sendAndVerifySaveDataSet(
+                new AnnotationTestBase.SaveDataSetParams(bothTagsDataSet), false, false, "");
+
+        final AnnotationTestBase.AnnotationDataSet oneTagDataSet =
+                new AnnotationTestBase.AnnotationDataSet(
+                        null, "one tag dataset", "craigmcc", "carries alpha only", dataBlocks,
+                        List.of("alpha"), null, null);
+        annotationServiceWrapper.sendAndVerifySaveDataSet(
+                new AnnotationTestBase.SaveDataSetParams(oneTagDataSet), false, false, "");
+
+        // one TagsCriterion listing both values ORs them: both datasets match
+        {
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")
+                                            .addValues("beta")))
+                    .build();
+            final List<DataSet> resultDataSets =
+                    annotationServiceWrapper.sendQueryDataSets(request, false, null);
+            assertEquals(2, resultDataSets.size());
+        }
+
+        // two TagsCriterion entries AND: only the dataset carrying both tags matches
+        {
+            final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("alpha")))
+                    .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                            .setTagsCriterion(
+                                    QueryDataSetsRequest.QueryDataSetsCriterion.TagsCriterion.newBuilder()
+                                            .addValues("beta")))
+                    .build();
+            final List<DataSet> resultDataSets =
+                    annotationServiceWrapper.sendQueryDataSets(request, false, null);
+            assertEquals(1, resultDataSets.size());
+            assertEquals(bothTagsDataSetId, resultDataSets.get(0).getId());
+        }
+    }
+
+    /**
+     * Criteria combine with AND and Mongo permits a single $text expression per query, so a
+     * second TextCriterion is a validation REJECT rather than a server error ("Too many text
+     * expressions") surfacing as RESULT_STATUS_ERROR.
+     */
+    @Test
+    public void testQueryDataSetsRejectMultipleTextCriteria() {
+
+        final QueryDataSetsRequest request = QueryDataSetsRequest.newBuilder()
+                .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                        .setTextCriterion(
+                                QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
+                                        .setText("first")))
+                .addCriteria(QueryDataSetsRequest.QueryDataSetsCriterion.newBuilder()
+                        .setTextCriterion(
+                                QueryDataSetsRequest.QueryDataSetsCriterion.TextCriterion.newBuilder()
+                                        .setText("second")))
+                .build();
+        annotationServiceWrapper.sendQueryDataSets(
+                request,
+                true,
+                "QueryDataSetsRequest.criteria may contain at most one TextCriterion");
+    }
+
+
+    /**
+     * pageToken is an opaque keyset token and a malformed one is rejected per the proto contract
+     * (#248 Phase 3, plan D18/D19) — including a legacy Base64 skip offset and a token issued for
+     * the other query, which would otherwise decode cleanly and silently skip results.
+     */
+    @Test
+    public void testQueryDataSetsRejectMalformedPageToken() {
+
+        final String expectedRejectMessage = "QueryDataSetsRequest.pageToken is not a valid page token";
+
+        // not a token at all
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken("not-a-valid-token").build(),
+                true, expectedRejectMessage);
+
+        // a whitespace-only token is malformed, not "no token": the server never issues one,
+        // so it must reject rather than silently restart at the first page
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken(" ").build(),
+                true, expectedRejectMessage);
+
+        // a legacy Base64 skip-offset token (the pre-Phase-3 format, still used by the metadata
+        // queries) is not a valid keyset token
+        final String skipOffsetToken = java.util.Base64.getEncoder()
+                .encodeToString("100".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken(skipOffsetToken).build(),
+                true, expectedRejectMessage);
+
+        // a queryAnnotations token is rejected by the query discriminator
+        final String wrongQueryToken = new AnnotationQueryPageToken(
+                AnnotationQueryPageToken.QUERY_ANNOTATIONS, "65f0123456789abcdef01234").encode();
+        annotationServiceWrapper.sendQueryDataSets(
+                QueryDataSetsRequest.newBuilder().setPageToken(wrongQueryToken).build(),
+                true, expectedRejectMessage);
     }
 
 }
