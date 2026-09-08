@@ -124,7 +124,7 @@ All 16 column proto types carry an optional `metadata` field (`ColumnMetadata` w
 
 Seven steps for adding a new column type end-to-end:
 1. **Create Document Class** — choose base class (Scalar/Array/Binary), add `@BsonDiscriminator`, implement abstract methods, add static factory method, check `hasMetadata()` and call `setColumnMetadata()` in factory
-2. **Update BucketDocument** — add handling in `BucketDocument.generateBucketsFromRequest()`
+2. **Update Column Dispatch** — add a branch in `ColumnDocumentUtility.fromDataFrame()`, the shared dispatch every path that stores DataFrame columns flows through (`BucketDocument.generateBucketsFromRequest()` and, as of #248 Phase 4, calculations frames); do not add a per-path dispatch
 3. **Register POJO Class** — add to `MongoClientBase.getPojoCodecRegistry()`
 4. **Data Subscription** — add case in `SourceMonitorManager.publishDataSubscriptions()`
 5. **Event Subscription** — update `ColumnTriggerUtility` and `DataBuffer` (scalar only; array/binary are targets only)

@@ -133,100 +133,10 @@ public class BucketDocument extends DpBsonDocumentBase {
 
         final List<BucketDocument> bucketList = new ArrayList<>();
 
-        // create BucketDocument for each DataColumn
-        for (DataColumn column : request.getIngestionDataFrame().getDataColumnsList()) {
-            ColumnDocumentBase columnDocument = DataColumnDocument.fromDataColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each SerializedDataColumn
-        for (SerializedDataColumn column : request.getIngestionDataFrame().getSerializedDataColumnsList()) {
-            ColumnDocumentBase columnDocument = SerializedDataColumnDocument.fromSerializedDataColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each DoubleColumn
-        for (DoubleColumn column : request.getIngestionDataFrame().getDoubleColumnsList()) {
-            ColumnDocumentBase columnDocument = DoubleColumnDocument.fromDoubleColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each FloatColumn
-        for (FloatColumn column : request.getIngestionDataFrame().getFloatColumnsList()) {
-            ColumnDocumentBase columnDocument = FloatColumnDocument.fromFloatColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each Int64Column
-        for (Int64Column column : request.getIngestionDataFrame().getInt64ColumnsList()) {
-            ColumnDocumentBase columnDocument = Int64ColumnDocument.fromInt64Column(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each Int32Column
-        for (Int32Column column : request.getIngestionDataFrame().getInt32ColumnsList()) {
-            ColumnDocumentBase columnDocument = Int32ColumnDocument.fromInt32Column(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each BoolColumn
-        for (BoolColumn column : request.getIngestionDataFrame().getBoolColumnsList()) {
-            ColumnDocumentBase columnDocument = BoolColumnDocument.fromBoolColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each StringColumn
-        for (StringColumn column : request.getIngestionDataFrame().getStringColumnsList()) {
-            ColumnDocumentBase columnDocument = StringColumnDocument.fromStringColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each EnumColumn
-        for (EnumColumn column : request.getIngestionDataFrame().getEnumColumnsList()) {
-            ColumnDocumentBase columnDocument = EnumColumnDocument.fromEnumColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each DoubleArrayColumn
-        for (DoubleArrayColumn column : request.getIngestionDataFrame().getDoubleArrayColumnsList()) {
-            ColumnDocumentBase columnDocument = DoubleArrayColumnDocument.fromDoubleArrayColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each FloatArrayColumn
-        for (FloatArrayColumn column : request.getIngestionDataFrame().getFloatArrayColumnsList()) {
-            ColumnDocumentBase columnDocument = FloatArrayColumnDocument.fromFloatArrayColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each Int32ArrayColumn
-        for (Int32ArrayColumn column : request.getIngestionDataFrame().getInt32ArrayColumnsList()) {
-            ColumnDocumentBase columnDocument = Int32ArrayColumnDocument.fromInt32ArrayColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each Int64ArrayColumn
-        for (Int64ArrayColumn column : request.getIngestionDataFrame().getInt64ArrayColumnsList()) {
-            ColumnDocumentBase columnDocument = Int64ArrayColumnDocument.fromInt64ArrayColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each BoolArrayColumn
-        for (BoolArrayColumn column : request.getIngestionDataFrame().getBoolArrayColumnsList()) {
-            ColumnDocumentBase columnDocument = BoolArrayColumnDocument.fromBoolArrayColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each StructColumn
-        for (StructColumn column : request.getIngestionDataFrame().getStructColumnsList()) {
-            ColumnDocumentBase columnDocument = StructColumnDocument.fromStructColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
-        }
-
-        // create BucketDocument for each ImageColumn
-        for (ImageColumn column : request.getIngestionDataFrame().getImageColumnsList()) {
-            ColumnDocumentBase columnDocument = ImageColumnDocument.fromImageColumn(column);
-            bucketList.add(columnBucketDocument(column.getName(), request, columnDocument, providerName));
+        // create BucketDocument for each column of any type in the ingestion DataFrame
+        for (ColumnDocumentBase columnDocument :
+                ColumnDocumentUtility.fromDataFrame(request.getIngestionDataFrame())) {
+            bucketList.add(columnBucketDocument(columnDocument.getName(), request, columnDocument, providerName));
         }
 
         return bucketList;
