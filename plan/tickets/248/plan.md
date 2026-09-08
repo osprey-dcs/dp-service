@@ -14,7 +14,9 @@
   is **unblocked**. Phase 1 merged 2026-09-04 as PR #256. Phase 2 planned 2026-09-04 against `main`
   at `04e8902` (see [Phase 2 planning](#phase-2-planning-2026-09-04)) and implemented on
   `issue-248-phase-2-entity-audit-crud`; merged 2026-09-06 as PR #261. Phase 3 planned 2026-09-07
-  against `main` at `d5c5928` (see [Phase 3 planning](#phase-3-planning-2026-09-07)).
+  against `main` at `d5c5928` (see [Phase 3 planning](#phase-3-planning-2026-09-07)); merged
+  2026-09-08 as PR #263. Phase 4 planned 2026-09-08 against `main` at `7f6bfdf` (see
+  [Phase 4 planning](#phase-4-planning-2026-09-08)).
 
 ## Overview
 
@@ -544,6 +546,259 @@ an export source, and `ColumnProvenance.derivedFrom` stored-not-interpreted.
 
 Independent of Phases 2–3 and the largest single chunk. (D8 originally sat here; Phase 2's D14
 pulled it forward.)
+
+#### Phase 4 planning (2026-09-08)
+
+Triage of the Phase 4 scope against `main` @ `7f6bfdf` surfaced nine findings:
+
+1. **The silent-loss premise holds, but which failure a client sees depends on the frame's
+   shape.** `CalculationsDataFrameDocument.fromCalculationsDataFrame()` reads only
+   `getDataColumnsList()` (`CalculationsDataFrameDocument.java:58`), so typed columns are dropped
+   on save — but `validateSaveAnnotationRequest` rejects a frame whose legacy `dataColumns` list
+   is empty (`AnnotationValidationUtility.java:170`). A typed-columns-only frame is therefore
+   **rejected** today, and the silent loss is reachable only for a frame mixing legacy and typed
+   columns. Both halves are wrong; they just fail differently.
+
+2. **The field retype requires schema migration v4.** Verified in-JVM against the driver, with a
+   codec registry built the way `MongoClientBase.getPojoCodecRegistry()` builds it (discriminator
+   handling is purely client-side, so no server was needed): the POJO codec **does** write the
+   `_t` discriminator even when the declared field type is the concrete class, and a stored entry
+   *without* `_t` decodes fine under a concrete declared type but throws
+   `CodecConfigurationException` under an abstract one. Calculations storage shipped in
+   rel-1.10.0 (`04b6c29`, #119) using the pre-hierarchy `DataColumnDocument`; the
+   `@BsonDiscriminator` arrived with #173 (`f37b643`) in rel-1.13.0. A deployment that saved
+   calculations on 1.10–1.12 therefore holds columns the retyped `List<ColumnDocumentBase>`
+   field cannot decode. The old and new BSON shapes are otherwise identical
+   (`name`/`valueCase`/`valueType`/`bytes`), so stamping `_t: "dataColumn"` where missing is
+   sufficient — and idempotent.
+
+3. **The same `_t` gap exists for buckets, today, independent of this ticket — and it is
+   fully silent.** Pre-#173 `BucketDocument` declared the concrete
+   `DataColumnDocument dataColumn`; the current field is the abstract `ColumnDocumentBase`. Any
+   bucket written by a pre-1.13 build fails codec decode under every current build — mid-cursor,
+   upstream of `dataBucketFromDocument()`, so the "deserialization must fail as `DpException`"
+   contract never gets the chance to apply: the exception escapes the dispatchers'
+   `DpException`-only catch and the client receives zero buckets with no error. Nothing at
+   startup notices either — `BucketSpanVerifier` scans raw `Document`s via aggregation, never
+   POJOs, and its missing-field corruption check tests `dataColumn` presence, not `_t`. Not
+   caused or worsened by Phase 4, but repaired by it: see D27.
+
+4. **`ColumnProvenanceDocument` does not store `derivedFrom` at all**
+   (`ColumnProvenanceDocument.java:8-11` — `source` and `process` only). A typed column carrying
+   provenance links loses them at write time on every path that stores columns — ingestion
+   buckets today, calculations once the retype lands. The proto contract ("derivedFrom links are
+   stored as supplied", `common.proto:41`) dates from #132 (dp-grpc `7b2ea35`); dp-service never
+   caught up. The legacy column has a subtler variant: `DataColumnDocument.bytes` holds the
+   complete metadata, but `toProtobufColumn()` calls `applyMetadataToProto()`, which overwrites
+   the complete in-bytes metadata with the lossy document version — so `derivedFrom` vanishes on
+   the HDF5-export read path even for legacy columns, while `toDataColumn()` (tabular) preserves
+   it. This asymmetry is the real content of the "stored-not-interpreted" scope line.
+
+5. **A count-mismatched calculations column hangs the export stream today.** Nothing compares a
+   calculation column's value count to its frame's timestamp count, and
+   `TabularDataUtility.addColumnsToTable()` indexes `dataColumn.getDataValues(valueIndex)`
+   (`TabularDataUtility.java:268`) — a short column throws `IndexOutOfBoundsException`,
+   unchecked, escaping `exportData_()` and `execute()` into `QueueHandlerBase`, which swallows
+   it: the caller's stream hangs with no response. Reachable now by saving a legacy `DataColumn`
+   shorter than its frame's axis and exporting tabular. (Ingestion validates exactly this,
+   `IngestionValidationUtility.java:220`; calculations never did.)
+
+6. **Frame-name distinctness is proto contract but unenforced.** The `CalculationsDataFrame`
+   comment says duplicate names "are unaddressable and are rejected" — they key
+   `CalculationsSpec.dataFrameColumns` and provenance links. No such check exists in
+   `validateSaveAnnotationRequest`. Column names within a frame are the same kind of addressing
+   key (ingestion's analog is the unique-PV-names-per-frame cross-check).
+
+7. **Inline `dataBlocks` are rejected today** by `validateExportDataRequest` ("either dataSetId
+   or calculationsSpec must be specified", `AnnotationValidationUtility.java:204`); nothing in
+   the service references `getDataBlocksList()`. The output filename derives from
+   `exportObjectId` — dataSetId, else calculationsId (`ExportDataJobBase.java:88-121`) — and
+   `getExportFileSubdirectory()` (`ExportConfiguration.java:144`) assumes an ObjectId-shaped
+   string for its balanced directory layout, so an inline-only request needs a generated id.
+
+8. **Export failure classification predates #235.** `ExportDataDispatcher` has only
+   `handleError`: dataset/calculations not-found, bad filter names, and non-scalar-in-tabular
+   all reach the wire as `RESULT_STATUS_ERROR`, while the proto says a tabular request for
+   array/image/struct content "is rejected". The dataset fetch still uses the null-collapsing
+   `findDataSet()` (`ExportDataJobBase.java:88`) — the calculations fetch beside it was already
+   converted to `lookupCalculations` with the #235 comment — and `dataSetId` is never
+   ObjectId-validated (harmless today because `lookupDataSet` catches the
+   `IllegalArgumentException`, but a malformed id then reads as "not found").
+   `NonScalarColumnException` was designed for caller-phrased guidance (Q4) and the querySamples
+   dispatchers use it that way; the export framework instead lets it fall into the generic
+   `DpException` catch ("exception building tabular result: ...").
+
+9. **`handleExportData` responds then throws on its defensive enum branches.** The
+   UNSPECIFIED/UNRECOGNIZED cases send an error response but fall through to
+   `Objects.requireNonNull(job)` (`MongoAnnotationHandler.java:343`) — an NPE on the gRPC thread
+   after `onCompleted()`. Unreachable while validation holds; fix with `return`s in passing.
+
+Also confirmed ready to reuse: `ingestionDataFrame` *is* `common.DataFrame`
+(`ingestion.proto:220`), so one DataFrame-to-columns dispatch can serve both paths (D26);
+`validateColumnMetadata`/`validateAllColumnMetadata`
+(`IngestionValidationUtility.java:590`, `:635`) carry the metadata limits but hardcode ingestion
+field paths; `TimestampDocument` exists for storing `TimeRange`; and the client passes
+`Calculations` through verbatim on save (`AnnotationClient.java:607`), so the only client change
+is `ExportDataRequestParams`.
+
+Design decisions, continuing the numbering:
+
+- **D25 — `CalculationsDataFrameDocument.dataColumns` becomes one polymorphic
+  `List<ColumnDocumentBase>` under the existing BSON field name.** Matches the bucket pattern
+  (`BucketDocument.dataColumn`), keeps every post-1.13 stored document readable as-is
+  (finding 2), and the discriminator round-trips the concrete type.
+  `toCalculationsDataFrame()` dispatches each document back to its `DataFrame` repeated field by
+  concrete type. Rejected: 16 parallel typed list fields on the document — drift-prone, no
+  addressing benefit, and a new BSON shape for no reason.
+
+- **D26 — the 16-branch DataFrame dispatch is extracted into a shared helper** (new
+  `ColumnDocumentUtility.fromDataFrame(DataFrame)` in `common/bson/column/`), consumed by both
+  `BucketDocument.generateBucketsFromRequest()` (`BucketDocument.java:131`, behavior-identical
+  refactor) and `CalculationsDataFrameDocument.fromCalculationsDataFrame()`. Duplicating the
+  dispatch is exactly the drift the `normalizedTags()` history warns about, and the "Systematic
+  Process for Adding New Protobuf Column Types" gains one shared step instead of two parallel
+  ones.
+
+- **D27 — schema migration v4 stamps `_t: "dataColumn"` on every embedded legacy column
+  missing it, in `buckets` and `calculations` alike.** (Ticket owner decision, 2026-09-08;
+  supersedes the planning draft's separate-ticket split.) The two halves are one defect — #173
+  added `@BsonDiscriminator` without a migration, because the mechanism did not exist until
+  #254 — so v4 is the migration #173 should have shipped, plus what the D25 retype newly
+  requires. The asymmetry decides it: folding costs at worst a one-time full scan of `buckets`
+  that matches nothing (minutes to perhaps an hour at the reference archive's 33.8M documents),
+  while deferring ships a release that silently zeroes out query results on any archive holding
+  pre-1.13 buckets (finding 3) and still owes the same scan later as a mandatory v5 — released
+  migrations are append-only. A one-time full bucket scan at startup also has precedent:
+  `BucketSpanVerifier` already does exactly that.
+
+  Shape and safety: one migration, two `updateMany` calls filtering on a present `dataColumn`
+  subdocument whose `_t` key is absent (per array entry for calculations frames) — idempotent
+  by construction, and the filter naturally skips v1-shaped buckets that predate the embedded
+  subdocument. The pre-1.13 subdocument is field-identical to today's
+  (`name`/`valueCase`/`valueType`/`bytes`), so stamping is sufficient. Migrations operate on
+  raw `Document`s (#254 rule), so v4 is immune to the decode failure it repairs, and the runner
+  is ordered before anything that decodes bucket POJOs. A long scan cannot lose its claim:
+  takeover requires a *released* claim (`SchemaMigrationRunner.migrateOrWait()`), never a
+  merely old one.
+
+  Operational consequence, documented rather than engineered around: while the elected process
+  scans, the other services wait `CLAIM_WAIT_TIMEOUT_MILLIS` (5 minutes, hardcoded) and then
+  refuse to start with the held-claim message — normal during a long v4, self-healing under a
+  supervisor, and the constant deliberately stays hardcoded (making it configurable is scope
+  creep for a one-time event). `doc/schema-migration.md` and the release notes must say so,
+  with expected duration and a note that the timeout message during a *running* migration is
+  not the stuck-claim case it also describes. Implementation must verify the retype + v4
+  against a throwaway `mongo:8.0` container seeded with pre-1.13-shaped bucket and calculations
+  documents (the #254 lesson), not only the in-JVM probe from finding 2.
+
+- **D28 — save-side validation extends to the full frame shape, and count-match becomes
+  mandatory for every column type, legacy included.** Per column (all 16 types): blank-name
+  reject, empty-values reject, value count must equal the frame's timestamp count — the count
+  check is what closes the export hang (finding 5); a legacy `DataValue` with no arm set still
+  occupies its position, so sparse legacy columns remain expressible. Per frame: at least one
+  column of any type (replaces the legacy-list-only emptiness check); column names unique across
+  all column types in the frame. Per Calculations object: frame names unique (finding 6).
+  Column metadata gets the ingestion limits by extracting
+  `validateColumnMetadata`/`validateAllColumnMetadata` into a shared utility parameterized on
+  the field-path prefix, with `IngestionValidationUtility` delegating. The count check on legacy
+  columns narrows what `saveAnnotation` accepts — a release-notes line, same
+  no-production-consumers justification as D4. (`SerializedDataColumn` entries carry no
+  countable values; they get the name/metadata checks only.)
+
+- **D29 — `ColumnProvenanceDocument` gains `derivedFrom`**: new embedded
+  `ColumnSourceDocument` (`pvName`; `calculationsColumn` as embedded
+  `CalculationsColumnDocument` with calculationsId/frameName/columnName; `timeRange` as
+  begin/end `TimestampDocument`s), registered in the codec ahead of its parents and
+  round-tripped in `fromColumnProvenance`/`toColumnProvenance`. Stored as supplied: no existence
+  checks and no ObjectId parse of `calculationsId` — a link may point at records not yet
+  created; only the shared length limits (D28) apply. One change fixes ingestion buckets and
+  calculations alike, and dissolves the legacy `applyMetadataToProto()` overwrite loss
+  (finding 4) without touching that mechanism.
+
+- **D30 — export client mistakes become rejections: `ExportDataDispatcher` gains
+  `handleReject`.** Rejected: dataset or calculations id not found; filter frame/column names
+  that don't exist; non-scalar content in a tabular export — `ExportDataJobAbstractTabular`
+  catches `NonScalarColumnException` ahead of `DpException` and phrases the Q4 guidance
+  ("...export to HDF5 instead"), for the dataset and calculations paths alike. Errors stay
+  errors: lookup `DpException` (outage), file I/O, size-limit-exceeded. The dataset fetch
+  switches to `lookupDataSet()` with the same catch shape the calculations fetch already has,
+  and `validateExportDataRequest` ObjectId-validates a non-blank `dataSetId` so malformed reads
+  as malformed rather than "not found". ("data block query returned no data" stays an error —
+  pre-existing behavior, not litigated here.)
+
+- **D31 — inline blocks merge into one effective `DataSetDocument`; the export id falls back to
+  a generated ObjectId.** Validation: at least one of
+  `dataSetId`/`dataBlocks`/`calculationsSpec` (supersedes the two-source check, finding 7), with
+  per-block validation via a `validateDataBlock()` helper extracted from
+  `validateSaveDataSetRequest` (`AnnotationValidationUtility.java:57-79`). In the job: fetch the
+  stored document when `dataSetId` is set and append inline blocks to its block list, or build a
+  transient document when it is not; everything downstream — block queries, tabular assembly,
+  HDF5 `writeDataSet` — proceeds unchanged and records the effective block list; nothing is
+  persisted. `exportObjectId` resolution: dataSetId, else calculationsId, else `new ObjectId()`,
+  preserving `getExportFileSubdirectory()`'s shape assumption. Client:
+  `ExportDataRequestParams` gains `dataBlocks` and `buildExportDataRequest` emits them.
+
+- **D32 — HDF5 calculations columns get the bucket treatment**: iterate `ColumnDocumentBase`,
+  write `toProtobufColumn().toByteArray()` plus the self-describing `DATA_COLUMN_ENCODING`
+  (`"proto:" + simpleName`) tag per column (`DataExportHdf5File.writeCalculations`,
+  `:246-334`, mirroring the bucket writer at `:200-211`). Files written by earlier builds carry
+  no tag for calculations columns and were implicitly `DataColumn`-encoded; export files are
+  point-in-time artifacts, so the addition is a release-notes line, not a compatibility
+  mechanism.
+
+- **D33 — tabular calculations get the `addBucketToTable` narrowing, and `execute()` stops
+  trusting `exportData_()` not to throw unchecked.** `addCalculationsToTable` narrows each
+  column: `ScalarColumnDocumentBase` → `toDataColumn()`; `DataColumnDocument` →
+  `toDataColumn()`; else `NonScalarColumnException`, named "frameName/columnName" in the PV-name
+  slot. Independently, `ExportDataJobBase.execute()` wraps the `exportData_()` call in a
+  `RuntimeException` catch dispatched as an error: D28 stops new count-mismatched writes, but a
+  column stored before this phase's validation would still hang the stream through the
+  finding-5 mechanism, and a hang is strictly worse than a misclassified error (the #235
+  hierarchy).
+
+Implementation tasks:
+
+- Storage and migration — `common/bson/column/ColumnDocumentUtility.java` (new, D26) with
+  `generateBucketsFromRequest()` refactored onto it; `CalculationsDataFrameDocument` retype and
+  conversions (D25); `CalculationsDocument.frameColumnNamesMap()` / `diffCalculations()` over
+  `ColumnDocumentBase` (near-mechanical — `getName()` and proto equality live on the base);
+  `V4StampColumnDiscriminators` (new, buckets + calculations) +
+  `SchemaMigrationRunner.MIGRATIONS` + `SCHEMA_VERSION = 4` + `doc/schema-migration.md`
+  including the long-scan operator guidance (D27).
+- Provenance — `ColumnProvenanceDocument.derivedFrom` plus new `ColumnSourceDocument` /
+  `CalculationsColumnDocument` (D29); codec registrations (embedded helpers before parents);
+  shared column-metadata validator extraction with field-path parameter (D28/D29),
+  `IngestionValidationUtility` delegating.
+- Validation — `validateSaveAnnotationRequest` per D28; `validateExportDataRequest` per
+  D30/D31 (three-source rule, `validateDataBlock()` helper, `dataSetId` ObjectId check).
+- Export — `ExportDataDispatcher.handleReject` (D30); `ExportDataJobBase`: `lookupDataSet`,
+  reject routing, dataBlocks merge, filename fallback, `RuntimeException` guard (D30/D31/D33);
+  `ExportDataJobAbstractTabular`: `NonScalarColumnException` catch → reject (D30);
+  `TabularDataUtility.addCalculationsToTable`: narrowing + typed iteration (D33);
+  `DataExportHdf5File.writeCalculations` (D32); `MongoAnnotationHandler.handleExportData`:
+  `return` after the defensive error sends (finding 9).
+- Client — `AnnotationClient.ExportDataRequestParams` / `buildExportDataRequest` gain
+  `dataBlocks` (D31).
+- Tests — `AnnotationTestBase`: `verifyCalculationsDocumentHdf5Content` reads the encoding tag
+  and parses by it (the bucket verifier's two-case encoding switch needs the same extension);
+  typed-column calculations builders. `AnnotationCalculationsIT`: typed save/get round-trip
+  (representative set — Double, String, Enum, DoubleArray, Struct, plus legacy and serialized —
+  with column metadata including `derivedFrom`); HDF5 export of all; CSV scalar-only happy
+  path; CSV-with-array reject; count-mismatch, duplicate-frame-name, and duplicate-column-name
+  rejects. `ExportDataIT`: inline dataBlocks (CSV and HDF5), each source combination,
+  no-source reject, malformed-`dataSetId` reject, not-found rejects. Migration: V4 test beside
+  V2/V3's (stamps missing `_t` in both collections, leaves stamped entries alone, leaves
+  v1-shaped buckets without a `dataColumn` subdocument untouched, idempotent; no new
+  collection, so the reflection-pinned managed-collection list is unaffected), plus the
+  real-container verification from D27. Ingestion: `derivedFrom`
+  round-trip through the bucket path (extend `IngestDataColumnMetadataIT`). Unit tests for the
+  shared dispatch helper and shared metadata validator.
+- Docs — CLAUDE.md: calculations typed-column invariants (v4, D25–D29 outcomes), export
+  classification, shared-dispatch step in the "Systematic Process" section;
+  `doc/release-notes/rel-1.16.0.md`: typed calculations columns and inline `dataBlocks`
+  (features), legacy count-check narrowing (D28), export reject classification (D30), HDF5
+  encoding tag (D32), and the v4 migration's one-time bucket scan with its startup
+  choreography (D27).
 
 ## Upgrade note (required for D3)
 
