@@ -28,7 +28,8 @@ or deleted mid-pagination. Tokens are continuation state, not bookmarks: obtain 
 `nextPageToken` of a previous response, and do not persist them across sessions.
 
 The three metadata queries (`queryPvMetadata`, `queryConfigurations`,
-`queryConfigurationActivations`) keep their skip-offset tokens; converting them is a follow-on.
+`queryConfigurationActivations`) keep their skip-offset tokens; converting them is a follow-on
+(issue #193).
 
 ### queryConfigurationActivations ordering completed (#248 Phase 3)
 

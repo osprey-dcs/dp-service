@@ -45,9 +45,11 @@ public class QuerySampleStatusesJob extends HandlerJob {
             return;
         }
 
-        // a non-empty pageToken must be one this server issued; unparseable tokens are rejected
+        // a non-empty pageToken must be one this server issued; unparseable tokens are
+        // rejected (isEmpty, not isBlank: a whitespace token was never issued, so it must
+        // reject rather than silently reset)
         SampleStatusPageToken position = null;
-        if (!request.getPageToken().isBlank()) {
+        if (!request.getPageToken().isEmpty()) {
             position = SampleStatusPageToken.decode(request.getPageToken());
             if (position == null) {
                 dispatcher.handleValidationError(new ResultStatus(

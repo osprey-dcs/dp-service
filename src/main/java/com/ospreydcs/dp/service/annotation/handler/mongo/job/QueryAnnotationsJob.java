@@ -40,9 +40,10 @@ public class QueryAnnotationsJob extends HandlerJob {
 
         logger.debug("executing QueryAnnotationsJob id: {}", this.responseObserver.hashCode());
         // a non-empty pageToken must be one this server issued for this query; unparseable and
-        // wrong-query tokens are rejected per the API contract
+        // wrong-query tokens are rejected per the API contract (isEmpty, not isBlank: a
+        // whitespace token was never issued, so it must reject rather than silently reset)
         ObjectId resumeAfterId = null;
-        if (!request.getPageToken().isBlank()) {
+        if (!request.getPageToken().isEmpty()) {
             final AnnotationQueryPageToken pageToken = AnnotationQueryPageToken.decode(
                     request.getPageToken(), AnnotationQueryPageToken.QUERY_ANNOTATIONS);
             if (pageToken == null) {

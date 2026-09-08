@@ -197,6 +197,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<DataSet> dataSetsList =
                 Collections.synchronizedList(new ArrayList<>());
         private volatile String nextPageToken = "";
@@ -222,6 +224,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public List<DataSet> getDataSetsList() {
             return dataSetsList;
         }
@@ -236,6 +243,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -501,6 +509,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<Annotation> annotationsList =
                 Collections.synchronizedList(new ArrayList<>());
         private volatile String nextPageToken = "";
@@ -526,6 +536,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         public List<Annotation> getAnnotationsList() {
             return annotationsList;
         }
@@ -540,6 +555,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -2201,7 +2217,7 @@ public class AnnotationTestBase {
         final QueryConfigurationsRequest.Builder builder = QueryConfigurationsRequest.newBuilder();
         builder.addAllCriteria(criteria);
         if (limit > 0) builder.setLimit(limit);
-        if (pageToken != null && !pageToken.isBlank()) builder.setPageToken(pageToken);
+        if (pageToken != null && !pageToken.isEmpty()) builder.setPageToken(pageToken);
         return builder.build();
     }
 
@@ -2517,7 +2533,7 @@ public class AnnotationTestBase {
                 QueryConfigurationActivationsRequest.newBuilder();
         builder.addAllCriteria(criteria);
         if (limit > 0) builder.setLimit(limit);
-        if (pageToken != null && !pageToken.isBlank()) builder.setPageToken(pageToken);
+        if (pageToken != null && !pageToken.isEmpty()) builder.setPageToken(pageToken);
         return builder.build();
     }
 
@@ -2805,7 +2821,7 @@ public class AnnotationTestBase {
         if (domains != null) builder.addAllDomains(domains);
         if (layers != null) builder.addAllLayers(layers);
         if (limit > 0) builder.setLimit(limit);
-        if (pageToken != null && !pageToken.isBlank()) builder.setPageToken(pageToken);
+        if (pageToken != null && !pageToken.isEmpty()) builder.setPageToken(pageToken);
         return builder.build();
     }
 

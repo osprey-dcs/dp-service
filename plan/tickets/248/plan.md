@@ -510,6 +510,31 @@ Implementation tasks:
   "Phase 3 converts" sentences become past tense); `doc/release-notes/rel-1.16.0.md` draft with
   the AND-semantics line (D24).
 
+### Phase 3 PR (#263) review adjustments
+
+The PR review (Claude + Copilot, 2026-09-08) tightened two behaviors and recorded one deliberate
+deferral:
+
+- **Whitespace-only page tokens reject.** The keyset jobs guard the token with `isEmpty()`, not
+  `isBlank()`: proto3's unset default is exactly `""`, and a whitespace token was never issued by
+  the server, so reject-on-malformed applies — under `isBlank()` it silently restarted at the
+  first page. Copilot flagged the two new jobs; the fix also covers `QuerySampleStatusesJob`,
+  which they had copied verbatim (D20), so the three keyset jobs stay uniform.
+- **The query reject paths assert the wire status.** `QueryDataSetsResponseObserver` and
+  `QueryAnnotationsResponseObserver` capture `ExceptionalResultStatus`, and the two `sendQuery*`
+  wrappers assert `RESULT_STATUS_REJECT` in their expectReject branch — without it, the new
+  `handleValidationError` → reject wiring could route to `sendError` and no test would notice
+  (the #235 divergence; the Save/Delete observers got this in the Phase 2 review). The remaining
+  wrappers that assert only a message substring span every entity's query/get/delete paths and
+  are a follow-on, not this phase.
+- **The activation compound sort is not index-backed — deferred deliberately.**
+  `configurationActivations` carries single-field indexes, so the D23 sort
+  (`startTime`, `configurationName`, `_id`) is a blocking sort (disk-spilling by default on
+  MongoDB 8.0: correct, but not index-assisted). At plausible activation-collection sizes this
+  is immaterial; if activations grow large, an additive compound index
+  `(startTime, configurationName, _id)` in `init()` restores an index-backed sort with no
+  migration (index *additions* are not migration steps — only changes are).
+
 ### Phase 4 — typed calculation columns and export
 
 `CalculationsDataFrameDocument` gains the 16 typed column types alongside `dataColumns` (§2), then

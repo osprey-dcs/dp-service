@@ -26,6 +26,8 @@ public class AnnotationQueryPageTokenTest {
         assertNull(AnnotationQueryPageToken.decode(
                 "", AnnotationQueryPageToken.QUERY_DATA_SETS));
         assertNull(AnnotationQueryPageToken.decode(
+                " ", AnnotationQueryPageToken.QUERY_DATA_SETS));
+        assertNull(AnnotationQueryPageToken.decode(
                 Base64.getEncoder().encodeToString("not json".getBytes(StandardCharsets.UTF_8)),
                 AnnotationQueryPageToken.QUERY_DATA_SETS));
     }

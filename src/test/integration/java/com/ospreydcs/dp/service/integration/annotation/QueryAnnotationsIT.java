@@ -756,6 +756,12 @@ public class QueryAnnotationsIT extends AnnotationIntegrationTestIntermediate {
                 QueryAnnotationsRequest.newBuilder().setPageToken("not-a-valid-token").build(),
                 true, expectedRejectMessage);
 
+        // a whitespace-only token is malformed, not "no token": the server never issues one,
+        // so it must reject rather than silently restart at the first page
+        annotationServiceWrapper.sendQueryAnnotations(
+                QueryAnnotationsRequest.newBuilder().setPageToken(" ").build(),
+                true, expectedRejectMessage);
+
         // a legacy Base64 skip-offset token (the pre-Phase-3 format, still used by the metadata
         // queries) is not a valid keyset token
         final String skipOffsetToken = java.util.Base64.getEncoder()
