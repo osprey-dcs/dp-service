@@ -12,6 +12,7 @@ import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.column.ColumnDocumentBase;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -1196,7 +1197,7 @@ public class AnnotationTestBase {
 
             // verify contents for each frame column
             int columnIndex = 0;
-            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+            for (ColumnDocumentBase calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
 
                 if ((frameColumnNamesMap != null)
                         && ( ! frameColumnNamesMap.get(frameName).getColumnNamesList().contains(

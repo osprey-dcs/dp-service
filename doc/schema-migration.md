@@ -203,6 +203,7 @@ version does not match the database still refuses to start. Use it only when mig
 | 1 | Rename annotation `comment` → `description`; replace its text index | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 1 |
 | 2 | Normalize annotation `tags` to lowercase/deduplicated/sorted | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 2 |
 | 3 | Canonicalize annotation `dataSetIds`/`annotationIds` to lowercase hex | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 2 review |
+| 4 | Stamp `_t` discriminator on legacy bucket and calculations columns | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 4. **One-time full scan of `buckets`** — see note. |
 
 ### Note on version 1
 
@@ -263,6 +264,39 @@ Verify afterwards:
 
 ```js
 db.annotations.find({$or: [{dataSetIds: /[A-F]/}, {annotationIds: /[A-F]/}]})   // expect none
+```
+
+### Note on version 4
+
+Embedded column documents written before rel-1.13.0 predate the `_t` class discriminator that
+[#173](https://github.com/osprey-dcs/dp-service/issues/173) introduced, and #173 shipped no
+migration because this mechanism did not exist yet. The stored shape is otherwise identical to the
+current one, but the POJO codec cannot decode a discriminator-less entry under the abstract field
+type both storage sites now declare. For **buckets** the failure is fully silent: the decode error
+escapes the query dispatchers mid-cursor and the client receives *zero buckets with no error* —
+indistinguishable from "no data in range" — for any query covering a pre-1.13 bucket. For
+**calculations**, the #248 Phase 4 retype of frame columns would make pre-1.13 calculations
+unreadable the same way. This migration stamps `_t: "dataColumn"` on every embedded legacy column
+missing it, in both collections.
+
+**Expect a long run on a large archive.** There is no index on `dataColumn._t`, so the buckets
+update is a one-time full collection scan — minutes to perhaps an hour at tens of millions of
+buckets. Two operational consequences:
+
+- **Waiting services will time out and must be restarted.** While the elected process migrates, the
+  other services wait five minutes and then refuse to start with the held-claim timeout message.
+  During a long v4 run this is the *"a real migration; wait"* branch of that message's triage, not
+  the stuck-claim case — check `migratingSince`/`migratingHost` as described there, let the
+  migrating process finish, and restart the others (a supervisor that restarts on failure
+  self-heals). Do **not** clear the claim while the migrating host is alive.
+- Buckets that never held an embedded column subdocument (the v1 storage shape) and columns already
+  stamped by 1.13+ builds are untouched; a re-run matches nothing.
+
+Verify afterwards:
+
+```js
+db.buckets.countDocuments({dataColumn: {$exists: true}, "dataColumn._t": {$exists: false}})   // expect 0
+db.calculations.countDocuments({dataFrames: {$elemMatch: {dataColumns: {$elemMatch: {_t: {$exists: false}}}}}})   // expect 0
 ```
 
 ---

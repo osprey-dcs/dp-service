@@ -7,6 +7,7 @@ import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.column.ColumnDocumentBase;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -291,9 +292,21 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
 
                 // create group for each of the frame's columns
                 int columnIndex = 0;
-                for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+                for (ColumnDocumentBase calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
 
                     Objects.requireNonNull(calculationsDataColumnDocument);
+
+                    // Interim guard until typed calculations columns get the bucket treatment
+                    // (encoding tag alongside the serialized bytes, #248 plan D32): writing a typed
+                    // column's bytes untagged would have readers parse them as DataColumn — a wrong
+                    // answer rather than an error.
+                    if ( ! (calculationsDataColumnDocument instanceof DataColumnDocument)) {
+                        throw new DpException("HDF5 export of typed calculations column '"
+                                + calculationsDataColumnDocument.getName() + "' ("
+                                + calculationsDataColumnDocument.getClass().getSimpleName()
+                                + ") is not yet supported");
+                    }
+
                     final String columnName = calculationsDataColumnDocument.getName();
 
                     // only include column if frameColumnNamesMap not provided,
