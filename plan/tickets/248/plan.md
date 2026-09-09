@@ -16,7 +16,8 @@
   `issue-248-phase-2-entity-audit-crud`; merged 2026-09-06 as PR #261. Phase 3 planned 2026-09-07
   against `main` at `d5c5928` (see [Phase 3 planning](#phase-3-planning-2026-09-07)); merged
   2026-09-08 as PR #263. Phase 4 planned 2026-09-08 against `main` at `7f6bfdf` (see
-  [Phase 4 planning](#phase-4-planning-2026-09-08)).
+  [Phase 4 planning](#phase-4-planning-2026-09-08)); merged 2026-09-08 as PR #264 — all four
+  phases have landed.
 
 ## Overview
 
@@ -891,7 +892,9 @@ the half that closes the migration inconsistency described in
 
 - **Sample Status API** — unaffected by #132.
 - **`queryProviders` empty criteria** (`QueryServiceImpl:591`) — still rejects; it is a Query
-  Service method and was out of #245's scope too. Worth a follow-on ticket.
+  Service method and was out of #245's scope too. Follow-on filed as #265 (which also covers the
+  fall-through after the empty-criteria reject, the legacy AND/OR criteria scheme, and the
+  unbounded/no-paging-fields state).
 - **Opaque tokens for the three metadata queries** — D6; follow-on.
 - **Sweeping already-orphaned Calculations documents** — D8; separate, deployment-dependent.
 
