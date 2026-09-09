@@ -110,7 +110,7 @@ public class V4StampColumnDiscriminators implements Migration {
             logger.error(
                     "V4StampColumnDiscriminators: mongo exception stamping discriminators: {}",
                     ex.getMessage(), ex);
-            throw new DpException("error stamping column discriminators: " + ex.getMessage());
+            throw new DpException("error stamping column discriminators: " + ex.getMessage(), ex);
         }
     }
 }

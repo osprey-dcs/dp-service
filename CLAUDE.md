@@ -153,7 +153,11 @@ a frame, frame names unique within the Calculations object — both are addressi
 check is what closes the finding-5 export hang (an out-of-range read escaping unchecked in the
 worker thread left the export stream hanging with no response); do not exempt a new column type
 from it. Column metadata is validated through the shared `ColumnMetadataValidationUtility` like
-every other save path.
+every other save path, and column *values* against the shared `ColumnValueLimits` caps (string
+values ≤ 256 chars, array dims product ≤ 10M elements, image ≤ 50MB, struct ≤ 1MB) — one contract
+with ingestion, so a payload ingestion would reject cannot be stored through saveAnnotation.
+Ingestion's identity-field requirements (enumId, schemaId, imageDescriptor, serialized encoding)
+deliberately remain ingestion-only: calculations columns are not PV channels.
 
 ## Systematic Process for Adding New Protobuf Column Types
 
@@ -591,7 +595,7 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 4. New columns (all column-oriented types)
 5. Cross-cutting (unique PV names across all column types in a frame)
 
-**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB; timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
+**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB (the four value caps live in the shared `ColumnValueLimits` and bind the saveAnnotation calculations path too); timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
 
 ### Max Bucket Span Invariant (issue #197)
 `Buckets.maxBucketSpanSeconds` is a shared invariant between ingestion and query, and both of its failure modes are *silent wrong answers* rather than errors — treat it accordingly:

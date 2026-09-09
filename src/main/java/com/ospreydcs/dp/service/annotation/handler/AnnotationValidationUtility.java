@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.annotation.handler;
 
+import com.google.protobuf.ByteString;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.ArrayDimensions;
 import com.ospreydcs.dp.grpc.v1.common.BoolArrayColumn;
@@ -23,6 +24,7 @@ import com.ospreydcs.dp.grpc.v1.common.StringColumn;
 import com.ospreydcs.dp.grpc.v1.common.StructColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.handler.ColumnMetadataValidationUtility;
+import com.ospreydcs.dp.service.common.handler.ColumnValueLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import org.bson.types.ObjectId;
@@ -356,6 +358,12 @@ public class AnnotationValidationUtility {
                 StringColumn::getName, StringColumn::getValuesCount,
                 "CalculationDataFrame.stringColumns", sampleCount, columnNames, frame.getName());
         if (s.isError) return s;
+        // value-size caps are the shared ingestion contract (ColumnValueLimits): a payload
+        // ingestion would reject must not be storable through saveAnnotation — string values
+        // here, image/struct bytes and the array element-count cap below
+        s = validateStringColumnValues(dataFrame.getStringColumnsList(),
+                "CalculationDataFrame.stringColumns");
+        if (s.isError) return s;
         s = validateCountedColumns(dataFrame.getEnumColumnsList(),
                 EnumColumn::getName, EnumColumn::getValuesCount,
                 "CalculationDataFrame.enumColumns", sampleCount, columnNames, frame.getName());
@@ -364,9 +372,17 @@ public class AnnotationValidationUtility {
                 ImageColumn::getName, ImageColumn::getImagesCount,
                 "CalculationDataFrame.imageColumns", sampleCount, columnNames, frame.getName());
         if (s.isError) return s;
+        s = validateBoundedByteValues(dataFrame.getImageColumnsList(),
+                ImageColumn::getName, ImageColumn::getImagesList,
+                ColumnValueLimits.MAX_IMAGE_SIZE_BYTES, "CalculationDataFrame.imageColumns", "images");
+        if (s.isError) return s;
         s = validateCountedColumns(dataFrame.getStructColumnsList(),
                 StructColumn::getName, StructColumn::getValuesCount,
                 "CalculationDataFrame.structColumns", sampleCount, columnNames, frame.getName());
+        if (s.isError) return s;
+        s = validateBoundedByteValues(dataFrame.getStructColumnsList(),
+                StructColumn::getName, StructColumn::getValuesList,
+                ColumnValueLimits.MAX_STRUCT_SIZE_BYTES, "CalculationDataFrame.structColumns", "values");
         if (s.isError) return s;
         s = validateArrayColumns(dataFrame.getDoubleArrayColumnsList(),
                 DoubleArrayColumn::getName, DoubleArrayColumn::getDimensions, DoubleArrayColumn::getValuesCount,
@@ -477,6 +493,12 @@ public class AnnotationValidationUtility {
                     }
                     elementCount = Math.multiplyExact(elementCount, dim);
                 }
+                if (elementCount > ColumnValueLimits.MAX_ARRAY_ELEMENT_COUNT) {
+                    return new ResultStatus(true, listPath
+                            + " dimensions element count exceeds maximum: got: " + elementCount
+                            + ", max: " + ColumnValueLimits.MAX_ARRAY_ELEMENT_COUNT
+                            + " for column: " + name);
+                }
                 expectedValuesCount = Math.multiplyExact((long) sampleCount, elementCount);
             } catch (ArithmeticException ex) {
                 return new ResultStatus(true, listPath + " dimensions element count overflows for column: " + name);
@@ -485,6 +507,43 @@ public class AnnotationValidationUtility {
                 return new ResultStatus(true, listPath + " values count mismatch: expected " + expectedValuesCount
                         + " (sampleCount=" + sampleCount + " * elementCount=" + elementCount + "), got: "
                         + valuesCount + " for column: " + name);
+            }
+        }
+        return new ResultStatus(false, "");
+    }
+
+    private static ResultStatus validateStringColumnValues(List<StringColumn> columns, String listPath) {
+        for (StringColumn column : columns) {
+            final List<String> values = column.getValuesList();
+            for (int j = 0; j < values.size(); j++) {
+                if (values.get(j).length() > ColumnValueLimits.MAX_STRING_LENGTH) {
+                    return new ResultStatus(true, listPath + " values[" + j
+                            + "] length exceeds maximum: got: " + values.get(j).length()
+                            + ", max: " + ColumnValueLimits.MAX_STRING_LENGTH
+                            + " for column: " + column.getName());
+                }
+            }
+        }
+        return new ResultStatus(false, "");
+    }
+
+    private static <T> ResultStatus validateBoundedByteValues(
+            List<T> columns,
+            Function<T, String> nameGetter,
+            Function<T, List<ByteString>> valuesGetter,
+            int maxSizeBytes,
+            String listPath,
+            String valuesFieldName
+    ) {
+        for (T column : columns) {
+            final List<ByteString> values = valuesGetter.apply(column);
+            for (int j = 0; j < values.size(); j++) {
+                if (values.get(j).size() > maxSizeBytes) {
+                    return new ResultStatus(true, listPath + " " + valuesFieldName + "[" + j
+                            + "] size exceeds maximum: got: " + values.get(j).size()
+                            + ", max: " + maxSizeBytes
+                            + " for column: " + nameGetter.apply(column));
+                }
             }
         }
         return new ResultStatus(false, "");
@@ -513,9 +572,12 @@ public class AnnotationValidationUtility {
             }
         }
 
-        // validate each inline DataBlock, same rules as saveDataSet blocks (#248 plan D31)
-        for (DataBlock dataBlock : request.getDataBlocksList()) {
-            final ResultStatus blockStatus = validateDataBlock("ExportDataRequest.dataBlocks", dataBlock);
+        // validate each inline DataBlock, same rules as saveDataSet blocks (#248 plan D31);
+        // the field path carries the index so a multi-block rejection names the offending block
+        final List<DataBlock> requestDataBlocks = request.getDataBlocksList();
+        for (int i = 0; i < requestDataBlocks.size(); i++) {
+            final ResultStatus blockStatus = validateDataBlock(
+                    "ExportDataRequest.dataBlocks[" + i + "]", requestDataBlocks.get(i));
             if (blockStatus.isError) {
                 return blockStatus;
             }

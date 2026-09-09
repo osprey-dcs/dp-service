@@ -121,7 +121,7 @@ public class ColumnDocumentUtility {
             // binary column documents wrap deserialization failures unchecked; surface them as
             // DpException so a malformed stored column is a reportable error, never an escaped throw
             throw new DpException("error converting stored column '" + columnDocument.getName()
-                    + "' (" + columnDocument.getClass().getSimpleName() + "): " + ex.getMessage());
+                    + "' (" + columnDocument.getClass().getSimpleName() + "): " + ex.getMessage(), ex);
         }
 
         switch (column) {

@@ -705,6 +705,14 @@ Design decisions, continuing the numbering:
   no-production-consumers justification as D4. (`SerializedDataColumn` entries carry no
   countable values; they get the name/metadata checks only.)
 
+  *Review addition:* the ingestion **value caps** apply too — string values ≤ 256 chars, array
+  dims product ≤ 10M elements, image ≤ 50MB, struct ≤ 1MB — via the shared `ColumnValueLimits`
+  (`common/handler`), which ingestion's private constants now alias. Review found the caps were
+  ingestion-only, so data ingestion would reject was storable through saveAnnotation; one shared
+  constants home closes that and prevents drift. Ingestion's identity-field requirements
+  (enumId, schemaId, imageDescriptor, serialized encoding) deliberately remain ingestion-only:
+  calculations columns are not PV channels.
+
 - **D29 — `ColumnProvenanceDocument` gains `derivedFrom`**: new embedded
   `ColumnSourceDocument` (`pvName`; `calculationsColumn` as embedded
   `CalculationsColumnDocument` with calculationsId/frameName/columnName; `timeRange` as

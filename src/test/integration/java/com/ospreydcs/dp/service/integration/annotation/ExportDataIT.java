@@ -193,7 +193,7 @@ public class ExportDataIT extends AnnotationIntegrationTestIntermediate {
                     null,
                     ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV);
             annotationServiceWrapper.sendExportData(
-                    request, true, "ExportDataRequest.dataBlocks.pvNames must not be empty");
+                    request, true, "ExportDataRequest.dataBlocks[0].pvNames must not be empty");
         }
 
         {
@@ -207,7 +207,7 @@ public class ExportDataIT extends AnnotationIntegrationTestIntermediate {
                     null,
                     ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV);
             annotationServiceWrapper.sendExportData(
-                    request, true, "ExportDataRequest.dataBlocks.beginTime must be non-zero");
+                    request, true, "ExportDataRequest.dataBlocks[0].beginTime must be non-zero");
         }
 
         final List<DataBlock> firstHalfBlocks =

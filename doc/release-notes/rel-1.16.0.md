@@ -57,7 +57,11 @@ frame's timestamp count** (for array columns, timestamp count times the dims pro
 `SerializedDataColumn` entries carry no countable values and get name checks only). Column names
 must be unique across all column types within a frame, and frame names must be unique within the
 Calculations object — both are addressing keys for `CalculationsSpec` and provenance links.
-Column metadata is checked against the same limits as ingestion.
+Column metadata is checked against the same limits as ingestion, and so are column values:
+string values are capped at 256 characters, an array column's per-sample element count (dims
+product) at 10M, each image at 50MB, and each struct value at 1MB — the shared
+`ColumnValueLimits` contract, so a payload ingestion would reject cannot be stored through
+`saveAnnotation` either.
 
 This narrows what was previously accepted for legacy `DataColumn` lists: a column shorter or
 longer than its frame's timestamp axis used to be stored as-is — and a short column would hang a

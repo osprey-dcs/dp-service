@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.SaveAnnotationRequest;
 import com.ospreydcs.dp.grpc.v1.common.*;
+import com.ospreydcs.dp.service.common.handler.ColumnValueLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
@@ -250,6 +251,20 @@ public class AnnotationValidationUtilityTest {
                 "CalculationDataFrame.enumColumns values count mismatch: expected 2, got: 1 for column: c:enum");
     }
 
+    @Test
+    public void testStringValueOverMaxLengthRejected() {
+        // value-size caps are the shared ingestion contract (ColumnValueLimits): a payload
+        // ingestion would reject must not be storable through saveAnnotation
+        final String oversize = "x".repeat(ColumnValueLimits.MAX_STRING_LENGTH + 1);
+        final Calculations calculations = singleFrameCalculations(f -> f
+                .addStringColumns(StringColumn.newBuilder().setName("c:string")
+                        .addValues("ok").addValues(oversize)));
+        assertRejectContains(validate(calculations),
+                "CalculationDataFrame.stringColumns values[1] length exceeds maximum: got: "
+                        + (ColumnValueLimits.MAX_STRING_LENGTH + 1)
+                        + ", max: " + ColumnValueLimits.MAX_STRING_LENGTH + " for column: c:string");
+    }
+
     // -----------------------------------------------------------------------
     // array checks — expected count is sampleCount * elementCount over the dims product
     // -----------------------------------------------------------------------
@@ -285,6 +300,20 @@ public class AnnotationValidationUtilityTest {
                         + "(sampleCount=2 * elementCount=2), got: 3 for column: c:array");
     }
 
+    @Test
+    public void testArrayElementCountOverMaximumRejected() {
+        // dims product 4000*3000 = 12M exceeds the 10M shared cap (ColumnValueLimits); the cap
+        // fires at the dims stage, so the flattened values list need not be materialized
+        final Calculations calculations = singleFrameCalculations(f -> f
+                .addDoubleArrayColumns(DoubleArrayColumn.newBuilder().setName("c:array")
+                        .setDimensions(ArrayDimensions.newBuilder().addDims(4000).addDims(3000))
+                        .addValues(1.0)));
+        assertRejectContains(validate(calculations),
+                "CalculationDataFrame.doubleArrayColumns dimensions element count exceeds maximum: "
+                        + "got: 12000000, max: " + ColumnValueLimits.MAX_ARRAY_ELEMENT_COUNT
+                        + " for column: c:array");
+    }
+
     // -----------------------------------------------------------------------
     // image / struct / serialized checks
     // -----------------------------------------------------------------------
@@ -301,12 +330,40 @@ public class AnnotationValidationUtilityTest {
     }
 
     @Test
+    public void testImageValueOverMaxSizeRejected() {
+        final Calculations calculations = singleFrameCalculations(f -> f
+                .addImageColumns(ImageColumn.newBuilder().setName("c:image")
+                        .setImageDescriptor(ImageDescriptor.newBuilder()
+                                .setWidth(2).setHeight(2).setChannels(1).setEncoding("gray8"))
+                        .addImages(ByteString.copyFrom(new byte[]{1}))
+                        .addImages(ByteString.copyFrom(
+                                new byte[ColumnValueLimits.MAX_IMAGE_SIZE_BYTES + 1]))));
+        assertRejectContains(validate(calculations),
+                "CalculationDataFrame.imageColumns images[1] size exceeds maximum: got: "
+                        + (ColumnValueLimits.MAX_IMAGE_SIZE_BYTES + 1)
+                        + ", max: " + ColumnValueLimits.MAX_IMAGE_SIZE_BYTES + " for column: c:image");
+    }
+
+    @Test
     public void testStructCountMismatchRejected() {
         final Calculations calculations = singleFrameCalculations(f -> f
                 .addStructColumns(StructColumn.newBuilder().setName("c:struct").setSchemaId("s1")
                         .addValues(ByteString.copyFrom(new byte[]{1}))));
         assertRejectContains(validate(calculations),
                 "CalculationDataFrame.structColumns values count mismatch: expected 2, got: 1 for column: c:struct");
+    }
+
+    @Test
+    public void testStructValueOverMaxSizeRejected() {
+        final Calculations calculations = singleFrameCalculations(f -> f
+                .addStructColumns(StructColumn.newBuilder().setName("c:struct").setSchemaId("s1")
+                        .addValues(ByteString.copyFrom(new byte[]{1}))
+                        .addValues(ByteString.copyFrom(
+                                new byte[ColumnValueLimits.MAX_STRUCT_SIZE_BYTES + 1]))));
+        assertRejectContains(validate(calculations),
+                "CalculationDataFrame.structColumns values[1] size exceeds maximum: got: "
+                        + (ColumnValueLimits.MAX_STRUCT_SIZE_BYTES + 1)
+                        + ", max: " + ColumnValueLimits.MAX_STRUCT_SIZE_BYTES + " for column: c:struct");
     }
 
     @Test
@@ -395,21 +452,30 @@ public class AnnotationValidationUtilityTest {
                 .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
                 .build();
         assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(noPvNames),
-                "ExportDataRequest.dataBlocks.pvNames must not be empty");
+                "ExportDataRequest.dataBlocks[0].pvNames must not be empty");
 
         final ExportDataRequest zeroBegin = ExportDataRequest.newBuilder()
                 .addDataBlocks(validDataBlock().toBuilder().clearBeginTime())
                 .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
                 .build();
         assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(zeroBegin),
-                "ExportDataRequest.dataBlocks.beginTime must be non-zero");
+                "ExportDataRequest.dataBlocks[0].beginTime must be non-zero");
 
         final ExportDataRequest zeroEnd = ExportDataRequest.newBuilder()
                 .addDataBlocks(validDataBlock().toBuilder().clearEndTime())
                 .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
                 .build();
         assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(zeroEnd),
-                "ExportDataRequest.dataBlocks.endTime must be non-zero");
+                "ExportDataRequest.dataBlocks[0].endTime must be non-zero");
+
+        // the field path names the offending block: a valid block ahead of the invalid one
+        final ExportDataRequest secondBlockInvalid = ExportDataRequest.newBuilder()
+                .addDataBlocks(validDataBlock())
+                .addDataBlocks(validDataBlock().toBuilder().clearPvNames())
+                .setOutputFormat(ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV)
+                .build();
+        assertRejectContains(AnnotationValidationUtility.validateExportDataRequest(secondBlockInvalid),
+                "ExportDataRequest.dataBlocks[1].pvNames must not be empty");
     }
 
     @Test

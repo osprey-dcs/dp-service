@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import com.ospreydcs.dp.service.common.handler.ColumnMetadataValidationUtility;
+import com.ospreydcs.dp.service.common.handler.ColumnValueLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 
 import java.util.HashSet;
@@ -13,10 +14,12 @@ import java.util.Set;
 public class IngestionValidationUtility {
 
     // Configuration constants
-    private static final int MAX_STRING_LENGTH = ColumnMetadataValidationUtility.MAX_STRING_LENGTH;
-    private static final int MAX_ARRAY_ELEMENT_COUNT = 10_000_000;
-    private static final int MAX_IMAGE_SIZE_BYTES = 50_000_000;  // 50MB
-    private static final int MAX_STRUCT_SIZE_BYTES = 1_000_000;   // 1MB
+    // Shared value limits (ColumnValueLimits): one contract with the annotation
+    // save-calculations path, aliased here so the checks below keep their local names.
+    private static final int MAX_STRING_LENGTH = ColumnValueLimits.MAX_STRING_LENGTH;
+    private static final int MAX_ARRAY_ELEMENT_COUNT = ColumnValueLimits.MAX_ARRAY_ELEMENT_COUNT;
+    private static final int MAX_IMAGE_SIZE_BYTES = ColumnValueLimits.MAX_IMAGE_SIZE_BYTES;
+    private static final int MAX_STRUCT_SIZE_BYTES = ColumnValueLimits.MAX_STRUCT_SIZE_BYTES;
 
     public static ResultStatus validateIngestionRequest(IngestDataRequest request) {
         // Layer 1: Basic request validation
