@@ -3,6 +3,8 @@ package com.ospreydcs.dp.service.common.bson;
 import com.ospreydcs.dp.grpc.v1.common.Attribute;
 import com.ospreydcs.dp.grpc.v1.common.ColumnMetadata;
 import com.ospreydcs.dp.grpc.v1.common.ColumnProvenance;
+import com.ospreydcs.dp.grpc.v1.common.TimeRange;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -164,5 +166,97 @@ public class ColumnMetadataDocumentTest {
         ColumnProvenance restored = doc.toColumnProvenance();
         assertEquals("", restored.getSource());
         assertEquals("", restored.getProcess());
+    }
+
+    // -----------------------------------------------------------------------
+    // derivedFrom provenance link tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testDerivedFrom_pvNameArmWithTimeRange_roundTrip() {
+        ColumnProvenance original = ColumnProvenance.newBuilder()
+                .setSource("calc-engine")
+                .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                        .setPvName("pv:input:1")
+                        .setTimeRange(TimeRange.newBuilder()
+                                .setBeginTime(Timestamp.newBuilder().setEpochSeconds(100).setNanoseconds(1))
+                                .setEndTime(Timestamp.newBuilder().setEpochSeconds(200).setNanoseconds(2))))
+                .build();
+
+        ColumnProvenanceDocument doc = ColumnProvenanceDocument.fromColumnProvenance(original);
+
+        assertNotNull(doc.getDerivedFrom());
+        assertEquals(1, doc.getDerivedFrom().size());
+        ColumnSourceDocument sourceDoc = doc.getDerivedFrom().get(0);
+        assertEquals("pv:input:1", sourceDoc.getPvName());
+        assertNull(sourceDoc.getCalculationsColumn());
+        assertEquals(100, sourceDoc.getTimeRangeBegin().getSeconds());
+        assertEquals(1, sourceDoc.getTimeRangeBegin().getNanos());
+        assertEquals(200, sourceDoc.getTimeRangeEnd().getSeconds());
+
+        assertEquals("derivedFrom must round-trip exactly", original, doc.toColumnProvenance());
+    }
+
+    @Test
+    public void testDerivedFrom_calculationsColumnArm_roundTrip() {
+        ColumnProvenance original = ColumnProvenance.newBuilder()
+                .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                        .setCalculationsColumn(ColumnProvenance.CalculationsColumn.newBuilder()
+                                .setCalculationsId("66a1b2c3d4e5f60718293a4b")
+                                .setFrameName("frame-1")
+                                .setColumnName("mean")))
+                .build();
+
+        ColumnProvenanceDocument doc = ColumnProvenanceDocument.fromColumnProvenance(original);
+
+        assertNotNull(doc.getDerivedFrom());
+        ColumnSourceDocument sourceDoc = doc.getDerivedFrom().get(0);
+        assertNull(sourceDoc.getPvName());
+        assertEquals("66a1b2c3d4e5f60718293a4b", sourceDoc.getCalculationsColumn().getCalculationsId());
+        assertEquals("frame-1", sourceDoc.getCalculationsColumn().getFrameName());
+        assertEquals("mean", sourceDoc.getCalculationsColumn().getColumnName());
+        assertNull("no timeRange supplied", sourceDoc.getTimeRangeBegin());
+        assertNull("no timeRange supplied", sourceDoc.getTimeRangeEnd());
+
+        assertEquals("derivedFrom must round-trip exactly", original, doc.toColumnProvenance());
+    }
+
+    @Test
+    public void testDerivedFrom_multipleSources_roundTrip() {
+        ColumnProvenance original = ColumnProvenance.newBuilder()
+                .setSource("diff-calc")
+                .setProcess("subtract")
+                .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder().setPvName("pv:a"))
+                .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder().setPvName("pv:b"))
+                .build();
+
+        ColumnProvenanceDocument doc = ColumnProvenanceDocument.fromColumnProvenance(original);
+        assertEquals(2, doc.getDerivedFrom().size());
+        assertEquals("derivedFrom list order and content must round-trip", original, doc.toColumnProvenance());
+    }
+
+    @Test
+    public void testDerivedFrom_absent_storedAsNull() {
+        ColumnProvenance original = ColumnProvenance.newBuilder().setSource("src").build();
+        ColumnProvenanceDocument doc = ColumnProvenanceDocument.fromColumnProvenance(original);
+        assertNull("empty derivedFrom list must be stored as null, not an empty list", doc.getDerivedFrom());
+        assertEquals(0, doc.toColumnProvenance().getDerivedFromCount());
+    }
+
+    @Test
+    public void testDerivedFrom_originNotSet_tolerated() {
+        // an unset origin oneof is stored as supplied and round-trips as an empty ColumnSource
+        ColumnProvenance original = ColumnProvenance.newBuilder()
+                .addDerivedFrom(ColumnProvenance.ColumnSource.newBuilder()
+                        .setTimeRange(TimeRange.newBuilder()
+                                .setBeginTime(Timestamp.newBuilder().setEpochSeconds(5))))
+                .build();
+
+        ColumnProvenanceDocument doc = ColumnProvenanceDocument.fromColumnProvenance(original);
+        ColumnSourceDocument sourceDoc = doc.getDerivedFrom().get(0);
+        assertNull(sourceDoc.getPvName());
+        assertNull(sourceDoc.getCalculationsColumn());
+        assertEquals(5, sourceDoc.getTimeRangeBegin().getSeconds());
+        assertEquals(original, doc.toColumnProvenance());
     }
 }

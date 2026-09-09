@@ -70,8 +70,14 @@ public class SaveAnnotationJob extends HandlerJob {
 
             // create calculations document
             final Calculations requestCalculations = request.getCalculations();
-            final CalculationsDocument calculationsDocument =
-                    CalculationsDocument.fromCalculations(requestCalculations);
+            final CalculationsDocument calculationsDocument;
+            try {
+                calculationsDocument = CalculationsDocument.fromCalculations(requestCalculations);
+            } catch (DpException ex) {
+                dispatcher.handleError(
+                        "error converting Calculations to document: " + ex.getMessage());
+                return;
+            }
 
             // save calculations document to database
             MongoInsertOneResult result = this.mongoClient.insertCalculations(calculationsDocument);

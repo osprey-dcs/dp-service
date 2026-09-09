@@ -329,16 +329,16 @@ public class TabularDataUtility {
 
             // make list of columns for frame
             List<DataColumn> frameColumns = new ArrayList<>();
-            for (DataColumnDocument frameColumnDocument : frameDocument.getDataColumns()) {
+            for (ColumnDocumentBase frameColumnDocument : frameDocument.getDataColumns()) {
                 if (frameColumnNamesMap != null) {
                     // only include columns specified in map if one is provided
                     final CalculationsSpec.ColumnNameList frameColumnNamesList = frameColumnNamesMap.get(frameName);
                     if (frameColumnNamesList != null &&
                             frameColumnNamesList.getColumnNamesList().contains(frameColumnDocument.getName())) {
-                        frameColumns.add(frameColumnDocument.toDataColumn());
+                        frameColumns.add(toTabularDataColumn(frameName, frameColumnDocument));
                     }
                 } else {
-                    frameColumns.add(frameColumnDocument.toDataColumn());
+                    frameColumns.add(toTabularDataColumn(frameName, frameColumnDocument));
                 }
             }
 
@@ -356,4 +356,22 @@ public class TabularDataUtility {
         return new TimestampDataMapSizeStats(currentDataSize, false);
     }
 
+    /**
+     * Narrows a stored calculations column to the legacy DataColumn form tabular assembly requires,
+     * mirroring the bucket-level narrowing in addBucketToTable(): scalar and legacy documents
+     * convert; anything else has no tabular (row/column) representation. The exception names the
+     * column as "frameName/columnName" in the PV-name slot, since calculations columns are
+     * addressed by frame and column rather than by PV.
+     */
+    private static DataColumn toTabularDataColumn(
+            String frameName, ColumnDocumentBase columnDocument) throws DpException {
+
+        if (columnDocument instanceof ScalarColumnDocumentBase) {
+            return ((ScalarColumnDocumentBase<?>) columnDocument).toDataColumn();
+        } else if (columnDocument instanceof DataColumnDocument) {
+            return ((DataColumnDocument) columnDocument).toDataColumn();
+        }
+        throw new NonScalarColumnException(
+                frameName + "/" + columnDocument.getName(), columnDocument.getClass().getSimpleName());
+    }
 }

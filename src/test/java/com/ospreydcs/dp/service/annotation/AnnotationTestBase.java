@@ -6,12 +6,27 @@ import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
+import com.ospreydcs.dp.grpc.v1.common.BoolArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.BoolColumn;
+import com.ospreydcs.dp.grpc.v1.common.DoubleArrayColumn;
 import com.ospreydcs.dp.grpc.v1.common.DoubleColumn;
+import com.ospreydcs.dp.grpc.v1.common.EnumColumn;
+import com.ospreydcs.dp.grpc.v1.common.FloatArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.FloatColumn;
+import com.ospreydcs.dp.grpc.v1.common.ImageColumn;
+import com.ospreydcs.dp.grpc.v1.common.Int32ArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.Int32Column;
+import com.ospreydcs.dp.grpc.v1.common.Int64ArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.Int64Column;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
+import com.ospreydcs.dp.grpc.v1.common.StringColumn;
+import com.ospreydcs.dp.grpc.v1.common.StructColumn;
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
+import com.ospreydcs.dp.service.common.bson.column.ColumnDocumentBase;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
@@ -610,6 +625,8 @@ public class AnnotationTestBase {
         private final CountDownLatch finishLatch = new CountDownLatch(1);
         private final AtomicBoolean isError = new AtomicBoolean(false);
         private final List<String> errorMessageList = Collections.synchronizedList(new ArrayList<>());
+        private final List<ExceptionalResult.ExceptionalResultStatus> resultStatusList =
+                Collections.synchronizedList(new ArrayList<>());
         private final List<ExportDataResponse.ExportDataResult> resultList =
                 Collections.synchronizedList(new ArrayList<>());
 
@@ -642,6 +659,11 @@ public class AnnotationTestBase {
             }
         }
 
+        /** Wire status of the ExceptionalResult, or null if the response was not exceptional. */
+        public ExceptionalResult.ExceptionalResultStatus getExceptionalResultStatus() {
+            return resultStatusList.isEmpty() ? null : resultStatusList.get(0);
+        }
+
         @Override
         public void onNext(ExportDataResponse response) {
 
@@ -650,6 +672,7 @@ public class AnnotationTestBase {
             new Thread(() -> {
 
                 if (response.hasExceptionalResult()) {
+                    resultStatusList.add(response.getExceptionalResult().getExceptionalResultStatus());
                     final String errorMsg = "onNext received exceptional response: "
                             + response.getExceptionalResult().getMessage();
                     System.err.println(errorMsg);
@@ -949,11 +972,25 @@ public class AnnotationTestBase {
             CalculationsSpec calculationsSpec,
             ExportDataRequest.ExportOutputFormat outputFormat
     ) {
+        return buildExportDataRequest(dataSetId, null, calculationsSpec, outputFormat);
+    }
+
+    public static ExportDataRequest buildExportDataRequest(
+            String dataSetId,
+            List<DataBlock> dataBlocks,
+            CalculationsSpec calculationsSpec,
+            ExportDataRequest.ExportOutputFormat outputFormat
+    ) {
         ExportDataRequest.Builder requestBuilder = ExportDataRequest.newBuilder();
 
         // set datasetId if specified
         if (dataSetId != null) {
             requestBuilder.setDataSetId(dataSetId);
+        }
+
+        // add inline dataBlocks if specified (#248 plan D31)
+        if (dataBlocks != null) {
+            requestBuilder.addAllDataBlocks(dataBlocks);
         }
 
         // create calculationsSpec if calculationsId is specified
@@ -965,6 +1002,38 @@ public class AnnotationTestBase {
         requestBuilder.setOutputFormat(outputFormat);
 
         return requestBuilder.build();
+    }
+
+    /**
+     * Parses serialized column bytes according to the self-describing DATA_COLUMN_ENCODING tag
+     * written beside them ("proto:" + proto message simple name) — the reader-side counterpart of
+     * the tag the bucket writer has always emitted and writeCalculations() emits as of #248 plan
+     * D32. Covers all 16 column proto types; an unrecognized tag fails the test.
+     */
+    public static Message parseColumnByEncoding(
+            String encodingValue, byte[] columnBytes) throws InvalidProtocolBufferException {
+        return switch (encodingValue) {
+            case ENCODING_PROTO + ":" + "DataColumn" -> DataColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "SerializedDataColumn" -> SerializedDataColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "DoubleColumn" -> DoubleColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "FloatColumn" -> FloatColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "Int64Column" -> Int64Column.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "Int32Column" -> Int32Column.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "BoolColumn" -> BoolColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "StringColumn" -> StringColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "EnumColumn" -> EnumColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "DoubleArrayColumn" -> DoubleArrayColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "FloatArrayColumn" -> FloatArrayColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "Int32ArrayColumn" -> Int32ArrayColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "Int64ArrayColumn" -> Int64ArrayColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "BoolArrayColumn" -> BoolArrayColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "StructColumn" -> StructColumn.parseFrom(columnBytes);
+            case ENCODING_PROTO + ":" + "ImageColumn" -> ImageColumn.parseFrom(columnBytes);
+            default -> {
+                fail("unrecognized column encoding tag: " + encodingValue);
+                yield null;
+            }
+        };
     }
 
     public static void verifyDatasetHdf5Content(IHDF5Reader reader, DataSetDocument dataset) {
@@ -1100,16 +1169,9 @@ public class AnnotationTestBase {
 
         // test deserialization of encoded column
         try {
-            Message fileProtobufColumn = null;
-            switch (reader.readString(columnEncodingPath)) {
-                case (ENCODING_PROTO + ":" + "DataColumn") -> {
-                    fileProtobufColumn = DataColumn.parseFrom(fileBytes);
-                }
-                case (ENCODING_PROTO + ":" + "DoubleColumn") -> {
-                    fileProtobufColumn = DoubleColumn.parseFrom(fileBytes);
-                }
-            }
-            assertEquals(documentProtobufColumn, fileProtobufColumn);
+            assertEquals(
+                    documentProtobufColumn,
+                    parseColumnByEncoding(fileEncodingValue, fileBytes));
         } catch (InvalidProtocolBufferException e) {
             fail("error parsing protobuf column: " + e.getMessage());
         }
@@ -1196,7 +1258,7 @@ public class AnnotationTestBase {
 
             // verify contents for each frame column
             int columnIndex = 0;
-            for (DataColumnDocument calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
+            for (ColumnDocumentBase calculationsDataColumnDocument : calculationsDataFrameDocument.getDataColumns()) {
 
                 if ((frameColumnNamesMap != null)
                         && ( ! frameColumnNamesMap.get(frameName).getColumnNamesList().contains(
@@ -1215,10 +1277,24 @@ public class AnnotationTestBase {
                 assertEquals(calculationsDataColumnDocument.getName(), columnName);
 
                 // verify dataColumnBytes
+                final Message documentProtobufColumn = calculationsDataColumnDocument.toProtobufColumn();
                 final String dataColumnBytesPath = columnIndexGroup + PATH_SEPARATOR + DATA_COLUMN_BYTES;
-                assertArrayEquals(
-                        calculationsDataColumnDocument.toByteArray(),
-                        reader.readAsByteArray(dataColumnBytesPath));
+                final byte[] fileColumnBytes = reader.readAsByteArray(dataColumnBytesPath);
+                assertArrayEquals(documentProtobufColumn.toByteArray(), fileColumnBytes);
+
+                // verify self-describing column encoding tag (#248 plan D32) and parse by it
+                final String columnEncodingPath = columnIndexGroup + PATH_SEPARATOR + DATA_COLUMN_ENCODING;
+                final String fileColumnEncodingValue = reader.readString(columnEncodingPath);
+                assertEquals(
+                        ENCODING_PROTO + ":" + documentProtobufColumn.getClass().getSimpleName(),
+                        fileColumnEncodingValue);
+                try {
+                    assertEquals(
+                            documentProtobufColumn,
+                            parseColumnByEncoding(fileColumnEncodingValue, fileColumnBytes));
+                } catch (InvalidProtocolBufferException e) {
+                    fail("error parsing protobuf column: " + e.getMessage());
+                }
 
                 columnIndex = columnIndex + 1;
             }

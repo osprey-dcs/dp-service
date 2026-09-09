@@ -1252,6 +1252,11 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
             assertNotNull("expected provenance in columnMetadata", metaDoc.getProvenance());
             assertEquals(expectedMetadata.getProvenance().getSource(), metaDoc.getProvenance().getSource());
             assertEquals(expectedMetadata.getProvenance().getProcess(), metaDoc.getProvenance().getProcess());
+            // derivedFrom links must round-trip exactly (proto equality covers the origin oneof,
+            // calculationsColumn addressing, and timeRange)
+            assertEquals("expected derivedFrom links to round-trip",
+                    expectedMetadata.getProvenance().getDerivedFromList(),
+                    metaDoc.getProvenance().toColumnProvenance().getDerivedFromList());
         } else {
             assertNull("expected no provenance in columnMetadata", metaDoc.getProvenance());
         }

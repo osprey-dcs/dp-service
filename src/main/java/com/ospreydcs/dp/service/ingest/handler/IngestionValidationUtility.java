@@ -3,6 +3,8 @@ package com.ospreydcs.dp.service.ingest.handler;
 import com.ospreydcs.dp.grpc.v1.common.*;
 import com.ospreydcs.dp.grpc.v1.ingestion.*;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
+import com.ospreydcs.dp.service.common.handler.ColumnMetadataValidationUtility;
+import com.ospreydcs.dp.service.common.handler.ColumnValueLimits;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 
 import java.util.HashSet;
@@ -12,12 +14,12 @@ import java.util.Set;
 public class IngestionValidationUtility {
 
     // Configuration constants
-    private static final int MAX_STRING_LENGTH = 256;
-    private static final int MAX_ARRAY_ELEMENT_COUNT = 10_000_000;
-    private static final int MAX_IMAGE_SIZE_BYTES = 50_000_000;  // 50MB
-    private static final int MAX_STRUCT_SIZE_BYTES = 1_000_000;   // 1MB
-    private static final int MAX_METADATA_TAGS_COUNT = 20;
-    private static final int MAX_METADATA_ATTRIBUTES_COUNT = 20;
+    // Shared value limits (ColumnValueLimits): one contract with the annotation
+    // save-calculations path, aliased here so the checks below keep their local names.
+    private static final int MAX_STRING_LENGTH = ColumnValueLimits.MAX_STRING_LENGTH;
+    private static final int MAX_ARRAY_ELEMENT_COUNT = ColumnValueLimits.MAX_ARRAY_ELEMENT_COUNT;
+    private static final int MAX_IMAGE_SIZE_BYTES = ColumnValueLimits.MAX_IMAGE_SIZE_BYTES;
+    private static final int MAX_STRUCT_SIZE_BYTES = ColumnValueLimits.MAX_STRUCT_SIZE_BYTES;
 
     public static ResultStatus validateIngestionRequest(IngestDataRequest request) {
         // Layer 1: Basic request validation
@@ -48,7 +50,8 @@ public class IngestionValidationUtility {
         }
 
         // Layer 5: Column metadata validation
-        ResultStatus metadataValidation = validateAllColumnMetadata(frame);
+        ResultStatus metadataValidation =
+                ColumnMetadataValidationUtility.validateAllColumnMetadata(frame, "ingestionDataFrame");
         if (metadataValidation.isError) {
             return metadataValidation;
         }
@@ -581,200 +584,6 @@ public class IngestionValidationUtility {
                     return new ResultStatus(true, fieldPath + ".values[" + j + "] size exceeds maximum: " +
                             "size=" + value.size() + ", max=" + MAX_STRUCT_SIZE_BYTES + " for PV: " + column.getName());
                 }
-            }
-        }
-
-        return new ResultStatus(false, "");
-    }
-
-    private static ResultStatus validateColumnMetadata(ColumnMetadata metadata, String fieldPath) {
-        if (metadata.hasProvenance()) {
-            ColumnProvenance provenance = metadata.getProvenance();
-            if (provenance.getSource().length() > MAX_STRING_LENGTH) {
-                return new ResultStatus(true, fieldPath + ".metadata.provenance.source length exceeds maximum: " +
-                        "got: " + provenance.getSource().length() + ", max: " + MAX_STRING_LENGTH);
-            }
-            if (provenance.getProcess().length() > MAX_STRING_LENGTH) {
-                return new ResultStatus(true, fieldPath + ".metadata.provenance.process length exceeds maximum: " +
-                        "got: " + provenance.getProcess().length() + ", max: " + MAX_STRING_LENGTH);
-            }
-        }
-
-        List<String> tags = metadata.getTagsList();
-        if (tags.size() > MAX_METADATA_TAGS_COUNT) {
-            return new ResultStatus(true, fieldPath + ".metadata.tags count exceeds maximum: " +
-                    "got: " + tags.size() + ", max: " + MAX_METADATA_TAGS_COUNT);
-        }
-        for (int i = 0; i < tags.size(); i++) {
-            if (tags.get(i).length() > MAX_STRING_LENGTH) {
-                return new ResultStatus(true, fieldPath + ".metadata.tags[" + i + "] length exceeds maximum: " +
-                        "got: " + tags.get(i).length() + ", max: " + MAX_STRING_LENGTH);
-            }
-        }
-
-        List<Attribute> attributes = metadata.getAttributesList();
-        if (attributes.size() > MAX_METADATA_ATTRIBUTES_COUNT) {
-            return new ResultStatus(true, fieldPath + ".metadata.attributes count exceeds maximum: " +
-                    "got: " + attributes.size() + ", max: " + MAX_METADATA_ATTRIBUTES_COUNT);
-        }
-        for (int i = 0; i < attributes.size(); i++) {
-            Attribute attr = attributes.get(i);
-            if (attr.getName().length() > MAX_STRING_LENGTH) {
-                return new ResultStatus(true, fieldPath + ".metadata.attributes[" + i + "].name length exceeds maximum: " +
-                        "got: " + attr.getName().length() + ", max: " + MAX_STRING_LENGTH);
-            }
-            if (attr.getValue().length() > MAX_STRING_LENGTH) {
-                return new ResultStatus(true, fieldPath + ".metadata.attributes[" + i + "].value length exceeds maximum: " +
-                        "got: " + attr.getValue().length() + ", max: " + MAX_STRING_LENGTH);
-            }
-        }
-
-        return new ResultStatus(false, "");
-    }
-
-    private static ResultStatus validateAllColumnMetadata(DataFrame frame) {
-        // DataColumns
-        List<DataColumn> dataColumns = frame.getDataColumnsList();
-        for (int i = 0; i < dataColumns.size(); i++) {
-            DataColumn col = dataColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.dataColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // SerializedDataColumns
-        List<SerializedDataColumn> serializedColumns = frame.getSerializedDataColumnsList();
-        for (int i = 0; i < serializedColumns.size(); i++) {
-            SerializedDataColumn col = serializedColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.serializedDataColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // DoubleColumns
-        List<DoubleColumn> doubleColumns = frame.getDoubleColumnsList();
-        for (int i = 0; i < doubleColumns.size(); i++) {
-            DoubleColumn col = doubleColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.doubleColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // FloatColumns
-        List<FloatColumn> floatColumns = frame.getFloatColumnsList();
-        for (int i = 0; i < floatColumns.size(); i++) {
-            FloatColumn col = floatColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.floatColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // Int64Columns
-        List<Int64Column> int64Columns = frame.getInt64ColumnsList();
-        for (int i = 0; i < int64Columns.size(); i++) {
-            Int64Column col = int64Columns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.int64Columns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // Int32Columns
-        List<Int32Column> int32Columns = frame.getInt32ColumnsList();
-        for (int i = 0; i < int32Columns.size(); i++) {
-            Int32Column col = int32Columns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.int32Columns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // BoolColumns
-        List<BoolColumn> boolColumns = frame.getBoolColumnsList();
-        for (int i = 0; i < boolColumns.size(); i++) {
-            BoolColumn col = boolColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.boolColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // StringColumns
-        List<StringColumn> stringColumns = frame.getStringColumnsList();
-        for (int i = 0; i < stringColumns.size(); i++) {
-            StringColumn col = stringColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.stringColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // EnumColumns
-        List<EnumColumn> enumColumns = frame.getEnumColumnsList();
-        for (int i = 0; i < enumColumns.size(); i++) {
-            EnumColumn col = enumColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.enumColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // ImageColumns
-        List<ImageColumn> imageColumns = frame.getImageColumnsList();
-        for (int i = 0; i < imageColumns.size(); i++) {
-            ImageColumn col = imageColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.imageColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // StructColumns
-        List<StructColumn> structColumns = frame.getStructColumnsList();
-        for (int i = 0; i < structColumns.size(); i++) {
-            StructColumn col = structColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.structColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // DoubleArrayColumns
-        List<DoubleArrayColumn> doubleArrayColumns = frame.getDoubleArrayColumnsList();
-        for (int i = 0; i < doubleArrayColumns.size(); i++) {
-            DoubleArrayColumn col = doubleArrayColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.doubleArrayColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // FloatArrayColumns
-        List<FloatArrayColumn> floatArrayColumns = frame.getFloatArrayColumnsList();
-        for (int i = 0; i < floatArrayColumns.size(); i++) {
-            FloatArrayColumn col = floatArrayColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.floatArrayColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // Int32ArrayColumns
-        List<Int32ArrayColumn> int32ArrayColumns = frame.getInt32ArrayColumnsList();
-        for (int i = 0; i < int32ArrayColumns.size(); i++) {
-            Int32ArrayColumn col = int32ArrayColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.int32ArrayColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // Int64ArrayColumns
-        List<Int64ArrayColumn> int64ArrayColumns = frame.getInt64ArrayColumnsList();
-        for (int i = 0; i < int64ArrayColumns.size(); i++) {
-            Int64ArrayColumn col = int64ArrayColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.int64ArrayColumns[" + i + "]");
-                if (s.isError) return s;
-            }
-        }
-        // BoolArrayColumns
-        List<BoolArrayColumn> boolArrayColumns = frame.getBoolArrayColumnsList();
-        for (int i = 0; i < boolArrayColumns.size(); i++) {
-            BoolArrayColumn col = boolArrayColumns.get(i);
-            if (col.hasMetadata()) {
-                ResultStatus s = validateColumnMetadata(col.getMetadata(), "ingestionDataFrame.boolArrayColumns[" + i + "]");
-                if (s.isError) return s;
             }
         }
 

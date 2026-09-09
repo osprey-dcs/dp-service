@@ -1,5 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
+import ch.systemsx.cisd.hdf5.HDF5Factory;
+import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import com.google.protobuf.ByteString;
 import com.ospreydcs.dp.grpc.v1.annotation.Calculations;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataRequest;
 import com.ospreydcs.dp.grpc.v1.annotation.ExportDataResponse;
@@ -9,14 +12,35 @@ import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataFrame;
 import com.ospreydcs.dp.grpc.v1.common.DataTimestamps;
+import com.ospreydcs.dp.grpc.v1.common.ArrayDimensions;
+import com.ospreydcs.dp.grpc.v1.common.BoolArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.BoolColumn;
+import com.ospreydcs.dp.grpc.v1.common.DoubleArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.DoubleColumn;
+import com.ospreydcs.dp.grpc.v1.common.EnumColumn;
+import com.ospreydcs.dp.grpc.v1.common.FloatArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.FloatColumn;
+import com.ospreydcs.dp.grpc.v1.common.ImageColumn;
+import com.ospreydcs.dp.grpc.v1.common.ImageDescriptor;
+import com.ospreydcs.dp.grpc.v1.common.Int32ArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.Int32Column;
+import com.ospreydcs.dp.grpc.v1.common.Int64ArrayColumn;
+import com.ospreydcs.dp.grpc.v1.common.Int64Column;
+import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
+import com.ospreydcs.dp.grpc.v1.common.StringColumn;
+import com.ospreydcs.dp.grpc.v1.common.StructColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.annotation.AnnotationTestBase;
+import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.protobuf.DataColumnUtility;
 import com.ospreydcs.dp.service.common.protobuf.DataTimestampsUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
 import org.junit.*;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,6 +48,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.fail;
 
 public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermediate {
 
@@ -274,7 +300,7 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
 
             final boolean expectReject = true;
             final String expectedRejectMessage =
-                    "CalculationDataFrame.dataColumns must not be empty";
+                    "CalculationDataFrame must include at least one column of any type: frame-0";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
         }
 
@@ -540,6 +566,126 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
             final boolean expectReject = true;
             final String expectedRejectMessage =
                     "CalculationDataFrame.dataColumns contains a DataColumn with no values";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: column value count doesn't match frame timestamp count (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            // sampling clock specifies 2 samples, but the column carries 3 values
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 500_000_000L, 250_000_000L, 2);
+            final DataColumn shortColumn =
+                    DataColumnUtility.dataColumnWithDoubleValues("calc-0-0", List.of(0.0, 1.1, 2.2));
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-0")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(shortColumn)))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "CalculationDataFrame.dataColumns values count mismatch: expected 2, got: 3 for column: calc-0-0";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: duplicate frame names (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            final Calculations.Builder calculationsBuilder = Calculations.newBuilder();
+            for (int i = 0; i < 2; i++) {
+                final DataTimestamps dataTimestamps =
+                        DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                                startSeconds + i, 500_000_000L, 250_000_000L, 2);
+                final DataColumn dataColumn =
+                        DataColumnUtility.dataColumnWithDoubleValues("calc-" + i, List.of(0.0, 1.1));
+                calculationsBuilder.addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                        .setName("duplicate-frame")
+                        .setFrame(DataFrame.newBuilder()
+                                .setDataTimestamps(dataTimestamps)
+                                .addDataColumns(dataColumn)));
+            }
+            final Calculations calculations = calculationsBuilder.build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "SaveAnnotationRequest.calculations.calculationDataFrames contains duplicate frame name: duplicate-frame";
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
+        }
+
+        // createAnnotation() with calculations negative test -
+        // request should be rejected because: duplicate column names within a frame (#248 D28)
+        {
+            final String ownerId = "craigmcc";
+            final List<String> dataSetIds = List.of(createDataSetScenarioResult.secondHalfDataSetId());
+            final String name = "negative test";
+
+            // duplicate name across column types: a legacy DataColumn and a DoubleColumn
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 500_000_000L, 250_000_000L, 2);
+            final DataColumn dataColumn =
+                    DataColumnUtility.dataColumnWithDoubleValues("calc-dup", List.of(0.0, 1.1));
+            final DoubleColumn doubleColumn = DoubleColumn.newBuilder()
+                    .setName("calc-dup")
+                    .addAllValues(List.of(2.2, 3.3))
+                    .build();
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-0")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(dataColumn)
+                                    .addDoubleColumns(doubleColumn)))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId,
+                            name,
+                            dataSetIds,
+                            null,
+                            null,
+                            null,
+                            null,
+                            calculations);
+
+            final boolean expectReject = true;
+            final String expectedRejectMessage =
+                    "CalculationDataFrame contains duplicate column name: calc-dup in frame: frame-0";
             annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, expectReject, expectedRejectMessage);
         }
 
@@ -1270,6 +1416,205 @@ public class AnnotationCalculationsIT extends AnnotationIntegrationTestIntermedi
             }
         }
 
+    }
+
+
+    /**
+     * Covers the #248 Phase 4 typed-column export paths: HDF5 export of a calculations frame
+     * carrying a column of each of the 16 types, written with the self-describing per-column
+     * encoding tag (plan D32); CSV export of typed scalar columns through the tabular narrowing
+     * (plan D33); and CSV export of a frame with an array column, rejected with HDF5 guidance
+     * rather than errored (plan D30) or hung (the pre-D33 unchecked-throw hazard).
+     */
+    @Test
+    public void testTypedCalculationsExport() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        // ingest some data and create datasets over it (saveAnnotation requires a dataset reference)
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult scenarioResult = createDataSetScenario(startSeconds);
+
+        final String ownerId = "craigmcc";
+
+        // positive export test: hdf5 export of a frame carrying a column of each of the 16 types,
+        // verified against the stored document including the per-column encoding tags (D32)
+        {
+            final ArrayDimensions dims = ArrayDimensions.newBuilder().addDims(2).build();
+            final ImageDescriptor descriptor = ImageDescriptor.newBuilder()
+                    .setWidth(2).setHeight(2).setChannels(1).setEncoding("gray8").build();
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 0L, 500_000_000L, 2);
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-all-types")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(DataColumnUtility.dataColumnWithDoubleValues(
+                                            "calc:legacy", List.of(3.14, 2.71)))
+                                    .addSerializedDataColumns(SerializedDataColumn.newBuilder()
+                                            .setName("calc:serialized")
+                                            .setEncoding("avro")
+                                            .setPayload(ByteString.copyFrom(new byte[]{0x01, 0x02})))
+                                    .addDoubleColumns(DoubleColumn.newBuilder()
+                                            .setName("calc:double").addValues(1.0).addValues(1.5))
+                                    .addFloatColumns(FloatColumn.newBuilder()
+                                            .setName("calc:float").addValues(2.0f).addValues(2.5f))
+                                    .addInt64Columns(Int64Column.newBuilder()
+                                            .setName("calc:int64").addValues(3L).addValues(4L))
+                                    .addInt32Columns(Int32Column.newBuilder()
+                                            .setName("calc:int32").addValues(5).addValues(6))
+                                    .addBoolColumns(BoolColumn.newBuilder()
+                                            .setName("calc:bool").addValues(true).addValues(false))
+                                    .addStringColumns(StringColumn.newBuilder()
+                                            .setName("calc:string").addValues("a").addValues("b"))
+                                    .addEnumColumns(EnumColumn.newBuilder()
+                                            .setName("calc:enum").addValues(0).addValues(1))
+                                    .addDoubleArrayColumns(DoubleArrayColumn.newBuilder()
+                                            .setName("calc:doubleArray").setDimensions(dims)
+                                            .addValues(1.0).addValues(2.0).addValues(3.0).addValues(4.0))
+                                    .addFloatArrayColumns(FloatArrayColumn.newBuilder()
+                                            .setName("calc:floatArray").setDimensions(dims)
+                                            .addValues(2.0f).addValues(3.0f).addValues(4.0f).addValues(5.0f))
+                                    .addInt32ArrayColumns(Int32ArrayColumn.newBuilder()
+                                            .setName("calc:int32Array").setDimensions(dims)
+                                            .addValues(7).addValues(8).addValues(9).addValues(10))
+                                    .addInt64ArrayColumns(Int64ArrayColumn.newBuilder()
+                                            .setName("calc:int64Array").setDimensions(dims)
+                                            .addValues(9L).addValues(10L).addValues(11L).addValues(12L))
+                                    .addBoolArrayColumns(BoolArrayColumn.newBuilder()
+                                            .setName("calc:boolArray").setDimensions(dims)
+                                            .addValues(true).addValues(false).addValues(true).addValues(false))
+                                    .addStructColumns(StructColumn.newBuilder()
+                                            .setName("calc:struct")
+                                            .setSchemaId("schema-1")
+                                            .addValues(ByteString.copyFrom(new byte[]{1, 2, 3}))
+                                            .addValues(ByteString.copyFrom(new byte[]{4, 5, 6})))
+                                    .addImageColumns(ImageColumn.newBuilder()
+                                            .setName("calc:image")
+                                            .setImageDescriptor(descriptor)
+                                            .addImages(ByteString.copyFrom(new byte[]{1, 2, 3, 4}))
+                                            .addImages(ByteString.copyFrom(new byte[]{5, 6, 7, 8})))))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId, "annotation with all column types",
+                            List.of(scenarioResult.firstHalfDataSetId()),
+                            null, null, null, null,
+                            calculations);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, "");
+            final String calculationsId = annotationServiceWrapper.lastSaveAnnotationCalculationsId;
+            assertNotNull(calculationsId);
+
+            final CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                    .setCalculationsId(calculationsId)
+                    .build();
+            final ExportDataRequest request = AnnotationTestBase.buildExportDataRequest(
+                    null, null, calculationsSpec, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_HDF5);
+            final ExportDataResponse.ExportDataResult exportResult =
+                    annotationServiceWrapper.sendExportData(request, false, "");
+            assertNotNull(exportResult);
+
+            final CalculationsDocument calculationsDocument = mongoClient.findCalculations(calculationsId);
+            assertNotNull(calculationsDocument);
+            final IHDF5Reader reader = HDF5Factory.openForReading(exportResult.getFilePath());
+            AnnotationTestBase.verifyCalculationsDocumentHdf5Content(reader, calculationsDocument, null);
+            reader.close();
+        }
+
+        // positive export test: csv export of typed scalar columns through the tabular narrowing (D33)
+        {
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 0L, 500_000_000L, 2);
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-csv-scalars")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDataColumns(DataColumnUtility.dataColumnWithDoubleValues(
+                                            "calc:legacy", List.of(0.5, 1.5)))
+                                    .addDoubleColumns(DoubleColumn.newBuilder()
+                                            .setName("calc:double").addValues(1.0).addValues(2.0))
+                                    .addStringColumns(StringColumn.newBuilder()
+                                            .setName("calc:string").addValues("a").addValues("b"))))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId, "annotation with scalar columns for csv",
+                            List.of(scenarioResult.firstHalfDataSetId()),
+                            null, null, null, null,
+                            calculations);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, "");
+            final String calculationsId = annotationServiceWrapper.lastSaveAnnotationCalculationsId;
+            assertNotNull(calculationsId);
+
+            final CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                    .setCalculationsId(calculationsId)
+                    .build();
+            final ExportDataRequest request = AnnotationTestBase.buildExportDataRequest(
+                    null, null, calculationsSpec, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV);
+            final ExportDataResponse.ExportDataResult exportResult =
+                    annotationServiceWrapper.sendExportData(request, false, "");
+            assertNotNull(exportResult);
+
+            // verify file content: header plus one row per clock sample, typed scalar values
+            // rendered through their toDataColumn() narrowing
+            try {
+                final List<String> lines = Files.readAllLines(Path.of(exportResult.getFilePath()));
+                assertEquals(3, lines.size());
+                assertEquals("seconds,nanos,calc:legacy,calc:double,calc:string", lines.get(0));
+                assertEquals(startSeconds + ",0,0.5,1.0,a", lines.get(1));
+                assertEquals(startSeconds + ",500000000,1.5,2.0,b", lines.get(2));
+            } catch (IOException e) {
+                fail("error reading export file " + exportResult.getFilePath() + ": " + e.getMessage());
+            }
+        }
+
+        // negative export test: csv export of a frame with an array column is rejected with
+        // HDF5 guidance (D30) — wire status REJECT, not ERROR, and never a stream hang
+        {
+            final DataTimestamps dataTimestamps =
+                    DataTimestampsUtility.dataTimestampsWithSamplingClock(
+                            startSeconds, 0L, 500_000_000L, 2);
+            final Calculations calculations = Calculations.newBuilder()
+                    .addCalculationDataFrames(Calculations.CalculationsDataFrame.newBuilder()
+                            .setName("frame-csv-array")
+                            .setFrame(DataFrame.newBuilder()
+                                    .setDataTimestamps(dataTimestamps)
+                                    .addDoubleColumns(DoubleColumn.newBuilder()
+                                            .setName("calc:double").addValues(1.0).addValues(2.0))
+                                    .addDoubleArrayColumns(DoubleArrayColumn.newBuilder()
+                                            .setName("calc:doubleArray")
+                                            .setDimensions(ArrayDimensions.newBuilder().addDims(2))
+                                            .addValues(1.0).addValues(2.0).addValues(3.0).addValues(4.0))))
+                    .build();
+
+            final AnnotationTestBase.SaveAnnotationRequestParams params =
+                    new AnnotationTestBase.SaveAnnotationRequestParams(
+                            null, ownerId, "annotation with array column for csv reject",
+                            List.of(scenarioResult.firstHalfDataSetId()),
+                            null, null, null, null,
+                            calculations);
+            annotationServiceWrapper.sendAndVerifySaveAnnotation(params, false, false, "");
+            final String calculationsId = annotationServiceWrapper.lastSaveAnnotationCalculationsId;
+            assertNotNull(calculationsId);
+
+            final CalculationsSpec calculationsSpec = CalculationsSpec.newBuilder()
+                    .setCalculationsId(calculationsId)
+                    .build();
+            final ExportDataRequest request = AnnotationTestBase.buildExportDataRequest(
+                    null, null, calculationsSpec, ExportDataRequest.ExportOutputFormat.EXPORT_FORMAT_CSV);
+            annotationServiceWrapper.sendExportData(
+                    request,
+                    true,
+                    "tabular export supports scalar columns only: calculations column "
+                            + "'frame-csv-array/calc:doubleArray' has non-scalar column type "
+                            + "DoubleArrayColumnDocument; export to HDF5 instead");
+        }
     }
 
 }

@@ -1,23 +1,26 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
+import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
 import com.ospreydcs.dp.service.annotation.handler.model.HandlerExportDataRequest;
 import com.ospreydcs.dp.service.annotation.handler.mongo.client.MongoAnnotationClientInterface;
 import com.ospreydcs.dp.service.annotation.handler.mongo.dispatch.ExportDataDispatcher;
-import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
+import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.types.ObjectId;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -33,7 +36,29 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class ExportDataJobBase extends HandlerJob {
 
-    protected static record ExportDataStatus(boolean isError, String errorMessage) {}
+    /**
+     * Outcome of exportData_(). isReject marks a client mistake surfaced during export assembly
+     * (non-scalar content in a tabular format, #248 plan D30); execute() routes it to
+     * dispatcher.handleReject() ahead of the error branch, matching the #235 result-wrapper
+     * convention: isReject implies isError, enforced in the compact constructor, so callers
+     * reading only isError still see every failure.
+     */
+    protected static record ExportDataStatus(boolean isError, boolean isReject, String errorMessage) {
+
+        protected ExportDataStatus {
+            if (isReject && !isError) {
+                throw new IllegalArgumentException("isReject implies isError");
+            }
+        }
+
+        protected ExportDataStatus(boolean isError, String errorMessage) {
+            this(isError, false, errorMessage);
+        }
+
+        protected static ExportDataStatus reject(String errorMessage) {
+            return new ExportDataStatus(true, true, errorMessage);
+        }
+    }
 
     // static variables
     protected static final Logger logger = LogManager.getLogger();
@@ -78,20 +103,47 @@ public abstract class ExportDataJobBase extends HandlerJob {
                 this.getClass().getSimpleName(),
                 this.handlerRequest.responseObserver.hashCode());
 
-        // use datasetId as filename if specified, otherwise use id from calculationsSpec
+        // filename id: datasetId if specified, else calculationsId, else generated (see below)
         String exportObjectId = null;
 
         // get dataset for id specified in request
         final String datasetId = this.handlerRequest.exportDataRequest.getDataSetId();
         DataSetDocument datasetDocument = null;
         if ( ! datasetId.isBlank()) {
-            datasetDocument = mongoAnnotationClient.findDataSet(datasetId);
+            // lookupDataSet, not findDataSet: a failed query is an infrastructure error and a
+            // genuine absence is a client mistake — collapsing the two would invert the caller's
+            // retry decision (#235, applied to export by #248 plan D30)
+            try {
+                datasetDocument = mongoAnnotationClient.lookupDataSet(datasetId);
+            } catch (DpException ex) {
+                this.dispatcher.handleError(
+                        "error looking up DatasetDocument with id " + datasetId + ": " + ex.getMessage());
+                return;
+            }
             if (datasetDocument == null) {
                 final String errorMsg = "DatasetDocument with id " + datasetId + " not found";
-                this.dispatcher.handleError(errorMsg);
+                this.dispatcher.handleReject(errorMsg);
                 return;
             }
             exportObjectId = datasetId;
+        }
+
+        // merge inline dataBlocks into the effective dataset document (#248 plan D31): appended
+        // to the stored document's blocks when dataSetId is also set, or carried by a transient
+        // document when it is not — everything downstream (block queries, tabular assembly, HDF5
+        // writeDataSet) proceeds unchanged over the effective block list; nothing is persisted
+        final List<DataBlock> requestDataBlocks = this.handlerRequest.exportDataRequest.getDataBlocksList();
+        if ( ! requestDataBlocks.isEmpty()) {
+            if (datasetDocument == null) {
+                datasetDocument = new DataSetDocument();
+                datasetDocument.setDataBlocks(new ArrayList<>());
+            } else {
+                // copy before appending — the fetched document's list must not be mutated in place
+                datasetDocument.setDataBlocks(new ArrayList<>(datasetDocument.getDataBlocks()));
+            }
+            for (DataBlock dataBlock : requestDataBlocks) {
+                datasetDocument.getDataBlocks().add(DataBlockDocument.fromDataBlock(dataBlock));
+            }
         }
 
         // get calculations for id specified in request
@@ -114,7 +166,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
             }
             if (calculationsDocument == null) {
                 final String errorMsg = "CalculationsDocument with id " + calculationsId + " not found";
-                this.dispatcher.handleError(errorMsg);
+                this.dispatcher.handleReject(errorMsg);
                 return;
             }
             if (exportObjectId == null) {
@@ -136,7 +188,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
                     final String errorMsg =
                             "ExportDataRequest.CalculationsSpec.dataFrameColumns includes invalid frame name: "
                                     + requestFrameName;
-                    this.dispatcher.handleError(errorMsg);
+                    this.dispatcher.handleReject(errorMsg);
                     return;
                 } else {
 
@@ -149,7 +201,7 @@ public abstract class ExportDataJobBase extends HandlerJob {
                                             + requestFrameColumnName
                                             + " for frame: "
                                             + requestFrameName;
-                            this.dispatcher.handleError(errorMsg);
+                            this.dispatcher.handleReject(errorMsg);
                             return;
                         }
                     }
@@ -157,11 +209,11 @@ public abstract class ExportDataJobBase extends HandlerJob {
             }
         }
 
-        // make sure we have an id to use for filename
+        // filename id resolution: dataSetId, else calculationsId, else a generated id — an
+        // inline-dataBlocks-only request has no stored id, and getExportFileSubdirectory()
+        // assumes an ObjectId-shaped string for the balanced directory layout (#248 plan D31)
         if (exportObjectId == null) {
-            final String errorMsg = "Unable to generate export output filename for request";
-            this.dispatcher.handleError(errorMsg);
-            return;
+            exportObjectId = new ObjectId().toHexString();
         }
 
         // check that there is data to export
@@ -200,9 +252,26 @@ public abstract class ExportDataJobBase extends HandlerJob {
         // export data to file
         final String serverFilePathString = serverDirectoryPathString + filename;
         final Path serverFilePath = Paths.get(serverFilePathString);
-        final ExportDataStatus status = exportData_(
-                datasetDocument, calculationsDocument, requestFrameColumnNamesMap, serverFilePathString);
+        final ExportDataStatus status;
+        try {
+            status = exportData_(
+                    datasetDocument, calculationsDocument, requestFrameColumnNamesMap, serverFilePathString);
+        } catch (RuntimeException ex) {
+            // D28 validation stops new count-mismatched calculations writes, but a column stored
+            // before that validation still indexes out of bounds during tabular assembly — an
+            // unchecked throw here escapes to QueueHandlerBase, which swallows it, and the
+            // caller's stream hangs with no response (#248 plan finding 5 / D33)
+            final String errorMsg = "unexpected exception exporting data: " + ex.getMessage();
+            logger.error("{} id: {}", errorMsg, this.handlerRequest.responseObserver.hashCode(), ex);
+            this.dispatcher.handleError(errorMsg);
+            return;
+        }
         if (status.isError) {
+            if (status.isReject) {
+                logger.debug(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
+                this.dispatcher.handleReject(status.errorMessage);
+                return;
+            }
             logger.error(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(status.errorMessage);
             return;

@@ -354,9 +354,18 @@ public class AnnotationClient extends ServiceApiClientBase {
 
     public record ExportDataRequestParams(
             String dataSetId,
+            List<DataBlock> dataBlocks,
             CalculationsSpec calculationsSpec,
             ExportDataRequest.ExportOutputFormat outputFormat
     ) {
+        /** Convenience form for the pre-#248 sources: a saved dataset and/or calculations. */
+        public ExportDataRequestParams(
+                String dataSetId,
+                CalculationsSpec calculationsSpec,
+                ExportDataRequest.ExportOutputFormat outputFormat
+        ) {
+            this(dataSetId, null, calculationsSpec, outputFormat);
+        }
     }
 
     public static class ExportDataResponseObserver
@@ -1058,6 +1067,11 @@ public class AnnotationClient extends ServiceApiClientBase {
         // set datasetId if specified
         if (params.dataSetId != null) {
             requestBuilder.setDataSetId(params.dataSetId);
+        }
+
+        // add inline dataBlocks if specified (#248 plan D31)
+        if (params.dataBlocks != null) {
+            requestBuilder.addAllDataBlocks(params.dataBlocks);
         }
 
         // create calculationsSpec if calculationsId is specified

@@ -99,7 +99,7 @@ MongoDB documents use embedded protobuf serialization:
 - Protobuf objects serialized to `bytes` field, with convenience fields for queries
 
 ### Column Document Class Hierarchy
-The ingestion service uses a class hierarchy for MongoDB column document storage:
+Ingestion buckets and calculations frames (the latter as of #248 Phase 4) share a class hierarchy for MongoDB column document storage:
 
 **Base Classes:**
 - **`ColumnDocumentBase`**: Abstract base with `name` and `columnMetadata` fields
@@ -118,17 +118,56 @@ Each class uses `@BsonDiscriminator(key = "_t", value = "columnType")` and must 
 **MongoDB POJO Codec Warning:** The codec silently skips any field missing a getter or setter — `insertMany` succeeds but the field is not written. Every instance variable on every registered BSON class must have both getter and setter.
 
 ### Column-Level Metadata
-All 16 column proto types carry an optional `metadata` field (`ColumnMetadata` with `ColumnProvenance`, tags, and attributes). The ingestion service stores this as `columnMetadata` on `ColumnDocumentBase`. `ColumnDocumentBase.applyMetadataToProto()` restores it on round-trip via reflection. Validation limits: provenance fields ≤ 256 chars; ≤ 20 tags/attributes each ≤ 256 chars.
+All 16 column proto types carry an optional `metadata` field (`ColumnMetadata` with `ColumnProvenance`, tags, and attributes). The ingestion service stores this as `columnMetadata` on `ColumnDocumentBase`. `ColumnDocumentBase.applyMetadataToProto()` restores it on round-trip via reflection. Validation limits: provenance fields ≤ 256 chars; ≤ 20 tags/attributes each ≤ 256 chars. The limits live in the shared `ColumnMetadataValidationUtility` (`common/handler`), parameterized on the request field path; `IngestionValidationUtility` delegates to it, and any new save path accepting `ColumnMetadata` must too.
+
+Provenance `derivedFrom` links (#248 Phase 4, D29) are **stored as supplied**: `ColumnSourceDocument` (pvName oneof arm, or embedded `CalculationsColumnDocument`; optional timeRange as begin/end `TimestampDocument`s) round-trips the proto exactly, including a pvName arm set to the empty string (dispatch is on the oneof case, not field emptiness). No existence checks and no ObjectId parse of `calculationsId` — links may point at records not yet created and may dangle; only the shared length limits apply. Storing them on the document is also what keeps the legacy `DataColumnDocument` read path lossless: `applyMetadataToProto()` overwrites the complete in-bytes metadata with the document version, so any provenance field missing from the document silently vanishes on every `toProtobufColumn()` read.
+
+### Calculations Typed Columns (issue #248 Phase 4)
+
+`CalculationsDataFrameDocument.dataColumns` is the polymorphic `List<ColumnDocumentBase>` (D25),
+under the original BSON field name and matching the `BucketDocument.dataColumn` pattern: every
+post-1.13 stored document reads unchanged, and the `_t` discriminator round-trips the concrete
+type. Columns enter through the shared `ColumnDocumentUtility.fromDataFrame()` dispatch and are
+restored to their typed `DataFrame` repeated fields by `addColumnToDataFrame()`. A consumer that
+needs the legacy `DataColumn` view must narrow — `ScalarColumnDocumentBase`/`DataColumnDocument`
+via `toDataColumn()`, anything else `NonScalarColumnException` (see Export Framework Architecture
+for how that is classified).
+
+**Adding `@BsonDiscriminator` to a class with instances already stored embedded requires a
+migration stamping the stored copies.** The POJO codec writes `_t` even when the declared field
+type is concrete, but a stored entry *without* `_t` decodes only under a concrete declared type —
+under an abstract one it throws `CodecConfigurationException`, which on the query path reads as
+silently empty results, not an error. Schema migration v4 (`V4StampColumnDiscriminators`) stamps
+`_t: "dataColumn"` on discriminator-less legacy columns in `buckets` and `calculations` alike —
+the migration #173 should have shipped. Idempotent by construction (both `updateMany` filters
+test for the absent key), and a one-time full scan of `buckets`; the startup choreography while
+it runs (other services time out the five-minute claim wait and rely on supervisor restart) is
+documented in `doc/schema-migration.md`.
+
+`validateSaveAnnotationRequest` validates the full frame shape (D28): every column of every type
+needs a non-blank name, non-empty values, and a value count equal to the frame's timestamp count
+(array columns: timestamp count × dims product; `SerializedDataColumn` entries carry no countable
+values and get name/metadata checks only). Column names are unique across all column types within
+a frame, frame names unique within the Calculations object — both are addressing keys for
+`CalculationsSpec`, tabular "frameName/columnName" column naming, and provenance links. The count
+check is what closes the finding-5 export hang (an out-of-range read escaping unchecked in the
+worker thread left the export stream hanging with no response); do not exempt a new column type
+from it. Column metadata is validated through the shared `ColumnMetadataValidationUtility` like
+every other save path, and column *values* against the shared `ColumnValueLimits` caps (string
+values ≤ 256 chars, array dims product ≤ 10M elements, image ≤ 50MB, struct ≤ 1MB) — one contract
+with ingestion, so a payload ingestion would reject cannot be stored through saveAnnotation.
+Ingestion's identity-field requirements (enumId, schemaId, imageDescriptor, serialized encoding)
+deliberately remain ingestion-only: calculations columns are not PV channels.
 
 ## Systematic Process for Adding New Protobuf Column Types
 
 Seven steps for adding a new column type end-to-end:
 1. **Create Document Class** — choose base class (Scalar/Array/Binary), add `@BsonDiscriminator`, implement abstract methods, add static factory method, check `hasMetadata()` and call `setColumnMetadata()` in factory
-2. **Update BucketDocument** — add handling in `BucketDocument.generateBucketsFromRequest()`
+2. **Update Column Dispatch** — add a branch in `ColumnDocumentUtility.fromDataFrame()`, the shared dispatch every path that stores DataFrame columns flows through (`BucketDocument.generateBucketsFromRequest()` and, as of #248 Phase 4, calculations frames); do not add a per-path dispatch
 3. **Register POJO Class** — add to `MongoClientBase.getPojoCodecRegistry()`
 4. **Data Subscription** — add case in `SourceMonitorManager.publishDataSubscriptions()`
 5. **Event Subscription** — update `ColumnTriggerUtility` and `DataBuffer` (scalar only; array/binary are targets only)
-6. **Test Framework** — add field to `IngestionTestBase.IngestionRequestParams`, update `buildIngestionRequest()` and `GrpcIntegrationIngestionServiceWrapper.verifyIngestionRequestHandling()`
+6. **Test Framework** — add field to `IngestionTestBase.IngestionRequestParams`, update `buildIngestionRequest()` and `GrpcIntegrationIngestionServiceWrapper.verifyIngestionRequestHandling()`, and add the type's case to `AnnotationTestBase.parseColumnByEncoding()` (HDF5 export verification)
 7. **Integration Test** — create `<ColumnType>IT`; scalar: single-PV pattern; array/binary: dual-PV pattern (scalar trigger + array/binary target)
 
 **Known Technical Debt:** `createColumnBuilder()` and `addAllValuesToBuilder()` are defined at `ColumnDocumentBase` level but only apply to scalars. Future refactoring should move them to `ScalarColumnDocumentBase`.
@@ -137,9 +176,40 @@ Seven steps for adding a new column type end-to-end:
 The Annotation Service includes a format-specific export framework:
 - **Base Classes**: `ExportDataJobBase` → `ExportDataJobAbstractTabular` → `ExportDataJobCsv`, `ExportDataJobExcel`, `ExportDataJobHdf5`
 - **Scalar Columns**: Support all formats (CSV, Excel, HDF5) via `toDataColumn()` conversion
-- **Array/Binary Columns**: HDF5 only — cannot convert to legacy DataColumn for tabular formats
+- **Array/Binary Columns**: HDF5 only — cannot convert to legacy DataColumn for tabular formats (dataset PVs and calculations columns alike; tabular requests containing them are rejected, see below)
 - **Excel**: `DataExportXlsxFile` uses `XSSFWorkbook` (non-streaming); suitable for ~50K–100K rows
 - **Import**: `DataImportUtility.importXlsxData()` in `com.ospreydcs.dp.client.utility`
+
+### Export Classification and Typed Columns (issue #248 Phase 4)
+
+- **Client mistakes are rejections (D30), carried on `ExportDataStatus`.** The nested record
+  follows the #235 wrapper convention — `isReject` implies `isError`, enforced by its compact
+  constructor; `reject(...)` is the only way to build a rejection, and the two-arg constructor
+  remains the legacy non-reject form for existing call sites. `execute()` routes `isReject` to
+  `ExportDataDispatcher.handleReject()` → `RESULT_STATUS_REJECT`, logged at debug. Rejected: a
+  malformed or not-found `dataSetId`/`calculationsId`, a `dataFrameColumns` filter naming a frame
+  or column the calculations object lacks, and non-scalar content in a tabular export. Errors
+  stay errors: lookup `DpException` (outage), file I/O, the export size limit — and "data block
+  query returned no data" stays an error (pre-existing, deliberately not reclassified).
+- **Tabular non-scalar content must surface as the reject, never a hang (D33).**
+  `ExportDataJobAbstractTabular` catches `NonScalarColumnException` ahead of `DpException` on
+  both the dataset-bucket and calculations paths, phrasing "…export to HDF5 instead"; for a
+  calculations column the exception's pvName slot carries "frameName/columnName". Independently,
+  `ExportDataJobBase.execute()` wraps `exportData_()` in a `RuntimeException` catch dispatched as
+  an error — a column stored before D28's count validation can still throw unchecked during
+  assembly, and an escaped exception is swallowed by `QueueHandlerBase`, hanging the caller's
+  stream.
+- **HDF5 calculations columns are self-describing (D32).** `writeCalculations` writes each
+  column's protobuf bytes plus a `dataColumnEncoding` tag (`"proto:" + <proto message simple
+  name>`), the scheme bucket data has always used. Files from earlier builds carry no tag on
+  calculations columns and are implicitly DataColumn-encoded — a point-in-time artifact, not a
+  compatibility mechanism. `AnnotationTestBase.parseColumnByEncoding()` is the single tag→parser
+  dispatch for both the bucket and calculations HDF5 verifiers; a new column type needs a case
+  added there (Systematic Process step 6).
+- **Inline `dataBlocks` are an export source (D31)**: validated like `saveDataSet` blocks,
+  appended after any stored dataset's blocks into one effective, never-persisted
+  `DataSetDocument`. At least one of `dataSetId`/`dataBlocks`/`calculationsSpec` is required; an
+  inline-only export's output file is keyed by a generated ObjectId.
 
 ## Annotation Service CRUD API Pattern
 
@@ -525,7 +595,7 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 4. New columns (all column-oriented types)
 5. Cross-cutting (unique PV names across all column types in a frame)
 
-**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB; timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
+**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB (the four value caps live in the shared `ColumnValueLimits` and bind the saveAnnotation calculations path too); timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
 
 ### Max Bucket Span Invariant (issue #197)
 `Buckets.maxBucketSpanSeconds` is a shared invariant between ingestion and query, and both of its failure modes are *silent wrong answers* rather than errors — treat it accordingly:

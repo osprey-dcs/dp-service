@@ -321,9 +321,12 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
         ExportDataJobBase job = null;
         switch (handlerRequest.exportDataRequest.getOutputFormat()) {
             case EXPORT_FORMAT_UNSPECIFIED -> {
-                // this should be caught in validation, but just in case...
+                // this should be caught in validation, but just in case... — and must return:
+                // falling through to requireNonNull(job) would NPE on the gRPC thread after
+                // onCompleted() (#248 plan finding 9)
                 final String errorMsg = "ExportDataRequest.outputFormat must be specified";
                 AnnotationServiceImpl.sendExportDataResponseError(errorMsg, handlerRequest.responseObserver);
+                return;
             }
             case EXPORT_FORMAT_HDF5 -> {
                 job = new ExportDataJobHdf5(handlerRequest, mongoAnnotationClient, mongoQueryClient);
@@ -335,9 +338,10 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
                 job = new ExportDataJobExcel(handlerRequest, mongoAnnotationClient, mongoQueryClient);
             }
             case UNRECOGNIZED -> {
-                // this should be caught in validation, but just in case...
+                // this should be caught in validation, but just in case... (see above re: return)
                 final String errorMsg = "ExportDataRequest.outputFormat unrecognized value";
                 AnnotationServiceImpl.sendExportDataResponseError(errorMsg, handlerRequest.responseObserver);
+                return;
             }
         }
         Objects.requireNonNull(job);
