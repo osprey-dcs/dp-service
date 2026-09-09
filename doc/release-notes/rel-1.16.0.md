@@ -38,6 +38,17 @@ id ascending, per the proto ordering contract. Previously the sort was `startTim
 is not unique, so activations sharing a start time could be dropped or duplicated across page
 boundaries.
 
+### Typed calculations columns (#248 Phase 4)
+
+`saveAnnotation` now accepts, stores, and returns calculations frames using all 16 column forms
+(the typed scalar/array/binary columns alongside legacy `DataColumn` and `SerializedDataColumn`).
+Previously typed columns were **silently dropped** from a frame that also carried legacy columns,
+and a frame carrying only typed columns was rejected. `getAnnotation`/`getCalculations` return
+stored columns in their typed form. Column provenance `derivedFrom` links (a PV name or a
+calculations column address, with optional time range) are now stored and round-tripped as
+supplied — on calculations columns and ingested bucket columns alike — with no existence checks:
+links may reference records not yet created.
+
 ### BEHAVIOR CHANGE: saveAnnotation validates calculations content fully (#248 Phase 4)
 
 `saveAnnotation` now validates the complete shape of a `Calculations` payload: every column of
@@ -87,6 +98,23 @@ files are point-in-time artifacts, so no compatibility mechanism accompanies the
 Tabular formats (CSV, XLSX) export typed *scalar* calculations columns; a calculations column
 with no tabular representation (array, image, struct, serialized) is rejected with guidance to
 export to HDF5 instead — a rejection, not an error, per the classification above.
+
+### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
+
+The first 1.16.0 service to start against an existing database runs schema migration v4
+(`V4StampColumnDiscriminators`), stamping the `_t` class discriminator on embedded legacy columns
+written before rel-1.13.0, in `buckets` and `calculations` alike. Without the stamp, such columns
+cannot be decoded under the polymorphic field types — which reads as silently empty query and
+export results, not an error.
+
+Operationally this is a **one-time full scan of the `buckets` collection**: expect minutes up to
+roughly an hour on archives in the tens of millions of buckets. While the elected process runs
+the migration, other starting services wait five minutes on the migration claim and then exit
+with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
+branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
+waiting services restart and come up once the migration completes. Do not clear the claim while
+the migrating host is alive. See `doc/schema-migration.md` for triage guidance and the migration
+inventory.
 
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*
