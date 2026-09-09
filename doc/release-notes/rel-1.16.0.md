@@ -74,5 +74,19 @@ reading as "not found") — are now reported with `RESULT_STATUS_REJECT` instead
 file I/O, the tabular export file size limit) remain errors. Clients branching on the
 exceptional status will see the changed classification; messages are unchanged.
 
+### Typed calculations columns export to HDF5 with a per-column encoding tag (#248 Phase 4)
+
+HDF5 export now writes calculations columns of every type (the 14 typed column forms alongside
+the legacy `DataColumn` and `SerializedDataColumn`), where previous builds supported only legacy
+columns. Each calculations column's serialized bytes are now accompanied by a self-describing
+`dataColumnEncoding` tag (`"proto:" + <proto message name>`, e.g. `proto:DoubleArrayColumn`) in
+the column's group, the same scheme bucket data has always used. Files written by earlier builds
+carry no tag for calculations columns; their columns are implicitly `DataColumn`-encoded. Export
+files are point-in-time artifacts, so no compatibility mechanism accompanies the change.
+
+Tabular formats (CSV, XLSX) export typed *scalar* calculations columns; a calculations column
+with no tabular representation (array, image, struct, serialized) is rejected with guidance to
+export to HDF5 instead — a rejection, not an error, per the classification above.
+
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*

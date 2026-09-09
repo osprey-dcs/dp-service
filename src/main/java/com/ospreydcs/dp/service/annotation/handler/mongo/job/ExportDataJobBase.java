@@ -36,7 +36,29 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class ExportDataJobBase extends HandlerJob {
 
-    protected static record ExportDataStatus(boolean isError, String errorMessage) {}
+    /**
+     * Outcome of exportData_(). isReject marks a client mistake surfaced during export assembly
+     * (non-scalar content in a tabular format, #248 plan D30); execute() routes it to
+     * dispatcher.handleReject() ahead of the error branch, matching the #235 result-wrapper
+     * convention: isReject implies isError, enforced in the compact constructor, so callers
+     * reading only isError still see every failure.
+     */
+    protected static record ExportDataStatus(boolean isError, boolean isReject, String errorMessage) {
+
+        protected ExportDataStatus {
+            if (isReject && !isError) {
+                throw new IllegalArgumentException("isReject implies isError");
+            }
+        }
+
+        protected ExportDataStatus(boolean isError, String errorMessage) {
+            this(isError, false, errorMessage);
+        }
+
+        protected static ExportDataStatus reject(String errorMessage) {
+            return new ExportDataStatus(true, true, errorMessage);
+        }
+    }
 
     // static variables
     protected static final Logger logger = LogManager.getLogger();
@@ -245,6 +267,11 @@ public abstract class ExportDataJobBase extends HandlerJob {
             return;
         }
         if (status.isError) {
+            if (status.isReject) {
+                logger.debug(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
+                this.dispatcher.handleReject(status.errorMessage);
+                return;
+            }
             logger.error(status.errorMessage + " id: " + this.handlerRequest.responseObserver.hashCode());
             this.dispatcher.handleError(status.errorMessage);
             return;

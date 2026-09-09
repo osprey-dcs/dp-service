@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -142,6 +143,15 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                             endSeconds,
                             endNanos
                     );
+                } catch (NonScalarColumnException e) {
+                    // Q4: tabular formats are scalar-only — a client mistake, not a service
+                    // error (#235 / #248 plan D30). Phrase export-specific guidance around the
+                    // neutral shared exception.
+                    final String errorMsg = "tabular export supports scalar PVs only: PV '"
+                            + e.getPvName() + "' has non-scalar column type " + e.getColumnType()
+                            + "; export to HDF5 instead";
+                    logger.debug("id: {}, reject: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                    return ExportDataStatus.reject(errorMsg);
                 } catch (DpException e) {
                     final String errorMsg = "exception building tabular result: " + e.getMessage();
                     logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
@@ -174,6 +184,15 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                                 exportEndInstant,
                                 tableDataSize,
                                 ExportConfiguration.getExportFileSizeLimitBytes());
+            } catch (NonScalarColumnException e) {
+                // Q4: tabular formats are scalar-only — a client mistake, not a service error
+                // (#235 / #248 plan D30). getPvName() carries "frameName/columnName" here (the
+                // calculations narrowing addresses columns by frame, not PV).
+                final String errorMsg = "tabular export supports scalar columns only: calculations column '"
+                        + e.getPvName() + "' has non-scalar column type " + e.getColumnType()
+                        + "; export to HDF5 instead";
+                logger.debug("id: {}, reject: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                return ExportDataStatus.reject(errorMsg);
             } catch (DpException e) {
                 final String errorMsg = "Exception adding calculations to table for file: "
                         + serverFilePath;

@@ -4,7 +4,6 @@ import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import com.google.protobuf.Message;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
-import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.column.ColumnDocumentBase;
@@ -296,17 +295,6 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
 
                     Objects.requireNonNull(calculationsDataColumnDocument);
 
-                    // Interim guard until typed calculations columns get the bucket treatment
-                    // (encoding tag alongside the serialized bytes, #248 plan D32): writing a typed
-                    // column's bytes untagged would have readers parse them as DataColumn — a wrong
-                    // answer rather than an error.
-                    if ( ! (calculationsDataColumnDocument instanceof DataColumnDocument)) {
-                        throw new DpException("HDF5 export of typed calculations column '"
-                                + calculationsDataColumnDocument.getName() + "' ("
-                                + calculationsDataColumnDocument.getClass().getSimpleName()
-                                + ") is not yet supported");
-                    }
-
                     final String columnName = calculationsDataColumnDocument.getName();
 
                     // only include column if frameColumnNamesMap not provided,
@@ -325,12 +313,23 @@ public class DataExportHdf5File implements BucketedDataExportFileInterface {
                         writer.writeString(columnNamePath, columnName);
 
                         // write serialized dataColumnBytes
-                        final byte[] dataColumnBytes = calculationsDataColumnDocument.toByteArray();
+                        final Message protobufColumn = calculationsDataColumnDocument.toProtobufColumn();
+                        final byte[] dataColumnBytes = protobufColumn.toByteArray();
                         Objects.requireNonNull(dataColumnBytes);
                         final String dataColumnBytesPath = dataColumnGroup
                                 + PATH_SEPARATOR
                                 + DATA_COLUMN_BYTES;
                         writer.writeByteArray(dataColumnBytesPath, dataColumnBytes);
+
+                        // write self-describing column encoding tag (#248 plan D32), mirroring the
+                        // bucket writer: untagged bytes would have readers parse every column as
+                        // DataColumn — a wrong answer rather than an error for typed columns
+                        final String columnEncodingPath = dataColumnGroup
+                                + PATH_SEPARATOR
+                                + DATA_COLUMN_ENCODING;
+                        final String columnEncoding =
+                                ENCODING_PROTO + ":" + protobufColumn.getClass().getSimpleName();
+                        writer.writeString(columnEncodingPath, columnEncoding);
 
                         columnIndex = columnIndex + 1;
                     }
