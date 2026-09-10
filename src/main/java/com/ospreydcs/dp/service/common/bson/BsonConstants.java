@@ -104,4 +104,12 @@ public class BsonConstants {
     public static final String BSON_KEY_SAMPLE_STATUS_LAYER = "layer";
     public static final String BSON_KEY_SAMPLE_STATUS_FIRST_TIME_NANOS = "firstTimeNanos";
     public static final String BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS = "lastTimeNanos";
+
+    // pvStats collection (#232): one document per PV, keyed by PV name as _id, holding statistics
+    // maintained on the ingestion write path. maxBucketSpanSeconds is the seconds-field difference
+    // lastTime.seconds - firstTime.seconds, maximized over the PV's buckets; it is what the query
+    // side reads to bound firstTime in bucket overlap filters. Further per-PV statistics (#201) are
+    // additional keys here.
+    public static final String BSON_KEY_PV_STATS_PV_NAME = "_id";
+    public static final String BSON_KEY_PV_STATS_MAX_BUCKET_SPAN_SECONDS = "maxBucketSpanSeconds";
 }
