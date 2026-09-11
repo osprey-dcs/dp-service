@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.column.*;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampMap;
@@ -592,6 +593,21 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
             assertEquals(
                     Date.from(Instant.ofEpochSecond(endSeconds, endNanos)),
                     bucketDocument.getDataTimestamps().getLastTime().getDateTime());
+
+            // check the per-PV statistic ingestion maintains for the query lower bound (#232): pvStats
+            // must hold this PV with maxBucketSpanSeconds at least the request's lastTime.seconds -
+            // firstTime.seconds (plan D3). No retry: the statistic is written before the bucket (D4), so
+            // having found the bucket above means it is already in place — a retry would only mask a
+            // reordering. ">=" rather than "==" because the value only grows, and an earlier request in
+            // the same test may have recorded a larger span for this PV.
+            final long requestSpanSeconds = endSeconds - params.samplingClockStartSeconds();
+            final PvStatsDocument pvStatsDocument = mongoClient.findPvStatsNoRetry(pvName);
+            assertNotNull("pvStats document missing for pv " + pvName, pvStatsDocument);
+            assertEquals(pvName, pvStatsDocument.getPvName());
+            assertTrue(
+                    "pvStats maxBucketSpanSeconds " + pvStatsDocument.getMaxBucketSpanSeconds()
+                            + " below request span " + requestSpanSeconds + " for pv " + pvName,
+                    pvStatsDocument.getMaxBucketSpanSeconds() >= requestSpanSeconds);
 
             // verify data column content for supported column data types
             ColumnDocumentBase columnDocument = bucketDocument.getDataColumn();

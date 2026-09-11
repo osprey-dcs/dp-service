@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import org.junit.Test;
 
@@ -158,7 +159,15 @@ public class ExportDataBucketSpanIT extends AnnotationIntegrationTestIntermediat
         final CreateDataSetScenarioResult dataSetResult = createDataSetScenario(startSeconds);
         final String dataSetId = dataSetResult.firstHalfDataSetId();
 
-        insertOverlongBucket(startSeconds);
+        final long spanSeconds = insertOverlongBucket(startSeconds);
+
+        // Premise: the PV's statistic exists (ingestion wrote it) but records only the ingested
+        // one-second buckets, so it is what excludes the over-long bucket — not a missing document.
+        final PvStatsDocument pvStats = mongoClient.findPvStatsNoRetry(DATASET_PV_NAME);
+        assertNotNull(pvStats);
+        assertTrue(
+                "ingested span " + pvStats.getMaxBucketSpanSeconds() + " should be below " + spanSeconds,
+                pvStats.getMaxBucketSpanSeconds() < spanSeconds);
 
         final List<BucketDocument> buckets = retrieveDataSetBuckets(dataSetId);
         assertEquals(EXPECTED_COMPLIANT_BUCKETS, distinctBucketCount(buckets));

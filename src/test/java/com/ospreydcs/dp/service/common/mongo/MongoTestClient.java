@@ -12,6 +12,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.PvStatsMaxSpanUpdater;
@@ -132,6 +133,49 @@ public class MongoTestClient extends MongoSyncClient {
         } catch (DpException ex) {
             throw new RuntimeException("upsertPvStatsMaxSpan failed for pv " + pvName, ex);
         }
+    }
+
+    /**
+     * Writes a pvStats document directly, bypassing the ingestion updater. Unlike
+     * {@link #upsertPvStatsMaxSpan}, which goes through the production {@code $max} upsert and so can
+     * only raise a stored value, this stores exactly the given document — for a test that needs a
+     * particular stored shape as its starting point. Fails on a duplicate PV name (the {@code _id}).
+     */
+    public void insertPvStatsDocument(PvStatsDocument pvStatsDocument) {
+        mongoCollectionPvStats.insertOne(pvStatsDocument);
+    }
+
+    /**
+     * Retry finder for a PV's pvStats document (#232), following the worker-thread-insertion
+     * pattern of the other finders. Ingestion writes the statistic ahead of the bucket insert
+     * (plan D4), so a caller that has already observed the bucket sees the statistic on the first
+     * attempt; the retry loop is for a caller checking the statistic on its own.
+     */
+    public PvStatsDocument findPvStats(String pvName) {
+        for (int retryCount = 0 ; retryCount < MONGO_FIND_RETRY_COUNT ; ++retryCount){
+            final PvStatsDocument document = findPvStatsNoRetry(pvName);
+            if (document != null) {
+                return document;
+            }
+            try {
+                logger.info("findPvStats pvName: " + pvName + " retrying");
+                Thread.sleep(MONGO_FIND_RETRY_INTERVAL_MILLIS);
+            } catch (InterruptedException ex) {
+                // ignore and just retry
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Single-shot lookup, no retry loop — see {@link #findDataSetNoRetry}. Also the variant for
+     * asserting the stats-before-bucket ordering (plan D4): once a bucket is visible, its PV's
+     * statistic must already be, so a retry here would only mask a reordering.
+     */
+    public PvStatsDocument findPvStatsNoRetry(String pvName) {
+        final List<PvStatsDocument> matchingDocuments = new ArrayList<>();
+        mongoCollectionPvStats.find(eq("_id", pvName)).into(matchingDocuments);
+        return matchingDocuments.isEmpty() ? null : matchingDocuments.get(0);
     }
 
     public ProviderDocument findProvider(String providerId) {
