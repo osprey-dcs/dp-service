@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
+import org.bson.Document;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
@@ -30,6 +31,8 @@ public class MongoSyncQueryHandlerTest extends MongoQueryHandlerTestBase {
         }
 
         public int insertBucketDocuments(List<BucketDocument> documentList) {
+            // seed pvStats as ingestion would (#232) -- see MongoQueryHandlerTestBase.recordPvStatsForBuckets
+            recordPvStatsForBuckets(mongoCollectionPvStats.withDocumentClass(Document.class), documentList);
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
             return result.getInsertedIds().size();
         }

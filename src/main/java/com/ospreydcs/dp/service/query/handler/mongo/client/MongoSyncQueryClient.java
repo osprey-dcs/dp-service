@@ -551,7 +551,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindowBegin(
                 resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
         if (clampedIntervals.isEmpty()) {
-            // nothing overlaps the page window
+            // nothing overlaps the page window. The samples dispatchers screen this same condition,
+            // from the same clamp, before calling — so a null they receive is one of the failures below.
             return null;
         }
 

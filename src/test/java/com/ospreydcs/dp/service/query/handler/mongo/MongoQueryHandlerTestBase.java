@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
+import com.mongodb.client.MongoCollection;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
@@ -8,13 +9,16 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.PvStatsMaxSpanUpdater;
 import com.ospreydcs.dp.service.query.QueryTestBase;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataBidiStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
 import io.grpc.stub.StreamObserver;
+import org.bson.Document;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +43,29 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
 
     protected interface TestClientInterface extends MongoQueryClientInterface {
         public int insertBucketDocuments(List<BucketDocument> documentList);
+    }
+
+    /**
+     * Records pvStats for buckets a test client is about to insert directly, as ingestion does
+     * (issue #232). Every stored bucket's PV carries a {@code maxBucketSpanSeconds} at least its span
+     * (recorded at ingestion, or seeded by schema migration v5), and the query-side
+     * {@code firstTime} lower bound relies on that: a bucket inserted with no stat is bounded by span
+     * 0 and is invisible to any query whose window begins after its firstTime — for example a
+     * continuation page resuming inside a spanning bucket. Test clients that bypass ingestion must
+     * therefore seed the stat themselves, or their fixture does not look like stored data.
+     */
+    protected static void recordPvStatsForBuckets(
+            MongoCollection<Document> pvStatsCollection, List<BucketDocument> documentList) {
+        final PvStatsMaxSpanUpdater updater = new PvStatsMaxSpanUpdater(pvStatsCollection);
+        try {
+            for (BucketDocument document : documentList) {
+                final long spanSeconds = document.getDataTimestamps().getLastTime().getSeconds()
+                        - document.getDataTimestamps().getFirstTime().getSeconds();
+                updater.recordSpan(List.of(document.getPvName()), spanSeconds);
+            }
+        } catch (DpException ex) {
+            throw new RuntimeException("failed to record pvStats for test buckets", ex);
+        }
     }
 
     private static String getTestCollectionNamePrefix() {

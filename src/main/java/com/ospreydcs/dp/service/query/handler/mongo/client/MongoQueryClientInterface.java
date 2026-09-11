@@ -81,7 +81,9 @@ public interface MongoQueryClientInterface {
      * strictly after that {@code (pvName, firstTimeSecs, firstTimeNanos)} tuple (Q2). Sorted by the
      * compound {@code (pvName, firstTimeSecs, firstTimeNanos)} key and limited to
      * {@code pageSize + 1} (the extra probe row lets the caller detect a following page). Returns
-     * null on a null/empty resolution.
+     * null on a null/empty resolution or on a retrieval failure (a database error, or a failed
+     * pvStats span read — #232 plan D8); the dispatcher screens empty resolutions before calling, so
+     * a null it receives is reported as an error.
      */
     MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery resolvedQuery);
 
@@ -89,7 +91,10 @@ public interface MongoQueryClientInterface {
      * Retrieves the full, unbounded bucket cursor for a Query API V2 streaming bucket query. Same
      * PV-name filter and {@code $or} fragment overlap as {@link #executeQueryBucketsV2}, but with no
      * keyset seek and no limit — the entire result is streamed to exhaustion and chunked into
-     * messages downstream (fire-and-consume). Returns null on a null/empty resolution.
+     * messages downstream (fire-and-consume). Returns null on a null/empty resolution or on a
+     * retrieval failure (a database error, or a failed pvStats span read — #232 plan D8); the
+     * dispatcher screens empty resolutions before calling, so a null it receives is reported as an
+     * error.
      */
     MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
 
@@ -102,7 +107,10 @@ public interface MongoQueryClientInterface {
      * by {@code (pvName, firstTimeSecs, firstTimeNanos)}. Unlike the bucket path there is no keyset
      * seek and no {@code pageSize+1} probe — the sample page is bounded by distinct-timestamp count
      * and the byte budget during assembly, not by a bucket-count limit. Returns null on a null/empty
-     * resolution.
+     * resolution, when no fragment overlaps the page window (see
+     * {@code TimeInterval.clampToWindowBegin}), or on a retrieval failure (a database error, or a
+     * failed pvStats span read — #232 plan D8). The samples dispatchers screen the first two before
+     * calling, so a null they receive is reported as an error, never as an empty page.
      */
     MongoCursor<BucketDocument> executeQuerySamplesV2(
             ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);

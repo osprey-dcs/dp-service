@@ -63,11 +63,25 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
         final long[] windowBegin = computeWindowBegin(resolvedQuery);
 
+        // Screen the empty window ahead of the database call so that a null cursor from the client
+        // can only mean a failure; same clamp as the client's retrieval filter (#207), so the two
+        // checks cannot disagree. See QuerySamplesUnaryDispatcher for the full rationale.
+        final List<TabularDataUtility.RetentionInterval> retentionIntervals =
+                retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]);
+        if (retentionIntervals.isEmpty()) {
+            emitEmptyChunkAndComplete();
+            return;
+        }
+
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBegin[0], windowBegin[1]);
 
+        // Null is a retrieval failure (a database error, or a failed pvStats span read — #232 plan
+        // D8): report an error rather than an empty stream, which would silently return no data.
         if (cursor == null) {
-            emitEmptyChunkAndComplete();
+            final String msg = "executeQuerySamplesV2 returned null cursor";
+            logger.error(msg + " id: " + responseObserver.hashCode());
+            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
             return;
         }
 
@@ -83,7 +97,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             // Trimming uses every resolved fragment rather than a collapsed window (#207).
             TabularDataUtility.addBucketsToTable(
                     tableValueMap, cursor, 0, null,
-                    retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]),
+                    retentionIntervals,
                     statusFilter);
         } catch (NonScalarColumnException e) {
             final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()

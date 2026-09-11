@@ -71,12 +71,28 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
         final long windowBeginSecs = windowBegin[0];
         final long windowBeginNanos = windowBegin[1];
 
+        // Screen the empty page window here, ahead of the database call, so that a null cursor from
+        // the client can only mean a failure. These intervals come from the same
+        // TimeInterval.clampToWindowBegin the client's retrieval filter is built from (#207), so this
+        // check and the client's own empty-window check cannot disagree. A continuation page whose
+        // resume timestamp lies at or past every fragment's end overlaps nothing: empty last page.
+        final List<TabularDataUtility.RetentionInterval> retentionIntervals =
+                retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos);
+        if (retentionIntervals.isEmpty()) {
+            QueryServiceImpl.sendQuerySamplesResponseEmpty(responseObserver);
+            return;
+        }
+
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
 
+        // With the empty resolution and the empty window screened above, null is a retrieval failure
+        // (a database error, or a failed pvStats span read — #232 plan D8). Report it as an error, as
+        // the bucket dispatchers do: treating it as an empty page would silently return no data.
         if (cursor == null) {
-            // no buckets overlap the window → empty page (last page)
-            QueryServiceImpl.sendQuerySamplesResponseEmpty(responseObserver);
+            final String msg = "executeQuerySamplesV2 returned null cursor";
+            logger.error(msg + " id: " + responseObserver.hashCode());
+            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
             return;
         }
 
@@ -96,7 +112,7 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
                     cursor,
                     0,
                     (int) Math.min(Integer.MAX_VALUE, byteBudget),
-                    retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos),
+                    retentionIntervals,
                     statusFilter);
             byteBudgetHit = sizeStats.sizeLimitExceeded();
         } catch (NonScalarColumnException e) {
