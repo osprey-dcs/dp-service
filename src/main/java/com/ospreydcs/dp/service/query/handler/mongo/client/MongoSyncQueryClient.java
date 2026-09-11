@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
@@ -110,6 +111,28 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos,
             long maxBucketSpanSeconds
     ) {
+        return bucketDocumentQuery(
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds)
+                .cursor();
+    }
+
+    /**
+     * Builds the V1 bucket retrieval query -- name filter, shared overlap predicate with the
+     * {@code firstTime} lower bound, and the {@code (pvName, firstTime)} sort -- without opening
+     * a cursor. {@link #executeBucketDocumentQuery} is this plus {@code cursor()}; the split
+     * exists so that {@code MongoBucketQueryPlanTest} can {@code explain()} the exact query the
+     * service issues and pin the planner's index bounds (#232), which no result-level test can
+     * observe. Package-private on purpose: production callers go through the cursor method.
+     */
+    FindIterable<BucketDocument> bucketDocumentQuery(
+            Bson columnNameFilter,
+            long startTimeSeconds,
+            long startTimeNanos,
+            long endTimeSeconds,
+            long endTimeNanos,
+            long maxBucketSpanSeconds
+    ) {
         // Bucket overlap predicate (firstTime < end AND lastTime >= begin) built from the shared
         // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift. The
         // span is the per-query pvStats maximum resolved by the caller (#232).
@@ -128,8 +151,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                         BsonConstants.BSON_KEY_PV_NAME,
                         BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
                         BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
-                ))
-                .cursor();
+                ));
     }
 
     @Override
@@ -159,10 +181,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     @Override
     public MongoCursor<BucketDocument> executeQueryData(QueryDataRequest.QuerySpec querySpec) {
 
-        // snippet to get query plan
-//        Document explanation = collection.find().explain(ExplainVerbosity.EXECUTION_STATS);
-//        List<String> keys = Arrays.asList("queryPlanner", "winningPlan");
-//        System.out.println(explanation.getEmbedded(keys, Document.class).toJson());
+        // To inspect the query plan, explain() the FindIterable from bucketDocumentQuery(); the
+        // plan-shape test MongoBucketQueryPlanTest does exactly that and pins the index bounds.
 
         final long startTimeSeconds = querySpec.getBeginTime().getEpochSeconds();
         final long startTimeNanos = querySpec.getBeginTime().getNanoseconds();
