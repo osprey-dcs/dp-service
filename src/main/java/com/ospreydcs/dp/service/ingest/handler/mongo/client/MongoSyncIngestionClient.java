@@ -14,10 +14,12 @@ import com.ospreydcs.dp.grpc.v1.ingestion.IngestionRequestStatus;
 import com.ospreydcs.dp.grpc.v1.ingestion.QueryRequestStatusRequest;
 import com.ospreydcs.dp.grpc.v1.ingestion.RegisterProviderRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
+import com.ospreydcs.dp.service.common.bson.DataTimestampsDocument;
 import com.ospreydcs.dp.service.common.bson.DpBsonDocumentBase;
 import com.ospreydcs.dp.service.common.bson.ProviderDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.protobuf.AttributesUtility;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
@@ -26,6 +28,7 @@ import com.ospreydcs.dp.service.ingest.handler.model.FindProviderResult;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
@@ -41,6 +44,20 @@ import static com.mongodb.client.model.Indexes.ascending;
 public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIngestionClientInterface {
 
     private static final Logger logger = LogManager.getLogger();
+
+    // per-PV bucket span statistics (#232), created in init() once the pvStats collection exists
+    private PvStatsMaxSpanUpdater pvStatsMaxSpanUpdater = null;
+
+    @Override
+    public boolean init() {
+        if (!super.init()) {
+            return false;
+        }
+        // The updater works on raw Documents: it sets one field by name and never encodes a
+        // PvStatsDocument, so it takes the collection re-typed rather than the POJO handle.
+        pvStatsMaxSpanUpdater = new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+        return true;
+    }
 
     @Override
     public UpdateResultWrapper upsertProvider(RegisterProviderRequest request) {
@@ -136,6 +153,41 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
             document.setCreatedAt(now);
         }
 
+        // Record the batch's bucket span in pvStats BEFORE inserting the buckets (#232, D4). Every
+        // bucket in the batch is built from the request frame's single DataTimestamps, so one span
+        // covers all of them and the first document is representative. A stats write that fails
+        // fails the request with no buckets inserted; the reverse order could leave a bucket a
+        // query's firstTime lower bound never covers, a silent wrong answer rather than an error.
+        if (dataDocumentBatch.isEmpty()) {
+            final String errorMsg = "insertBatch received empty bucket batch";
+            logger.error(errorMsg);
+            return new IngestionTaskResult(true, errorMsg, null);
+        }
+        final DataTimestampsDocument dataTimestamps = dataDocumentBatch.get(0).getDataTimestamps();
+        if (dataTimestamps == null || dataTimestamps.getFirstTime() == null || dataTimestamps.getLastTime() == null) {
+            final String errorMsg = "insertBatch bucket batch is missing dataTimestamps first/last time";
+            logger.error(errorMsg);
+            return new IngestionTaskResult(true, errorMsg, null);
+        }
+        final long spanSeconds =
+                dataTimestamps.getLastTime().getSeconds() - dataTimestamps.getFirstTime().getSeconds();
+        if (spanSeconds < 0) {
+            final String errorMsg = "insertBatch bucket batch has negative time span: " + spanSeconds;
+            logger.error(errorMsg);
+            return new IngestionTaskResult(true, errorMsg, null);
+        }
+        final List<String> pvNames = new ArrayList<>(dataDocumentBatch.size());
+        for (BucketDocument document : dataDocumentBatch) {
+            pvNames.add(document.getPvName());
+        }
+        try {
+            pvStatsMaxSpanUpdater.recordSpan(pvNames, spanSeconds);
+        } catch (DpException ex) {
+            final String errorMsg = "error recording bucket span statistics: " + ex.getMessage();
+            logger.error(errorMsg, ex);
+            return new IngestionTaskResult(true, errorMsg, null);
+        }
+
         // insert batch of bson data documents to mongodb
         InsertManyResult result = null;
         try {
@@ -143,7 +195,7 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
         } catch (MongoException ex) {
             // insertMany exception
             final String errorMsg = "MongoException in insertMany: " + ex.getMessage();
-            logger.error(errorMsg);
+            logger.error(errorMsg, ex);
             return new IngestionTaskResult(true, errorMsg, null);
         }
 
