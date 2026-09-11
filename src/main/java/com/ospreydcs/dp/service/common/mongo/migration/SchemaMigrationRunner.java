@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.mongo.migration.migrations.V1AnnotationCo
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V2NormalizeAnnotationTags;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V3CanonicalizeAnnotationReferenceIds;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V4StampColumnDiscriminators;
+import com.ospreydcs.dp.service.common.mongo.migration.migrations.V5SeedPvStatsMaxBucketSpan;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,7 +59,7 @@ public class SchemaMigrationRunner {
      * version lines move at different rates and coupling them would mean either bumping this on
      * every release or maintaining a mapping.
      */
-    public static final int SCHEMA_VERSION = 4;
+    public static final int SCHEMA_VERSION = 5;
 
     /**
      * Migrations in application order. Must be contiguous from 1 through {@link #SCHEMA_VERSION};
@@ -69,7 +70,8 @@ public class SchemaMigrationRunner {
             new V1AnnotationCommentToDescription(),
             new V2NormalizeAnnotationTags(),
             new V3CanonicalizeAnnotationReferenceIds(),
-            new V4StampColumnDiscriminators()
+            new V4StampColumnDiscriminators(),
+            new V5SeedPvStatsMaxBucketSpan()
     );
 
     /**
