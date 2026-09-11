@@ -181,6 +181,13 @@ public class MongoAsyncClient extends MongoClientBase {
         return true;
     }
 
+    @Override
+    protected boolean initMongoCollectionPvStats(String collectionName) {
+        // pvStats collection not used by async client: it is test-only (see runSchemaMigrations())
+        // and its ingestion client does not maintain per-PV statistics.
+        return true;
+    }
+
     /**
      * Not supported on this client: the reactive driver exposes no synchronous
      * {@code MongoDatabase}, and the runner needs one because a migration must complete before

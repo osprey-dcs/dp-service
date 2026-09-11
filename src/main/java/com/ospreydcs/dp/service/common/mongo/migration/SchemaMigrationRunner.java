@@ -106,6 +106,7 @@ public class SchemaMigrationRunner {
             MongoClientBase.COLLECTION_NAME_CONFIGURATIONS,
             MongoClientBase.COLLECTION_NAME_CONFIGURATION_ACTIVATIONS,
             MongoClientBase.COLLECTION_NAME_SAMPLE_STATUS_BUCKETS,
+            MongoClientBase.COLLECTION_NAME_PV_STATS,
             BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION
     );
 

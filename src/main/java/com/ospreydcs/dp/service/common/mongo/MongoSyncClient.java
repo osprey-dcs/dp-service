@@ -17,6 +17,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.migration.SchemaMigrationRunner;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
@@ -48,6 +49,7 @@ public class MongoSyncClient extends MongoClientBase {
     protected MongoCollection<ConfigurationDocument> mongoCollectionConfigurations = null;
     protected MongoCollection<ConfigurationActivationDocument> mongoCollectionConfigurationActivations = null;
     protected MongoCollection<SampleStatusBucketDocument> mongoCollectionSampleStatusBuckets = null;
+    protected MongoCollection<PvStatsDocument> mongoCollectionPvStats = null;
 
     @Override
     protected boolean initMongoClient(String connectString) {
@@ -215,6 +217,12 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean initMongoCollectionSampleStatusBuckets(String collectionName) {
         mongoCollectionSampleStatusBuckets = mongoDatabase.getCollection(collectionName, SampleStatusBucketDocument.class);
+        return true;
+    }
+
+    @Override
+    protected boolean initMongoCollectionPvStats(String collectionName) {
+        mongoCollectionPvStats = mongoDatabase.getCollection(collectionName, PvStatsDocument.class);
         return true;
     }
 
