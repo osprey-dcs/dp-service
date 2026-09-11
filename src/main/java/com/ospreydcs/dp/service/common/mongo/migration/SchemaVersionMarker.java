@@ -18,11 +18,12 @@ import java.util.List;
 /**
  * Reads and writes the single marker document recording which schema version a database is at.
  *
- * <p>Structurally this follows {@code BucketSpanVerifier}'s marker: one document with a fixed
- * {@code _id} in a dedicated collection, so the collection holds exactly one record. What it
- * deliberately does <b>not</b> follow is that class's unsynchronized read-check-write. That is safe
- * there because its work is idempotent and read-only and its failure mode is a lost optimization;
- * a migration is neither. Every service process runs {@code MongoClientBase.init()}, and the
+ * <p>Structurally this is one document with a fixed {@code _id} in a dedicated collection, so the
+ * collection holds exactly one record — the shape the startup bucket-span marker had before #232
+ * removed that check. What it deliberately does <b>not</b> share with that marker is an
+ * unsynchronized read-check-write. That was safe there because the work was idempotent and
+ * read-only and its failure mode a lost optimization; a migration is neither. Every service
+ * process runs {@code MongoClientBase.init()}, and the
  * documented deployment starts three of them, so two processes reaching the runner at once is the
  * normal case rather than an edge case.
  *

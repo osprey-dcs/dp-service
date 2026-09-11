@@ -13,9 +13,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Covers loading and validation of the max bucket span limit (#197). The limit is a shared
- * invariant between ingestion and query, and both of its failure modes are silent wrong answers
- * rather than errors, so the out-of-range cases below must fail loudly.
+ * Covers loading and validation of the max bucket span limit (#197). The limit binds ingestion
+ * validation, and an out-of-range value would refuse valid data on every request while looking
+ * like a validation outcome, so the out-of-range cases below must fail loudly.
  */
 public class BucketSpanLimitsTest extends ConfigurationManagerTestBase {
 
@@ -58,9 +58,7 @@ public class BucketSpanLimitsTest extends ConfigurationManagerTestBase {
     }
 
     /**
-     * A zero limit would make ingestion reject any frame with more than one distinct timestamp,
-     * while narrowing the query lower bound to beginSeconds and dropping every bucket that starts
-     * before the query window.
+     * A zero limit would make ingestion reject any frame with more than one distinct timestamp.
      */
     @Test
     public void testZeroSpanRejected() {

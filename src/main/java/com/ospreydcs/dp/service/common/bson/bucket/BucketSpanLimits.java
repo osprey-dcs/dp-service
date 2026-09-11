@@ -6,18 +6,13 @@ import com.ospreydcs.dp.service.common.exception.DpRuntimeException;
 /**
  * Single source for the maximum time span (lastTime - firstTime) a bucket document may cover.
  *
- * <p>This limit is a shared invariant between the ingestion and query services (issue #197):
- * ingestion validation rejects any data frame whose timestamps span more than the limit, which
- * lets the query-side bucket-overlap filter add the lower bound
- * {@code firstTime.seconds >= beginSeconds - maxBucketSpanSeconds}. Without that bound, the
- * overlap predicate ({@code firstTime < end AND lastTime >= begin}) forces an index scan of each
- * PV's entire history up to the query window — 31.6M keys examined to return 32 documents in the
- * incident deployment.
- *
- * <p>IMPORTANT deployment note: the query bound assumes every archived bucket satisfies the
- * configured limit. When enabling a smaller limit on an archive with pre-existing data, the
- * configured value must be at least the largest bucket span already stored, or queries may
- * silently miss buckets ingested before the limit was enforced.
+ * <p>The limit binds ingestion only: ingestion validation rejects any data frame whose timestamps
+ * span more than it (issue #197). It does not shape queries. The query-side lower bound on the
+ * bucket-overlap filter, {@code firstTime.seconds >= beginSeconds - maxBucketSpanSeconds}, takes
+ * its span per PV from the {@code pvStats} collection, which records the largest span actually
+ * ingested for each PV (issue #232). That makes the bound exact for the data stored, so this
+ * configured value neither needs to cover spans ingested before it was introduced nor affects
+ * query results: raising or lowering it changes only what ingestion accepts from then on.
  */
 public class BucketSpanLimits {
 
@@ -32,9 +27,9 @@ public class BucketSpanLimits {
     public static final long MAX_CONFIGURABLE_SPAN_SECONDS = Long.MAX_VALUE / 1_000_000_000L;
 
     /**
-     * Resolved once and cached: the filter builder reads this per retrieval interval, and the
-     * config map is immutable after {@code ConfigurationManager.initialize()}. Caching also gives
-     * the validation below a single well-defined place to run.
+     * Resolved once and cached: ingestion validation reads this on every request, and the config
+     * map is immutable after {@code ConfigurationManager.initialize()}. Caching also gives the
+     * validation below a single well-defined place to run.
      */
     private static volatile Long cachedMaxBucketSpanSeconds = null;
 
@@ -53,11 +48,11 @@ public class BucketSpanLimits {
     }
 
     /**
-     * Reads the configured limit and rejects values that would silently corrupt either side of the
-     * invariant: a non-positive limit makes ingestion reject nearly everything while narrowing the
-     * query bound enough to drop buckets that start before the query window, and an oversized limit
-     * overflows the nanos conversion. Both failures are silent wrong answers rather than errors,
-     * which is exactly what this invariant exists to prevent.
+     * Reads the configured limit and rejects values that would corrupt ingestion validation: a
+     * non-positive limit rejects nearly every data frame, and an oversized limit overflows the
+     * nanos conversion into a negative bound that rejects everything. Either would refuse valid
+     * data on every request while looking like a validation outcome, so an out-of-range value
+     * fails loudly here instead.
      *
      * @throws DpRuntimeException if the configured value is outside the supported range
      */
@@ -69,8 +64,7 @@ public class BucketSpanLimits {
             throw new DpRuntimeException(
                     "invalid configuration " + CFG_KEY_MAX_BUCKET_SPAN_SECONDS + "=" + configuredValue
                             + ": must be positive, since a non-positive bucket span limit causes "
-                            + "ingestion to reject valid data and causes time-range queries to "
-                            + "silently miss buckets");
+                            + "ingestion to reject valid data");
         }
 
         if (configuredValue > MAX_CONFIGURABLE_SPAN_SECONDS) {
@@ -89,35 +83,12 @@ public class BucketSpanLimits {
     }
 
     /**
-     * Whether the query-side time-range lower bound may be applied. Defaults to true so the bound
-     * is active unless something proves it unsafe: the query service clears this when startup
-     * verification finds a stored bucket exceeding the limit, or cannot complete the check.
-     *
-     * <p>Disabling degrades queries to the pre-#197 behavior — an unbounded index scan, slow but
-     * correct — which is strictly preferable to applying a bound that silently drops buckets.
-     */
-    private static volatile boolean queryLowerBoundEnabled = true;
-
-    public static boolean isQueryLowerBoundEnabled() {
-        return queryLowerBoundEnabled;
-    }
-
-    /**
-     * Disables the query lower bound for this process. Called when archive verification fails; the
-     * setting is per-process and is re-evaluated on the next startup.
-     */
-    public static void disableQueryLowerBound() {
-        queryLowerBoundEnabled = false;
-    }
-
-    /**
      * Resets the cached limit so a test can exercise a different configured value. Not for
-     * production use; the limit is a fixed deployment invariant.
+     * production use; the limit is a fixed deployment setting.
      */
     public static void resetCachedLimitForTesting() {
         synchronized (BucketSpanLimits.class) {
             cachedMaxBucketSpanSeconds = null;
-            queryLowerBoundEnabled = true;
         }
     }
 }

@@ -70,9 +70,11 @@ collections. Treating it as always-current would silently stamp a real unmigrate
 exactly the failure the mechanism exists to prevent.
 
 "Has data" is judged across every collection the services manage, and that deliberately includes
-`bucketSpanVerification` — the marker written by the bucket-span check on a previous startup. A
-database whose data collections have been emptied by a purge, a retention wipe, or a partial restore
-still carries that marker, and it is proof the database has been served before. Counting it can only
+`bucketSpanVerification` — the marker written by the startup bucket-span check that #232 removed.
+Nothing writes it any more and migration v5 drops it, but the name is kept as a legacy constant so
+a database written by an earlier build is still classified correctly: one whose data collections
+have been emptied by a purge, a retention wipe, or a partial restore may still carry that marker,
+and it is proof the database has been served before. Counting it can only
 push a database toward "populated", never toward "fresh", which is the safe direction: re-running
 migrations against empty collections is harmless because every migration is idempotent, while a
 legacy database mistaken for fresh is stamped as migrated with its migrations silently skipped.

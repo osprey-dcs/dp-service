@@ -50,6 +50,11 @@ public abstract class MongoClientBase {
     // Per-PV ingestion statistics (#232), one document per PV keyed by name as _id; see
     // PvStatsDocument. Only the default _id index: every read is by exact PV name.
     public static final String COLLECTION_NAME_PV_STATS = "pvStats";
+    // Legacy: the marker collection written by the startup bucket-span check that #232 removed. No
+    // client declares or initializes it any more. The constant is kept so the schema-migration
+    // emptiness probe still reads a pre-v5 database holding only that marker as legacy rather than
+    // fresh (see SchemaMigrationRunner.MANAGED_COLLECTION_NAMES); migration v5 drops the collection.
+    public static final String COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY = "bucketSpanVerification";
     public static final String COLLECTION_NAME_SERVICE_METADATA =
             SchemaVersionMarker.COLLECTION_NAME_SERVICE_METADATA;
 

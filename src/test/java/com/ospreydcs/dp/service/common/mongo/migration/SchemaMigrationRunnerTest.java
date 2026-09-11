@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.common.mongo.migration;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanVerifier;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
@@ -179,9 +178,10 @@ public class SchemaMigrationRunnerTest {
         // probe made exactly this database report applyCount=0 — stamped as migrated with the
         // migrations silently skipped, which is the failure the mechanism exists to prevent.
         //
-        // The constant lives on BucketSpanVerifier rather than MongoClientBase, which is why the
-        // list-coverage test below scans both classes.
-        database.getCollection(BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION)
+        // The check that wrote this marker was removed by #232 and migration v5 drops the
+        // collection, so the name survives only as a legacy constant on MongoClientBase — and a
+        // database at any earlier version can still hold it.
+        database.getCollection(MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY)
                 .insertOne(new Document("verifiedLimitSeconds", 86400L));
 
         final RecordingMigration migration = new RecordingMigration(1);
@@ -325,25 +325,24 @@ public class SchemaMigrationRunnerTest {
         // database look fresh, which stamps it as migrated and silently skips every migration. Pin
         // the list against the declared constants rather than trusting a hand copy.
         //
-        // Both declaring classes are consulted. bucketSpanVerification lives on BucketSpanVerifier
-        // rather than MongoClientBase, so scanning only the latter would leave it out of scope of a
-        // test whose whole promise is that a new collection cannot be forgotten.
+        // Every collection constant is declared on MongoClientBase, including the legacy
+        // bucketSpanVerification name: #232 moved it there when it deleted the class that declared
+        // it, because a constant declared anywhere else would fall out of scope of a test whose
+        // whole promise is that a collection cannot be forgotten.
         final List<String> declared = new ArrayList<>();
-        for (Class<?> declaringClass : List.of(MongoClientBase.class, BucketSpanVerifier.class)) {
-            for (Field field : declaringClass.getDeclaredFields()) {
-                if (!Modifier.isStatic(field.getModifiers())
-                        || !field.getName().startsWith("COLLECTION_NAME_")
-                        || field.getType() != String.class) {
-                    continue;
-                }
-                // serviceMetadata holds the marker itself, not service data; including it would make
-                // every database look populated the moment a marker is written.
-                if (field.getName().equals("COLLECTION_NAME_SERVICE_METADATA")) {
-                    continue;
-                }
-                field.setAccessible(true);
-                declared.add((String) field.get(null));
+        for (Field field : MongoClientBase.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers())
+                    || !field.getName().startsWith("COLLECTION_NAME_")
+                    || field.getType() != String.class) {
+                continue;
             }
+            // serviceMetadata holds the marker itself, not service data; including it would make
+            // every database look populated the moment a marker is written.
+            if (field.getName().equals("COLLECTION_NAME_SERVICE_METADATA")) {
+                continue;
+            }
+            field.setAccessible(true);
+            declared.add((String) field.get(null));
         }
 
         assertFalse("expected to find COLLECTION_NAME_* constants", declared.isEmpty());

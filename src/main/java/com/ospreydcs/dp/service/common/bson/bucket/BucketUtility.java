@@ -13,11 +13,13 @@ import static java.lang.Math.round;
 /**
  * Builds BucketDocuments directly for tests and benchmarks, bypassing the ingestion service.
  *
- * <p>NOTE (#197): because this path skips {@code IngestionValidationUtility}, it also skips
- * enforcement of the maximum bucket span invariant (see {@link BucketSpanLimits}). Callers must
- * keep {@code numSecondsPerBucket} within {@code Buckets.maxBucketSpanSeconds}; a bucket generated
- * beyond that span is excluded by the query-side time-range lower bound and simply will not be
- * found, with no error to indicate why.
+ * <p>NOTE (#232): because this path skips the ingestion service, it also skips recording each
+ * bucket's span in {@code pvStats}, which is where the query-side time-range lower bound takes its
+ * per-PV span from. A bucket inserted directly is therefore found only by queries whose window
+ * begins in or before the bucket's first second, unless the caller records its span first (see
+ * {@code MongoQueryHandlerTestBase.recordPvStatsForBuckets} and
+ * {@code MongoTestClient.upsertPvStatsMaxSpan}); a missed bucket produces no error to indicate
+ * why. The ingestion span limit ({@link BucketSpanLimits}) is not enforced here either.
  */
 public class BucketUtility {
     public static List<BucketDocument> createBucketDocuments(

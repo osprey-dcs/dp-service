@@ -13,9 +13,12 @@ import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivatio
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
+import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.PvStatsMaxSpanUpdater;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
@@ -110,6 +113,25 @@ public class MongoTestClient extends MongoSyncClient {
      */
     public void insertBucketDocument(BucketDocument bucketDocument) {
         mongoCollectionBuckets.insertOne(bucketDocument);
+    }
+
+    /**
+     * Records a per-PV max bucket span in pvStats the way ingestion does (#232), so that a bucket
+     * written with {@link #insertBucketDocument} becomes visible to time-range queries. A bucket
+     * with no pvStats entry contributes nothing to the query lower bound (plan D6), so a directly
+     * inserted bucket that starts before the query window is excluded until its span is recorded —
+     * what migration v5 does for a legacy archive, and what this helper does for a test fixture.
+     * Goes through the production updater: a {@code $max} upsert keyed by PV name, so a smaller
+     * value never lowers a stat ingestion has already recorded.
+     */
+    public void upsertPvStatsMaxSpan(String pvName, long spanSeconds) {
+        final PvStatsMaxSpanUpdater updater =
+                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+        try {
+            updater.recordSpan(List.of(pvName), spanSeconds);
+        } catch (DpException ex) {
+            throw new RuntimeException("upsertPvStatsMaxSpan failed for pv " + pvName, ex);
+        }
     }
 
     public ProviderDocument findProvider(String providerId) {
