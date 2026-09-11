@@ -90,11 +90,6 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
             logger.error("error in mongoQueryClient.init");
         }
 
-        // Dataset export issues bucket time-range queries through executeDataBlockQuery, so this
-        // process must establish the max bucket span invariant before relying on the query lower
-        // bound (#197) just as the query service does. The flag it controls is process-wide.
-        mongoQueryClient.verifyBucketSpans();
-
         return true;
     }
 

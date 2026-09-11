@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusDocumentUtility;
 import com.ospreydcs.dp.service.common.exception.DpException;
@@ -46,22 +47,80 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     private static final Logger logger = LogManager.getLogger();
 
+    /**
+     * Resolves the {@code firstTime} lower-bound span for a query naming {@code pvNames}: the
+     * largest {@code maxBucketSpanSeconds} over their {@code pvStats} documents (#232, plan D1).
+     * One indexed {@code $in} read on {@code _id}. A PV with no document contributes nothing
+     * (plan D6), so an empty list or no matches yields {@code 0}, which the filter builder turns
+     * into {@code firstTime.seconds >= beginSeconds} -- correct for PVs with no stored buckets.
+     *
+     * <p>Read fresh on every query, deliberately not cached (plan D7): a cached value can only be
+     * too small once a longer bucket is ingested, and a too-small bound silently drops that bucket.
+     *
+     * @throws DpException if the read fails; the caller must report the query as an error rather
+     *                     than fall back to the unbounded scan (plan D8)
+     */
+    public long resolveMaxBucketSpanSeconds(Collection<String> pvNames) throws DpException {
+        if (pvNames == null || pvNames.isEmpty()) {
+            return 0L;
+        }
+        return resolveMaxBucketSpanSeconds(
+                in(BsonConstants.BSON_KEY_PV_STATS_PV_NAME, pvNames), pvNames.size() + " named PVs");
+    }
+
+    /**
+     * Pattern variant of {@link #resolveMaxBucketSpanSeconds(Collection)} (plan D11): the V1 table
+     * query's pattern branch has no PV list, so the same regex is matched against
+     * {@code pvStats._id} and the maximum taken over the matches. The same single read as the list
+     * case, and a tighter bound than a global maximum.
+     */
+    public long resolveMaxBucketSpanSeconds(Pattern pvNamePattern) throws DpException {
+        return resolveMaxBucketSpanSeconds(
+                regex(BsonConstants.BSON_KEY_PV_STATS_PV_NAME, pvNamePattern),
+                "pattern " + pvNamePattern);
+    }
+
+    private long resolveMaxBucketSpanSeconds(Bson pvStatsFilter, String description) throws DpException {
+        long maxBucketSpanSeconds = 0L;
+        int documentCount = 0;
+        try (MongoCursor<PvStatsDocument> cursor = mongoCollectionPvStats
+                .find(pvStatsFilter)
+                .projection(Projections.include(BsonConstants.BSON_KEY_PV_STATS_MAX_BUCKET_SPAN_SECONDS))
+                .cursor()) {
+            while (cursor.hasNext()) {
+                final PvStatsDocument document = cursor.next();
+                documentCount++;
+                maxBucketSpanSeconds = Math.max(maxBucketSpanSeconds, document.getMaxBucketSpanSeconds());
+            }
+        } catch (RuntimeException ex) {
+            // MongoException and codec failures alike: any failure to establish the bound is a
+            // query error, never a silent fallback to the unbounded scan (plan D8).
+            throw new DpException("pvStats read failed for " + description + ": " + ex.getMessage(), ex);
+        }
+        logger.debug("resolved maxBucketSpanSeconds: {} from {} pvStats documents for {}",
+                maxBucketSpanSeconds, documentCount, description);
+        return maxBucketSpanSeconds;
+    }
+
     public MongoCursor<BucketDocument> executeBucketDocumentQuery(
             Bson columnNameFilter,
             long startTimeSeconds,
             long startTimeNanos,
             long endTimeSeconds,
-            long endTimeNanos
+            long endTimeNanos,
+            long maxBucketSpanSeconds
     ) {
         // Bucket overlap predicate (firstTime < end AND lastTime >= begin) built from the shared
-        // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift.
+        // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift. The
+        // span is the per-query pvStats maximum resolved by the caller (#232).
         final Bson overlapFilter = MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
-                startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+                startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos, maxBucketSpanSeconds);
         final Bson filter = and(columnNameFilter, overlapFilter);
 
         logger.debug("executing query columns: " + columnNameFilter
                 + " startSeconds: " + startTimeSeconds
-                + " endSeconds: " + endTimeSeconds);
+                + " endSeconds: " + endTimeSeconds
+                + " maxBucketSpanSeconds: " + maxBucketSpanSeconds);
 
         return mongoCollectionBuckets
                 .find(filter)
@@ -81,9 +140,20 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = dataBlock.getEndTime().getSeconds();
         final long endTimeNanos = dataBlock.getEndTime().getNanos();
 
+        // Per-query firstTime lower-bound span from pvStats (#232); a failed read is a query error
+        // reported through the null cursor (plan D8), never a fallback to the unbounded scan.
+        final long maxBucketSpanSeconds;
+        try {
+            maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(dataBlock.getPvNames());
+        } catch (DpException ex) {
+            logger.error("executeDataBlockQuery pvStats read error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
         final Bson columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, dataBlock.getPvNames());
         return executeBucketDocumentQuery(
-                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds);
     }
 
     @Override
@@ -99,9 +169,20 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = querySpec.getEndTime().getEpochSeconds();
         final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
+        // Per-query firstTime lower-bound span from pvStats (#232); a failed read is a query error
+        // reported through the null cursor (plan D8), never a fallback to the unbounded scan.
+        final long maxBucketSpanSeconds;
+        try {
+            maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(querySpec.getPvNamesList());
+        } catch (DpException ex) {
+            logger.error("executeQueryData pvStats read error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
         final Bson columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, querySpec.getPvNamesList());
         return executeBucketDocumentQuery(
-                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds);
     }
 
     @Override
@@ -112,25 +193,39 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = request.getEndTime().getEpochSeconds();
         final long endTimeNanos = request.getEndTime().getNanoseconds();
 
-        // create name filter using either list of pv names, or pv name pattern
-        Bson columnNameFilter = null;
-        switch (request.getPvNameSpecCase()) {
-            case PVNAMELIST -> {
-                columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, request.getPvNameList().getPvNamesList());
+        // Create the name filter from either the list of pv names or the pv name pattern, and
+        // resolve the per-query firstTime lower-bound span from pvStats the same way (#232): by
+        // name list, or by matching the same pattern against pvStats ids (plan D11). A failed read
+        // is a query error reported through the null cursor (plan D8), never an unbounded scan.
+        final Bson columnNameFilter;
+        final long maxBucketSpanSeconds;
+        try {
+            switch (request.getPvNameSpecCase()) {
+                case PVNAMELIST -> {
+                    final List<String> pvNames = request.getPvNameList().getPvNamesList();
+                    columnNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, pvNames);
+                    maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(pvNames);
+                }
+                case PVNAMEPATTERN -> {
+                    final Pattern pvNamePattern = Pattern.compile(
+                            request.getPvNamePattern().getPattern(), Pattern.CASE_INSENSITIVE);
+                    columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
+                    maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(pvNamePattern);
+                }
+                default -> {
+                    // PVNAMESPEC_NOT_SET
+                    return null;
+                }
             }
-            case PVNAMEPATTERN -> {
-                final Pattern pvNamePattern = Pattern.compile(
-                        request.getPvNamePattern().getPattern(), Pattern.CASE_INSENSITIVE);
-                columnNameFilter = Filters.regex(BsonConstants.BSON_KEY_PV_NAME, pvNamePattern);
-            }
-            case PVNAMESPEC_NOT_SET -> {
-                return null;
-            }
+        } catch (DpException ex) {
+            logger.error("executeQueryTable pvStats read error: {}", ex.getMessage(), ex);
+            return null;
         }
 
         // execute query
         return executeBucketDocumentQuery(
-                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos);
+                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds);
     }
 
     private MongoCursor<PvMetadataQueryResultDocument> executeQueryPvMetadata(Bson columnNameFilter) {
@@ -376,9 +471,19 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
+        // Per-query firstTime lower-bound span from pvStats (#232); a failed read is a query error
+        // reported through the null cursor (plan D8), never a fallback to the unbounded scan.
+        final long maxBucketSpanSeconds;
+        try {
+            maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(resolvedQuery.getPvNames());
+        } catch (DpException ex) {
+            logger.error("executeQueryBucketsV2 pvStats read error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
         // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
         final List<Bson> andParts = new ArrayList<>();
-        andParts.add(bucketBaseFilterV2(resolvedQuery));
+        andParts.add(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds));
 
         // Keyset seek (unary paging) is ANDed at top level, NOT distributed into the $or branches
         // (Q3 correctness note). Absent on the first page and on streaming queries.
@@ -406,11 +511,21 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
+        // Per-query firstTime lower-bound span from pvStats (#232); a failed read is a query error
+        // reported through the null cursor (plan D8), never a fallback to the unbounded scan.
+        final long maxBucketSpanSeconds;
+        try {
+            maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(resolvedQuery.getPvNames());
+        } catch (DpException ex) {
+            logger.error("executeQueryBucketsV2Stream pvStats read error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
         // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
         // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
         try {
             return mongoCollectionBuckets
-                    .find(bucketBaseFilterV2(resolvedQuery))
+                    .find(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds))
                     .sort(bucketV2Sort())
                     .cursor();
         } catch (Exception ex) {
@@ -429,21 +544,34 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
 
-        // Per-fragment overlap predicates with each fragment's lower bound clamped to the page window
-        // begin (windowBegin = resume timestamp on a continuation page, or timeRange begin on page 1).
-        // The clamp lives on TimeInterval so this filter and the dispatcher's sample-level retention
-        // trim are derived from the same interval set (#207) — see clampToWindowBegin.
-        final List<Bson> fragmentFilters = new ArrayList<>();
-        for (TimeInterval interval : TimeInterval.clampToWindowBegin(
-                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos)) {
-            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
-                    interval.getBeginSeconds(), interval.getBeginNanos(),
-                    interval.getEndSeconds(), interval.getEndNanos()));
-        }
-
-        if (fragmentFilters.isEmpty()) {
+        // Each fragment's lower bound is clamped to the page window begin (windowBegin = resume
+        // timestamp on a continuation page, or timeRange begin on page 1). The clamp lives on
+        // TimeInterval so this filter and the dispatcher's sample-level retention trim are derived
+        // from the same interval set (#207) — see clampToWindowBegin.
+        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
+        if (clampedIntervals.isEmpty()) {
             // nothing overlaps the page window
             return null;
+        }
+
+        // Per-query firstTime lower-bound span from pvStats (#232); a failed read is a query error
+        // reported through the null cursor (plan D8), never a fallback to the unbounded scan.
+        final long maxBucketSpanSeconds;
+        try {
+            maxBucketSpanSeconds = resolveMaxBucketSpanSeconds(resolvedQuery.getPvNames());
+        } catch (DpException ex) {
+            logger.error("executeQuerySamplesV2 pvStats read error: {}", ex.getMessage(), ex);
+            return null;
+        }
+
+        // Per-fragment overlap predicates over the clamped intervals.
+        final List<Bson> fragmentFilters = new ArrayList<>();
+        for (TimeInterval interval : clampedIntervals) {
+            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
+                    interval.getEndSeconds(), interval.getEndNanos(),
+                    maxBucketSpanSeconds));
         }
 
         final Bson overlapFilter = (fragmentFilters.size() == 1)
@@ -547,16 +675,18 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * Base V2 bucket filter shared by the unary and streaming retrieval paths: the resolved PV-name
      * {@code in(...)} filter AND the {@code $or} of the per-fragment bucket-overlap predicates
      * (single fragment → no {@code $or} wrapper). Built from the shared filter builder so V1 and V2
-     * overlap semantics cannot drift.
+     * overlap semantics cannot drift. {@code maxBucketSpanSeconds} is the per-query pvStats maximum
+     * the caller resolved (#232), applied to every fragment's {@code firstTime} lower bound.
      */
-    private static Bson bucketBaseFilterV2(ResolvedQuery resolvedQuery) {
+    private static Bson bucketBaseFilterV2(ResolvedQuery resolvedQuery, long maxBucketSpanSeconds) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
 
         final List<Bson> fragmentFilters = new ArrayList<>();
         for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
             fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
                     interval.getBeginSeconds(), interval.getBeginNanos(),
-                    interval.getEndSeconds(), interval.getEndNanos()));
+                    interval.getEndSeconds(), interval.getEndNanos(),
+                    maxBucketSpanSeconds));
         }
         final Bson overlapFilter = (fragmentFilters.size() == 1)
                 ? fragmentFilters.get(0)

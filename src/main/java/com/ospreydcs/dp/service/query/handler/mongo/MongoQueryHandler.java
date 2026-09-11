@@ -72,11 +72,6 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             return false;
         }
 
-        // Confirm the stored archive satisfies the max bucket span invariant before queries rely on
-        // it (#197). Never fails startup: on violation the lower bound is disabled and queries fall
-        // back to the slower unbounded scan rather than silently dropping buckets.
-        mongoQueryClient.verifyBucketSpans();
-
         return true;
     }
 

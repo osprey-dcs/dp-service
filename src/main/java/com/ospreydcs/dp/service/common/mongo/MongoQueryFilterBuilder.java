@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.common.mongo;
 
 import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import org.bson.conversions.Bson;
 
 import java.time.Instant;
@@ -109,19 +108,41 @@ public class MongoQueryFilterBuilder {
      * span intersects the half-open query range {@code [begin, end)}:
      * {@code firstTime < end AND lastTime >= begin} (with {@code (seconds, nanos)} lexicographic
      * comparison), plus the index-enabling lower bound
-     * {@code firstTime.seconds >= beginSeconds - maxBucketSpanSeconds} (#197) which is implied by
-     * the ingestion-enforced cap on bucket span and bounds the compound index scan that the
-     * overlap predicate alone leaves open-ended. This is the single source for the overlap
-     * condition shared by the V1 data/table
-     * retrieval path ({@code executeBucketDocumentQuery}) and the Query API V2 {@code $or}
-     * configuration-fragment retrieval, so the two cannot drift.
+     * {@code firstTime.seconds >= beginSeconds - maxBucketSpanSeconds}. This is the single source
+     * for the overlap condition shared by the V1 data/table retrieval path
+     * ({@code executeBucketDocumentQuery}) and the Query API V2 {@code $or} configuration-fragment
+     * retrieval, so the two cannot drift.
+     *
+     * <p>The lower bound is what keeps the compound {@code (pvName, firstTime)} index scan from
+     * starting at the beginning of each PV's history: the overlap predicate alone leaves the scan
+     * open-ended below {@code begin}. The caller supplies {@code maxBucketSpanSeconds} from the
+     * {@code pvStats} collection as the largest {@code lastTime.seconds - firstTime.seconds} over
+     * every bucket ever stored for the PVs the query names (#232, plan D1/D3). That seconds-field
+     * difference is exactly the quantity the bound consumes: any bucket overlapping the range has
+     * {@code lastTime.seconds >= beginSeconds}, hence {@code firstTime.seconds >= beginSeconds - span},
+     * so the bound excludes no overlapping bucket as long as the supplied span is at least every
+     * such bucket's seconds-field difference. A span of zero (no {@code pvStats} document for any
+     * named PV, plan D6) yields {@code firstTime.seconds >= beginSeconds}, which is correct for PVs
+     * with no stored buckets.
      *
      * <p>Distinct from {@link #activationOverlapsRangeFilter}: this operates on the buckets
      * collection's {@code dataTimestamps.firstTime}/{@code lastTime} fields, and the lower bound is
      * inclusive ({@code lastTime >= begin}) matching the long-standing V1 semantics.
+     *
+     * @param maxBucketSpanSeconds largest {@code lastTime.seconds - firstTime.seconds} over the
+     *                             buckets the query can match; must be non-negative
+     * @throws IllegalArgumentException if {@code maxBucketSpanSeconds} is negative, which no stored
+     *                                  statistic can be, and which would tighten the bound past
+     *                                  {@code begin} and silently drop overlapping buckets
      */
     public static Bson bucketOverlapsRangeFilter(
-            long beginSeconds, long beginNanos, long endSeconds, long endNanos) {
+            long beginSeconds, long beginNanos, long endSeconds, long endNanos,
+            long maxBucketSpanSeconds) {
+
+        if (maxBucketSpanSeconds < 0) {
+            throw new IllegalArgumentException(
+                    "maxBucketSpanSeconds must be non-negative: " + maxBucketSpanSeconds);
+        }
 
         // firstTime < end : firstSecs < endSecs OR (firstSecs == endSecs AND firstNanos < endNanos)
         final Bson endTimeFilter = Filters.or(
@@ -137,25 +158,15 @@ public class MongoQueryFilterBuilder {
                         Filters.eq(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS, beginSeconds),
                         Filters.gte(BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS, beginNanos)));
 
-        // firstTime lower bound (#197): a bucket's span is capped at maxBucketSpanSeconds (enforced
-        // by ingestion validation), so any bucket with lastTime >= begin must have
-        // firstTime.seconds >= beginSeconds - maxBucketSpanSeconds. Without this bound the compound
-        // index scan has no lower limit and covers each PV's entire history up to the query window.
+        // firstTime lower bound: any bucket with lastTime >= begin has
+        // firstTime.seconds >= beginSeconds - maxBucketSpanSeconds, the span being the largest
+        // seconds-field difference over the buckets in play (see the Javadoc).
         //
-        // The bound is omitted when startup verification could not confirm that the stored archive
-        // satisfies the limit (see BucketSpanVerifier). Applying it to an archive containing an
-        // over-long bucket would silently exclude that bucket from results, so an unbounded scan --
-        // slow but correct -- is the safer degradation.
-        if (!BucketSpanLimits.isQueryLowerBoundEnabled()) {
-            return Filters.and(endTimeFilter, startTimeFilter);
-        }
-
         // Saturate rather than wrap. Query time ranges are not validated for a lower bound, so a
         // begin time near Long.MIN_VALUE reaches this subtraction; wrapping would produce a large
         // POSITIVE lower bound that excludes every bucket, turning an over-wide query into a silent
-        // empty result. Clamping to Long.MIN_VALUE makes the bound a no-op instead, which is the
+        // empty result. Omitting only the lower bound makes it a no-op instead, which is the
         // correct meaning: a query starting at the dawn of time has no useful lower bound.
-        final long maxBucketSpanSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
         final long spanLowerBoundSeconds;
         try {
             spanLowerBoundSeconds = Math.subtractExact(beginSeconds, maxBucketSpanSeconds);
