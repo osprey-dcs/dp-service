@@ -29,6 +29,10 @@ public class MongoSyncQueryHandlerTest extends MongoQueryHandlerTestBase {
         protected String getCollectionNameRequestStatus() {
             return getTestCollectionNameRequestStatus();
         }
+        @Override
+        protected String getCollectionNamePvStats() {
+            return getTestCollectionNamePvStats();
+        }
 
         public int insertBucketDocuments(List<BucketDocument> documentList) {
             // seed pvStats as ingestion would (#232) -- see MongoQueryHandlerTestBase.recordPvStatsForBuckets

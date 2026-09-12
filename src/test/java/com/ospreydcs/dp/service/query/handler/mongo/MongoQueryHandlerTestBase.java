@@ -83,6 +83,18 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_REQUEST_STATUS;
     }
 
+    /**
+     * pvStats is per-run-prefixed like buckets, and for the same reason: these clients isolate
+     * their fixtures so one test class cannot see another's data. A shared pvStats would leak spans
+     * across classes — harmless in the correctness direction, since {@code $max} only ever widens
+     * the bound and a wider bound never drops a bucket, but enough to make a test that asserts on a
+     * specific resolved span (the plan-shape test's bound arithmetic, say) pass or fail depending
+     * on what ran before it.
+     */
+    protected static String getTestCollectionNamePvStats() {
+        return getTestCollectionNamePrefix() + MongoClientBase.COLLECTION_NAME_PV_STATS;
+    }
+
     public static void setUp(MongoQueryHandler handler, TestClientInterface clientInterface) throws Exception {
         System.out.println("setUp");
         MongoQueryHandlerTestBase.handler = handler;
