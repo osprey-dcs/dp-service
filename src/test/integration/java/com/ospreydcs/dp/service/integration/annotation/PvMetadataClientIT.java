@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.client.AnnotationClient;
+import com.ospreydcs.dp.client.criteria.AttributeCriterion;
+import com.ospreydcs.dp.client.criteria.TextMatch;
 import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.GetPvMetadataApiResult;
 import com.ospreydcs.dp.client.result.QueryPvMetadataApiResult;
@@ -324,8 +326,8 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of(), List.of(), List.of()),
-                        new AnnotationClient.TextMatch(null, null, null),
+                        new TextMatch(List.of(), List.of(), List.of()),
+                        new TextMatch(null, null, null),
                         List.of(),
                         List.of(),
                         0,
@@ -356,10 +358,10 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of(""), List.of("  "), List.of("\t")),
-                        new AnnotationClient.TextMatch(List.of(" "), List.of(""), List.of("   ")),
+                        new TextMatch(List.of(""), List.of("  "), List.of("\t")),
+                        new TextMatch(List.of(" "), List.of(""), List.of("   ")),
                         List.of("", "  "),
-                        List.of(new AnnotationClient.AttributeCriterion("  ", List.of("v"))),
+                        List.of(new AttributeCriterion("  ", List.of("v"))),
                         0,
                         null);
 
@@ -382,7 +384,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        new TextMatch(null, List.of(""), null),
                         null, null, null, 0, null);
 
         final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
@@ -408,7 +410,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, prefixWithBlanks, null),
+                        new TextMatch(null, prefixWithBlanks, null),
                         null,
                         List.of("realtag", "  "),
                         null,
@@ -443,8 +445,8 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
                         null,
                         null,
                         List.of(
-                                new AnnotationClient.AttributeCriterion("  ", List.of("v")),
-                                new AnnotationClient.AttributeCriterion("realkey", List.of("v"))),
+                                new AttributeCriterion("  ", List.of("v")),
+                                new AttributeCriterion("realkey", List.of("v"))),
                         0,
                         null);
 
@@ -468,7 +470,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(exactWithNull, null, null),
+                        new TextMatch(exactWithNull, null, null),
                         null, null, null, 0, null);
 
         final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(params);
@@ -508,7 +510,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        new TextMatch(null, List.of(""), null),
                         null, null, null, 0, null);
 
         // the guarantee: no criterion is emitted, so no "^" + Pattern.quote("") regex is built
@@ -536,7 +538,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // exact only
         final QueryPvMetadataRequest exactOnly = AnnotationClient.buildQueryPvMetadataRequest(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of("TEST:PV:1"), null, null),
+                        new TextMatch(List.of("TEST:PV:1"), null, null),
                         null, null, null, 0, null));
         assertEquals(1, exactOnly.getCriteriaCount());
         assertEquals(
@@ -547,7 +549,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // prefix only
         final QueryPvMetadataRequest prefixOnly = AnnotationClient.buildQueryPvMetadataRequest(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of("TEST:"), null),
+                        new TextMatch(null, List.of("TEST:"), null),
                         null, null, null, 0, null));
         assertEquals(1, prefixOnly.getCriteriaCount());
         assertEquals(List.of("TEST:"), prefixOnly.getCriteria(0).getPvNameCriterion().getPrefixList());
@@ -556,7 +558,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // contains only
         final QueryPvMetadataRequest containsOnly = AnnotationClient.buildQueryPvMetadataRequest(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, null, List.of("PV")),
+                        new TextMatch(null, null, List.of("PV")),
                         null, null, null, 0, null));
         assertEquals(1, containsOnly.getCriteriaCount());
         assertEquals(List.of("PV"), containsOnly.getCriteria(0).getPvNameCriterion().getContainsList());
@@ -564,7 +566,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // all three combined in a single criterion
         final QueryPvMetadataRequest combined = AnnotationClient.buildQueryPvMetadataRequest(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(
+                        new TextMatch(
                                 List.of("TEST:PV:1"), List.of("TEST:"), List.of("PV")),
                         null, null, null, 0, null));
         assertEquals(1, combined.getCriteriaCount());
@@ -584,10 +586,10 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final AnnotationClient.QueryPvMetadataParams params =
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of("TEST:PV:1"), null, null),
-                        new AnnotationClient.TextMatch(null, List.of("alias-"), null),
+                        new TextMatch(List.of("TEST:PV:1"), null, null),
+                        new TextMatch(null, List.of("alias-"), null),
                         List.of("tag1", "tag2"),
-                        List.of(new AnnotationClient.AttributeCriterion("system", List.of("vacuum"))),
+                        List.of(new AttributeCriterion("system", List.of("vacuum"))),
                         25,
                         "token-abc");
 
@@ -627,8 +629,8 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
                         null,
                         null,
                         List.of(
-                                new AnnotationClient.AttributeCriterion("system", null),
-                                new AnnotationClient.AttributeCriterion("sector", List.of())),
+                                new AttributeCriterion("system", null),
+                                new AttributeCriterion("sector", List.of())),
                         0,
                         null);
 
@@ -652,7 +654,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final QueryPvMetadataRequest request = AnnotationClient.buildQueryPvMetadataRequest(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of("TEST:PV:1"), null, null),
+                        new TextMatch(List.of("TEST:PV:1"), null, null),
                         null, null, null, -5, null));
 
         assertEquals(0, request.getLimit());
@@ -703,7 +705,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final QueryPvMetadataApiResult result = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of("TEST:QUERY:"), null),
+                        new TextMatch(null, List.of("TEST:QUERY:"), null),
                         null, null, null, 100, null));
 
         assertFalse(result.resultStatus.msg, result.resultStatus.isError);
@@ -726,7 +728,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
 
         final QueryPvMetadataApiResult result = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(List.of("NO:SUCH:PV"), null, null),
+                        new TextMatch(List.of("NO:SUCH:PV"), null, null),
                         null, null, null, 100, null));
 
         assertFalse(result.resultStatus.msg, result.resultStatus.isError);
@@ -751,7 +753,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // page 1 of 2
         final QueryPvMetadataApiResult firstPage = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of("TEST:PAGE:"), null),
+                        new TextMatch(null, List.of("TEST:PAGE:"), null),
                         null, null, null, 2, null));
 
         assertFalse(firstPage.resultStatus.msg, firstPage.resultStatus.isError);
@@ -763,7 +765,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // page 2 of 2, fed the prior token; this is the last page, so its token is blank
         final QueryPvMetadataApiResult secondPage = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of("TEST:PAGE:"), null),
+                        new TextMatch(null, List.of("TEST:PAGE:"), null),
                         null, null, null, 2, firstPage.nextPageToken));
 
         assertFalse(secondPage.resultStatus.msg, secondPage.resultStatus.isError);
@@ -881,7 +883,7 @@ public class PvMetadataClientIT extends AnnotationIntegrationTestIntermediate {
         // whether the caller supplied criteria (#245 plan D1)
         final QueryPvMetadataApiResult withCriteria = annotationClient.queryPvMetadata(
                 new AnnotationClient.QueryPvMetadataParams(
-                        new AnnotationClient.TextMatch(null, List.of("TEST:LIMIT:"), null),
+                        new TextMatch(null, List.of("TEST:LIMIT:"), null),
                         null, null, null, 0, null));
 
         assertFalse(withCriteria.resultStatus.msg, withCriteria.resultStatus.isError);

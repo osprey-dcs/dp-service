@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.service.integration.annotation;
 
 import com.ospreydcs.dp.client.AnnotationClient;
+import com.ospreydcs.dp.client.criteria.AttributeCriterion;
+import com.ospreydcs.dp.client.criteria.TextMatch;
 import com.ospreydcs.dp.client.result.ApiResultStatus;
 import com.ospreydcs.dp.client.result.GetConfigurationActivationApiResult;
 import com.ospreydcs.dp.client.result.GetConfigurationApiResult;
@@ -689,7 +691,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(List.of(), List.of(), List.of()),
+                        new TextMatch(List.of(), List.of(), List.of()),
                         List.of(),
                         List.of(),
                         List.of(),
@@ -717,10 +719,10 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(List.of(""), List.of("  "), List.of("\t")),
+                        new TextMatch(List.of(""), List.of("  "), List.of("\t")),
                         List.of("", "  "),
                         List.of(" "),
-                        List.of(new AnnotationClient.AttributeCriterion("  ", List.of("v"))),
+                        List.of(new AttributeCriterion("  ", List.of("v"))),
                         List.of(""),
                         0,
                         null));
@@ -740,7 +742,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(null, List.of(""), null),
+                        new TextMatch(null, List.of(""), null),
                         null, null, null, null, 0, null));
 
         assertEquals(
@@ -758,7 +760,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(null, List.of("cfg-", "", "  "), null),
+                        new TextMatch(null, List.of("cfg-", "", "  "), null),
                         List.of("beamline", ""),
                         null, null, null, 0, null));
 
@@ -788,8 +790,8 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                         null,
                         null,
                         List.of(
-                                new AnnotationClient.AttributeCriterion("  ", List.of("v")),
-                                new AnnotationClient.AttributeCriterion("realkey", List.of("v"))),
+                                new AttributeCriterion("  ", List.of("v")),
+                                new AttributeCriterion("realkey", List.of("v"))),
                         null,
                         0,
                         null));
@@ -816,7 +818,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                                 List.of(" "),
                                 List.of(""),
                                 List.of("  "),
-                                List.of(new AnnotationClient.AttributeCriterion(" ", null)),
+                                List.of(new AttributeCriterion(" ", null)),
                                 0,
                                 null));
 
@@ -861,11 +863,11 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsRequest request = AnnotationClient.buildQueryConfigurationsRequest(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(
+                        new TextMatch(
                                 List.of("cfg-exact"), List.of("cfg-"), List.of("fg")),
                         List.of("beamline"),
                         List.of("tag1", "tag2"),
-                        List.of(new AnnotationClient.AttributeCriterion("facility", List.of("lcls"))),
+                        List.of(new AttributeCriterion("facility", List.of("lcls"))),
                         List.of("parent-1"),
                         50,
                         "token-xyz"));
@@ -909,7 +911,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                         null,
                         null,
                         null,
-                        List.of(new AnnotationClient.AttributeCriterion("facility", null)),
+                        List.of(new AttributeCriterion("facility", null)),
                         null,
                         0,
                         null));
@@ -955,7 +957,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
                                 List.of("activation-1"),
                                 List.of("beamline"),
                                 List.of("tag1"),
-                                List.of(new AnnotationClient.AttributeCriterion(
+                                List.of(new AttributeCriterion(
                                         "facility", List.of("lcls"))),
                                 40,
                                 "token-act"));
@@ -1084,7 +1086,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(null, List.of("query-cfg-"), null),
+                        new TextMatch(null, List.of("query-cfg-"), null),
                         null, null, null, null, 100, null));
 
         assertFalse(result.resultStatus.msg, result.resultStatus.isError);
@@ -1106,7 +1108,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsApiResult result = annotationClient.queryConfigurations(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(List.of("no-such-config"), null, null),
+                        new TextMatch(List.of("no-such-config"), null, null),
                         null, null, null, null, 100, null));
 
         assertFalse(result.resultStatus.msg, result.resultStatus.isError);
@@ -1132,7 +1134,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsApiResult firstPage = annotationClient.queryConfigurations(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(null, List.of("page-cfg-"), null),
+                        new TextMatch(null, List.of("page-cfg-"), null),
                         null, null, null, null, 2, null));
 
         assertFalse(firstPage.resultStatus.msg, firstPage.resultStatus.isError);
@@ -1143,7 +1145,7 @@ public class ConfigurationClientIT extends AnnotationIntegrationTestIntermediate
 
         final QueryConfigurationsApiResult secondPage = annotationClient.queryConfigurations(
                 new AnnotationClient.QueryConfigurationsParams(
-                        new AnnotationClient.TextMatch(null, List.of("page-cfg-"), null),
+                        new TextMatch(null, List.of("page-cfg-"), null),
                         null, null, null, null, 2, firstPage.nextPageToken));
 
         assertFalse(secondPage.resultStatus.msg, secondPage.resultStatus.isError);

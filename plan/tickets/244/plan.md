@@ -8,8 +8,12 @@
 - **Companion proto fix**: [osprey-dcs/dp-grpc#149](https://github.com/osprey-dcs/dp-grpc/issues/149)
   — correct the `ConfigurationSelector` empty-criteria comment
   (see [Design decision D1](#d1--the-empty-configurationselector-comment-is-the-defect-not-the-server)).
+  **Resolved** by dp-grpc PR #151 (`f753cfd`), which also documents the `pvSelector.metadataQuery`
+  match-all asymmetry noted in Background §2.
 - **Status**: triaged 2026-09-12 against dp-service `aafb3e3` and dp-grpc `6dfff3f`, by reading the
-  resolver, the four V2 dispatchers and the existing client/test layers. Not yet implemented.
+  resolver, the four V2 dispatchers and the existing client/test layers. **Implemented** 2026-09-12;
+  see [Implementation notes](#implementation-notes) for the two places the implementation departed
+  from the plan.
 
 ## Overview
 
@@ -452,3 +456,49 @@ Post to #244, or edit the body:
   it changes no generated code, only a comment.
 - **Phases 2, 3 and 4 each depend on phase 1** and are otherwise independent of each other; phase 4
   could be dropped without affecting 2 or 3 if the PR needs to shrink.
+
+## Implementation notes
+
+Two departures from the plan as written, both settled by what the code turned out to say.
+
+### D3's re-export was unnecessary
+
+The plan constrained the `TextMatch`/`AttributeCriterion` promotion not to change
+`AnnotationClient`'s public API shape, because dp-desktop-app was believed to consume
+`AnnotationClient.TextMatch`. It does not — a grep of that repo finds no reference to either type
+(it uses `SavePvMetadataParams`, `QuerySampleStatusesParams` and the other params records, none of
+which mention them). Java has no type alias and a record cannot be subclassed, so honoring the
+constraint would have required a wrapper type or moving the declarations onto
+`ServiceApiClientBase`, which conflates a channel holder with criteria value types.
+
+With no cross-repo consumer the clean move is available: the canonical declarations live in
+`com.ospreydcs.dp.client.criteria`, `AnnotationClient` imports them (its ~60 unqualified call sites
+are untouched), and the four `AnnotationClient.TextMatch` / `AnnotationClient.AttributeCriterion`
+references in `PvMetadataClientIT` and `ConfigurationClientIT` were updated to the new names.
+`nonBlank()`/`isBlankKey()` are static-imported, so every existing call site reads exactly as before.
+
+### The oversized-row test is not reachable from an IT
+
+The plan's testing section asked `QueryClientIT` to pin the oversized-row error alongside the
+non-scalar reject. The byte budget is a **dispatcher constructor argument**
+(`new QuerySamplesUnaryDispatcher(observer, byteBudget)`), which only a test constructing the
+dispatcher directly can set — an IT going through `QueryServiceImpl` gets the configured production
+value, and producing a genuinely oversized row against it would need a fixture far larger than the
+rest of the suite. The behavior is already pinned at the dispatcher level by
+`MongoSyncQuerySamplesV2Test.testUnaryOversizedSingleTimestampErrors` and
+`testStreamIndivisibleOversizedRowErrors`, including the differing message text that Background §5
+flagged. Adding a production-side test hook to reach it through the client layer would be a worse
+trade than leaving it covered where it is covered; the wrapper javadoc still carries the behavior,
+including the correction that narrowing the time range cannot help.
+
+### What landed
+
+- `client/criteria/`: `TextMatch`, `AttributeCriterion`, `ClientCriteria` (`nonBlank`, `isBlankKey`).
+- `QueryClient`: the `PvSelectorParams` sealed hierarchy, `QuerySpecParams`,
+  `ConfigurationCriterion`, `SampleStatusSelectorParams`, `QuerySamplesParams`,
+  `QueryBucketsParams`; `buildQuerySpec` and the six request builders (including the two stream
+  variants that drop `pageToken`); four observers; the eight `sendXxx`/`queryXxx` methods.
+- `result/`: `QuerySamplesApiResult`, `QueryBucketsApiResult`.
+- `QuerySamplesStreamAccumulationTest` (8 tests) and `QueryClientIT` (20 tests), all passing.
+- `GrpcIntegrationQueryServiceWrapper.getQueryChannel()` widened to `ManagedChannel`.
+- CLAUDE.md records the three invariants that outlive the ticket.
