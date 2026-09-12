@@ -91,7 +91,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             while (cursor.hasNext()) {
                 final PvStatsDocument document = cursor.next();
                 documentCount++;
-                maxBucketSpanSeconds = Math.max(maxBucketSpanSeconds, document.getMaxBucketSpanSeconds());
+                final long documentSpanSeconds = document.getMaxBucketSpanSeconds();
+                if (documentSpanSeconds < 0) {
+                    // No writing path can store this: ingestion only ever issues $max with a
+                    // non-negative span, and the v5 seed filters $gte 0 before merging. So it means
+                    // the collection was edited by hand or corrupted, and it is worth an operator's
+                    // attention -- but not a refusal to serve. Clamping to 0 gives the same bound a
+                    // PV with no document gets (D6), narrowing results for this one PV; rejecting
+                    // instead would fail EVERY query naming it, and because the bound is a max over
+                    // the request's PVs, every multi-PV query that happens to include it. That is
+                    // the outcome plan D10 already refuses to create at write time, so it should
+                    // not be introduced here at read time.
+                    logger.warn(
+                            "pvStats document pvName: {} has negative maxBucketSpanSeconds: {}; "
+                                    + "treating as 0. No writing path can store this -- the document "
+                                    + "was likely edited by hand. Queries naming this PV may miss "
+                                    + "buckets that start before the query window until it is repaired "
+                                    + "with a $max update (see doc/schema-migration.md, note on version 5).",
+                            document.getPvName(), documentSpanSeconds);
+                    continue;
+                }
+                maxBucketSpanSeconds = Math.max(maxBucketSpanSeconds, documentSpanSeconds);
             }
         } catch (RuntimeException ex) {
             // MongoException and codec failures alike: any failure to establish the bound is a

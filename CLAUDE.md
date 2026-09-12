@@ -638,9 +638,14 @@ missing from the result, not an error — so the invariants below are load-beari
   a bucket written by a pre-#232 ingestion process after migration v5 has seeded `pvStats` is
   uncovered, so upgrade ingestion first or stop every service for the upgrade. Test code that
   inserts buckets directly has the same gap; see Testing Strategy.
-- **A failed `pvStats` read is a query error**: the resolver throws `DpException`, the client
-  returns a null cursor, and every dispatcher reports that as an error. Never degrade to the
-  unbounded scan — on the customer archive that is a four-minute query hiding a database problem
+- **A failed `pvStats` read is a query error, but a corrupt stored value is not.** The resolver
+  throws `DpException` on a read failure, the client returns a null cursor, and every dispatcher
+  reports that as an error. A stored *negative* span is instead logged at `warn` and clamped to 0 —
+  no writing path can produce one (ingestion `$max`es a non-negative span; the v5 seed filters
+  `$gte 0`), so it means hand-editing, and rejecting it would fail every query naming that PV and,
+  since the bound is a maximum over the request's PVs, every multi-PV query including it. Clamping
+  narrows that one PV to the no-document bound (D6), which is what D10 already chose at write time.
+  Never degrade to the unbounded scan — on the customer archive that is a four-minute query hiding a database problem
   behind slow but "successful" responses.
 - **`Buckets.maxBucketSpanSeconds` is ingestion-only.** `BucketSpanLimits` validates it once
   (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos
