@@ -153,32 +153,48 @@ public class MongoSyncIngestionClient extends MongoSyncClient implements MongoIn
             document.setCreatedAt(now);
         }
 
-        // Record the batch's bucket span in pvStats BEFORE inserting the buckets (#232, D4). Every
-        // bucket in the batch is built from the request frame's single DataTimestamps, so one span
-        // covers all of them and the first document is representative. A stats write that fails
-        // fails the request with no buckets inserted; the reverse order could leave a bucket a
-        // query's firstTime lower bound never covers, a silent wrong answer rather than an error.
+        // Record the batch's bucket span in pvStats BEFORE inserting the buckets (#232, D4). A
+        // stats write that fails fails the request with no buckets inserted; the reverse order
+        // could leave a bucket a query's firstTime lower bound never covers, a silent wrong answer
+        // rather than an error.
+        //
+        // The span is the MAXIMUM over the batch, not the first document's. Today every bucket in a
+        // batch embeds the same DataTimestamps -- BucketDocument.columnBucketDocument() builds one
+        // DataTimestampsDocument from the request frame and sets it on every column's bucket -- so
+        // the two are equal. Taking the max anyway costs one comparison in a loop already being run
+        // for the PV names, and means a future change making per-column timestamps possible cannot
+        // silently under-record the span for every column but the first. Under-recording is a
+        // silent wrong answer on every later query, which is the failure class #232 exists to
+        // remove; it must not depend on an invariant enforced in another file.
         if (dataDocumentBatch.isEmpty()) {
+            // Unreachable through the service: IngestionValidationUtility rejects a frame with no
+            // columns, and IngestDataJob returns on the rejected branch before reaching the client.
+            // Guarded rather than assumed, since the span below reads from the batch.
             final String errorMsg = "insertBatch received empty bucket batch";
             logger.error(errorMsg);
             return new IngestionTaskResult(true, errorMsg, null);
         }
-        final DataTimestampsDocument dataTimestamps = dataDocumentBatch.get(0).getDataTimestamps();
-        if (dataTimestamps == null || dataTimestamps.getFirstTime() == null || dataTimestamps.getLastTime() == null) {
-            final String errorMsg = "insertBatch bucket batch is missing dataTimestamps first/last time";
-            logger.error(errorMsg);
-            return new IngestionTaskResult(true, errorMsg, null);
-        }
-        final long spanSeconds =
-                dataTimestamps.getLastTime().getSeconds() - dataTimestamps.getFirstTime().getSeconds();
-        if (spanSeconds < 0) {
-            final String errorMsg = "insertBatch bucket batch has negative time span: " + spanSeconds;
-            logger.error(errorMsg);
-            return new IngestionTaskResult(true, errorMsg, null);
-        }
         final List<String> pvNames = new ArrayList<>(dataDocumentBatch.size());
+        long spanSeconds = 0L;
         for (BucketDocument document : dataDocumentBatch) {
             pvNames.add(document.getPvName());
+            final DataTimestampsDocument dataTimestamps = document.getDataTimestamps();
+            if (dataTimestamps == null
+                    || dataTimestamps.getFirstTime() == null
+                    || dataTimestamps.getLastTime() == null) {
+                final String errorMsg = "insertBatch bucket batch is missing dataTimestamps first/last time";
+                logger.error(errorMsg);
+                return new IngestionTaskResult(true, errorMsg, null);
+            }
+            final long documentSpanSeconds =
+                    dataTimestamps.getLastTime().getSeconds() - dataTimestamps.getFirstTime().getSeconds();
+            if (documentSpanSeconds < 0) {
+                final String errorMsg =
+                        "insertBatch bucket batch has negative time span: " + documentSpanSeconds;
+                logger.error(errorMsg);
+                return new IngestionTaskResult(true, errorMsg, null);
+            }
+            spanSeconds = Math.max(spanSeconds, documentSpanSeconds);
         }
         try {
             pvStatsMaxSpanUpdater.recordSpan(pvNames, spanSeconds);
