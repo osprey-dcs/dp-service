@@ -88,6 +88,7 @@ plan documents one change, CLAUDE.md documents the invariant it established.
 - **pvMetadata**: PV metadata records (pvName unique index, aliases index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurations**: Machine configuration records (configurationName unique index, category index; tags, attributes, description, modifiedBy, createdAt, updatedAt)
 - **configurationActivations**: Time-bounded activations of configurations (clientActivationId unique sparse index; configurationName, internalCategory, startTime, endTime indexes; tags, attributes, description, modifiedBy, createdAt, updatedAt)
+- **pvStats**: Per-PV ingestion statistics (issue #232), one document per PV keyed by name as `_id`; today `maxBucketSpanSeconds`, the largest `lastTime.seconds - firstTime.seconds` ever ingested for the PV, written by the ingestion service and read per query to set the bucket overlap filter's `firstTime` lower bound (see Per-PV Bucket Span Bound). Default `_id` index only; further per-PV statistics (#201) belong on the same document
 - **serviceMetadata**: Service-level markers, currently the `schemaVersion` document recording the applied schema version, its audit list, and the in-progress migration claim (see Schema Migration below)
 - **sampleStatusBuckets**: Sample status storage (SampleStatusBucketDocument: pvName/domain/layer identity, embedded DataTimestampsDocument, firstTimeNanos/lastTimeNanos epoch-nanos scalars, statusCodes/confidence/reasons arrays, source/modifiedBy/updatedTime; indexes on (pvName, domain, layer, firstTimeNanos) and (domain, layer, firstTimeNanos))
 
@@ -531,7 +532,7 @@ serialization as a zero-length repeated entry, so it also satisfies the server's
 exact/prefix/contains" check and slips past the empty-criteria rejection by making the criteria list
 non-empty.
 
-Like the #197 and #207 invariants, the failure mode is a **wrong answer rather than an error**, which
+Like the #232 and #207 invariants, the failure mode is a **wrong answer rather than an error**, which
 is why the guard belongs at the point where a criterion is built rather than in a validator.
 
 `AnnotationClient.nonBlank()` is the single source for this: it drops blank *and* null entries (the
@@ -595,23 +596,71 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 4. New columns (all column-oriented types)
 5. Cross-cutting (unique PV names across all column types in a frame)
 
-**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB (the four value caps live in the shared `ColumnValueLimits` and bind the saveAnnotation calculations path too); timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400) — this invariant lets the query-side bucket overlap filter add a `firstTime` lower bound (`BucketSpanLimits`, issue #197), so never relax it query-side without ingestion-side enforcement.
+**Constraints:** string values ≤ 256 chars; array dimensions 1–3 (all > 0); ≤ 10M array elements; image ≤ 50MB; struct ≤ 1MB (the four value caps live in the shared `ColumnValueLimits` and bind the saveAnnotation calculations path too); timestamps non-decreasing, nanos 0–999,999,999; sample count must match timestamp count; bucket time span ≤ `Buckets.maxBucketSpanSeconds` (default 86400, validated once by `BucketSpanLimits`) — ingestion-only since #232; the query-side `firstTime` lower bound is derived per PV from `pvStats`, not from this value (see below).
 
-### Max Bucket Span Invariant (issue #197)
-`Buckets.maxBucketSpanSeconds` is a shared invariant between ingestion and query, and both of its failure modes are *silent wrong answers* rather than errors — treat it accordingly:
-- **`BucketSpanLimits`** — single source for the limit. Value is validated once (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos conversion would overflow) and cached; invalid config throws `DpRuntimeException`.
-- **Ingestion** enforces the limit for *new* data only, via `IngestionValidationUtility`.
-- **Query** adds the `firstTime` lower bound only when the stored archive is known to comply. `BucketSpanVerifier` checks this and records the outcome in the `bucketSpanVerification` collection, so the scan runs once per limit value rather than every restart. On violation or error the bound is disabled process-wide (`BucketSpanLimits.disableQueryLowerBound()`) and queries degrade to the slower unbounded scan — correct but slow, never fast but wrong.
-- `verifyBucketSpans()` lives on `MongoSyncClient` because the flag it controls is **process-wide** and more than one service issues bucket time-range queries: the query service directly, and the annotation service through dataset export (`executeDataBlockQuery`). Any new service that queries buckets must call it from its handler's `init_()`, or that process will apply the bound unverified.
-- Disable the check with `Buckets.verifyBucketSpansOnStartup: false` only when compliance has been confirmed independently. Off by default under test.
-- **Never sample** as a shortcut for this check: over-long buckets are typically rare, so a sample that misses them reports a false all-clear.
+### Per-PV Bucket Span Bound (issue #232)
+The query-side bucket overlap filter adds a `firstTime` lower bound,
+`firstTime.seconds >= beginSeconds - maxBucketSpanSeconds`, built in the shared
+`MongoQueryFilterBuilder.bucketOverlapsRangeFilter()`. The span is **not configuration**: it is the
+largest `lastTime.seconds - firstTime.seconds` ever ingested for each PV, recorded by the ingestion
+service in the `pvStats` collection (`PvStatsDocument`, `_id` = pvName) and resolved on every query
+by `MongoSyncQueryClient.resolveMaxBucketSpanSeconds()` as the maximum over the request's PVs
+(pattern queries run the same regex against `pvStats._id`). This replaced the #197 startup scan
+that verified the whole archive against the configured limit and disabled the bound process-wide
+on violation. Every failure mode is a **silent wrong answer** — a bucket the bound excludes is
+missing from the result, not an error — so the invariants below are load-bearing:
+
+- **Stats are written before the buckets, and a failed stats write fails the request.**
+  `MongoSyncIngestionClient.insertBatch()` calls `PvStatsMaxSpanUpdater.recordSpan()` ahead of
+  `insertMany`; a `DpException` there returns an error `IngestionTaskResult` with no buckets
+  inserted. At every instant the stored maximum therefore covers every stored bucket. Do not
+  reorder the two writes, and do not make the stats write fire-and-forget.
+- **The stored value only grows.** The updater issues `$max` upserts in one unordered `bulkWrite`,
+  gated by a per-process high-watermark cache that advances only after the bulk succeeds, so a PV
+  costs one write per process lifetime unless a longer span arrives. Skipping is safe across
+  processes because `$max` is monotone. Any **out-of-band writer** of `buckets` (a direct import
+  that bypasses ingestion) must `$max` the affected PV's `pvStats` document — that one `updateOne`
+  is the whole recourse (`doc/schema-migration.md`, note on version 5): no rescan, no restart, and
+  deliberately no kill switch for the bound. Lowering a stored value by hand needs an ingestion
+  restart, or the cache skips the re-raise.
+- **Never cache on the read side.** A cached span can only be too small once a longer bucket is
+  ingested, and a too-small bound silently drops that bucket. The read is one `$in` on `_id`
+  against a collection with one document per PV.
+- **A missing `pvStats` document means the PV has no buckets** and contributes nothing to the
+  bound; a request naming only such PVs gets a bound of `beginSeconds`. Do not treat absence as
+  "unbounded" (one mistyped PV name would turn the query into the multi-minute full scan), and do
+  not floor the bound at `Buckets.maxBucketSpanSeconds`. The corollary is a deployment constraint:
+  a bucket written by a pre-#232 ingestion process after migration v5 has seeded `pvStats` is
+  uncovered, so upgrade ingestion first or stop every service for the upgrade. Test code that
+  inserts buckets directly has the same gap; see Testing Strategy.
+- **A failed `pvStats` read is a query error**: the resolver throws `DpException`, the client
+  returns a null cursor, and every dispatcher reports that as an error. Never degrade to the
+  unbounded scan — on the customer archive that is a four-minute query hiding a database problem
+  behind slow but "successful" responses.
+- **`Buckets.maxBucketSpanSeconds` is ingestion-only.** `BucketSpanLimits` validates it once
+  (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos
+  conversion would overflow) and `IngestionValidationUtility` rejects frames over it. The query side
+  does not read it, so changing it changes only what ingestion accepts from then on.
+- **The bound must reach the planner as an index bound, not merely a filter.** The seconds/nanos
+  `$or` halves of the overlap predicate cannot become index bounds and run as a residual filter on
+  the fetched documents, so the scan size is set entirely by this bound on the compound
+  `(pvName, firstTime, ...)` index. A predicate moved inside an `$or`, a changed index declaration,
+  or a sort the index cannot serve still returns the right buckets — only after scanning each PV's
+  whole history — which is why `MongoBucketQueryPlanTest` checks the `explain` plan shape.
+
+Schema migration v5 (`V5SeedPvStatsMaxBucketSpan`) seeds `pvStats` from the existing archive in one
+`$group`/`$merge` pipeline (`$max` on match, so re-runs and concurrent upgraded ingestion are safe)
+and drops the legacy `bucketSpanVerification` collection. A PV whose every bucket lacks
+`dataTimestamps` or has an inverted span is left without a document rather than seeded null or
+negative, either of which breaks the query side. Further per-PV ingestion statistics belong on the
+same document (#201) and the same write path.
 
 ### Bucket Deserialization Must Fail as `DpException`
 The query dispatchers (`QueryDataDispatcher`, `QueryDataStreamDispatcher`, `QueryDataBidiStreamDispatcher`, `QueryBuckets*Dispatcher`) catch **only `DpException`** around bucket deserialization. Any other exception escapes the dispatch loop and terminates the response stream, so the client receives **zero buckets instead of an error** — indistinguishable from "no data in range."
 
 `BucketDocument.dataBucketFromDocument()` / `dataBucketFromDocumentV2()` therefore validate required fields up front and wrap any `RuntimeException` as `DpException`. Preserve that contract when adding deserialization logic: a malformed stored document must produce a reportable error, never an unchecked throw. In tests, insert fully-populated `BucketDocument`s (see `MongoTestClient.insertBucketDocument()`) rather than hand-rolled partial BSON.
 
-Because a malformed bucket blocks every query covering it, `BucketSpanVerifier` also scans for buckets missing `dataColumn`/`dataTimestamps` — in the same pass as the span check, since both must visit stored buckets (measured ~20% over the span check alone). A corrupt bucket is reported with its id, PV, and missing field, but does **not** disable the query lower bound: corruption and the span invariant are independent. The verification marker is not recorded while corruption exists, so an unrepaired bucket keeps being reported on each startup rather than going quiet after the first.
+The #197 startup scan also reported buckets missing `dataColumn`/`dataTimestamps`; that diagnostic went with the scan when #232 deleted it. A malformed bucket still surfaces as a `DpException` at query time under the contract above, and locating offenders offline belongs with #258's utility.
 
 ### querySamples Fragment Clamp Invariant (issue #207)
 A `querySamples` request with a `ConfigurationSelector` resolves to a set of **disjoint** retrieval fragments. Two filters must agree on that fragment set, and they run at different granularities:
@@ -653,7 +702,7 @@ a fresh server-set updatedTime; delete-path trims keep the original provenance (
   skip offset (documents are rewritten in place, so offsets drift). Unparseable tokens are **rejected**
   per the contract — unlike pvMetadata/configuration, which silently reset to page 0.
 - **No maximum document span**: sparse labeling over an arbitrarily wide range is first-class, so a
-  status frame has no `maxBucketSpanSeconds`-style cap and **no #197-style firstTime lower bound may
+  status frame has no `maxBucketSpanSeconds`-style cap and **no #232-style firstTime lower bound may
   ever be added** to sampleStatusBuckets overlap queries.
 - Validation lives in `SampleStatusValidationUtility` (whole-request reject; strictly increasing
   TimestampLists — equal timestamps would collapse identity keys).
@@ -733,6 +782,27 @@ positional list.
 ### Ingestion Validation Test Coverage
 - `IngestionValidationUtilityTest` (22 test cases): legacy validation, new column types, duplicate PV names, timestamp integrity
 
+### Bucket Span Bound Tests (issue #232)
+- **Direct bucket inserts need a recorded span.** `BucketUtility` and
+  `MongoTestClient.insertBucketDocument()` bypass ingestion, so nothing writes `pvStats`, and a
+  bucket inserted that way is found only by windows beginning in or before its first second. Record
+  the span first through `MongoTestClient.upsertPvStatsMaxSpan()` (the production `$max` upsert) or
+  `MongoQueryHandlerTestBase.recordPvStatsForBuckets()`; `insertPvStatsDocument()` is the raw insert
+  for a stored value the updater would not write. A query test that loses buckets after a fixture
+  change usually has this cause.
+- **`MongoBucketQueryPlanTest`** is the repo's only `explain`-based plan-shape test: it pins the
+  `[begin − span, ∞)` index bound on the compound bucket index, resolved through the production
+  resolver from `pvStats` documents seeded through the production updater. Extend it, not a
+  result-level test, for any change to the overlap filter, the bucket index, or the sort.
+- **`PvStatsMaxSpanUpdaterTest`** pins the `$max` upsert and watermark semantics through a Mockito
+  mock delegating to the real `dp-test` collection (call counting, write-model capture, fault
+  injection). A closed-client handle is not a substitute: it throws a driver state exception, not
+  the `MongoException` the updater classifies, and cannot produce the unacknowledged case.
+- **`GrpcIntegrationIngestionServiceWrapper.verifyIngestionRequestHandling()`** asserts every
+  ingested PV has a `pvStats` document with a span at least the request's;
+  **`ExportDataBucketSpanIT`** covers the annotation export path (seeded span finds the over-long
+  bucket, no entry excludes it); **`V5SeedPvStatsMaxBucketSpanTest`** covers the seed pipeline.
+
 ## Schema Migration (issue #254)
 
 Schema changes are delivered by a versioned migration runner that executes during
@@ -763,11 +833,13 @@ always-current silently stamps a real unmigrated deployment as done — the fail
 exists to prevent.
 
 `SchemaMigrationRunner.MANAGED_COLLECTION_NAMES` must list every `COLLECTION_NAME_*` constant on
-`MongoClientBase` (except `serviceMetadata`, which holds the marker itself), **plus
-`bucketSpanVerification`, which is declared on `BucketSpanVerifier`**. A collection omitted makes a
-populated database look fresh and skips every migration — verified against MongoDB 8.0: with
-`bucketSpanVerification` missing from the list, a database holding only that marker reported zero
-migrations applied and was stamped as current.
+`MongoClientBase` (except `serviceMetadata`, which holds the marker itself). That includes
+`COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY`, the marker collection of the startup bucket-span
+check #232 removed: no client initializes it any more and migration v5 drops it, but the constant
+stays so a pre-v5 database holding only that marker still reads as legacy. A collection omitted
+makes a populated database look fresh and skips every migration — verified against MongoDB 8.0:
+with `bucketSpanVerification` missing from the list, a database holding only that marker reported
+zero migrations applied and was stamped as current.
 
 The probe asks "has any build ever used this database?", which is broader than "does it hold service
 data" — a prior deployment's marker still counts when the data collections have been emptied.
@@ -775,8 +847,10 @@ Including a collection can only push a database toward "legacy", never "fresh", 
 direction, since every migration is idempotent.
 
 `SchemaMigrationRunnerTest.testManagedCollectionListCoversEveryDeclaredCollection` pins this by
-reflection **over both declaring classes** — **add new collections there too**, and extend the class
-list if a collection constant is ever declared somewhere new.
+reflection over `MongoClientBase`, which is why **every collection constant — the legacy one
+included — must be declared there**: a constant declared on any other class falls outside a test
+whose whole promise is that a collection cannot be forgotten (the legacy constant originally lived
+on the deleted verifier, and the test had to reflect over two classes to see it).
 
 ### Every marker write checks `matchedCount`
 
