@@ -16,7 +16,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import com.ospreydcs.dp.service.integration.GrpcIntegrationServiceWrapperBase;
-import io.grpc.Channel;
+import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import io.grpc.testing.GrpcCleanupRule;
 import org.apache.logging.log4j.LogManager;
@@ -42,7 +42,9 @@ public class GrpcIntegrationQueryServiceWrapper extends GrpcIntegrationServiceWr
 
     // instance variables (common ones inherited from base class)
 
-    public Channel getQueryChannel() {
+    // returns ManagedChannel rather than Channel so that the type is usable by QueryClient,
+    // whose constructor requires one; the annotation wrapper's equivalent accessor already does
+    public ManagedChannel getQueryChannel() {
         return this.channel;
     }
 

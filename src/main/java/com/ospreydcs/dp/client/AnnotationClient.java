@@ -1,6 +1,8 @@
 package com.ospreydcs.dp.client;
 
 import com.ospreydcs.dp.grpc.v1.common.ExceptionalResult;
+import com.ospreydcs.dp.client.criteria.AttributeCriterion;
+import com.ospreydcs.dp.client.criteria.TextMatch;
 import com.ospreydcs.dp.client.result.*;
 import com.ospreydcs.dp.grpc.v1.annotation.*;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
@@ -13,6 +15,9 @@ import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import static com.ospreydcs.dp.client.criteria.ClientCriteria.isBlankKey;
+import static com.ospreydcs.dp.client.criteria.ClientCriteria.nonBlank;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -1655,84 +1660,11 @@ public class AnnotationClient extends ServiceApiClientBase {
     // PV Metadata and Machine Configuration query/get API
     // =========================================================
 
-    /**
-     * Matches a text field by exact value, prefix, or substring.  Mirrors the proto
-     * PvNameCriterion / AliasesCriterion / configuration NameCriterion messages, all three of which
-     * have the same shape.
-     *
-     * All values across all three lists are ORed: a record matches if it satisfies any supplied
-     * value from any list.  A null list is treated as empty.  A TextMatch with all three lists
-     * null or empty contributes no criterion to the request.
-     *
-     * To require that a name satisfy two matches simultaneously (AND), build the request directly
-     * with two separate criterion entries and pass it to the corresponding sendXxx() method.
-     */
-    public record TextMatch(
-            List<String> exact,
-            List<String> prefix,
-            List<String> contains
-    ) {
-        /**
-         * True when no usable match value is present.  Blank and null entries do not count: a
-         * TextMatch holding only blanks is empty, because those entries are dropped when the
-         * criterion is built (see nonBlank()).  Were this to report false for such a TextMatch,
-         * the builder would emit a criterion with all three lists empty, which the server rejects.
-         */
-        public boolean isEmpty() {
-            return nonBlank(exact).isEmpty()
-                    && nonBlank(prefix).isEmpty()
-                    && nonBlank(contains).isEmpty();
-        }
-    }
-
-    /**
-     * Matches records by attribute key and optional value(s).  Mirrors the proto
-     * AttributesCriterion message.
-     *
-     * key is required.  values is optional: when non-empty, the record must carry the key with one
-     * of the specified values (ORed); when null or empty, any record possessing the key matches
-     * regardless of its value (key-only existence search).
-     *
-     * Note that this cannot be expressed as a Map<String,String> — hence the absence of
-     * AttributesUtility here — because a map can represent neither multiple values for one key nor
-     * a key-only search.
-     */
-    public record AttributeCriterion(
-            String key,
-            List<String> values
-    ) {
-    }
-
-    /**
-     * Returns the non-blank entries of the supplied list, never null.
-     *
-     * Blank entries must never reach the server.  A blank prefix or contains value becomes the
-     * regex "^" + Pattern.quote("") (respectively ".*" + Pattern.quote("") + ".*") in
-     * MongoQueryFilterBuilder.nameMatchFilter(), and both match EVERY value — so a caller binding
-     * an unfilled optional UI field would silently retrieve the entire collection instead of
-     * applying no filter.  That is a silent wrong answer rather than an error, so the blanks are
-     * dropped here rather than being sent and rejected.
-     *
-     * Null entries are dropped for the same reason they cannot be forwarded: protobuf's addAll
-     * throws NullPointerException on a null element.
-     */
-    private static List<String> nonBlank(List<String> list) {
-        if (list == null) {
-            return List.of();
-        }
-        return list.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .toList();
-    }
-
-    /**
-     * True when the supplied attribute key is unusable as a criterion key.  The server validates
-     * AttributesCriterion.key with isBlank(), so a blank key is an avoidable rejection rather than
-     * an omitted filter.
-     */
-    private static boolean isBlankKey(String key) {
-        return key == null || key.isBlank();
-    }
+    // TextMatch, AttributeCriterion, nonBlank() and isBlankKey() were promoted to
+    // com.ospreydcs.dp.client.criteria (issue #244) so that QueryClient's Query API V2
+    // PvSelector.MetadataQuery builder enforces the same #243 blank-value guard from the same
+    // source rather than a second copy of it.  They are imported above and are referenced
+    // unqualified throughout this class exactly as before.
 
     public static class QueryPvMetadataResponseObserver
             extends ApiResponseObserverBase<QueryPvMetadataResponse> {
