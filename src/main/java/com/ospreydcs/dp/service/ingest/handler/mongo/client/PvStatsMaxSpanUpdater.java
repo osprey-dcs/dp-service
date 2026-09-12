@@ -48,8 +48,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * one upsert in an unordered bulk. If the bulk throws, no entry is advanced (a partially applied
  * bulk is re-written harmlessly next time).
  *
- * <p>The cache is unbounded and not pre-warmed. PV counts of 10^4 to 10^5 make it megabytes at
- * most; eviction is safe (a miss just writes) and can be added later without changing semantics.
+ * <p><b>The cache is unbounded and not pre-warmed.</b> It holds one entry per distinct PV name this
+ * process has written, so its size tracks the PV namespace, not the ingested volume: roughly 120
+ * bytes per entry, which is about 12 MB at 10^5 PVs and half a megabyte at the 4,000 the benchmark
+ * drives. A data platform's PV names come from an instrument's channel list, which is enumerable
+ * and stable — the reference deployment ingests a fixed {@code USEG:UNDH:*:GapAct} namespace — so
+ * growth is bounded by that list in practice rather than by uptime.
+ *
+ * <p>It is nonetheless unbounded by construction, and PV names arrive in request data. A deployment
+ * that mints genuinely new names indefinitely (a synthetic or per-run naming scheme) would grow it
+ * without limit: ~120 MB per million distinct names. Should that deployment appear, bound it — a
+ * size-capped LRU is a drop-in, because eviction costs only a repeated {@code $max} write and
+ * cannot affect correctness: the stored value is authoritative and monotone, and the cache is
+ * purely a write-avoidance optimization. That property is what makes deferring the bound safe;
+ * it is not an argument that the bound will never be needed.
  *
  * <p>Safe for concurrent use by the ingestion handler's worker threads: the cache is a
  * {@link ConcurrentHashMap}, and two threads writing the same PV at once both issue a monotone

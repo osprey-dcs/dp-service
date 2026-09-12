@@ -39,10 +39,13 @@ import java.util.List;
  * migration and block the startup of every service. Between group and merge, a second {@code $match}
  * drops groups whose maximum is null or negative: a PV whose
  * every bucket lacks {@code dataTimestamps} yields null, and one whose every bucket has
- * {@code lastTime} before {@code firstTime} yields a negative. Neither may be stored — the query
- * side decodes the field into a primitive {@code long}, and the filter builder rejects a negative
- * span — so such a PV is left without a document (span zero, D6) rather than seeded with a value
- * that would turn every query naming it into an error. A PV with at least one well-formed bucket is
+ * {@code lastTime} before {@code firstTime} yields a negative. Neither may be stored: a null fails
+ * the query side's decode into a primitive {@code long}, and a negative is a value no writing path
+ * produces, so the query resolver treats it as corruption — logging a warning and clamping it to
+ * zero ({@code MongoSyncQueryClient.resolveMaxBucketSpanSeconds}). Seeding either would therefore
+ * add a document that is at best ignored and at worst breaks every query naming the PV, so such a
+ * PV is left without one instead (span zero, D6), which is the same bound the clamp would arrive at
+ * and a state the query side already handles. A PV with at least one well-formed bucket is
  * unaffected: {@code $max} ignores null, and a non-negative span dominates a negative one.
  *
  * <p>The marker collection is then dropped. Nothing reads or writes it after #232; its name survives
