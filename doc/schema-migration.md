@@ -70,9 +70,11 @@ collections. Treating it as always-current would silently stamp a real unmigrate
 exactly the failure the mechanism exists to prevent.
 
 "Has data" is judged across every collection the services manage, and that deliberately includes
-`bucketSpanVerification` — the marker written by the bucket-span check on a previous startup. A
-database whose data collections have been emptied by a purge, a retention wipe, or a partial restore
-still carries that marker, and it is proof the database has been served before. Counting it can only
+`bucketSpanVerification` — the marker written by the startup bucket-span check that #232 removed.
+Nothing writes it any more and migration v5 drops it, but the name is kept as a legacy constant so
+a database written by an earlier build is still classified correctly: one whose data collections
+have been emptied by a purge, a retention wipe, or a partial restore may still carry that marker,
+and it is proof the database has been served before. Counting it can only
 push a database toward "populated", never toward "fresh", which is the safe direction: re-running
 migrations against empty collections is harmless because every migration is idempotent, while a
 legacy database mistaken for fresh is stamped as migrated with its migrations silently skipped.
@@ -204,6 +206,7 @@ version does not match the database still refuses to start. Use it only when mig
 | 2 | Normalize annotation `tags` to lowercase/deduplicated/sorted | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 2 |
 | 3 | Canonicalize annotation `dataSetIds`/`annotationIds` to lowercase hex | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 2 review |
 | 4 | Stamp `_t` discriminator on legacy bucket and calculations columns | [#248](https://github.com/osprey-dcs/dp-service/issues/248) Phase 4. **One-time full scan of `buckets`** — see note. |
+| 5 | Seed per-PV `pvStats.maxBucketSpanSeconds` from `buckets`; drop `bucketSpanVerification` | [#232](https://github.com/osprey-dcs/dp-service/issues/232). **One-time full scan of `buckets`** — see note. |
 
 ### Note on version 1
 
@@ -298,6 +301,61 @@ Verify afterwards:
 db.buckets.countDocuments({dataColumn: {$exists: true}, "dataColumn._t": {$exists: false}})   // expect 0
 db.calculations.countDocuments({dataFrames: {$elemMatch: {dataColumns: {$elemMatch: {_t: {$exists: false}}}}}})   // expect 0
 ```
+
+### Note on version 5
+
+[#232](https://github.com/osprey-dcs/dp-service/issues/232) replaced the startup full-collection
+scan for the longest stored bucket (the `bucketSpanVerification` marker) with a per-PV statistic,
+`pvStats.maxBucketSpanSeconds`, that the ingestion service records as it writes buckets. The query
+side now derives the `firstTime` lower bound of every bucket time-range filter from that value, and
+a PV with **no** `pvStats` document is treated as having a span of zero. Without a seed, every bucket
+written before the upgrade would be invisible to any query whose window begins after the bucket's
+first second — until the PV happened to ingest a bucket at least as long, which for a retired or
+slowly sampled PV is never. This migration seeds `pvStats` from the existing archive in one
+server-side pipeline (`$group` by `pvName` taking the `$max` span, then `$merge` into `pvStats`
+keeping the larger of any stored and computed value), and drops the `bucketSpanVerification`
+collection, which nothing reads or writes any more.
+
+**Expect a long run on a large archive.** The seed is a one-time full scan of `buckets` — the same
+order of work as v4, with the same operational consequence: **waiting services will time out and
+must be restarted.** Follow the v4 guidance above: check `migratingSince`/`migratingHost`, let the
+migrating process finish, restart the others, and do **not** clear the claim while the migrating
+host is alive. Memory is bounded by the number of distinct PVs, not the number of buckets.
+
+**Stop every service, or upgrade ingestion first.** A pre-upgrade ingestion process still writing
+after the seed has run produces buckets no statistic covers, and a bucket longer than its PV's
+recorded span is skipped by any query whose window begins after the bucket starts. An upgraded
+ingestion process running against a not-yet-upgraded query service is harmless.
+
+A PV is left **without** a `pvStats` document — span zero, the same as a PV never seen — when every
+one of its buckets is unusable for the measure: no `dataTimestamps` subdocument, or `lastTime`
+before `firstTime`. A bucket whose `pvName` is missing, null, or not a string is skipped in the same
+way, before grouping: such a value cannot be a `pvStats` `_id`, and the server would reject the whole
+seed rather than that one bucket. No readable data is lost either way — every bucket query filters on
+`pvName`, so a bucket without a usable one is unreachable regardless. No readable data is lost by that: a bucket without timestamps cannot be
+deserialized on the query path in any case, and an inverted bucket still satisfies the overlap test
+whenever it did before. A PV with at least one well-formed bucket is seeded normally.
+
+Verify afterwards:
+
+```js
+db.pvStats.countDocuments()                                    // expect db.buckets.distinct("pvName").length, less any PV skipped as above
+db.pvStats.find().sort({maxBucketSpanSeconds: -1}).limit(5)    // the longest recorded spans
+db.getCollectionNames().includes("bucketSpanVerification")     // expect false
+```
+
+**If buckets are ever written by anything other than the ingestion service** — a direct Mongo
+import, a restore that adds buckets — that writer must raise the affected PVs' statistics too, or
+those buckets are subject to the same invisibility. The recourse is one write per PV, with no
+restart:
+
+```js
+db.pvStats.updateOne({_id: "<pvName>"}, {$max: {maxBucketSpanSeconds: NumberLong("<seconds>")}}, {upsert: true})
+```
+
+or re-run the seed pipeline by hand (it is idempotent; the runner will not re-run it once version 5
+is recorded). **Lowering or removing a value by hand requires an ingestion restart**: the ingestion
+process caches a per-PV watermark and skips writes the collection would then no longer reflect.
 
 ---
 

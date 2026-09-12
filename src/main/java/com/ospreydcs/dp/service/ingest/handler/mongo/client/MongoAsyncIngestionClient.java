@@ -44,6 +44,11 @@ public class MongoAsyncIngestionClient extends MongoAsyncClient implements Mongo
     @Override
     public IngestionTaskResult insertBatch(IngestDataRequest request, List<BucketDocument> dataDocumentBatch) {
 
+        // No pvStats update here (#232): this client is test-only (MongoAsyncIngestionHandlerTest)
+        // and does not maintain per-PV bucket span statistics, in the same spirit as
+        // MongoAsyncClient.runSchemaMigrations(). Buckets it inserts are not covered by the query
+        // side's firstTime lower bound, so it must not be put on a production ingestion path
+        // without adding the stats-before-insert step MongoSyncIngestionClient performs.
         logger.debug("inserting batch of bucket documents to mongo");
 
         // set createdAt field for each document in batch

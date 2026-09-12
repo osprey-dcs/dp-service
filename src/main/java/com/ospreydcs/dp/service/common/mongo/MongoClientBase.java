@@ -5,6 +5,7 @@ import com.ospreydcs.dp.service.common.bson.annotation.AnnotationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationActivationDocument;
 import com.ospreydcs.dp.service.common.bson.configuration.ConfigurationDocument;
 import com.ospreydcs.dp.service.common.bson.pvmetadata.PvMetadataDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDataFrameDocument;
 import com.ospreydcs.dp.service.common.bson.calculations.CalculationsDocument;
@@ -46,6 +47,14 @@ public abstract class MongoClientBase {
     public static final String COLLECTION_NAME_CONFIGURATIONS = "configurations";
     public static final String COLLECTION_NAME_CONFIGURATION_ACTIVATIONS = "configurationActivations";
     public static final String COLLECTION_NAME_SAMPLE_STATUS_BUCKETS = "sampleStatusBuckets";
+    // Per-PV ingestion statistics (#232), one document per PV keyed by name as _id; see
+    // PvStatsDocument. Only the default _id index: every read is by exact PV name.
+    public static final String COLLECTION_NAME_PV_STATS = "pvStats";
+    // Legacy: the marker collection written by the startup bucket-span check that #232 removed. No
+    // client declares or initializes it any more. The constant is kept so the schema-migration
+    // emptiness probe still reads a pre-v5 database holding only that marker as legacy rather than
+    // fresh (see SchemaMigrationRunner.MANAGED_COLLECTION_NAMES); migration v5 drops the collection.
+    public static final String COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY = "bucketSpanVerification";
     public static final String COLLECTION_NAME_SERVICE_METADATA =
             SchemaVersionMarker.COLLECTION_NAME_SERVICE_METADATA;
 
@@ -81,6 +90,9 @@ public abstract class MongoClientBase {
     protected abstract boolean createMongoIndexConfigurationActivationsWithOptions(Bson fieldNamesBson, com.mongodb.client.model.IndexOptions indexOptions);
     protected abstract boolean initMongoCollectionSampleStatusBuckets(String collectionName);
     protected abstract boolean createMongoIndexSampleStatusBuckets(Bson fieldNamesBson);
+    // pvStats has no createMongoIndex counterpart: the collection is keyed by PV name as _id and
+    // is only ever read by exact name, so the default _id index is the whole index set (#232).
+    protected abstract boolean initMongoCollectionPvStats(String collectionName);
 
     /**
      * Brings the database to the schema version this binary expects, before any index is created.
@@ -159,7 +171,8 @@ public abstract class MongoClientBase {
                 PvMetadataDocument.class,
                 ConfigurationDocument.class,
                 ConfigurationActivationDocument.class,
-                SampleStatusBucketDocument.class
+                SampleStatusBucketDocument.class,
+                PvStatsDocument.class
         ).build();
 
         //        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
@@ -420,6 +433,10 @@ public abstract class MongoClientBase {
         return COLLECTION_NAME_SAMPLE_STATUS_BUCKETS;
     }
 
+    protected String getCollectionNamePvStats() {
+        return COLLECTION_NAME_PV_STATS;
+    }
+
     public boolean init() {
 
         logger.trace("init");
@@ -435,12 +452,14 @@ public abstract class MongoClientBase {
         logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
         logger.info(
                 "mongo client init collection names "
-                        + "annotations: {} buckets: {} calculations: {} datasets: {} providers: {} requestStatus: {}",
+                        + "annotations: {} buckets: {} calculations: {} datasets: {} providers: {} "
+                        + "pvStats: {} requestStatus: {}",
                 collectionNameAnnotations,
                 collectionNameBuckets,
                 collectionNameCalculations,
                 collectionNameDataSets,
                 collectionNameProviders,
+                getCollectionNamePvStats(),
                 collectionNameRequestStatus);
 
         // connect mongo client
@@ -463,6 +482,7 @@ public abstract class MongoClientBase {
         initMongoCollectionConfigurations(getCollectionNameConfigurations());
         initMongoCollectionConfigurationActivations(getCollectionNameConfigurationActivations());
         initMongoCollectionSampleStatusBuckets(getCollectionNameSampleStatusBuckets());
+        initMongoCollectionPvStats(getCollectionNamePvStats());
 
         // Apply any pending schema migrations. A false return means the schema is not one this
         // binary can serve; init() fails and the caller must abort startup rather than serve

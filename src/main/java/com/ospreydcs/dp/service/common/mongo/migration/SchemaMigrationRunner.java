@@ -2,7 +2,6 @@ package com.ospreydcs.dp.service.common.mongo.migration;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoDatabase;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanVerifier;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
@@ -10,6 +9,7 @@ import com.ospreydcs.dp.service.common.mongo.migration.migrations.V1AnnotationCo
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V2NormalizeAnnotationTags;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V3CanonicalizeAnnotationReferenceIds;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V4StampColumnDiscriminators;
+import com.ospreydcs.dp.service.common.mongo.migration.migrations.V5SeedPvStatsMaxBucketSpan;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,7 +59,7 @@ public class SchemaMigrationRunner {
      * version lines move at different rates and coupling them would mean either bumping this on
      * every release or maintaining a mapping.
      */
-    public static final int SCHEMA_VERSION = 4;
+    public static final int SCHEMA_VERSION = 5;
 
     /**
      * Migrations in application order. Must be contiguous from 1 through {@link #SCHEMA_VERSION};
@@ -70,7 +70,8 @@ public class SchemaMigrationRunner {
             new V1AnnotationCommentToDescription(),
             new V2NormalizeAnnotationTags(),
             new V3CanonicalizeAnnotationReferenceIds(),
-            new V4StampColumnDiscriminators()
+            new V4StampColumnDiscriminators(),
+            new V5SeedPvStatsMaxBucketSpan()
     );
 
     /**
@@ -83,16 +84,17 @@ public class SchemaMigrationRunner {
      * {@code SchemaMigrationRunnerTest} pins the list against the declared constants.
      *
      * <p>The probe asks "has any build ever used this database?", which is a broader question than
-     * "does it hold service data". So it includes {@code bucketSpanVerification} — a marker written
-     * by {@code BucketSpanVerifier} on a previous startup is positive evidence of a prior deployment
-     * even if every data collection has since been emptied by a purge, a retention wipe, or a
-     * partial restore. Including it can only push a database toward "legacy", never toward "fresh",
-     * which is the safe direction: a needless migration run against empty collections is idempotent,
-     * while a legacy database mistaken for fresh is silently stamped as migrated.
+     * "does it hold service data". So it includes {@code bucketSpanVerification} — the marker the
+     * startup bucket-span check wrote before #232 removed it. That marker is positive evidence of a
+     * prior deployment even if every data collection has since been emptied by a purge, a retention
+     * wipe, or a partial restore. Including it can only push a database toward "legacy", never
+     * toward "fresh", which is the safe direction: a needless migration run against empty
+     * collections is idempotent, while a legacy database mistaken for fresh is silently stamped as
+     * migrated. Nothing writes that collection any more and migration v5 drops it; the name stays
+     * on {@code MongoClientBase} as a legacy constant so a pre-v5 database is still classified
+     * correctly.
      *
-     * <p>Note that this constant is declared on {@code BucketSpanVerifier} rather than
-     * {@code MongoClientBase}, so the reflection test that pins this list consults both classes.
-     * {@code serviceMetadata} is the one deliberate exclusion: it holds the marker itself, so
+     * <p>{@code serviceMetadata} is the one deliberate exclusion: it holds the marker itself, so
      * including it would make every database look populated the moment a marker is written.
      */
     public static final List<String> MANAGED_COLLECTION_NAMES = List.of(
@@ -106,7 +108,8 @@ public class SchemaMigrationRunner {
             MongoClientBase.COLLECTION_NAME_CONFIGURATIONS,
             MongoClientBase.COLLECTION_NAME_CONFIGURATION_ACTIVATIONS,
             MongoClientBase.COLLECTION_NAME_SAMPLE_STATUS_BUCKETS,
-            BucketSpanVerifier.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION
+            MongoClientBase.COLLECTION_NAME_PV_STATS,
+            MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY
     );
 
     // How long a waiting (non-claiming) process will wait for the migrating process to finish.

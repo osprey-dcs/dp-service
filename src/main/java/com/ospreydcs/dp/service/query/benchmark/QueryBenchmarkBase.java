@@ -8,8 +8,10 @@ import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.PvStatsMaxSpanUpdater;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.Channel;
 import io.grpc.Grpc;
@@ -17,6 +19,7 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 
 import java.text.DecimalFormat;
 import java.time.Instant;
@@ -47,7 +50,47 @@ public abstract class QueryBenchmarkBase {
 
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
 
+        /**
+         * One updater for the life of the client, so its high-watermark cache spans batches: the
+         * benchmark loads sixty batches over the same 4,000 PVs, and a per-batch updater would
+         * start cold each time and rewrite every PV. Shared across the loader's seven threads,
+         * which the updater supports.
+         */
+        private final PvStatsMaxSpanUpdater pvStatsUpdater =
+                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+
+        /**
+         * Inserts buckets straight into the collection, bypassing the ingestion service — so
+         * nothing writes the per-PV {@code pvStats} statistic the query-side {@code firstTime}
+         * lower bound is derived from (#232). A PV with no statistic is bounded at span 0, which
+         * makes any bucket starting before the query window invisible, so the span is recorded
+         * here first, through the same {@code $max} updater ingestion uses.
+         *
+         * <p>Today's fixture happens not to need it — one-second buckets give a span of 0 and the
+         * benchmark window begins exactly on a bucket boundary — but that is a coincidence of the
+         * current parameters, not a property of the code: raising {@code numSecondsPerBucket} or
+         * shifting the window would silently return no data. This is the out-of-band bucket writer
+         * CLAUDE.md's "Per-PV Bucket Span Bound" requires to maintain the statistic itself.
+         */
         public int insertBucketDocuments(List<BucketDocument> documentList) {
+            // One recordSpan call for the whole batch, as MongoSyncIngestionClient.insertBatch does:
+            // it collapses the names into a single unordered bulk, where a call per document would
+            // issue one bulkWrite each -- 4,000 round trips per batch here, measured as load time.
+            // The span is the max over the batch for the same reason insertBatch takes the max.
+            final List<String> pvNames = new ArrayList<>(documentList.size());
+            long spanSeconds = 0L;
+            for (BucketDocument document : documentList) {
+                pvNames.add(document.getPvName());
+                spanSeconds = Math.max(spanSeconds,
+                        document.getDataTimestamps().getLastTime().getSeconds()
+                                - document.getDataTimestamps().getFirstTime().getSeconds());
+            }
+            try {
+                pvStatsUpdater.recordSpan(pvNames, spanSeconds);
+            } catch (DpException ex) {
+                logger.error("error recording pvStats for benchmark buckets: {}", ex.getMessage(), ex);
+                return 0;
+            }
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
             return result.getInsertedIds().size();
         }

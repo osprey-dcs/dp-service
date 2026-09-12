@@ -9,33 +9,34 @@ import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketSpanLimits;
 import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
+import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.protobuf.TimestampUtility;
-import com.ospreydcs.dp.service.integration.ingest.GrpcIntegrationIngestionServiceWrapper;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Demonstrates, against running services and real ingested data, that the query-side time-range
- * lower bound (#197) silently drops an over-long bucket from the dataset retrieval path that the
+ * Demonstrates, against running services and real ingested data, how the query-side time-range
+ * lower bound treats a bucket longer than the ingestion limit on the dataset retrieval path the
  * annotation service uses for export.
  *
  * <p>The export jobs reach the bucket overlap filter through {@code executeDataBlockQuery}, the
- * same method exercised here. The annotation handler therefore has to run the same startup
- * verification the query service does; before it did, a legacy archive would export incomplete data
- * with no error and no log line.
+ * same method exercised here. Since #232 the bound's span comes per PV from the {@code pvStats}
+ * collection rather than from the configured limit: a bucket is retrieved when its PV's recorded
+ * max span reaches back to it, and excluded — silently, as an ordinary short result — when not.
+ * The two tests pin both outcomes.
  *
  * <p>The over-long bucket is inserted directly into MongoDB rather than through the ingestion
  * service, because ingestion validation rejects it. That is precisely how such a bucket comes to
- * exist in a real archive: it was ingested before the limit was introduced.
+ * exist in a real archive: it was ingested before the limit was introduced. Migration v5 records
+ * the span of every stored bucket in {@code pvStats}, so a migrated archive is in the state the
+ * first test seeds by hand; the second test models a bucket that bypassed both ingestion and the
+ * migration.
  */
 public class ExportDataBucketSpanIT extends AnnotationIntegrationTestIntermediate {
 
@@ -48,44 +49,25 @@ public class ExportDataBucketSpanIT extends AnnotationIntegrationTestIntermediat
     /** Identifies the deliberately over-long bucket in retrieval results. */
     private static final String OVERLONG_BUCKET_ID = DATASET_PV_NAME + "-legacy-overlong";
 
-    @Before
-    public void setUp() throws Exception {
-        // Reset before starting services: handler init reads the limit and runs verification.
-        BucketSpanLimits.resetCachedLimitForTesting();
-        super.setUp();
-    }
-
     /**
-     * This test disables the query lower bound, which is a process-wide static. Restoring it must
-     * happen even if service teardown throws, or every later test in the JVM would run against an
-     * unbounded filter.
-     */
-    @After
-    public void tearDown() {
-        try {
-            super.tearDown();
-        } finally {
-            BucketSpanLimits.resetCachedLimitForTesting();
-        }
-    }
-
-    /**
-     * Inserts a bucket that overlaps the dataset's time range but begins far enough before it to
-     * fall outside the lower bound. Written straight to the collection so ingestion validation does
-     * not reject it, standing in for data ingested before the limit existed.
+     * Inserts a bucket that overlaps the dataset's time range but begins far enough before it that
+     * only a pvStats span covering it lets the lower bound admit it. Written straight to the
+     * collection so ingestion validation does not reject it, standing in for data ingested before
+     * the limit existed. Returns the bucket's span in seconds, for seeding pvStats.
      *
      * <p>Built as a fully-populated BucketDocument rather than a hand-rolled BSON document: a
      * bucket missing its data column or timestamps would NPE in
      * {@code BucketDocument.dataBucketFromDocument()} as soon as anything converted it to protobuf,
      * which would be a defect in the fixture rather than a property of the archive being modelled.
      */
-    private void insertOverlongBucket(long datasetStartSeconds) {
+    private long insertOverlongBucket(long datasetStartSeconds) {
 
         final long limitSeconds = BucketSpanLimits.getMaxBucketSpanSeconds();
 
-        // Begins two limits before the dataset window and extends past it, so the overlap predicate
-        // (firstTime < end AND lastTime >= begin) matches while the lower bound
-        // (firstTime.seconds >= beginSeconds - maxBucketSpanSeconds) excludes it.
+        // Begins two ingestion limits before the dataset window and extends past it, so the overlap
+        // predicate (firstTime < end AND lastTime >= begin) matches, while the lower bound
+        // (firstTime.seconds >= beginSeconds - span) admits it only for a recorded span of at least
+        // two limits — far beyond what this PV's ingested one-second buckets record.
         final long firstTimeSeconds = datasetStartSeconds - (limitSeconds * 2);
         final long spanSeconds = (limitSeconds * 2) + 10;
 
@@ -112,6 +94,7 @@ public class ExportDataBucketSpanIT extends AnnotationIntegrationTestIntermediat
                 DataTimestamps.newBuilder().setSamplingClock(samplingClock).build()));
 
         mongoClient.insertBucketDocument(bucket);
+        return spanSeconds;
     }
 
     /** Retrieves the dataset's buckets through the same path the export jobs use. */
@@ -130,46 +113,64 @@ public class ExportDataBucketSpanIT extends AnnotationIntegrationTestIntermediat
     }
 
     /**
-     * The core demonstration: with the bound active, an over-long bucket that genuinely overlaps
-     * the dataset window is excluded from retrieval, and disabling the bound — the state the
-     * annotation handler now enters when startup verification finds a violation — brings it back.
+     * With the over-long bucket's span recorded in pvStats — the state migration v5 leaves a legacy
+     * archive in — the per-PV bound reaches back to it and the export retrieval returns it alongside
+     * the compliant buckets. Before #232 the same bucket was silently dropped by a bound derived
+     * from the configured limit.
      *
-     * <p>Both halves run in one test so the two counts are compared against identical ingested
-     * data, which is what makes the difference attributable to the bound alone.
+     * <p>findDataSetBuckets queries each of the dataset's 5 one-second data blocks separately, and
+     * the inserted bucket spans all of them, so it appears once per block. Compare distinct ids
+     * rather than raw cursor rows.
      */
     @Test
-    public void testOverlongBucketDroppedByBoundAndRecoveredWhenDisabled() {
+    public void testOverlongBucketReturnedWhenPvStatsRecordsItsSpan() {
 
         final long startSeconds = Instant.now().getEpochSecond();
 
-        final Map<String, GrpcIntegrationIngestionServiceWrapper.IngestionStreamInfo> validationMap =
-                annotationIngestionScenario(startSeconds);
+        annotationIngestionScenario(startSeconds);
         final CreateDataSetScenarioResult dataSetResult = createDataSetScenario(startSeconds);
         final String dataSetId = dataSetResult.firstHalfDataSetId();
 
-        // Baseline: only compliant buckets exist, so the bound changes nothing.
-        assertTrue(BucketSpanLimits.isQueryLowerBoundEnabled());
+        // Baseline: only compliant buckets exist.
         assertEquals(
                 EXPECTED_COMPLIANT_BUCKETS, distinctBucketCount(retrieveDataSetBuckets(dataSetId)));
 
-        insertOverlongBucket(startSeconds);
+        final long spanSeconds = insertOverlongBucket(startSeconds);
+        mongoClient.upsertPvStatsMaxSpan(DATASET_PV_NAME, spanSeconds);
 
-        // With the bound enabled the extra bucket is silently excluded: the count is unchanged even
-        // though the archive now holds a bucket that overlaps the requested range.
-        final List<BucketDocument> withBound = retrieveDataSetBuckets(dataSetId);
-        assertEquals(EXPECTED_COMPLIANT_BUCKETS, distinctBucketCount(withBound));
-        assertTrue(withBound.stream().noneMatch(b -> OVERLONG_BUCKET_ID.equals(b.getId())));
+        final List<BucketDocument> buckets = retrieveDataSetBuckets(dataSetId);
+        assertEquals(EXPECTED_COMPLIANT_BUCKETS + 1, distinctBucketCount(buckets));
+        assertTrue(buckets.stream().anyMatch(b -> OVERLONG_BUCKET_ID.equals(b.getId())));
+    }
 
-        // Disabling the bound is the fallback taken when verification fails. The same query now
-        // returns the previously-dropped bucket, confirming it was the bound that excluded it and
-        // not the overlap predicate.
-        //
-        // findDataSetBuckets queries each of the dataset's 5 one-second data blocks separately, and
-        // the inserted bucket spans all of them, so it appears once per block. Compare distinct ids
-        // rather than raw cursor rows.
-        BucketSpanLimits.disableQueryLowerBound();
-        final List<BucketDocument> withoutBound = retrieveDataSetBuckets(dataSetId);
-        assertEquals(EXPECTED_COMPLIANT_BUCKETS + 1, distinctBucketCount(withoutBound));
-        assertTrue(withoutBound.stream().anyMatch(b -> OVERLONG_BUCKET_ID.equals(b.getId())));
+    /**
+     * The limitation the per-PV bound carries (plan D6/D7): a bucket that reached the collection
+     * without passing through ingestion or migration v5 has no pvStats span behind it, so the bound
+     * derived from this PV's ingested one-second buckets excludes it — no error, no log line, the
+     * result is simply short by one bucket. The recourse is to record the span, as the first test
+     * does; the configured ingestion limit has no part in the outcome.
+     */
+    @Test
+    public void testOverlongBucketWithoutPvStatsSpanIsNotReturned() {
+
+        final long startSeconds = Instant.now().getEpochSecond();
+
+        annotationIngestionScenario(startSeconds);
+        final CreateDataSetScenarioResult dataSetResult = createDataSetScenario(startSeconds);
+        final String dataSetId = dataSetResult.firstHalfDataSetId();
+
+        final long spanSeconds = insertOverlongBucket(startSeconds);
+
+        // Premise: the PV's statistic exists (ingestion wrote it) but records only the ingested
+        // one-second buckets, so it is what excludes the over-long bucket — not a missing document.
+        final PvStatsDocument pvStats = mongoClient.findPvStatsNoRetry(DATASET_PV_NAME);
+        assertNotNull(pvStats);
+        assertTrue(
+                "ingested span " + pvStats.getMaxBucketSpanSeconds() + " should be below " + spanSeconds,
+                pvStats.getMaxBucketSpanSeconds() < spanSeconds);
+
+        final List<BucketDocument> buckets = retrieveDataSetBuckets(dataSetId);
+        assertEquals(EXPECTED_COMPLIANT_BUCKETS, distinctBucketCount(buckets));
+        assertTrue(buckets.stream().noneMatch(b -> OVERLONG_BUCKET_ID.equals(b.getId())));
     }
 }
