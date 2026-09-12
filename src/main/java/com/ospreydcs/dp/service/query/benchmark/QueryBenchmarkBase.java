@@ -51,6 +51,15 @@ public abstract class QueryBenchmarkBase {
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
 
         /**
+         * One updater for the life of the client, so its high-watermark cache spans batches: the
+         * benchmark loads sixty batches over the same 4,000 PVs, and a per-batch updater would
+         * start cold each time and rewrite every PV. Shared across the loader's seven threads,
+         * which the updater supports.
+         */
+        private final PvStatsMaxSpanUpdater pvStatsUpdater =
+                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+
+        /**
          * Inserts buckets straight into the collection, bypassing the ingestion service — so
          * nothing writes the per-PV {@code pvStats} statistic the query-side {@code firstTime}
          * lower bound is derived from (#232). A PV with no statistic is bounded at span 0, which
@@ -63,15 +72,6 @@ public abstract class QueryBenchmarkBase {
          * shifting the window would silently return no data. This is the out-of-band bucket writer
          * CLAUDE.md's "Per-PV Bucket Span Bound" requires to maintain the statistic itself.
          */
-        /**
-         * One updater for the life of the client, so its high-watermark cache spans batches: the
-         * benchmark loads sixty batches over the same 4,000 PVs, and a per-batch updater would
-         * start cold each time and rewrite every PV. Shared across the loader's seven threads,
-         * which the updater supports.
-         */
-        private final PvStatsMaxSpanUpdater pvStatsUpdater =
-                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
-
         public int insertBucketDocuments(List<BucketDocument> documentList) {
             // One recordSpan call for the whole batch, as MongoSyncIngestionClient.insertBatch does:
             // it collapses the names into a single unordered bulk, where a call per document would
