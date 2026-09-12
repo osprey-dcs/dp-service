@@ -221,12 +221,63 @@ public class V5SeedPvStatsMaxBucketSpanTest {
         assertEquals(89000L, longSeeded.getMaxBucketSpanSeconds());
     }
 
+    /**
+     * A legacy bucket whose {@code pvName} is missing, null, or not a string must be skipped, not
+     * allowed to reach the {@code $group}. Such a value becomes the {@code $merge} {@code on} key,
+     * which the server rejects outright ("'on' field '_id' cannot be missing, null, undefined or an
+     * array"), aborting the pipeline having written nothing — so without the guard one malformed
+     * bucket fails this migration and, because the runner leaves the claim in place, blocks the
+     * startup of every service. The well-formed PVs in the same archive must still be seeded.
+     *
+     * <p>The array case is the one a plain {@code {pvName: {$type: "string"}}} match would let
+     * through: that form traverses into arrays and accepts {@code ["arrayPv"]}, which then fails
+     * {@code $merge} as an array {@code _id}. It is here to pin the {@code $expr} form.
+     */
+    @Test
+    public void testSkipsBucketsWithUnusablePvNameAndStillSeedsTheRest() throws DpException {
+        buckets.insertOne(bucket("pvGood", 100, 130));
+        // pvName missing entirely
+        buckets.insertOne(new Document("_id", "noname-100-0")
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document("seconds", 100L).append("nanos", 0L))
+                        .append("lastTime", new Document("seconds", 900L).append("nanos", 0L))));
+        // pvName explicitly null
+        buckets.insertOne(new Document("_id", "nullname-100-0")
+                .append("pvName", null)
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document("seconds", 100L).append("nanos", 0L))
+                        .append("lastTime", new Document("seconds", 900L).append("nanos", 0L))));
+        // pvName of the wrong BSON type
+        buckets.insertOne(new Document("_id", "intname-100-0")
+                .append("pvName", 42)
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document("seconds", 100L).append("nanos", 0L))
+                        .append("lastTime", new Document("seconds", 900L).append("nanos", 0L))));
+        // pvName as an array — accepted by a plain $type match, rejected by $merge
+        buckets.insertOne(new Document("_id", "arrayname-100-0")
+                .append("pvName", List.of("arrayPv"))
+                .append("dataTimestamps", new Document()
+                        .append("firstTime", new Document("seconds", 100L).append("nanos", 0L))
+                        .append("lastTime", new Document("seconds", 900L).append("nanos", 0L))));
+
+        // must not throw
+        migration.apply(testClient.database());
+
+        assertEquals(Long.valueOf(30), storedSpan("pvGood"));
+        assertEquals(1, allPvStats().size());
+    }
+
     @Test
     public void testPipelineShapeMatchesPlanD10() {
         final List<Bson> pipeline = V5SeedPvStatsMaxBucketSpan.seedPipeline();
-        assertEquals(3, pipeline.size());
+        assertEquals(4, pipeline.size());
 
-        final BsonDocument group = pipeline.get(0).toBsonDocument();
+        // the pvName type guard must come FIRST, ahead of the $group whose _id it feeds
+        assertEquals(
+                BsonDocument.parse("{$match: {$expr: {$eq: [{$type: '$pvName'}, 'string']}}}"),
+                pipeline.get(0).toBsonDocument());
+
+        final BsonDocument group = pipeline.get(1).toBsonDocument();
         assertEquals("$pvName", group.getDocument("$group").getString("_id").getValue());
         assertEquals(
                 BsonDocument.parse("{$max: {$subtract: ['$dataTimestamps.lastTime.seconds', '$dataTimestamps.firstTime.seconds']}}"),
@@ -234,9 +285,9 @@ public class V5SeedPvStatsMaxBucketSpanTest {
 
         assertEquals(
                 BsonDocument.parse("{$match: {maxBucketSpanSeconds: {$gte: NumberLong(0)}}}"),
-                pipeline.get(1).toBsonDocument());
+                pipeline.get(2).toBsonDocument());
 
-        final BsonDocument merge = pipeline.get(2).toBsonDocument().getDocument("$merge");
+        final BsonDocument merge = pipeline.get(3).toBsonDocument().getDocument("$merge");
         assertEquals(MongoClientBase.COLLECTION_NAME_PV_STATS, merge.getString("into").getValue());
         assertEquals("_id", merge.getString("on").getValue());
         assertEquals("insert", merge.getString("whenNotMatched").getValue());

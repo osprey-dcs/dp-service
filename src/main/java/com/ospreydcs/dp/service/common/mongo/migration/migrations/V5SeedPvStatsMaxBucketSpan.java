@@ -33,7 +33,11 @@ import java.util.List;
  * taking the {@code $max} of {@code lastTime.seconds - firstTime.seconds} (the whole-seconds
  * measure ingestion records, D3), then {@code $merge} into {@code pvStats} keyed on {@code _id},
  * inserting a missing document and otherwise keeping the larger of the stored and computed values.
- * Between the two, a {@code $match} drops groups whose maximum is null or negative: a PV whose
+ * A {@code $match} ahead of the {@code $group} drops any bucket whose {@code pvName} is missing,
+ * null, or not a string: {@code $merge} rejects such a value as its {@code on} field and aborts the
+ * entire pipeline having written nothing, so one malformed legacy bucket would otherwise fail this
+ * migration and block the startup of every service. Between group and merge, a second {@code $match}
+ * drops groups whose maximum is null or negative: a PV whose
  * every bucket lacks {@code dataTimestamps} yields null, and one whose every bucket has
  * {@code lastTime} before {@code firstTime} yields a negative. Neither may be stored — the query
  * side decodes the field into a primitive {@code long}, and the filter builder rejects a negative
@@ -122,6 +126,22 @@ public class V5SeedPvStatsMaxBucketSpan implements Migration {
      */
     static List<Bson> seedPipeline() {
 
+        // {$match: {$expr: {$eq: [{$type: "$pvName"}, "string"]}}} — drops a bucket whose pvName is
+        // missing, null, or not a string, before it can reach the $group. $merge refuses an "on"
+        // field that is missing, null, or an array ("'on' field '_id' cannot be missing, null,
+        // undefined or an array"), and that refusal aborts the whole pipeline having written
+        // nothing — so a single malformed legacy bucket would fail this migration, and with it the
+        // startup of every service, rather than being skipped. Such a bucket is unreachable by any
+        // query in any case (every bucket query filters on pvName), so skipping it loses nothing,
+        // exactly as for the unusable-span groups dropped below.
+        //
+        // $expr rather than the shorter {pvName: {$type: "string"}}: a plain $type match traverses
+        // into arrays and so ACCEPTS pvName: ["a"], which then fails $merge as an array _id. The
+        // $expr form tests the field's own type and rejects it. Both forms verified on mongo:8.0.
+        final Bson dropUnusablePvName = Aggregates.match(
+                Filters.expr(new Document("$eq", List.of(
+                        new Document("$type", "$" + FIELD_PV_NAME), "string"))));
+
         // {$group: {_id: "$pvName", maxBucketSpanSeconds: {$max: {$subtract: [last, first]}}}}
         final Document spanExpression = new Document("$subtract", List.of(
                 "$" + FIELD_LAST_TIME_SECONDS, "$" + FIELD_FIRST_TIME_SECONDS));
@@ -147,6 +167,6 @@ public class V5SeedPvStatsMaxBucketSpan implements Migration {
                         .whenMatchedPipeline(List.of(keepLargerOnMatch))
                         .whenNotMatched(MergeOptions.WhenNotMatched.INSERT));
 
-        return List.of(groupByPv, dropUnusable, mergeIntoPvStats);
+        return List.of(dropUnusablePvName, groupByPv, dropUnusable, mergeIntoPvStats);
     }
 }
