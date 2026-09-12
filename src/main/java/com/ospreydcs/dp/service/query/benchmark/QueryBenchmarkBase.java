@@ -55,9 +55,24 @@ public abstract class QueryBenchmarkBase {
          * benchmark loads sixty batches over the same 4,000 PVs, and a per-batch updater would
          * start cold each time and rewrite every PV. Shared across the loader's seven threads,
          * which the updater supports.
+         *
+         * <p>Created in {@link #init()} rather than as a field initializer, like
+         * {@code MongoSyncIngestionClient} does: {@code mongoCollectionPvStats} is null until
+         * {@code MongoSyncClient.init()} opens the collection, so a field initializer dereferences
+         * null at construction, before the caller ever gets to call {@code init()}.
          */
-        private final PvStatsMaxSpanUpdater pvStatsUpdater =
-                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+        private PvStatsMaxSpanUpdater pvStatsUpdater = null;
+
+        @Override
+        public boolean init() {
+            if (!super.init()) {
+                return false;
+            }
+            // The updater works on raw Documents, so it takes the collection re-typed rather than
+            // the POJO handle -- same as MongoSyncIngestionClient.
+            pvStatsUpdater = new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+            return true;
+        }
 
         /**
          * Inserts buckets straight into the collection, bypassing the ingestion service — so
@@ -158,7 +173,11 @@ public abstract class QueryBenchmarkBase {
 
         // load database with data for query
         Instant t0 = Instant.now();
-        dbClient.init();
+        if (!dbClient.init()) {
+            // The pvStats updater is created in init(); without it the loader threads would fail
+            // one bucket batch at a time instead of here, at the one point that can still stop.
+            throw new IllegalStateException("BenchmarkDbClient.init() failed, cannot load bucket data");
+        }
         final int numSamplesPerSecond = 1000;
         final int numSecondsPerBucket = 1;
         final int numColumns = 4000;

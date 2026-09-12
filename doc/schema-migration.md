@@ -329,12 +329,13 @@ ingestion process running against a not-yet-upgraded query service is harmless.
 
 A PV is left **without** a `pvStats` document — span zero, the same as a PV never seen — when every
 one of its buckets is unusable for the measure: no `dataTimestamps` subdocument, or `lastTime`
-before `firstTime`. A bucket whose `pvName` is missing, null, or not a string is skipped in the same
-way, before grouping: such a value cannot be a `pvStats` `_id`, and the server would reject the whole
-seed rather than that one bucket. No readable data is lost either way — every bucket query filters on
-`pvName`, so a bucket without a usable one is unreachable regardless. No readable data is lost by that: a bucket without timestamps cannot be
+before `firstTime`. No readable data is lost by that: a bucket without timestamps cannot be
 deserialized on the query path in any case, and an inverted bucket still satisfies the overlap test
-whenever it did before. A PV with at least one well-formed bucket is seeded normally.
+whenever it did before. A bucket whose `pvName` is missing, null, or not a string is skipped in the
+same way, before grouping: such a value cannot be a `pvStats` `_id`, and the server would reject the
+whole seed rather than that one bucket — and nothing readable is lost there either, since every
+bucket query filters on `pvName`, so a bucket without a usable one is unreachable regardless. A PV
+with at least one well-formed bucket is seeded normally.
 
 Verify afterwards:
 
