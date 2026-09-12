@@ -1,22 +1,58 @@
 # Schema migration rehearsal
 
-How to rehearse the schema migrations (v1–v3) against a copy of a production database **before**
-upgrading that deployment, without moving its time-series data. Companion to
+How to rehearse the schema migrations against a copy of a production database **before** upgrading
+that deployment, without moving its time-series data. Companion to
 [schema-migration.md](schema-migration.md), which explains the mechanism itself and what each
 startup failure means.
 
 The upgrade's first startup runs every pending migration inside `MongoClientBase.init()` and fails
-closed on any problem. All three current migrations operate on the **annotations collection only**:
+closed on any problem. As of 1.16.0 there are five:
 
-| Version | What it does |
-|---|---|
-| 1 | Rename `comment` → `description`; replace the annotations text index |
-| 2 | Normalize `tags` to lowercase/deduplicated/sorted |
-| 3 | Canonicalize `dataSetIds`/`annotationIds` reference ids to lowercase hex |
+| Version | What it does | Collections |
+|---|---|---|
+| 1 | Rename `comment` → `description`; replace the annotations text index | `annotations` |
+| 2 | Normalize `tags` to lowercase/deduplicated/sorted | `annotations` |
+| 3 | Canonicalize `dataSetIds`/`annotationIds` reference ids to lowercase hex | `annotations` |
+| 4 | Stamp the `_t` discriminator on legacy columns | `buckets`, `calculations` |
+| 5 | Seed per-PV `pvStats.maxBucketSpanSeconds`; drop `bucketSpanVerification` | `buckets`, `pvStats` |
 
-The buckets are irrelevant to all of them, so the rehearsal restores everything **except** the large
-time-series collections (`buckets`, `sampleStatusBuckets`). Two properties make this partial restore
-a faithful rehearsal rather than an approximation:
+## Scope: what this rehearsal does and does not cover
+
+This procedure restores everything **except** the large time-series collections (`buckets`,
+`sampleStatusBuckets`), which is what keeps it cheap enough to run on a workstation. That
+exclusion was free through 1.15, when every migration touched `annotations` only. **It is no
+longer free**: v4 and v5 both operate on `buckets`, so with the buckets excluded they run
+against an empty collection and complete trivially.
+
+So be precise about what a pass means:
+
+- **Fully rehearsed — v1, v2, v3.** They run against genuinely restored production data and
+  indexes.
+- **Partly rehearsed — v4.** Its *calculations* half runs against restored data. Its *buckets*
+  half — the one whose failure is silent — has nothing to act on unless you do the optional
+  [Part 1b](#part-1b-optional--a-bucket-sample-to-rehearse-v4s-bucket-half-for-real), which
+  restores a few thousand sampled buckets for exactly this purpose.
+- **Mechanism only — v5.** Executed, marker recorded, version reaches 5, so ordering, claim
+  handling, and idempotency are exercised end to end; its seed has no archive to read (or, with
+  Part 1b, only the sample).
+
+Either way the **mechanism** is fully exercised: all five migrations run in order, the claim is
+taken and released, the marker records five applied entries, and the second run proves idempotency.
+
+What a pass does **not** tell you about a 1.16.0 upgrade, with or without Part 1b: how long v4 and
+v5 take on the real archive. Both scan `buckets` end to end, and on a large archive that is the
+dominant cost of the upgrade window — the thing most worth predicting. A sample cannot predict it.
+Estimate it separately with the read-only queries in
+[upgrade-1.16-slac.md](upgrade-1.16-slac.md), which run the same pipeline shapes against a
+secondary without writing.
+
+Rehearsing v4/v5's data effects at *full scale* would mean restoring the whole `buckets`
+collection, at which point this stops being a workstation procedure. Part 1b is the middle ground:
+a sample large enough to prove the stamping works, small enough to keep the rehearsal cheap. Run
+this for migration-mechanism confidence, and predict the bucket scans by measurement rather than by
+rehearsal.
+
+Two properties still make the partial restore faithful for what it does cover:
 
 - **The legacy-vs-fresh probe classifies the same way production will.** A database with no
   `schemaVersion` marker is treated as legacy (migrate from 0) if *any* managed collection holds a
@@ -26,9 +62,6 @@ a faithful rehearsal rather than an approximation:
   `mongorestore` rebuilds them, so the annotations collection comes back with the deployment's
   actual old text index, and v1's drop-then-create runs against the genuine shape — the step most
   worth rehearsing, since a mismatched index is what can fail with `IndexOptionsConflict`.
-
-What the rehearsal does **not** cover: bucket-side startup work (max-bucket-span verification over
-the real archive). That is independent of the migration mechanism and unchanged by migrations.
 
 ## Part 0 — pre-checks against the live database (read-only)
 
@@ -55,6 +88,8 @@ db.annotations.countDocuments({$or: [{dataSetIds: /[A-F]/}, {annotationIds: /[A-
 Run wherever the production cluster is reachable (`mongodump` is bundled in the `mongo` Docker
 image if it isn't installed locally). The database name is fixed at `dp`. This skips the two large
 time-series collections; what remains is typically thousands of documents, not millions.
+(To additionally rehearse v4's bucket half, see the optional Part 1b below, which adds a small
+sampled subset of `buckets` to this dump.)
 
 ```bash
 mongodump --uri="<production-uri>" --db=dp \
@@ -70,6 +105,88 @@ unlike the service's driver, which defaults to `admin` — the same URI that wor
 
 Copy `rehearsal-dump/` to the workstation running Part 2.
 
+## Part 1b (optional) — a bucket sample, to rehearse v4's bucket half for real
+
+Skip this unless you want coverage of v4's most consequential effect. Part 1's exclusion of
+`buckets` leaves v4's bucket half untested, and that is the half whose failure is **silent**: an
+unstamped legacy column throws `CodecConfigurationException` mid-decode, which escapes the query
+dispatchers' `DpException`-only catch, so the client receives zero buckets with no error. A few
+thousand sampled buckets restore that coverage at negligible cost.
+
+This does **not** predict how long v4 and v5 take on the full archive — a sample cannot. Keep using
+the read-only estimates in [upgrade-1.16-slac.md](upgrade-1.16-slac.md) for the window.
+
+**Step 1 — build the sample on the source side.** `mongodump --query` cannot express "N random
+documents", so materialize the sample into a scratch collection first. Run against a **secondary**;
+this reads the full collection once.
+
+```js
+// On the production cluster. Adjust the sample size to taste; 5000 is ample.
+db.buckets.aggregate([
+  {$match: {dataColumn: {$exists: true}, "dataColumn._t": {$exists: false}}},
+  {$sample: {size: 5000}},
+  {$out: "bucketsRehearsalSample"}
+], {allowDiskUse: true})
+
+db.bucketsRehearsalSample.countDocuments()   // 0 means nothing needs stamping — see below
+```
+
+The `$match` is v4's own bucket filter, so the sample contains exactly the documents it would
+stamp. **A count of 0 is a legitimate and useful result**: it means this archive holds no
+pre-1.13 unstamped bucket columns, so v4's bucket half is a no-op in production and there is
+nothing to rehearse. Drop the scratch collection and skip the rest of this part.
+
+Sampling only unstamped documents is deliberate. A uniform sample of a mostly-stamped archive
+would likely contain no unstamped columns at all and would rehearse nothing, passing vacuously.
+
+**Step 2 — dump the sample alongside the metadata.** Add it to the Part 1 dump:
+
+```bash
+mongodump --uri="<production-uri>" --db=dp \
+  --collection=bucketsRehearsalSample \
+  --out=rehearsal-dump/
+```
+
+Then drop the scratch collection on the source: `db.bucketsRehearsalSample.drop()`.
+
+**Step 3 — restore it as `buckets`.** In the Part 2 script, add this immediately after the
+`mongorestore` line, before the restored-document check:
+
+```bash
+echo "== restoring bucket sample as 'buckets'"
+docker exec "$CONTAINER" mongosh -u admin -p admin --quiet --eval '
+  const d = db.getSiblingDB("dp");
+  if (d.getCollectionNames().includes("bucketsRehearsalSample")) {
+    d.bucketsRehearsalSample.aggregate([{$out: "buckets"}]);
+    d.bucketsRehearsalSample.drop();
+    print("   seeded buckets with " + d.buckets.countDocuments() + " sampled document(s)");
+  } else {
+    print("   no bucket sample in the dump — skipping (v4 bucket half not rehearsed)");
+  }'
+```
+
+Restoring under the real collection name is what matters: the migrations address `buckets` by name,
+and `buckets` is also a managed collection for the legacy-vs-fresh probe.
+
+**Step 4 — assert the sample was stamped.** Add one entry to the verify block's `bad` object:
+
+```js
+    v4_unstampedBucketColumns: d.buckets.countDocuments(
+        {dataColumn: {$exists: true}, "dataColumn._t": {$exists: false}}),
+```
+
+With the sample present, `run1.log` should report a non-zero stamp count:
+
+```
+V4StampColumnDiscriminators: stamped _t on 5000 bucket document(s)
+```
+
+**What this adds, and what it still doesn't.** v4's bucket half now runs against genuine pre-1.13
+documents and is verified. v5 still seeds from the sample rather than the archive, so its
+`pvStats now holds N document(s)` line reflects the sampled PVs only — a real exercise of the
+pipeline, but not a prediction of the production count. Neither migration's runtime here says
+anything about the full-archive scans.
+
 ## Part 2 — rehearsal script
 
 Prerequisites: Docker, Java 21, and the **release-candidate** shaded jar (build the release
@@ -77,6 +194,11 @@ tag/branch with `mvn clean package -DskipTests`). The script starts a throwaway 
 container on port 27018, restores the dump, starts the Annotation Service twice (first run
 migrates, second run must be a no-op), verifies the results, and cleans up. On any failure it
 leaves the container running for inspection.
+
+`EXPECTED_VERSION` must match `SchemaMigrationRunner.SCHEMA_VERSION` in the release candidate — it
+is 5 as of 1.16.0. Bump it here whenever a release adds a migration, or run 1 fails against its own
+success message. Note that v4 and v5 complete in milliseconds in this rehearsal because `buckets`
+was not restored; see Scope above.
 
 ```bash
 #!/usr/bin/env bash
@@ -87,7 +209,7 @@ JAR="target/dp-service-1.16.0-shaded.jar"     # the release-candidate shaded jar
 DUMP_DIR="$PWD/rehearsal-dump"                # output of Part 1
 CONTAINER="dp-migration-rehearsal"
 PORT=27018
-EXPECTED_VERSION=3                            # SchemaMigrationRunner.SCHEMA_VERSION in the RC
+EXPECTED_VERSION=5                            # SchemaMigrationRunner.SCHEMA_VERSION in the RC
 # ----------------------------------------------------------------------------
 
 URI="mongodb://admin:admin@localhost:${PORT}/"
@@ -144,6 +266,9 @@ fi
 grep -E "treating database as|claimed schema migration|applying schema migration|migration complete" run1.log
 
 echo "== verifying migrated state"
+# v1-v3 assert on real restored data. v4 asserts its calculations half; add the bucket-half
+# assertion from Part 1b if you restored a bucket sample. v5 asserts the legacy collection was
+# dropped; its pvStats seed has nothing (or only the sample) to read. See Scope above.
 mongosh_eval '
   const d = db.getSiblingDB("dp");
   const bad = {
@@ -152,6 +277,9 @@ mongosh_eval '
     v2_upperTags: d.annotations.countDocuments({tags: /[A-Z]/}),
     v3_upperRefIds: d.annotations.countDocuments(
         {$or: [{dataSetIds: /[A-F]/}, {annotationIds: /[A-F]/}]}),
+    v4_unstampedCalcColumns: d.calculations.countDocuments(
+        {dataFrames: {$elemMatch: {dataColumns: {$elemMatch: {_t: {$exists: false}}}}}}),
+    v5_legacyCollectionLeft: d.getCollectionNames().includes("bucketSpanVerification") ? 1 : 0,
   };
   const marker = d.serviceMetadata.findOne({_id: "schemaVersion"});
   print(JSON.stringify({bad, markerVersion: marker ? marker.version : null,
@@ -173,16 +301,25 @@ echo "REHEARSAL PASSED — see run1.log for the exact lines the production upgra
 `run1.log` contains, in order (host/count details vary):
 
 ```
-no schema version marker but existing data found; treating database as schema version 0 and migrating to 3
-claimed schema migration from version 0 to 3 as <pid>@<host>
+no schema version marker but existing data found; treating database as schema version 0 and migrating to 5
+claimed schema migration from version 0 to 5 as <pid>@<host>
 applying schema migration version 1: rename annotation 'comment' field to 'description' and replace its text index
 applying schema migration version 2: normalize annotation tags to lowercase/deduplicated/sorted
 applying schema migration version 3: canonicalize annotation reference ids to lowercase hex
-schema migration complete; database is at version 3
+applying schema migration version 4: stamp _t discriminator on legacy bucket and calculations columns
+applying schema migration version 5: seed pvStats maxBucketSpanSeconds from buckets; drop bucketSpanVerification
+V5SeedPvStatsMaxBucketSpan: seeded pvStats from buckets; pvStats now holds 0 document(s)
+V5SeedPvStatsMaxBucketSpan: dropped legacy collection bucketSpanVerification
+schema migration complete; database is at version 5
 ```
 
-and `run2.log` contains `schema version 3 is current; no migration needed`. The verify step prints
-all-zero `bad` counts and `markerVersion: 3`.
+and `run2.log` contains `schema version 5 is current; no migration needed`. The verify step prints
+all-zero `bad` counts and `markerVersion: 5`.
+
+`pvStats now holds 0 document(s)` is the **expected** result here, not a failure: `buckets` was not
+restored, so v5 had nothing to seed from. On the production upgrade that number is the count of
+distinct PVs in the archive, and it is the line to watch for — see
+[upgrade-1.16-slac.md](upgrade-1.16-slac.md) for what to compare it against.
 
 If a step fails, the container is left running on port 27018 for inspection; the failure messages
 map onto the "Startup failures and what to do" section of [schema-migration.md](schema-migration.md).
