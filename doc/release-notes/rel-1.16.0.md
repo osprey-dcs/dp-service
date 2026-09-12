@@ -103,6 +103,91 @@ Tabular formats (CSV, XLSX) export typed *scalar* calculations columns; a calcul
 with no tabular representation (array, image, struct, serialized) is rejected with guidance to
 export to HDF5 instead — a rejection, not an error, per the classification above.
 
+## Per-PV bucket span bound; the startup span scan is removed (Issue #232)
+
+### The startup full-collection scan is gone
+
+Services no longer verify the whole `buckets` collection against the configured span limit before
+binding their gRPC port. That check (#197) scanned every bucket at startup — hours on an archive in
+the tens of millions of buckets, during which the port was unbound and Kubernetes liveness probes
+failed. It is replaced by a per-PV statistic maintained at ingestion, so startup cost is now
+independent of archive size.
+
+Removed with it: the `BucketSpanVerifier`, the `bucketSpanVerification` marker collection (dropped
+by migration v5), and the `DP_BUCKETS_VERIFY_SPANS_ON_STARTUP` setting. A deployment still setting
+that variable is unaffected — it is simply no longer read. Any operational procedure that pre-seeds
+the `bucketSpanVerification` marker to skip the scan (the "option 0" runbook on issue #257) is
+obsolete and should be retired; the marker is deleted at upgrade.
+
+### Query lower bounds are now per PV, not archive-wide
+
+Every bucket time-range query carries a `firstTime` lower bound so the index scan has a floor
+instead of reading a PV's full history. That bound was previously sized by the configured span
+limit, which had to cover the **longest bucket anywhere in the archive** — so a handful of
+over-long buckets on a few PVs imposed that same lookback on every query for every other PV.
+
+The bound is now derived per query from `pvStats.maxBucketSpanSeconds`, the largest span ever
+ingested for each PV, taken as the maximum over the PVs the request names. A PV with normal bucket
+sizes is no longer penalized by an unrelated PV's outliers. On an archive where the configured
+limit had been raised to accommodate outliers, this is the difference between a lookback measured
+in weeks and one measured in seconds for the well-behaved majority.
+
+### BEHAVIOR CHANGE: `Buckets.maxBucketSpanSeconds` is now ingestion-only
+
+`DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS` still rejects over-long frames at ingestion, and is still
+validated at startup (non-positive values, and values large enough to overflow the nanosecond
+conversion, are rejected). **The query side no longer reads it at all.** Changing it now changes
+only what ingestion accepts from that point forward; it has no effect on query behavior, and
+raising it no longer widens any query's scan.
+
+A deployment that raised this limit to accommodate outlier buckets can lower it back to its
+intended value on the ingestion service after upgrading. Doing so does not invalidate the already
+recorded statistics — stored spans are what queries use, and they are unaffected by the setting.
+
+### Schema migration v5 — a second one-time full bucket scan at first startup
+
+The first 1.16.0 service to start against an existing database runs migration v5
+(`V5SeedPvStatsMaxBucketSpan`), seeding `pvStats` from the existing archive in one server-side
+`$group`/`$merge` pipeline and dropping `bucketSpanVerification`.
+
+**The seed is required for correctness, not an optimization.** A PV with no `pvStats` document is
+treated as having a span of zero. Without the seed, every bucket written before the upgrade would
+be invisible to any query whose window begins after that bucket's first second — until the PV
+happened to ingest a bucket at least as long, which for a retired or slowly sampled PV is never.
+
+Operationally this is a **one-time full scan of `buckets`, in addition to migration v4's** — both
+run in the same first startup, so budget roughly twice the v4 estimate: minutes up to a couple of
+hours on archives in the tens of millions of buckets. Memory is bounded by the number of distinct
+PVs, not the number of buckets. While the elected process migrates, other starting services wait
+five minutes on the claim and then exit; under a supervisor they restart and come up once the
+migration finishes. Do not clear the claim while the migrating host is alive.
+
+### UPGRADE ORDERING: stop every service, or upgrade ingestion first
+
+A pre-1.16.0 ingestion process that keeps writing after the seed has run produces buckets that no
+statistic covers, and **a bucket longer than its PV's recorded span is silently missing from query
+results** — not an error. Either stop all services for the upgrade, or upgrade ingestion before the
+seed runs. An upgraded ingestion service running against a not-yet-upgraded query service is
+harmless.
+
+The same constraint applies permanently to any writer that bypasses ingestion — a direct Mongo
+import, or a restore that adds buckets. Such a writer must raise the affected PVs' statistics with
+a `$max` upsert on `pvStats`; the one-line recourse, and the reason lowering a value by hand
+requires an ingestion restart, are in [`doc/schema-migration.md`](../schema-migration.md).
+
+SLAC-specific upgrade sequencing, with the site's measured numbers and verification queries, is in
+[`doc/upgrade-1.16-slac.md`](../upgrade-1.16-slac.md).
+
+### Known limitation: per-fragment cost under a ConfigurationSelector (#203)
+
+A `querySamples` or `queryBuckets` request carrying a `ConfigurationSelector` resolves to multiple
+retrieval fragments, and each fragment contributes its own copy of the lower bound — so index-scan
+cost grows linearly with fragment count even though the result set does not. #232 shrinks each
+fragment's window substantially (that window is now the PV's own span, not the archive's worst),
+so these queries get materially faster in absolute terms, but the multiplier itself is unchanged
+and is tracked separately as issue #203. Requests without a `ConfigurationSelector` resolve to a
+single interval and are unaffected.
+
 ### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
 
 The first 1.16.0 service to start against an existing database runs schema migration v4
