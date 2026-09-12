@@ -8,8 +8,10 @@ import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
+import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.BenchmarkScenarioResult;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
+import com.ospreydcs.dp.service.ingest.handler.mongo.client.PvStatsMaxSpanUpdater;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import io.grpc.Channel;
 import io.grpc.Grpc;
@@ -17,6 +19,7 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 
 import java.text.DecimalFormat;
 import java.time.Instant;
@@ -47,7 +50,32 @@ public abstract class QueryBenchmarkBase {
 
     protected static class BenchmarkDbClient extends MongoSyncQueryClient {
 
+        /**
+         * Inserts buckets straight into the collection, bypassing the ingestion service — so
+         * nothing writes the per-PV {@code pvStats} statistic the query-side {@code firstTime}
+         * lower bound is derived from (#232). A PV with no statistic is bounded at span 0, which
+         * makes any bucket starting before the query window invisible, so the span is recorded
+         * here first, through the same {@code $max} updater ingestion uses.
+         *
+         * <p>Today's fixture happens not to need it — one-second buckets give a span of 0 and the
+         * benchmark window begins exactly on a bucket boundary — but that is a coincidence of the
+         * current parameters, not a property of the code: raising {@code numSecondsPerBucket} or
+         * shifting the window would silently return no data. This is the out-of-band bucket writer
+         * CLAUDE.md's "Per-PV Bucket Span Bound" requires to maintain the statistic itself.
+         */
         public int insertBucketDocuments(List<BucketDocument> documentList) {
+            final PvStatsMaxSpanUpdater pvStatsUpdater =
+                    new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+            try {
+                for (BucketDocument document : documentList) {
+                    final long spanSeconds = document.getDataTimestamps().getLastTime().getSeconds()
+                            - document.getDataTimestamps().getFirstTime().getSeconds();
+                    pvStatsUpdater.recordSpan(List.of(document.getPvName()), spanSeconds);
+                }
+            } catch (DpException ex) {
+                logger.error("error recording pvStats for benchmark buckets: {}", ex.getMessage(), ex);
+                return 0;
+            }
             InsertManyResult result = mongoCollectionBuckets.insertMany(documentList);
             return result.getInsertedIds().size();
         }

@@ -622,7 +622,12 @@ missing from the result, not an error — so the invariants below are load-beari
   that bypasses ingestion) must `$max` the affected PV's `pvStats` document — that one `updateOne`
   is the whole recourse (`doc/schema-migration.md`, note on version 5): no rescan, no restart, and
   deliberately no kill switch for the bound. Lowering a stored value by hand needs an ingestion
-  restart, or the cache skips the re-raise.
+  restart, or the cache skips the re-raise. In-repo out-of-band writers must do this in code:
+  `QueryBenchmarkBase.BenchmarkDbClient` and the test helpers
+  (`MongoTestClient.upsertPvStatsMaxSpan()`, `MongoQueryHandlerTestBase.recordPvStatsForBuckets()`)
+  all record the span through `PvStatsMaxSpanUpdater` before inserting. A new direct `insertMany`
+  into `buckets` anywhere must do the same — a fixture whose spans are all 0 can hide the omission
+  until someone widens a bucket.
 - **Never cache on the read side.** A cached span can only be too small once a longer bucket is
   ingested, and a too-small bound silently drops that bucket. The read is one `$in` on `_id`
   against a collection with one document per PV.
