@@ -561,18 +561,30 @@ drift the shared helper exists to prevent.
 `QueryClient` wraps all four V2 methods (`queryBuckets`, `queryBucketsStream`, `querySamples`,
 `querySamplesStream`). Three invariants outlive the ticket:
 
-- **A mutually exclusive proto oneof is modeled as a sealed interface, not nullable fields.**
-  `PvSelectorParams` permits one record per `PvSelector` arm, so populating two arms does not
-  compile. The alternative is live in the same class: `buildQueryTableRequest` silently prefers
-  `pvNameList` over `pvNamePattern` when both are set, handing the caller a query they did not ask
-  for with no diagnostic. For the same reason `QueryBucketsParams` simply omits
-  `sampleStatusSelector` — the server rejects that combination, and a field that can only ever
-  produce a rejection should not be offered.
-- **An empty `ConfigurationSelector` is a rejection, so the builder drops the whole selector.**
-  `AnnotationClient`'s idiom — "a null or empty field contributes no criterion" — applied naively
-  here builds a *rejected* request rather than an omitted filter. This is the one place where
-  criteria emptiness is not benign; `buildQuerySpec` guards it and `QueryClientIT` pins it on the
-  built request. Note the deliberate asymmetry with its sibling `pvSelector.metadataQuery`, whose
+- **A mutually exclusive proto oneof never resolves a multi-arm value by preference order.** Both
+  V2 oneofs enforce that, at different points. `PvSelectorParams` is a sealed interface permitting
+  one record per `PvSelector` arm, so populating two does not compile. `ConfigurationCriterion`
+  stays a five-nullable-arm record — it is a *repeated* field whose criteria are ANDed, so a sealed
+  hierarchy would cost five records plus a wrapper and force every caller to build a heterogeneous
+  list — and `buildConfigurationCriterion` therefore evaluates every arm and returns null unless
+  exactly one is populated, rather than short-circuiting on the first. The anti-pattern both avoid
+  is live in the same class: `buildQueryTableRequest` silently prefers `pvNameList` over
+  `pvNamePattern` when both are set, handing the caller a query they did not ask for with no
+  diagnostic. For the same reason `QueryBucketsParams` simply omits `sampleStatusSelector` — the
+  server rejects that combination, and a field that can only ever produce a rejection should not be
+  offered.
+- **`configurationSelector` distinguishes "not requested" from "requested but unusable", and the
+  two resolve oppositely.** Null or empty `configurationCriteria` means no restriction was asked
+  for, so `buildQuerySpec` omits the selector. A *non-empty* list from which no criterion survives
+  (every arm blank, or a multi-arm criterion) instead emits the **empty** selector, which the server
+  rejects. **This is the #243 rule inverted and the distinction is load-bearing:** everywhere else
+  dropping a blank value narrows toward correctness, because a blank prefix would have matched
+  everything. Here omitting the selector *widens* the query from "only while configuration X was
+  active" to the whole time range, so silently dropping a criterion the caller filled in returns
+  strictly more data than they asked for with no diagnostic. Rejection is the loud outcome, and it
+  matches `PvNameListSelector`, whose all-blank name list is likewise forwarded empty for the server
+  to reject. Collapsing the two cases back into one unconditional drop reintroduces the silent
+  widening. Note also the deliberate asymmetry with its sibling `pvSelector.metadataQuery`, whose
   empty form is **match-all** (documented in `query.proto` as of dp-grpc#149): two selectors on the
   same `QuerySpec`, opposite empty-criteria semantics.
 - **The streaming builders drop `pageToken`, they do not forward it.** The params types are shared
@@ -587,6 +599,19 @@ merge would silently mis-align a whole PV's values against the timestamp axis if
 holding, which is a wrong answer rather than an error.
 `QuerySamplesStreamAccumulationTest` drives the observer directly to cover the page shapes a real
 server will not produce.
+
+**Serialized columns are the one thing that stream cannot accumulate, and the result says so.**
+Under `useSerializedColumns` the server puts every column in `serializedDataColumns` and leaves
+`dataColumns` empty (`AbstractQuerySamplesDispatcher.buildColumnTable()`), so the by-name merge is
+inert and merging would require deserializing each payload. The accumulated table then holds
+(pages × columns) entries — each a per-page *fragment*, the same column name repeated once per page
+— against a fully concatenated timestamp axis: structurally valid, but its columns do not line up
+with it. Because that looks assembled, the condition is **reported** rather than left to javadoc:
+`QuerySamplesStreamResponseObserver.isSerializedColumnsFragmented()` and the
+`QuerySamplesApiResult.serializedColumnsFragmented` field are true whenever more than one page
+carried serialized columns, and false for the unary method, the non-serialized representation, and
+a single-page stream. A new streaming accumulator for a representation that cannot be merged owes
+the caller the same flag.
 
 Two behaviors the wrapper javadoc carries because the proto does not: `excludeColumnMetadata` is
 **inert on the samples path** (no sample dispatcher reads it; `AbstractQueryBucketsDispatcher.java:30`

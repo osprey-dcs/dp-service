@@ -157,13 +157,12 @@ public class QueryClientIT extends GrpcIntegrationTestBase {
     }
 
     /**
-     * A configurationCriteria list that yields no usable criterion must omit the ConfigurationSelector
-     * ENTIRELY, not emit an empty one.  The server rejects an empty selector (deliberately — see
-     * dp-grpc#149), so emitting one would turn "the caller supplied no configuration filter" into a
-     * failed request.
+     * A caller who asked for NO configuration restriction gets no ConfigurationSelector at all.
+     * The server rejects an empty selector (deliberately — see dp-grpc#149), so emitting one here
+     * would turn "the caller supplied no configuration filter" into a failed request.
      */
     @Test
-    public void testBuildQuerySpecOmitsEmptyConfigurationSelector() {
+    public void testBuildQuerySpecOmitsUnrequestedConfigurationSelector() {
 
         // null criteria list
         assertFalse(QueryClient.buildQuerySamplesRequest(samplesParams(
@@ -174,15 +173,48 @@ public class QueryClientIT extends GrpcIntegrationTestBase {
         assertFalse(QueryClient.buildQuerySamplesRequest(samplesParams(
                         spec(new QueryClient.PvNameListSelector(List.of(PV_1)), List.of())))
                 .getQuerySpec().hasConfigurationSelector());
+    }
 
-        // a criterion whose every arm is blank -- the case that would otherwise produce an empty
-        // selector rather than no selector
-        assertFalse(QueryClient.buildQuerySamplesRequest(samplesParams(
-                        spec(new QueryClient.PvNameListSelector(List.of(PV_1)),
-                                List.of(new QueryClient.ConfigurationCriterion(
-                                        List.of("", " "), null, null, null,
-                                        new AttributeCriterion("  ", List.of("v")))))))
-                .getQuerySpec().hasConfigurationSelector());
+    /**
+     * A caller who DID ask for a configuration restriction, but supplied nothing usable, gets the
+     * empty selector emitted so the server rejects the request.
+     *
+     * <p>This is the inverse of the issue #243 rule and the reason the two cases above are
+     * distinguished from this one.  Elsewhere in the client layer, dropping a blank value narrows
+     * toward correctness — a blank prefix would have matched everything.  Here dropping the
+     * selector WIDENS the query from "only while configuration X was active" to the whole time
+     * range, so silently dropping a criterion the caller filled in would return strictly more data
+     * than they asked for with no diagnostic.  Rejection is the loud outcome.
+     */
+    @Test
+    public void testBuildQuerySpecEmitsEmptySelectorForUnusableConfigurationCriteria() {
+
+        final QuerySamplesRequest request = QueryClient.buildQuerySamplesRequest(samplesParams(
+                spec(new QueryClient.PvNameListSelector(List.of(PV_1)),
+                        List.of(new QueryClient.ConfigurationCriterion(
+                                List.of("", " "), null, null, null,
+                                new AttributeCriterion("  ", List.of("v")))))));
+
+        assertTrue(request.getQuerySpec().hasConfigurationSelector());
+        assertEquals(0, request.getQuerySpec().getConfigurationSelector().getCriteriaCount());
+    }
+
+    /**
+     * A criterion populating more than one oneof arm is a build error, not a preference-order
+     * resolution: emitting the first populated arm would silently drop the caller's other
+     * constraints.  The criterion is dropped, and because the caller did request a configuration
+     * restriction the empty selector is emitted for the server to reject.
+     */
+    @Test
+    public void testBuildQuerySpecRejectsMultiArmConfigurationCriterion() {
+
+        final QuerySamplesRequest request = QueryClient.buildQuerySamplesRequest(samplesParams(
+                spec(new QueryClient.PvNameListSelector(List.of(PV_1)),
+                        List.of(new QueryClient.ConfigurationCriterion(
+                                List.of("cfg-a"), null, null, List.of("vacuum"), null)))));
+
+        assertTrue(request.getQuerySpec().hasConfigurationSelector());
+        assertEquals(0, request.getQuerySpec().getConfigurationSelector().getCriteriaCount());
     }
 
     /**

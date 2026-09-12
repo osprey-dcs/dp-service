@@ -445,9 +445,27 @@ public class QueryClient extends ServiceApiClientBase {
 
     /**
      * A single non-temporal configuration-matching criterion for {@code configurationSelector}.
-     * Exactly one arm should be populated per instance; a criterion with no usable arm is dropped
-     * when the request is built, and one with more than one arm populated emits the first
-     * populated arm in declaration order.
+     * Exactly one arm may be populated per instance — the proto {@code
+     * ConfigurationSelector.Criterion} is a oneof, and the server rejects a criterion with no arm
+     * set ("configurationSelector criterion must set exactly one arm").
+     *
+     * <p><strong>Populating more than one arm is a build error and is rejected here</strong>, not
+     * silently resolved by preference order.  {@link #buildQuerySpec} emits the empty selector in
+     * that case so the server rejects the request, for the reason {@link PvSelectorParams} gives:
+     * quietly picking one arm hands the caller a query they did not ask for with no diagnostic,
+     * which is exactly what {@link #buildQueryTableRequest} does with {@code pvNameList} versus
+     * {@code pvNamePattern} and exactly what this class is trying not to repeat.
+     *
+     * <p><strong>Why this is a record with five nullable arms while {@link PvSelectorParams} is a
+     * sealed interface.</strong>  Both model a proto oneof and both must reject the multi-arm case,
+     * but only one of them can do it at compile time affordably.  {@code pvSelector} is a single
+     * required field, so a sealed hierarchy costs three small records and makes the invalid state
+     * unrepresentable.  {@code configurationCriteria} is a <em>repeated</em> field whose criteria
+     * are ANDed, so the same treatment would cost five permitted records plus a wrapper, and every
+     * caller would build a heterogeneous {@code List<ConfigurationCriterionParams>} — considerably
+     * more ceremony for a criterion that is usually one name list.  The invalid state is therefore
+     * representable here and caught at build time instead of compile time.  The rule is the same in
+     * both places; only the enforcement point differs.
      *
      * <p>Time is deliberately not part of a criterion: {@link QuerySpecParams}'s time range is the
      * single time axis for the whole query.
@@ -466,14 +484,27 @@ public class QueryClient extends ServiceApiClientBase {
      *
      * <p>{@code beginTime} and {@code endTime} describe the half-open interval
      * {@code [beginTime, endTime)} and are required by the server, as is {@code pvSelector}.
-     * {@code configurationCriteria} is optional: when it is null, empty, or contains no usable
-     * criterion, the built request carries <strong>no</strong> {@code configurationSelector} at
-     * all, which is how "no configuration restriction" is expressed.
+     *
+     * <p><strong>{@code configurationCriteria} distinguishes "no restriction asked for" from "a
+     * restriction was asked for and none of it was usable", and they resolve oppositely.</strong>
+     * A null or empty list means the caller expressed no configuration restriction, and the built
+     * request carries no {@code configurationSelector} at all — the query covers the whole time
+     * range.  A <em>non-empty</em> list from which no criterion survives (every arm blank) instead
+     * emits the empty selector, which the server rejects with "configurationSelector.criteria list
+     * must not be empty".
+     *
+     * <p>That asymmetry is deliberate and is the inverse of the issue #243 rule elsewhere in the
+     * client layer.  Everywhere else, dropping a blank value <em>narrows</em> toward correctness: a
+     * blank prefix would have matched everything, so omitting it is the safe direction.  Here the
+     * relationship is reversed — omitting the selector widens the query from "only while
+     * configuration X was active" to the entire time range.  Silently dropping a criterion the
+     * caller filled in would therefore hand back strictly more data than they asked for with no
+     * diagnostic, which is the #243 failure mode with its sign flipped.  Rejection is the loud
+     * outcome, and it matches how {@link PvNameListSelector} treats an all-blank name list: the
+     * empty list is forwarded and the server rejects it.
      *
      * <p><strong>Do not attempt to express "no restriction" as an empty criteria list.</strong>
-     * The server rejects a {@code ConfigurationSelector} whose criteria list is empty — deliberately,
-     * so that a half-built selector is loud rather than silently returning an empty result. The
-     * builder therefore drops the whole selector rather than emitting an empty one.
+     * Pass null, or omit the field.
      *
      * <p>{@code sampleStatusSelector} is absent here by design: the server rejects it on the
      * bucket-oriented methods, so it lives on {@link QuerySamplesParams} only.
@@ -531,24 +562,37 @@ public class QueryClient extends ServiceApiClientBase {
             specBuilder.setPvSelector(buildPvSelector(params.pvSelector()));
         }
 
-        // configuration selector.  Built into a local builder first so that the selector can be
-        // dropped entirely when no criterion survives: an EMPTY ConfigurationSelector is rejected
-        // by the server, so emitting one would turn "the caller supplied no configuration filter"
-        // into a failed request rather than an unrestricted query.  This is the same reasoning
-        // buildQueryPvMetadataRequest records for its criteria.
+        // Configuration selector.  Built into a local builder first because whether to emit it at
+        // all depends on WHY it came out empty, and the two reasons resolve oppositely:
+        //
+        //   - the caller supplied no criteria (null / empty list) -> no restriction was asked for,
+        //     so drop the selector.  Emitting an empty one would turn "no configuration filter"
+        //     into a rejected request.
+        //
+        //   - the caller supplied criteria but none was usable (every arm blank) -> a restriction
+        //     WAS asked for and could not be expressed.  Emit the empty selector so the server
+        //     rejects it.  Dropping it here would widen the query from "only while configuration X
+        //     was active" to the whole time range -- strictly more data than the caller asked for,
+        //     with no diagnostic.  That is the #243 silent-wrong-answer mode inverted: elsewhere
+        //     dropping a blank narrows toward correctness, here it widens away from it.
+        //
+        // The second case mirrors PvNameListSelector, whose all-blank name list is likewise
+        // forwarded empty for the server to reject rather than silently reinterpreted.
         final ConfigurationSelector.Builder configSelectorBuilder = ConfigurationSelector.newBuilder();
+        boolean configurationRestrictionRequested = false;
         if (params.configurationCriteria() != null) {
             for (ConfigurationCriterion criterion : params.configurationCriteria()) {
                 if (criterion == null) {
                     continue;
                 }
+                configurationRestrictionRequested = true;
                 final ConfigurationSelector.Criterion built = buildConfigurationCriterion(criterion);
                 if (built != null) {
                     configSelectorBuilder.addCriteria(built);
                 }
             }
         }
-        if (configSelectorBuilder.getCriteriaCount() > 0) {
+        if (configSelectorBuilder.getCriteriaCount() > 0 || configurationRestrictionRequested) {
             specBuilder.setConfigurationSelector(configSelectorBuilder);
         }
 
@@ -642,9 +686,15 @@ public class QueryClient extends ServiceApiClientBase {
 
     /**
      * Builds one {@code ConfigurationSelector.Criterion}, or returns null when the supplied
-     * criterion carries no usable value.  Returning null rather than an empty criterion matters:
-     * the server rejects a criterion with no arm set, so a criterion built from unfilled optional
-     * fields must be dropped by the caller rather than sent.
+     * criterion cannot be turned into exactly one arm — either because no arm carries a usable
+     * value, or because more than one does.
+     *
+     * <p>Both cases return null rather than a best guess.  The proto criterion is a oneof and the
+     * server rejects one with no arm set, so a half-built criterion cannot be sent as-is; and
+     * emitting the first populated arm of several would silently drop the caller's other
+     * constraints, handing back more data than they asked for.  {@link #buildQuerySpec} turns a
+     * null here into a rejected request rather than an omitted filter — see the asymmetry note
+     * there.
      */
     private static ConfigurationSelector.Criterion buildConfigurationCriterion(
             ConfigurationCriterion criterion
@@ -652,43 +702,53 @@ public class QueryClient extends ServiceApiClientBase {
         final ConfigurationSelector.Criterion.Builder builder =
                 ConfigurationSelector.Criterion.newBuilder();
 
+        // Every arm is evaluated rather than short-circuiting on the first populated one, so that a
+        // criterion with two arms set is detected instead of being silently resolved by declaration
+        // order (the buildQueryTableRequest anti-pattern PvSelectorParams exists to avoid).
+        int populatedArms = 0;
+
         final List<String> names = ClientCriteria.nonBlank(criterion.configurationNameAnyOf());
         if (!names.isEmpty()) {
-            return builder.setConfigurationNameCriterion(
+            populatedArms++;
+            builder.setConfigurationNameCriterion(
                     ConfigurationSelector.Criterion.ConfigurationNameCriterion.newBuilder()
-                            .addAllValues(names)).build();
+                            .addAllValues(names));
         }
 
         final List<String> activationIds = ClientCriteria.nonBlank(criterion.clientActivationIdAnyOf());
         if (!activationIds.isEmpty()) {
-            return builder.setClientActivationIdCriterion(
+            populatedArms++;
+            builder.setClientActivationIdCriterion(
                     ConfigurationSelector.Criterion.ClientActivationIdCriterion.newBuilder()
-                            .addAllValues(activationIds)).build();
+                            .addAllValues(activationIds));
         }
 
         final List<String> categories = ClientCriteria.nonBlank(criterion.categoryAnyOf());
         if (!categories.isEmpty()) {
-            return builder.setCategoryCriterion(
+            populatedArms++;
+            builder.setCategoryCriterion(
                     ConfigurationSelector.Criterion.CategoryCriterion.newBuilder()
-                            .addAllValues(categories)).build();
+                            .addAllValues(categories));
         }
 
         final List<String> tags = ClientCriteria.nonBlank(criterion.tagsAnyOf());
         if (!tags.isEmpty()) {
-            return builder.setTagsCriterion(
+            populatedArms++;
+            builder.setTagsCriterion(
                     ConfigurationSelector.Criterion.TagsCriterion.newBuilder()
-                            .addAllValues(tags)).build();
+                            .addAllValues(tags));
         }
 
         final AttributeCriterion attribute = criterion.attribute();
         if (attribute != null && !ClientCriteria.isBlankKey(attribute.key())) {
-            return builder.setAttributesCriterion(
+            populatedArms++;
+            builder.setAttributesCriterion(
                     ConfigurationSelector.Criterion.AttributesCriterion.newBuilder()
                             .setKey(attribute.key())
-                            .addAllValues(ClientCriteria.nonBlank(attribute.values()))).build();
+                            .addAllValues(ClientCriteria.nonBlank(attribute.values())));
         }
 
-        return null;
+        return populatedArms == 1 ? builder.build() : null;
     }
 
     private static SampleStatusSelector buildSampleStatusSelector(SampleStatusSelectorParams params) {
@@ -764,7 +824,11 @@ public class QueryClient extends ServiceApiClientBase {
      * @param sampleStatusSelector optional per-sample status filter, or null for none
      * @param limit rows per page (unary) or per streamed message (streaming); 0 = server default
      * @param pageToken continuation token for the unary method; ignored by the streaming method
-     * @param useSerializedColumns return columns in serialized form to reduce gRPC overhead
+     * @param useSerializedColumns return columns in serialized form to reduce gRPC overhead.  On
+     *                             {@link #querySamplesStream} the streamed pages' serialized
+     *                             columns cannot be merged, so a multi-page stream returns
+     *                             fragments and sets the result's {@code
+     *                             serializedColumnsFragmented} flag; see that method.
      */
     public record QuerySamplesParams(
             QuerySpecParams querySpec,
@@ -965,11 +1029,23 @@ public class QueryClient extends ServiceApiClientBase {
      * differs from the first page's is therefore a hard failure: the accumulated table cannot be
      * built correctly, and reporting a partial one would be worse than reporting nothing.
      *
-     * <p>Serialized columns ({@code ResultRepresentation.useSerializedColumns}) cannot be merged
-     * without deserializing them, so a stream carrying them is accumulated as the raw per-page
-     * serialized column lists concatenated, with the timestamp axis concatenated as usual.  Callers
-     * using serialized columns on a streaming call should deserialize per page; the unary method is
-     * the better fit when a single assembled table is wanted.
+     * <p><strong>Serialized columns are concatenated, not merged, and the result says so.</strong>
+     * Under {@code ResultRepresentation.useSerializedColumns} the server puts every column in
+     * {@code serializedDataColumns} and leaves {@code dataColumns} empty, so the by-name merge above
+     * is inert and there is nothing to align: merging would require deserializing each payload.  The
+     * accumulated table therefore holds (pages × columns) serialized entries — each one a
+     * <em>fragment</em> of its column covering that page's slice of the axis, with the same column
+     * name repeated once per page — against a fully concatenated timestamp list.  That is a
+     * structurally valid {@code ColumnTable} whose columns do not line up with its axis, which is
+     * precisely the shape a caller must not mistake for an assembled table.
+     *
+     * <p>Because it looks plausible, the condition is reported rather than left to the javadoc:
+     * {@link #isSerializedColumnsFragmented()} is true whenever more than one page contributed
+     * serialized columns, and {@link #getColumnTable()} is safe to consume directly only when it is
+     * false.  Callers wanting a single assembled table should use the unary {@link #querySamples}
+     * or leave {@code useSerializedColumns} off; callers who set it on a streaming call should
+     * deserialize per page, which means consuming pages as they arrive rather than through this
+     * accumulator.
      */
     public static class QuerySamplesStreamResponseObserver
             implements StreamObserver<QuerySamplesResponse> {
@@ -986,6 +1062,9 @@ public class QueryClient extends ServiceApiClientBase {
         private final Map<String, List<DataValue>> valuesByColumnName = new LinkedHashMap<>();
         private final List<SerializedDataColumn> serializedColumns = new ArrayList<>();
         private boolean columnSetEstablished = false;
+        // number of pages that contributed serialized columns; > 1 means the accumulated
+        // serializedDataColumns are per-page fragments rather than whole columns
+        private int serializedColumnPageCount = 0;
 
         public void await() {
             try {
@@ -1114,10 +1193,24 @@ public class QueryClient extends ServiceApiClientBase {
                 }
             }
 
-            serializedColumns.addAll(page.getSerializedDataColumnsList());
+            if (!page.getSerializedDataColumnsList().isEmpty()) {
+                serializedColumnPageCount++;
+                serializedColumns.addAll(page.getSerializedDataColumnsList());
+            }
             timestamps.addAll(page.getTimestampList().getTimestampsList());
 
             return null;
+        }
+
+        /**
+         * True when the accumulated {@code serializedDataColumns} are per-page fragments rather
+         * than whole columns — that is, when more than one streamed page carried serialized
+         * columns.  See the class javadoc: the fragments cannot be merged without deserializing
+         * them, so the accumulated table's columns do not align with its concatenated timestamp
+         * axis even though the table is structurally well formed.
+         */
+        public synchronized boolean isSerializedColumnsFragmented() {
+            return serializedColumnPageCount > 1;
         }
 
         @Override
@@ -1303,8 +1396,12 @@ public class QueryClient extends ServiceApiClientBase {
                     true, responseObserver.getErrorMessage(), responseObserver.getApiResultStatus());
         } else {
             // streaming is fire-and-consume: the table is the accumulated result of the whole
-            // stream and there is no continuation token
-            return new QuerySamplesApiResult(responseObserver.getColumnTable(), "");
+            // stream and there is no continuation token.  The fragmentation flag is carried through
+            // because a multi-page serialized-column table looks assembled but is not -- see
+            // QuerySamplesStreamResponseObserver.
+            return new QuerySamplesApiResult(
+                    responseObserver.getColumnTable(), "",
+                    responseObserver.isSerializedColumnsFragmented());
         }
     }
 
@@ -1321,6 +1418,14 @@ public class QueryClient extends ServiceApiClientBase {
      * is required.
      *
      * <p>{@code params.limit} means the per-message chunk size here, not a total cap.
+     *
+     * <p><strong>{@code params.useSerializedColumns} does not accumulate.</strong>  Serialized
+     * columns cannot be merged without deserializing them, so a stream spanning more than one page
+     * returns their per-page fragments concatenated against a fully concatenated timestamp axis —
+     * a well-formed table whose columns do not align with it.  The result's {@code
+     * serializedColumnsFragmented} flag is set in that case and must be checked before the table is
+     * consumed.  Use {@link #querySamples}, or leave the flag off, when a single assembled table is
+     * wanted.
      *
      * <p>Every result-shape and failure-mode caveat on {@link #querySamples} applies, with one
      * addition: a page whose column set differs from the first page's fails the call rather than

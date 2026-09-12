@@ -200,9 +200,59 @@ public class QuerySamplesStreamAccumulationTest {
     }
 
     /**
+     * A single page of serialized columns is NOT fragmented — the whole column arrived in one
+     * piece, so the accumulated table is directly consumable and the flag must stay false.  This
+     * is the boundary of the flag: reporting fragmentation here would push callers away from a
+     * result that is perfectly good.
+     */
+    @Test
+    public void testSinglePageSerializedColumnsAreNotFragmented() {
+
+        final QueryClient.QuerySamplesStreamResponseObserver observer =
+                new QueryClient.QuerySamplesStreamResponseObserver();
+
+        observer.onNext(QuerySamplesResponse.newBuilder()
+                .setSampleQueryResult(QuerySamplesResponse.SampleQueryResult.newBuilder()
+                        .setColumnTable(ColumnTable.newBuilder()
+                                .setTimestampList(TimestampList.newBuilder().addTimestamps(ts(1, 0)))
+                                .addSerializedDataColumns(SerializedDataColumn.newBuilder()
+                                        .setName("pvA")
+                                        .setPayload(ByteString.copyFromUtf8("one")))))
+                .build());
+        observer.onCompleted();
+        observer.await();
+
+        assertFalse(observer.getErrorMessage(), observer.isError());
+        assertFalse(observer.isSerializedColumnsFragmented());
+    }
+
+    /**
+     * A stream carrying no serialized columns at all is never fragmented, whatever its page count.
+     */
+    @Test
+    public void testDataColumnStreamIsNeverFragmented() {
+
+        final QueryClient.QuerySamplesStreamResponseObserver observer =
+                new QueryClient.QuerySamplesStreamResponseObserver();
+
+        observer.onNext(page(List.of(ts(1, 0)), column("pvA", 1.0)));
+        observer.onNext(page(List.of(ts(2, 0)), column("pvA", 2.0)));
+        observer.onCompleted();
+        observer.await();
+
+        assertFalse(observer.getErrorMessage(), observer.isError());
+        assertFalse(observer.isSerializedColumnsFragmented());
+    }
+
+    /**
      * Serialized columns cannot be merged without deserializing them, so they are concatenated as
      * delivered while the timestamp axis accumulates normally.  Documented on the observer; pinned
      * here so the behavior is not mistaken for the by-name merge.
+     *
+     * <p>The resulting table is structurally valid but its two "pvA" entries are per-page fragments
+     * against a two-timestamp axis, so the observer must report it as fragmented.  Without that
+     * flag the table looks assembled and a caller consuming it directly gets a wrong answer rather
+     * than an error.
      */
     @Test
     public void testSerializedColumnsAreConcatenated() {
@@ -235,5 +285,9 @@ public class QuerySamplesStreamAccumulationTest {
         assertEquals(2, table.getTimestampList().getTimestampsCount());
         assertEquals(List.of(first, second), table.getSerializedDataColumnsList());
         assertEquals(0, table.getDataColumnsCount());
+
+        // two pages contributed serialized columns, so the two same-named entries are fragments
+        // against the concatenated axis rather than one assembled column
+        assertTrue(observer.isSerializedColumnsFragmented());
     }
 }

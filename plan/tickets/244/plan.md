@@ -150,6 +150,11 @@ message would turn an omitted filter into a rejected request. This is the same r
 `buildQueryPvMetadataRequest` records at `AnnotationClient.java:1959-1961`, and it must be carried in
 a comment at the config-selector build site.
 
+> **Superseded in part by R1 (see Review revisions).** This paragraph is correct for a caller who
+> supplied *no* criteria, and that case still drops the selector. It is wrong for a caller who
+> supplied criteria that all turned out blank: dropping there widens the query to the whole time
+> range rather than omitting a filter. Those two cases are now distinguished.
+
 ### D2 — `PvSelector` is modeled as a sealed interface, not a flat record
 
 **Decision**:
@@ -499,6 +504,78 @@ including the correction that narrowing the time range cannot help.
   `QueryBucketsParams`; `buildQuerySpec` and the six request builders (including the two stream
   variants that drop `pageToken`); four observers; the eight `sendXxx`/`queryXxx` methods.
 - `result/`: `QuerySamplesApiResult`, `QueryBucketsApiResult`.
-- `QuerySamplesStreamAccumulationTest` (8 tests) and `QueryClientIT` (20 tests), all passing.
+- `QuerySamplesStreamAccumulationTest` (10 tests) and `QueryClientIT` (22 tests), all passing.
 - `GrpcIntegrationQueryServiceWrapper.getQueryChannel()` widened to `ManagedChannel`.
-- CLAUDE.md records the three invariants that outlive the ticket.
+- CLAUDE.md records the invariants that outlive the ticket.
+
+## Review revisions (PR #270)
+
+Three findings from the PR review, all fixed in the review-fix commit. Each is recorded here
+because each one *reverses* something the plan or the first implementation had decided, and the
+reasoning for the reversal is not recoverable from the code alone.
+
+### R1 — D1's selector drop was right for the wrong scope, and silently widened the query
+
+**Finding**: D1 concluded "the wrapper omits an all-empty `configurationSelector` entirely rather
+than emitting one", and the first implementation applied that unconditionally — including when the
+caller *had* supplied criteria that all turned out blank. `QueryV2Resolver.resolveIntervals()`
+treats an absent selector as "the whole query range is the single retrieval interval", so that
+caller's query silently widened from "only while configuration X was active" to the entire time
+range, returning strictly more data than they asked for with no diagnostic.
+
+This is the #243 failure mode with its sign flipped, and D1 did not notice the inversion because
+every other application of the "no criterion contributes no filter" idiom in the client layer
+narrows toward correctness: a blank prefix would have matched *everything*, so dropping it is the
+safe direction. `configurationSelector` is the one place where dropping is the unsafe direction.
+
+**Fix**: `buildQuerySpec` now distinguishes the two reasons the selector can come out empty.
+Null/empty `configurationCriteria` still drops it — no restriction was asked for, and D1's
+reasoning holds intact for that case. A non-empty list yielding no usable criterion instead emits
+the empty selector for the server to reject, matching how `PvNameListSelector` already treats an
+all-blank name list. A list containing only `null` entries counts as "not requested": a null
+criterion is a caller bug distinct from a filled-in-but-blank field, and rejecting on something the
+caller never typed would be unhelpful.
+
+**Tests**: `testBuildQuerySpecOmitsUnrequestedConfigurationSelector` keeps the two drop cases;
+`testBuildQuerySpecEmitsEmptySelectorForUnusableConfigurationCriteria` pins the new reject case.
+The old `testBuildQuerySpecOmitsEmptyConfigurationSelector` pinned the widening as intended
+behavior and was split into those two.
+
+### R2 — `ConfigurationCriterion` documented the multi-arm hazard instead of preventing it
+
+**Finding**: D2 made `PvSelectorParams` a sealed interface precisely so that a multi-arm oneof
+cannot be resolved by silent preference order, citing `buildQueryTableRequest` as the anti-pattern.
+`ConfigurationCriterion` is also a proto oneof, and `buildConfigurationCriterion` did exactly what
+D2 rejected: returned on the first populated arm in declaration order, with the record javadoc
+merely documenting it. Documenting a hazard is not preventing it, and the PR had set the bar.
+
+**Fix**: `buildConfigurationCriterion` evaluates every arm, counts how many are populated, and
+returns null unless exactly one is — so a multi-arm criterion is dropped rather than half-honored,
+and R1's logic then emits the empty selector so the request is rejected. The record javadoc now
+explains why this oneof is enforced at build time while `pvSelector` is enforced at compile time:
+`configurationCriteria` is a *repeated* field, so a sealed hierarchy would cost five permitted
+records plus a wrapper and force every caller to build a heterogeneous list, for a criterion that
+is usually one name list. The rule is identical in both places; only the enforcement point differs.
+
+**Test**: `testBuildQuerySpecRejectsMultiArmConfigurationCriterion`.
+
+### R3 — the fragmented serialized-column table looked assembled
+
+**Finding**: under `useSerializedColumns` the server puts every column in `serializedDataColumns`
+and leaves `dataColumns` empty, so `QuerySamplesStreamResponseObserver`'s by-name merge is inert and
+the accumulated table holds per-page column *fragments* against a fully concatenated timestamp axis.
+D7 covered this in the observer javadoc ("callers should deserialize per page"), but a caller who
+does not read it gets back a structurally valid `ColumnTable` whose columns do not line up with its
+axis — a wrong answer rather than an error, which is the category this PR otherwise refuses to leave
+to documentation.
+
+**Fix**: the observer counts pages contributing serialized columns and exposes
+`isSerializedColumnsFragmented()`; `QuerySamplesApiResult` carries it as
+`serializedColumnsFragmented`, set only by the streaming path. False for the unary method, for the
+non-serialized representation, and for a single-page stream — all of which are directly consumable.
+The existing three-arg constructor is retained as a delegating two-arg form, so no call site outside
+`sendQuerySamplesStream` changed.
+
+**Tests**: `testSinglePageSerializedColumnsAreNotFragmented` and
+`testDataColumnStreamIsNeverFragmented` pin the false cases (the flag must not push callers away
+from a good result); `testSerializedColumnsAreConcatenated` gained the true assertion.
