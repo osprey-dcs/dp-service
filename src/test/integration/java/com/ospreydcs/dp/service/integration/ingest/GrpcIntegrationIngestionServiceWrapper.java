@@ -600,7 +600,18 @@ public class GrpcIntegrationIngestionServiceWrapper extends GrpcIntegrationServi
             // having found the bucket above means it is already in place — a retry would only mask a
             // reordering. ">=" rather than "==" because the value only grows, and an earlier request in
             // the same test may have recorded a larger span for this PV.
-            final long requestSpanSeconds = endSeconds - params.samplingClockStartSeconds();
+            //
+            // Both ends come from requestDataTimestampsModel, the same model endSeconds is taken
+            // from, so the span is the frame's actual first-to-last seconds under either timestamp
+            // encoding. params.samplingClockStartSeconds() is the wrong source: on the explicit
+            // TimestampList path it is not the frame's first timestamp at all -- nothing reads it
+            // there -- and it passes today only because the one such IT happens to pass the same
+            // seconds value it puts in every timestamp. A TimestampList fixture starting at a
+            // different second would compute a wrong span and assert against it. It is also a
+            // nullable Long; buildIngestionRequest rejects a null before this assertion is reached,
+            // so that is a latent unboxing hazard rather than a live one.
+            final long requestSpanSeconds =
+                    endSeconds - requestDataTimestampsModel.getFirstTimestamp().getEpochSeconds();
             final PvStatsDocument pvStatsDocument = mongoClient.findPvStatsNoRetry(pvName);
             assertNotNull("pvStats document missing for pv " + pvName, pvStatsDocument);
             assertEquals(pvName, pvStatsDocument.getPvName());

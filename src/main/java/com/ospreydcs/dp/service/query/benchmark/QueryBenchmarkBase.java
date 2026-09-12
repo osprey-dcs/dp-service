@@ -63,15 +63,30 @@ public abstract class QueryBenchmarkBase {
          * shifting the window would silently return no data. This is the out-of-band bucket writer
          * CLAUDE.md's "Per-PV Bucket Span Bound" requires to maintain the statistic itself.
          */
+        /**
+         * One updater for the life of the client, so its high-watermark cache spans batches: the
+         * benchmark loads sixty batches over the same 4,000 PVs, and a per-batch updater would
+         * start cold each time and rewrite every PV. Shared across the loader's seven threads,
+         * which the updater supports.
+         */
+        private final PvStatsMaxSpanUpdater pvStatsUpdater =
+                new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+
         public int insertBucketDocuments(List<BucketDocument> documentList) {
-            final PvStatsMaxSpanUpdater pvStatsUpdater =
-                    new PvStatsMaxSpanUpdater(mongoCollectionPvStats.withDocumentClass(Document.class));
+            // One recordSpan call for the whole batch, as MongoSyncIngestionClient.insertBatch does:
+            // it collapses the names into a single unordered bulk, where a call per document would
+            // issue one bulkWrite each -- 4,000 round trips per batch here, measured as load time.
+            // The span is the max over the batch for the same reason insertBatch takes the max.
+            final List<String> pvNames = new ArrayList<>(documentList.size());
+            long spanSeconds = 0L;
+            for (BucketDocument document : documentList) {
+                pvNames.add(document.getPvName());
+                spanSeconds = Math.max(spanSeconds,
+                        document.getDataTimestamps().getLastTime().getSeconds()
+                                - document.getDataTimestamps().getFirstTime().getSeconds());
+            }
             try {
-                for (BucketDocument document : documentList) {
-                    final long spanSeconds = document.getDataTimestamps().getLastTime().getSeconds()
-                            - document.getDataTimestamps().getFirstTime().getSeconds();
-                    pvStatsUpdater.recordSpan(List.of(document.getPvName()), spanSeconds);
-                }
+                pvStatsUpdater.recordSpan(pvNames, spanSeconds);
             } catch (DpException ex) {
                 logger.error("error recording pvStats for benchmark buckets: {}", ex.getMessage(), ex);
                 return 0;
