@@ -239,10 +239,16 @@ public class PvStatsMaxSpanUpdaterTest {
         assertEquals(Long.valueOf(30L), storedSpan(pvName));
     }
 
+    /**
+     * Checked, like every other failure this class reports. An unchecked throw would escape
+     * insertBatch into the ingestion worker thread, where QueueHandlerBase catches and drops it:
+     * the job never dispatches and the caller's stream hangs with no response. The type, not just
+     * the rejection, is the thing being pinned here.
+     */
     @Test
     public void testNegativeSpanIsRejectedBeforeAnyWrite() {
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(DpException.class,
                 () -> updater.recordSpan(List.of("updater_negative"), -1L));
         verify(collection, never()).bulkWrite(anyList(), any(BulkWriteOptions.class));
     }

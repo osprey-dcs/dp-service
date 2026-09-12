@@ -80,12 +80,19 @@ public class PvStatsMaxSpanUpdater {
      *
      * @param pvNames     PV names of the buckets about to be inserted; duplicates are collapsed
      * @param spanSeconds {@code lastTime.seconds - firstTime.seconds} of those buckets, non-negative
-     * @throws DpException if the bulk write throws or is not acknowledged; nothing is cached
+     * @throws DpException if the span is negative, or if the bulk write throws or is not
+     *                     acknowledged; nothing is cached in any of those cases
      */
     public void recordSpan(Collection<String> pvNames, long spanSeconds) throws DpException {
 
+        // Checked, like every other failure here. An unchecked throw from a method called on the
+        // ingestion worker thread is caught by QueueHandlerBase, logged, and dropped -- the job
+        // never dispatches and the caller's response stream hangs until it times out with nothing
+        // to act on, which is the failure mode the repo's checked-exception convention exists to
+        // prevent (see CLAUDE.md, "A lookup helper must throw a *checked* exception"). The caller
+        // guards this today; the type system should not depend on that.
         if (spanSeconds < 0) {
-            throw new IllegalArgumentException("spanSeconds must be non-negative: " + spanSeconds);
+            throw new DpException("spanSeconds must be non-negative: " + spanSeconds);
         }
 
         // Filter by the watermark first: in the steady state every PV is covered and this returns
