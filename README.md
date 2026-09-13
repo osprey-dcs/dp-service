@@ -370,7 +370,7 @@ Options for configuring Data Platform services are desribed in more detail in [t
 
 ## Database schema migration
 
-The services apply pending database schema migrations at startup and refuse to start on a schema they cannot handle.  [The schema migration documentation](doc/schema-migration.md) covers reading the current schema version, interpreting each startup failure, and recovering from an interrupted migration.
+The services apply pending database schema migrations at startup and refuse to start on a schema they cannot handle.  [The schema migration documentation](doc/runbooks/schema-migration.md) covers reading the current schema version, interpreting each startup failure, and recovering from an interrupted migration.
 
 
 ---
@@ -398,3 +398,8 @@ The services apply pending database schema migrations at startup and refuse to s
 
 * [running the integration tests](./doc/testing-overview.md)
 * [running ingestion and query performance benchmarks](./doc/benchmark-overview.md)
+## Operator runbooks
+
+* [schema migration: mechanism, startup failures, and triage](./doc/runbooks/schema-migration.md)
+* [rehearsing schema migrations against a restored copy](./doc/runbooks/schema-migration-rehearsal.md)
+* [upgrading the SLAC deployment to 1.16.0](./doc/runbooks/upgrade-1.16-slac.md)

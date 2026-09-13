@@ -440,7 +440,7 @@ Insert `runMigrations()` between collection initialization and the `createMongoI
 
 ### 7. Operator documentation
 
-New `doc/schema-migration.md`, linked from the README:
+New `doc/runbooks/schema-migration.md`, linked from the README:
 
 - How to read the current version (`db.serviceMetadata.findOne({_id: "schemaVersion"})`).
 - What a version-mismatch startup failure looks like in the log, and what to do about each direction

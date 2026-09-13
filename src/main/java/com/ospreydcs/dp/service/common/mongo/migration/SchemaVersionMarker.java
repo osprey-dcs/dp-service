@@ -248,7 +248,7 @@ public class SchemaVersionMarker {
                                 + "replaced while this process held the migration claim. The "
                                 + "database now holds migrated data with no record of it; inspect "
                                 + "the schema and restore the marker manually before restarting. "
-                                + "See doc/schema-migration.md.");
+                                + "See doc/runbooks/schema-migration.md.");
             }
         } catch (MongoException ex) {
             throw new DpException(
@@ -282,7 +282,7 @@ public class SchemaVersionMarker {
                                 + "held the claim, so the recorded schema state is lost and other "
                                 + "starting processes have nothing to coordinate on. Verify the "
                                 + "schema and restore the marker before restarting. See "
-                                + "doc/schema-migration.md.");
+                                + "doc/runbooks/schema-migration.md.");
             }
         } catch (MongoException ex) {
             throw new DpException("error releasing schema migration claim: " + ex.getMessage(), ex);

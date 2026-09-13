@@ -300,7 +300,7 @@ public class SchemaMigrationRunner {
                         "timed out after " + (claimWaitTimeoutMillis / 1000) + "s waiting for a "
                                 + "schema migration held by " + describeHolder(observed) + ". If no "
                                 + "migration is actually running, a previous process crashed while "
-                                + "holding the claim; see doc/schema-migration.md for how to clear "
+                                + "holding the claim; see doc/runbooks/schema-migration.md for how to clear "
                                 + "it.");
             }
 
@@ -374,7 +374,7 @@ public class SchemaMigrationRunner {
                                 + migration.description() + ") failed: " + ex.getMessage()
                                 + ". The migration claim has been left in place, so the service will "
                                 + "not start until an operator resolves this; see "
-                                + "doc/schema-migration.md.", ex);
+                                + "doc/runbooks/schema-migration.md.", ex);
             } catch (RuntimeException ex) {
                 // A migration that throws unchecked would otherwise escape init() and be reported as
                 // something other than a migration failure, losing the recovery instructions.
@@ -384,7 +384,7 @@ public class SchemaMigrationRunner {
                                 + ex.getMessage()
                                 + ". The migration claim has been left in place, so the service will "
                                 + "not start until an operator resolves this; see "
-                                + "doc/schema-migration.md.", ex);
+                                + "doc/runbooks/schema-migration.md.", ex);
             }
 
             SchemaVersionMarker.recordApplied(

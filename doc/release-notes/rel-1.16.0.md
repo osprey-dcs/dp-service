@@ -173,10 +173,10 @@ harmless.
 The same constraint applies permanently to any writer that bypasses ingestion — a direct Mongo
 import, or a restore that adds buckets. Such a writer must raise the affected PVs' statistics with
 a `$max` upsert on `pvStats`; the one-line recourse, and the reason lowering a value by hand
-requires an ingestion restart, are in [`doc/schema-migration.md`](../schema-migration.md).
+requires an ingestion restart, are in [`doc/runbooks/schema-migration.md`](../runbooks/schema-migration.md).
 
 SLAC-specific upgrade sequencing, with the site's measured numbers and verification queries, is in
-[`doc/upgrade-1.16-slac.md`](../upgrade-1.16-slac.md).
+[`doc/runbooks/upgrade-1.16-slac.md`](../runbooks/upgrade-1.16-slac.md).
 
 ### Known limitation: between-fragment cost under a ConfigurationSelector (#203)
 
@@ -261,7 +261,7 @@ the migration, other starting services wait five minutes on the migration claim 
 with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
 branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
 waiting services restart and come up once the migration completes. Do not clear the claim while
-the migrating host is alive. See `doc/schema-migration.md` for triage guidance and the migration
+the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
 inventory.
 
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
