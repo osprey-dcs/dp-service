@@ -19,6 +19,7 @@ import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusBucketDocument;
 import com.ospreydcs.dp.service.common.bson.samplestatus.SampleStatusDocumentUtility;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
@@ -123,6 +124,21 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         return maxBucketSpanSeconds;
     }
 
+    /**
+     * Opens the V1 bucket retrieval cursor, reporting a database failure as the null cursor every
+     * dispatcher turns into an error response -- the same contract the V2 methods below follow.
+     *
+     * <p>The catch is not optional. {@code cursor()} issues the find, so a {@code MongoException}
+     * lands here and not at iteration: an unhinted query can fail this way for the usual reasons
+     * (an outage mid-request), and since #271 a missing {@link MongoClientBase#BUCKET_QUERY_INDEX_KEYS}
+     * index fails every call with {@code BadValue} "hint provided does not correspond to an
+     * existing index". Uncaught, that escapes {@code QueryDataJob}/{@code QueryTableJob} into
+     * {@code QueueHandlerBase}'s worker, which logs it and takes the next job -- so
+     * {@code dispatcher.handleResult()} never runs and the caller's response stream stays open
+     * until it times out, with no error ever sent. That is the failure mode #271's "fails loudly"
+     * trade-off (plan D3) depends on not happening, and it is what the release notes and the SLAC
+     * runbook promise operators. {@code MongoSyncQueryClientMissingIndexTest} pins it.
+     */
     public MongoCursor<BucketDocument> executeBucketDocumentQuery(
             Bson columnNameFilter,
             long startTimeSeconds,
@@ -131,10 +147,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos,
             long maxBucketSpanSeconds
     ) {
-        return bucketDocumentQuery(
-                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
-                maxBucketSpanSeconds)
-                .cursor();
+        try {
+            return bucketDocumentQuery(
+                    columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                    maxBucketSpanSeconds)
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeBucketDocumentQuery database error: {}", ex.getMessage(), ex);
+            return null;
+        }
     }
 
     /**
@@ -165,13 +186,33 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 + " endSeconds: " + endTimeSeconds
                 + " maxBucketSpanSeconds: " + maxBucketSpanSeconds);
 
+        return bucketFind(filter);
+    }
+
+    /**
+     * The one place a bucket retrieval query is opened: {@code find(filter)}, the
+     * {@code (pvName, firstTime)} sort, and a {@code hint} pinning the planner to the compound
+     * index declared as {@link MongoClientBase#BUCKET_QUERY_INDEX_KEYS} (#271). Every V1 and V2
+     * bucket query goes through here so no path can lose the hint or the sort.
+     *
+     * <p>Why hint: a long-lived archive accumulates {@code pvName}-prefixed indexes the current
+     * code never declared (indexes retired in beta-1.6.0 and rel-1.15.0 are never dropped at
+     * startup, and operators add their own). Each one widens the planner's candidate set, and the
+     * multi-plan trial runs every candidate's span-bounded scan before choosing -- on a customer
+     * archive that trial was the query time. Worse, on a recent-window query the planner picked a
+     * {@code lastTime}-led index whose plan needs a blocking {@code SORT} stage. With the hint
+     * there is one candidate, no trial, and the index's leading {@code (pvName, firstTime)} both
+     * carries the #232 lower bound and streams the sort. The trade: if the index is missing the
+     * query fails with a driver error rather than degrading to a collection scan, which is the
+     * right failure -- startup index creation re-creates it, and a silent full scan on tens of
+     * millions of buckets is the four-minute query that started #257.
+     * {@code MongoBucketQueryPlanTest} pins the resulting plan shape against an adversarial index set.
+     */
+    FindIterable<BucketDocument> bucketFind(Bson filter) {
         return mongoCollectionBuckets
                 .find(filter)
-                .sort(ascending(
-                        BsonConstants.BSON_KEY_PV_NAME,
-                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                        BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS
-                ));
+                .sort(bucketSort())
+                .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
     }
 
     @Override
@@ -521,6 +562,23 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
+        try {
+            return bucketQueryV2(resolvedQuery, maxBucketSpanSeconds)
+                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    /**
+     * Builds the V2 bucket retrieval query -- base filter plus the keyset seek when the query
+     * resumes a page -- without a limit or cursor, so that {@code MongoBucketQueryPlanTest} can
+     * {@code explain()} the exact query {@link #executeQueryBucketsV2} issues (the same split
+     * {@link #bucketDocumentQuery} makes for V1). Package-private on purpose.
+     */
+    FindIterable<BucketDocument> bucketQueryV2(ResolvedQuery resolvedQuery, long maxBucketSpanSeconds) {
         // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
         final List<Bson> andParts = new ArrayList<>();
         andParts.add(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds));
@@ -531,17 +589,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (pageStart != null) {
             andParts.add(bucketKeysetSeekFilter(pageStart));
         }
-
-        try {
-            return mongoCollectionBuckets
-                    .find(and(andParts))
-                    .sort(bucketV2Sort())
-                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
-                    .cursor();
-        } catch (Exception ex) {
-            logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
-            return null;
-        }
+        return bucketFind(and(andParts));
     }
 
     @Override
@@ -564,9 +612,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
         // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
         try {
-            return mongoCollectionBuckets
-                    .find(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds))
-                    .sort(bucketV2Sort())
+            return bucketFind(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds))
                     .cursor();
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
@@ -581,8 +627,6 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
             return null;
         }
-
-        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
 
         // Each fragment's lower bound is clamped to the page window begin (windowBegin = resume
         // timestamp on a continuation page, or timeRange begin on page 1). The clamp lives on
@@ -606,28 +650,74 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // Per-fragment overlap predicates over the clamped intervals.
-        final List<Bson> fragmentFilters = new ArrayList<>();
-        for (TimeInterval interval : clampedIntervals) {
-            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
-                    interval.getBeginSeconds(), interval.getBeginNanos(),
-                    interval.getEndSeconds(), interval.getEndNanos(),
-                    maxBucketSpanSeconds));
-        }
-
-        final Bson overlapFilter = (fragmentFilters.size() == 1)
-                ? fragmentFilters.get(0)
-                : or(fragmentFilters);
-
         try {
-            return mongoCollectionBuckets
-                    .find(and(pvNameFilter, overlapFilter))
-                    .sort(bucketV2Sort())
-                    .cursor();
+            return bucketSamplesQueryV2(resolvedQuery, clampedIntervals, maxBucketSpanSeconds).cursor();
         } catch (Exception ex) {
             logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
             return null;
         }
+    }
+
+    /**
+     * Builds the V2 samples retrieval query over {@code clampedIntervals} (the output of
+     * {@code TimeInterval.clampToWindowBegin}, non-empty) without opening a cursor, so that
+     * {@code MongoBucketQueryPlanTest} can {@code explain()} the exact fragment {@code $or}
+     * {@link #executeQuerySamplesV2} issues. Package-private on purpose.
+     */
+    FindIterable<BucketDocument> bucketSamplesQueryV2(
+            ResolvedQuery resolvedQuery, List<TimeInterval> clampedIntervals, long maxBucketSpanSeconds) {
+
+        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
+        return bucketFind(and(pvNameFilter, fragmentsOverlapFilter(clampedIntervals, maxBucketSpanSeconds)));
+    }
+
+    /**
+     * The overlap predicate for a set of retrieval fragments: the {@code $or} of one
+     * {@link MongoQueryFilterBuilder#bucketOverlapsRangeFilter} per fragment, ANDed with the
+     * {@code firstTime.seconds} index bounds hoisted above the {@code $or} over the fragments'
+     * earliest begin and latest end (#271). Each branch already carries its own bounds, but a
+     * predicate inside an {@code $or} branch is not an index bound for the planner's single-scan
+     * plan: measured on {@code MongoBucketQueryPlanTest}'s fixture, the two-fragment {@code $or}
+     * alone won with {@code firstTime.seconds: [MinKey, MaxKey]} -- each PV's whole history --
+     * with or without the index hint. The hoisted pair is implied by the branches (every matching
+     * bucket satisfies some branch, hence the extremes), so it changes no result; it gives the
+     * single-scan plan the interval {@code [minBegin - span, maxEnd]} instead. The cost between
+     * fragments is scanned and filtered out, which is #203's remaining multiplier. A single
+     * fragment needs no hoist: its own bounds are already top-level.
+     *
+     * <p>Rejects an empty interval list rather than building a filter for it. Both callers already
+     * screen the case -- {@code ResolvedQuery.isEmptyResult()} for the base filter, and
+     * {@code clampedIntervals.isEmpty()} on the samples path -- so arriving here with no intervals
+     * is a caller bug, and both ways of "handling" it fail in the silent direction: an empty
+     * {@code $or} is a driver error at query time, while the hoisted bounds would be built from
+     * the {@code Long.MAX_VALUE}/{@code MIN_VALUE} loop sentinels, giving an impossible interval
+     * that matches nothing and reads as an ordinary empty result. Fail at the call instead.
+     */
+    private static Bson fragmentsOverlapFilter(List<TimeInterval> intervals, long maxBucketSpanSeconds) {
+
+        if (intervals == null || intervals.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "fragmentsOverlapFilter requires at least one retrieval interval");
+        }
+
+        final List<Bson> fragmentFilters = new ArrayList<>();
+        long minBeginSeconds = Long.MAX_VALUE;
+        long maxEndSeconds = Long.MIN_VALUE;
+        for (TimeInterval interval : intervals) {
+            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                    interval.getBeginSeconds(), interval.getBeginNanos(),
+                    interval.getEndSeconds(), interval.getEndNanos(),
+                    maxBucketSpanSeconds));
+            minBeginSeconds = Math.min(minBeginSeconds, interval.getBeginSeconds());
+            maxEndSeconds = Math.max(maxEndSeconds, interval.getEndSeconds());
+        }
+        if (fragmentFilters.size() == 1) {
+            return fragmentFilters.get(0);
+        }
+        final List<Bson> parts = new ArrayList<>(MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds(
+                minBeginSeconds, maxEndSeconds, maxBucketSpanSeconds));
+        parts.add(or(fragmentFilters));
+        return and(parts);
     }
 
     /**
@@ -714,30 +804,23 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     /**
      * Base V2 bucket filter shared by the unary and streaming retrieval paths: the resolved PV-name
-     * {@code in(...)} filter AND the {@code $or} of the per-fragment bucket-overlap predicates
-     * (single fragment → no {@code $or} wrapper). Built from the shared filter builder so V1 and V2
-     * overlap semantics cannot drift. {@code maxBucketSpanSeconds} is the per-query pvStats maximum
-     * the caller resolved (#232), applied to every fragment's {@code firstTime} lower bound.
+     * {@code in(...)} filter AND the fragments' overlap predicate from
+     * {@link #fragmentsOverlapFilter} (single fragment → no {@code $or} wrapper). Built from the
+     * shared filter builder so V1 and V2 overlap semantics cannot drift. {@code maxBucketSpanSeconds}
+     * is the per-query pvStats maximum the caller resolved (#232), applied to every fragment's
+     * {@code firstTime} lower bound and to the hoisted one.
      */
     private static Bson bucketBaseFilterV2(ResolvedQuery resolvedQuery, long maxBucketSpanSeconds) {
         final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, resolvedQuery.getPvNames());
-
-        final List<Bson> fragmentFilters = new ArrayList<>();
-        for (TimeInterval interval : resolvedQuery.getRetrievalIntervals()) {
-            fragmentFilters.add(MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
-                    interval.getBeginSeconds(), interval.getBeginNanos(),
-                    interval.getEndSeconds(), interval.getEndNanos(),
-                    maxBucketSpanSeconds));
-        }
-        final Bson overlapFilter = (fragmentFilters.size() == 1)
-                ? fragmentFilters.get(0)
-                : or(fragmentFilters);
-
-        return and(pvNameFilter, overlapFilter);
+        return and(pvNameFilter, fragmentsOverlapFilter(resolvedQuery.getRetrievalIntervals(), maxBucketSpanSeconds));
     }
 
-    /** Compound V2 bucket sort {@code (pvName, firstTimeSecs, firstTimeNanos)}. */
-    private static Bson bucketV2Sort() {
+    /**
+     * Compound bucket sort {@code (pvName, firstTimeSecs, firstTimeNanos)}, shared by V1 and V2: a
+     * prefix of {@link MongoClientBase#BUCKET_QUERY_INDEX_KEYS}, so the hinted index streams it
+     * with no SORT stage.
+     */
+    private static Bson bucketSort() {
         return ascending(
                 BsonConstants.BSON_KEY_PV_NAME,
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,

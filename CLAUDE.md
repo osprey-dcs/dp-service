@@ -722,12 +722,43 @@ missing from the result, not an error — so the invariants below are load-beari
   (rejects non-positive, and anything above `MAX_CONFIGURABLE_SPAN_SECONDS` where the nanos
   conversion would overflow) and `IngestionValidationUtility` rejects frames over it. The query side
   does not read it, so changing it changes only what ingestion accepts from then on.
-- **The bound must reach the planner as an index bound, not merely a filter.** The seconds/nanos
+- **The bounds must reach the planner as index bounds, not merely filters.** The seconds/nanos
   `$or` halves of the overlap predicate cannot become index bounds and run as a residual filter on
-  the fetched documents, so the scan size is set entirely by this bound on the compound
-  `(pvName, firstTime, ...)` index. A predicate moved inside an `$or`, a changed index declaration,
-  or a sort the index cannot serve still returns the right buckets — only after scanning each PV's
-  whole history — which is why `MongoBucketQueryPlanTest` checks the `explain` plan shape.
+  the fetched documents, so the scan size is set entirely by the two plain range predicates on
+  `firstTime.seconds` from `MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds()`: the span
+  lower bound and, since #271, the upper bound `<= endSeconds` implied by `firstTime < end`.
+  Without the upper bound the planner's single-scan plan ran from the lower bound to the end of each
+  PV's history and filtered the rest out. A predicate moved inside an `$or`, a changed index
+  declaration, or a sort the index cannot serve still returns the right buckets — only after
+  scanning each PV's whole history — which is why `MongoBucketQueryPlanTest` checks the `explain`
+  plan shape.
+- **A bound inside an `$or` branch is not a bound.** The V2 fragment `$or` puts each fragment's
+  bounds inside its own branch, and the planner's single-scan plan — which it chose on the plan
+  test's fixture, hint or no hint — then had `firstTime.seconds: [MinKey, MaxKey]`: every named PV's
+  whole history. `MongoSyncQueryClient.fragmentsOverlapFilter()` therefore hoists the pair of bounds
+  above the `$or`, over the fragments' earliest begin and latest end (#271). Any new predicate that
+  wraps the overlap filter in an `$or` owes the planner the same hoisted copy.
+- **Every bucket query hints the compound index, and the hint is the index declaration.**
+  `MongoSyncQueryClient.bucketFind()` is the single `find()` for bucket retrieval (V1 and all three
+  V2 paths): filter, `(pvName, firstTime)` sort, and `hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS)`
+  — the same `Bson` object `createMongoIndexesBuckets()` passes to `createIndex`, so the two cannot
+  drift. The hint exists because startup never drops an index: a long-lived archive still carries
+  the `pvName`-led shapes retired in beta-1.6.0 and rel-1.15.0 plus whatever operators added, each a
+  planner candidate whose scan the multi-plan trial executes before choosing, and on recent-window
+  queries the planner was measured picking a `lastTime`-led index with a blocking `SORT`. The trade
+  is deliberate: a missing index now fails the query with a driver error instead of degrading to a
+  collection scan. Do not add a second `find()` on `mongoCollectionBuckets` in the query client.
+- **That driver error only reaches the caller because every retrieval method catches it.** The find
+  is issued by `cursor()`, so a `MongoException` — a missing hinted index on every call, or an
+  outage on any call — is thrown there, not at first iteration. Uncaught it escapes the job into
+  `QueueHandlerBase`'s worker, which logs it and takes the next job: `dispatcher.handleResult()`
+  never runs and the caller's stream stays open until it times out, with no error ever sent. So
+  every bucket retrieval method wraps `cursor()` and returns the null cursor that each dispatcher
+  turns into an error response. The V1 `executeBucketDocumentQuery` lacked that catch when the hint
+  landed, which made #271's "fails loudly" trade a hang on `queryData`/`queryTable`/data-block
+  export; `MongoSyncQueryClientMissingIndexTest` pins all four paths. A new bucket query method
+  owes the same catch — a throw here is strictly worse than a misclassified failure, because the
+  caller gets nothing at all.
 
 Schema migration v5 (`V5SeedPvStatsMaxBucketSpan`) seeds `pvStats` from the existing archive in one
 `$group`/`$merge` pipeline (`$max` on match, so re-runs and concurrent upgraded ingestion are safe)
@@ -872,9 +903,20 @@ positional list.
   for a stored value the updater would not write. A query test that loses buckets after a fixture
   change usually has this cause.
 - **`MongoBucketQueryPlanTest`** is the repo's only `explain`-based plan-shape test: it pins the
-  `[begin − span, ∞)` index bound on the compound bucket index, resolved through the production
-  resolver from `pvStats` documents seeded through the production updater. Extend it, not a
-  result-level test, for any change to the overlap filter, the bucket index, or the sort.
+  `[begin − span, end]` index interval on the compound bucket index, resolved through the production
+  resolver from `pvStats` documents seeded through the production updater, for the V1 named and
+  pattern paths and the V2 fragment-`$or`, keyset-page, and samples queries. It runs against an
+  adversarial index set (#271: the retired `pvName_1` and `(pvName, firstTime.seconds,
+  firstTime.nanos)` plus a `(pvName, lastTime, firstTime)`), asserts every candidate plan is on the
+  shipped index exactly and that the winner has no `SORT` stage, and keeps a counterfactual
+  (unhinted → rejected plans on other indexes) so the fixture cannot silently stop being
+  adversarial. Extend it, not a result-level test, for any change to the overlap filter, the bucket
+  index, the hint, or the sort. The explain walker reads the unsharded shape only.
+- **`MongoSyncQueryClientMissingIndexTest`** pins the failure *classification* the plan test cannot
+  see: with the hinted index dropped, each of the four retrieval methods must return a null cursor
+  rather than throw (see the catch invariant above). It asserts the healthy cursor first so a query
+  broken for an unrelated reason cannot pass as a correctly reported failure, and restores the index
+  in `tearDown` for the rest of the shared `dp-test` run.
 - **`PvStatsMaxSpanUpdaterTest`** pins the `$max` upsert and watermark semantics through a Mockito
   mock delegating to the real `dp-test` collection (call counting, write-model capture, fault
   injection). A closed-client handle is not a substitute: it throws a driver state exception, not
