@@ -178,15 +178,70 @@ requires an ingestion restart, are in [`doc/schema-migration.md`](../schema-migr
 SLAC-specific upgrade sequencing, with the site's measured numbers and verification queries, is in
 [`doc/upgrade-1.16-slac.md`](../upgrade-1.16-slac.md).
 
-### Known limitation: per-fragment cost under a ConfigurationSelector (#203)
+### Known limitation: between-fragment cost under a ConfigurationSelector (#203)
 
 A `querySamples` or `queryBuckets` request carrying a `ConfigurationSelector` resolves to multiple
-retrieval fragments, and each fragment contributes its own copy of the lower bound — so index-scan
-cost grows linearly with fragment count even though the result set does not. #232 shrinks each
-fragment's window substantially (that window is now the PV's own span, not the archive's worst),
-so these queries get materially faster in absolute terms, but the multiplier itself is unchanged
-and is tracked separately as issue #203. Requests without a `ConfigurationSelector` resolve to a
-single interval and are unaffected.
+retrieval fragments. The index scan for such a request is bounded by the earliest fragment's begin
+(minus the PV's span) and the latest fragment's end (see #271 below); the buckets between the
+fragments are scanned and discarded by the filter, so the cost is proportional to the time from
+the first fragment to the last rather than to the fragments' own extent. #232 shrinks the lookback
+below the first fragment to the PV's own span, so these queries get materially faster in absolute
+terms, but the between-fragment cost is unchanged and is tracked separately as issue #203.
+Requests without a `ConfigurationSelector` resolve to a single interval and are unaffected.
+
+## Bucket queries pinned to the compound index and bounded on both sides (Issue #271)
+
+Follow-on to #232 from a review of the SLAC query-performance reports. The compound bucket index
+`(pvName, firstTime.seconds, firstTime.nanos, lastTime.seconds, lastTime.nanos)` is unchanged; what
+changed is how reliably every bucket query uses it.
+
+### Every bucket query now hints the compound index
+
+All bucket time-range retrieval — `queryData`, `queryTable` (by name list or pattern), the annotation
+data-block export, and the V2 `queryBuckets`/`queryBucketsStream`/`querySamples`/`querySamplesStream`
+paths — now passes a `hint` naming the compound index. Previously the planner chose among every
+index on the collection, and a long-lived archive carries `pvName`-led indexes the current code
+never declared: startup never drops an index, so the shapes retired in beta-1.6.0 and rel-1.15.0
+are still present, alongside anything added by hand. Each one is a planner candidate; the planner
+trials every candidate's scan before choosing, and on recent-window queries it was measured choosing
+a `lastTime`-led index whose plan needs a blocking in-memory sort. With the hint the planner
+considers only the shipped index, whose leading `(pvName, firstTime)` both carries the #232 lower
+bound and streams the `(pvName, firstTime)` sort with no sort stage.
+
+**BEHAVIOR CHANGE:** if the compound index is missing from `buckets` (on any shard), bucket queries
+now fail with a database error naming the hint instead of silently degrading to a collection scan.
+Every service creates the index at startup, so this only arises if it is dropped by hand; restart
+any service to re-create it. Operators are encouraged to drop the leftover `pvName`-led indexes —
+they no longer affect plan choice but still cost a write per ingested bucket and their share of
+disk; the SLAC runbook lists them by name.
+
+### The index scan is now bounded above as well as below
+
+The overlap filter now also carries `firstTime.seconds <= endSeconds`, implied by its own
+`firstTime < end` half (which, being a `(seconds, nanos)` `$or`, the planner cannot use as an index
+bound). Before, whenever the planner chose the single-scan plan, the scan ran from `begin − span`
+to the **end of each PV's history** and discarded everything after the window by filter — on a
+historical query against a PV that has kept ingesting since, that is most of the PV's archive. The
+scan now covers `[begin − span, end]` on `firstTime.seconds` under either plan the planner may
+choose. No result changes.
+
+### V2 multi-fragment queries now reach the planner with a bound
+
+For a `ConfigurationSelector` request with more than one retrieval fragment, the per-fragment
+bounds sit inside an `$or`, and the planner's single-scan plan — which it chose on the test
+fixture with or without the hint — had **no** bound on `firstTime.seconds` at all: each named PV's
+entire history was scanned. The query now also carries the two bounds hoisted above the `$or`,
+over the earliest fragment's begin and the latest fragment's end. Implied by the branches, so no
+result changes; see the #203 note above for the cost that remains.
+
+### Plan-shape test hardened
+
+`MongoBucketQueryPlanTest` now runs against an adversarial index set (the retired `pvName_1` and
+`(pvName, firstTime.seconds, firstTime.nanos)` indexes plus a `(pvName, lastTime, firstTime)` one),
+asserts every candidate plan is on the shipped index exactly, asserts no blocking sort stage and a
+two-sided `firstTime.seconds` interval, and covers the V2 fragment `$or`, the V2 keyset-seek page,
+and the pattern path. The sharded plan shape (the SLAC deployment) remains unpinned — no sharded
+cluster in CI.
 
 ### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
 

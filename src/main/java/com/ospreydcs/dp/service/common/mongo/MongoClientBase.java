@@ -37,6 +37,28 @@ public abstract class MongoClientBase {
     // constants
     public static final String ADMIN_DATABASE_NAME = "admin";
     public static final String MONGO_DATABASE_NAME = "dp";
+
+    /**
+     * Key pattern of the compound bucket index every bucket time-range query runs on:
+     * {@code (pvName, firstTime.seconds, firstTime.nanos, lastTime.seconds, lastTime.nanos)}.
+     * This one object is both the {@code createIndex} declaration in
+     * {@code createMongoIndexesBuckets()} and the {@code hint} on every bucket retrieval query
+     * ({@code MongoSyncQueryClient.bucketFind()}, #271), so the two cannot drift: a query hinted
+     * to an index nobody creates fails on every call, which is the loud failure the shared
+     * constant rules out. Hinting exists because extra {@code pvName}-prefixed indexes left on a
+     * long-lived archive (the standalone {@code pvName_1} retired by #197, the beta-1.6.0-era
+     * compounds, an operator-built {@code (pvName, lastTime, firstTime)}) multiply the planner's
+     * candidate plans and, on recent-window queries, make it pick a plan with a blocking sort
+     * (measured on #271); the hint restricts planning to this index, whose leading
+     * {@code (pvName, firstTime)} both carries the #232 lower bound and serves the sort.
+     */
+    public static final Bson BUCKET_QUERY_INDEX_KEYS = Indexes.ascending(
+            BsonConstants.BSON_KEY_PV_NAME,
+            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
+            BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
+            BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS);
+
     public static final String COLLECTION_NAME_PROVIDERS = "providers";
     public static final String COLLECTION_NAME_BUCKETS = "buckets";
     public static final String COLLECTION_NAME_REQUEST_STATUS = "requestStatus";
@@ -209,14 +231,11 @@ public abstract class MongoClientBase {
         // below, and extra pvName-prefixed indexes widen the query planner's candidate set (making
         // plan selection measurably expensive for the $or-heavy time filters) while adding write
         // overhead. Existing deployments that already have pvName_1 should drop it manually.
+        // As of #271 the bucket retrieval queries hint BUCKET_QUERY_INDEX_KEYS, so a leftover
+        // index no longer changes the plan; it still costs writes and storage.
 
         // compound index by name and time fields (used in bucket data queries)
-        createMongoIndexBuckets(Indexes.ascending(
-                BsonConstants.BSON_KEY_PV_NAME,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
-                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS,
-                BsonConstants.BSON_KEY_BUCKET_LAST_TIME_SECS,
-                BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS));
+        createMongoIndexBuckets(BUCKET_QUERY_INDEX_KEYS);
 
         // regular index on providerId field
         createMongoIndexBuckets(Indexes.ascending(BsonConstants.BSON_KEY_BUCKET_PROVIDER_ID));

@@ -58,6 +58,57 @@ PVs whose queries will still carry a long lookback after the upgrade — everyon
 db.pvStats.find().sort({maxBucketSpanSeconds: -1}).limit(10)   // after the upgrade
 ```
 
+**Inventory the bucket indexes, and drop the leftovers.** The archive has accumulated indexes the
+current code never declared: startup only ever *creates* indexes, so every shape an earlier release
+declared is still there, and so is any index added by hand. The shipped set on `buckets` is exactly
+three plus the shard key:
+
+| index | key |
+|---|---|
+| `_id_` | `{_id: 1}` |
+| `pvName_1_dataTimestamps.firstTime.seconds_1_dataTimestamps.firstTime.nanos_1_dataTimestamps.lastTime.seconds_1_dataTimestamps.lastTime.nanos_1` | `(pvName, firstTime.seconds, firstTime.nanos, lastTime.seconds, lastTime.nanos)` — the one every bucket query runs on |
+| `providerId_1` | `{providerId: 1}` |
+| *(shard key index)* | whatever `sh.status()` reports for `buckets` |
+
+Anything else is a leftover. The ones earlier releases created and never dropped are `pvName_1`
+(retired in rel-1.15.0), `pvName_1_dataTimestamps.firstTime.seconds_1_dataTimestamps.firstTime.nanos_1`,
+`pvName_1_dataTimestamps.firstTime.dateTime_1`, and `pvName_1_dataTimestamps.lastTime.dateTime_1`
+(all retired in beta-1.6.0); the `(pvName, lastTime…, firstTime…)` index built during the August
+troubleshooting is one more. Run this against `mongos` to see what is there:
+
+```js
+db.buckets.getIndexes().map(i => ({name: i.name, key: i.key}))
+```
+
+Every extra `pvName`-led index is a planner candidate for every bucket query. Before 1.16.0 that
+was a measured cost: the planner trials each candidate's scan before choosing, and on recent-window
+queries it was choosing the hand-built index with a blocking in-memory sort. 1.16.0 pins the bucket
+queries to the shipped compound index with a `hint` (#271), so the leftovers no longer affect plan
+choice — but each one still costs a write per ingested bucket and its share of disk, and there is no
+reason to keep any of them. Dropping an index is a metadata operation and can be done at any time,
+before or after the upgrade, outside the window:
+
+```js
+const shipped = "pvName_1_dataTimestamps.firstTime.seconds_1_dataTimestamps.firstTime.nanos_1_dataTimestamps.lastTime.seconds_1_dataTimestamps.lastTime.nanos_1";
+const shardKey = db.getSiblingDB("config").collections.findOne({_id: db.getName() + ".buckets"})?.key;
+const leftovers = db.buckets.getIndexes()
+  .filter(i => Object.keys(i.key)[0] === "pvName" && i.name !== shipped)
+  .filter(i => !(shardKey && JSON.stringify(i.key) === JSON.stringify(shardKey)));
+leftovers.forEach(i => print("leftover: " + i.name + " " + JSON.stringify(i.key)));
+// after reviewing the list:
+// leftovers.forEach(i => db.buckets.dropIndex(i.name));
+```
+
+Do **not** drop the shipped compound index or the shard key index (the snippet skips an index whose
+key equals the shard key; if the shard key is `pvName`, the shipped compound index also supports it
+and `pvName_1` can still go). If the shipped index is ever
+missing on a shard, 1.16.0's hinted queries fail with a driver error naming the hint rather than
+silently falling back to a collection scan; the next service start re-creates it.
+
+Please also send back the `getIndexes()` output and the shard key for `buckets` (from `sh.status()`
+or `db.getSiblingDB("config").collections.findOne({_id: "<db>.buckets"}).key`) — the shard key was
+never captured, and it determines whether a single-PV query is targeted at one shard or broadcast.
+
 **Know the two settings you will change.** `DP_BUCKETS_VERIFY_SPANS_ON_STARTUP` is no longer read by
 any service and can be deleted from the deployment at any time. `DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS`
 becomes **ingestion-only** — see step 5.
@@ -120,11 +171,11 @@ the four outlier PVs still carry a ~42-day lookback for that PV, because the bou
 over the PVs the request names. Repairing those buckets (issue #258) would close that last gap; it
 is no longer urgent, since the outliers no longer affect anyone else's queries.
 
-**Queries with a `ConfigurationSelector` improve but retain a known multiplier.** Cost grows
-linearly with the number of resolved retrieval fragments, each contributing its own copy of the
-bound (issue #203). Each fragment's window is now much smaller, so these queries get faster, but a
-many-fragment request is still disproportionately expensive. Report it against #203 rather than as a
-1.16 regression.
+**Queries with a `ConfigurationSelector` improve but retain a known cost.** A request that resolves
+to several retrieval fragments is bounded on the index by the earliest fragment's begin (minus the
+PV's span) and the latest fragment's end; the buckets between fragments are scanned and filtered out
+(issue #203). A request whose fragments are far apart in time is therefore still disproportionately
+expensive. Report it against #203 rather than as a 1.16 regression.
 
 **Any writer that bypasses the ingestion service must maintain `pvStats`.** A direct Mongo import or
 a restore that adds buckets leaves those buckets uncovered, with the same silent-invisibility

@@ -185,6 +185,15 @@ public class MongoQueryFilterBuilderTest {
                         Filters.lt(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS, endNanos)));
     }
 
+    /**
+     * The upper index bound {@code firstTime.seconds <= endSeconds} (#271): implied by
+     * {@code firstTime < end}, present on every filter regardless of span, so the single-scan plan
+     * stops at the window instead of running to the end of each PV's history.
+     */
+    private static Bson expectedUpperBoundFilter(long endSecs) {
+        return Filters.lte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, endSecs);
+    }
+
     /** {@code lastTime >= begin} as the builder renders it: seconds/nanos lexicographic compare. */
     private static Bson expectedStartTimeFilter(long beginSecs, long beginNanos) {
         return Filters.or(
@@ -208,6 +217,7 @@ public class MongoQueryFilterBuilderTest {
                 BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, beginSecs - SPAN_SECONDS);
         final Bson expected = Filters.and(
                 spanLowerBoundFilter,
+                expectedUpperBoundFilter(endSecs),
                 expectedEndTimeFilter(endSecs, endNanos),
                 expectedStartTimeFilter(beginSecs, beginNanos));
 
@@ -229,6 +239,7 @@ public class MongoQueryFilterBuilderTest {
 
         final Bson expected = Filters.and(
                 Filters.gte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, beginSecs),
+                expectedUpperBoundFilter(endSecs),
                 expectedEndTimeFilter(endSecs, endNanos),
                 expectedStartTimeFilter(beginSecs, beginNanos));
 
@@ -266,6 +277,7 @@ public class MongoQueryFilterBuilderTest {
         final long endNanos = 0L;
 
         final Bson expected = Filters.and(
+                expectedUpperBoundFilter(endSecs),
                 expectedEndTimeFilter(endSecs, endNanos),
                 expectedStartTimeFilter(beginSecs, beginNanos));
 
@@ -287,6 +299,7 @@ public class MongoQueryFilterBuilderTest {
 
         final Bson expected = Filters.and(
                 Filters.gte(BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS, Long.MIN_VALUE),
+                expectedUpperBoundFilter(endSecs),
                 expectedEndTimeFilter(endSecs, endNanos),
                 expectedStartTimeFilter(beginSecs, beginNanos));
 
