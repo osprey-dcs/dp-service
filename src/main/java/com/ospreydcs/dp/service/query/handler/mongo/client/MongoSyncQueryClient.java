@@ -108,7 +108,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                                     + "treating as 0. No writing path can store this -- the document "
                                     + "was likely edited by hand. Queries naming this PV may miss "
                                     + "buckets that start before the query window until it is repaired "
-                                    + "with a $max update (see doc/schema-migration.md, note on version 5).",
+                                    + "with a $max update (see doc/runbooks/schema-migration.md, note on version 5).",
                             document.getPvName(), documentSpanSeconds);
                     continue;
                 }

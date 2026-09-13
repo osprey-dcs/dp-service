@@ -37,7 +37,7 @@ import java.util.List;
  * <p>On a large archive the buckets update is a one-time full collection scan (there is no index on
  * {@code dataColumn._t}); expect minutes to perhaps an hour at reference-archive scale. Waiting
  * service processes time out after five minutes with the held-claim message and must simply be
- * restarted — see the operator guidance in {@code doc/schema-migration.md}.
+ * restarted — see the operator guidance in {@code doc/runbooks/schema-migration.md}.
  *
  * <p><b>Idempotency.</b> Both updates filter on entries whose {@code _t} key is absent and set
  * exactly that key, so a stamped entry can never match again: a re-run matches nothing and writes

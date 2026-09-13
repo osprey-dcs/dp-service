@@ -4,7 +4,7 @@ Sequenced procedure for the SLAC deployment, whose archive shape (35M+ buckets, 
 of ~42-day outlier buckets) makes two of this release's changes need planning rather than a rolling
 restart. Companion to [schema-migration.md](schema-migration.md), which explains the migration
 mechanism and what each startup failure means, and to the
-[1.16.0 release notes](release-notes/rel-1.16.0.md), which describe what changed and why.
+[1.16.0 release notes](../release-notes/rel-1.16.0.md), which describe what changed and why.
 
 This runbook covers the bucket-span work (#232) specifically. The other 1.16.0 migrations (v1–v4)
 touch the annotations, calculations, and buckets collections and are covered by the general

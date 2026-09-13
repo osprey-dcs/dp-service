@@ -55,7 +55,7 @@ import java.util.List;
  * <p>On a large archive this is a one-time full scan of {@code buckets}, the same order of work as
  * v4. Group state is per PV, so memory is bounded by the number of distinct PVs, not buckets.
  * Waiting service processes time out after five minutes with the held-claim message and must simply
- * be restarted; see the operator guidance in {@code doc/schema-migration.md}.
+ * be restarted; see the operator guidance in {@code doc/runbooks/schema-migration.md}.
  *
  * <p><b>Idempotency.</b> A re-run recomputes the same per-PV maxima, and the {@code $max} on match
  * leaves an equal or larger stored value untouched, so applying the migration twice yields the same

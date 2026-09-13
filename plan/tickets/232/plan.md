@@ -41,7 +41,7 @@ any bucket exceed the configured limit?", and the bound itself always comes from
 (`MongoQueryFilterBuilder.java:158`). A per-PV maximum therefore has to be *captured* before it
 can be read, which means one seed pass over existing buckets. That pass belongs in the migration
 runner, where v4 (`V4StampColumnDiscriminators`) already established the choreography for a
-one-time full scan of `buckets` (`doc/schema-migration.md:269-302`).
+one-time full scan of `buckets` (`doc/runbooks/schema-migration.md:269-302`).
 
 ### 2. #259 item 1 was a false premise; item 2 is obsolete
 
@@ -165,7 +165,7 @@ turn the whole query into the multi-minute unbounded scan. *Rejected:* flooring 
 `Buckets.maxBucketSpanSeconds`. This would cover buckets written by a not-yet-upgraded 1.15
 ingestion process, but it also caps the win at the configured value, which at SLAC is 3.7M seconds.
 The rolling-upgrade window is a deployment constraint instead (Dependencies below), the same one
-`doc/schema-migration.md:169-184` already states for every migration.
+`doc/runbooks/schema-migration.md:169-184` already states for every migration.
 
 ### D7 — No read-side cache; one indexed read per query
 
@@ -351,7 +351,7 @@ cannot hang the caller's stream.
   per-PV maximum from mixed-span buckets across several PVs; apply-twice is a no-op; a larger
   pre-existing `pvStats` value survives (models ingestion racing ahead); empty `buckets` yields no
   documents; the legacy collection is dropped and a second run with it absent succeeds.
-- `doc/schema-migration.md`: history table row (`:201-207`) and a "Note on version 5": one-time
+- `doc/runbooks/schema-migration.md`: history table row (`:201-207`) and a "Note on version 5": one-time
   full scan with the same waiting-service choreography as v4; post-run check
   `db.pvStats.countDocuments()` against `db.buckets.distinct("pvName").length`; the out-of-band
   writer recourse from D7; update the two prose references to `bucketSpanVerification` (`:71-77`).
@@ -434,7 +434,7 @@ is visible, pre-warming (rejected in D5) is the fallback, not removing the write
 - **Deployment order matters once, at upgrade.** Stop all services, or upgrade ingestion first. A
   1.15 ingestion process still writing after the v5 seed produces buckets no statistic covers; an
   upgraded ingestion process running against a not-yet-upgraded query service is harmless. This is
-  the same constraint `doc/schema-migration.md` states for every migration.
+  the same constraint `doc/runbooks/schema-migration.md` states for every migration.
 - **Restart ingestion after any manual edit to `pvStats`** that lowers or removes a value; the
   in-memory watermark would otherwise skip writes the collection no longer reflects. Raising a
   value by hand (the D7 recourse) needs no restart.

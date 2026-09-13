@@ -14,7 +14,7 @@ MongoClient:
   benchmarkDatabaseName: ${DP_MONGO_BENCHMARK_DB_NAME:dp-benchmark}
 
   # MongoClient.runSchemaMigrationsOnStartup: Whether the service applies pending schema migrations
-  # at startup. Enabled by default; see doc/schema-migration.md.
+  # at startup. Enabled by default; see doc/runbooks/schema-migration.md.
   #
   # Disabling this skips APPLYING migrations, not the version check. A service whose expected schema
   # version does not match the database still refuses to start — that is the point of the mechanism.

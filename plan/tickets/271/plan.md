@@ -118,7 +118,7 @@ still applies per PV. Pre-existing API behavior, not changed here; recorded for 
 - `src/test/java/.../query/handler/mongo/client/MongoSyncQueryClientMissingIndexTest.java`
   (review follow-up): a dropped hinted index is a null cursor, not a throw, on all four retrieval
   methods; the empty-interval guard.
-- `doc/upgrade-1.16-slac.md`: index inventory and drop step; shard key request; #203 wording.
+- `doc/runbooks/upgrade-1.16-slac.md`: index inventory and drop step; shard key request; #203 wording.
 - `doc/release-notes/rel-1.16.0.md`: #271 section; #203 known-limitation wording.
 - `CLAUDE.md`: bounds, `$or` hoist, and hint invariants; plan test description.
 

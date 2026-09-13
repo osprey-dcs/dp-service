@@ -143,7 +143,7 @@ silently empty results, not an error. Schema migration v4 (`V4StampColumnDiscrim
 the migration #173 should have shipped. Idempotent by construction (both `updateMany` filters
 test for the absent key), and a one-time full scan of `buckets`; the startup choreography while
 it runs (other services time out the five-minute claim wait and rely on supervisor restart) is
-documented in `doc/schema-migration.md`.
+documented in `doc/runbooks/schema-migration.md`.
 
 `validateSaveAnnotationRequest` validates the full frame shape (D28): every column of every type
 needs a non-blank name, non-empty values, and a value count equal to the frame's timestamp count
@@ -691,7 +691,7 @@ missing from the result, not an error — so the invariants below are load-beari
   costs one write per process lifetime unless a longer span arrives. Skipping is safe across
   processes because `$max` is monotone. Any **out-of-band writer** of `buckets` (a direct import
   that bypasses ingestion) must `$max` the affected PV's `pvStats` document — that one `updateOne`
-  is the whole recourse (`doc/schema-migration.md`, note on version 5): no rescan, no restart, and
+  is the whole recourse (`doc/runbooks/schema-migration.md`, note on version 5): no rescan, no restart, and
   deliberately no kill switch for the bound. Lowering a stored value by hand needs an ingestion
   restart, or the cache skips the re-raise. In-repo out-of-band writers must do this in code:
   `QueryBenchmarkBase.BenchmarkDbClient` and the test helpers
@@ -931,7 +931,7 @@ positional list.
 Schema changes are delivered by a versioned migration runner that executes during
 `MongoClientBase.init()`, and the mechanism **fails closed**: a database whose schema version the
 binary cannot establish stops the service rather than being served from. Operator documentation is
-`doc/schema-migration.md`.
+`doc/runbooks/schema-migration.md`.
 
 - **Adding a migration**: implement `Migration` in `common/mongo/migration/migrations/`, add it to
   `SchemaMigrationRunner.MIGRATIONS`, and bump `SCHEMA_VERSION`. The version is a plain integer owned

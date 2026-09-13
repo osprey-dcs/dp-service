@@ -227,7 +227,7 @@ the migration identifies the index it drops by `comment` in `weights`, which thi
 Once a release ships v1, the same change needs a version-2 drop-and-recreate migration. Sites:
 `MongoClientBase:275` and the `createNewTextIndex()` fixture in
 `V1AnnotationCommentToDescriptionTest` (which documents itself as mirroring `MongoClientBase`);
-`doc/schema-migration.md` nowhere enumerates the replacement index's fields, so it needs no change.
+`doc/runbooks/schema-migration.md` nowhere enumerates the replacement index's fields, so it needs no change.
 
 **D10 — skip-based paging ships in Phase 1; Phase 3 converts tokens to opaque.**
 This plan's first draft had Phase 1 apply `DEFAULT_QUERY_LIMIT` while deferring all paging to
@@ -686,7 +686,7 @@ Design decisions, continuing the numbering:
   scans, the other services wait `CLAIM_WAIT_TIMEOUT_MILLIS` (5 minutes, hardcoded) and then
   refuse to start with the held-claim message — normal during a long v4, self-healing under a
   supervisor, and the constant deliberately stays hardcoded (making it configurable is scope
-  creep for a one-time event). `doc/schema-migration.md` and the release notes must say so,
+  creep for a one-time event). `doc/runbooks/schema-migration.md` and the release notes must say so,
   with expected duration and a note that the timeout message during a *running* migration is
   not the stuck-claim case it also describes. Implementation must verify the retype + v4
   against a throwaway `mongo:8.0` container seeded with pre-1.13-shaped bucket and calculations
@@ -772,7 +772,7 @@ Implementation tasks:
   conversions (D25); `CalculationsDocument.frameColumnNamesMap()` / `diffCalculations()` over
   `ColumnDocumentBase` (near-mechanical — `getName()` and proto equality live on the base);
   `V4StampColumnDiscriminators` (new, buckets + calculations) +
-  `SchemaMigrationRunner.MIGRATIONS` + `SCHEMA_VERSION = 4` + `doc/schema-migration.md`
+  `SchemaMigrationRunner.MIGRATIONS` + `SCHEMA_VERSION = 4` + `doc/runbooks/schema-migration.md`
   including the long-scan operator guidance (D27).
 - Provenance — `ColumnProvenanceDocument.derivedFrom` plus new `ColumnSourceDocument` /
   `CalculationsColumnDocument` (D29); codec registrations (embedded helpers before parents);
