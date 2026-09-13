@@ -210,8 +210,10 @@ bound and streams the `(pvName, firstTime)` sort with no sort stage.
 
 **BEHAVIOR CHANGE:** if the compound index is missing from `buckets` (on any shard), bucket queries
 now fail with a database error naming the hint instead of silently degrading to a collection scan.
-Every service creates the index at startup, so this only arises if it is dropped by hand; restart
-any service to re-create it. Operators are encouraged to drop the leftover `pvName`-led indexes —
+The failure is reported to the caller as an error response on every retrieval path — V1
+`queryData`/`queryTable`, the annotation data-block export, and the three V2 paths — not as a
+stalled stream. Every service creates the index at startup, so this only arises if it is dropped by
+hand; restart any service to re-create it. Operators are encouraged to drop the leftover `pvName`-led indexes —
 they no longer affect plan choice but still cost a write per ingested bucket and their share of
 disk; the SLAC runbook lists them by name.
 
@@ -241,7 +243,9 @@ result changes; see the #203 note above for the cost that remains.
 asserts every candidate plan is on the shipped index exactly, asserts no blocking sort stage and a
 two-sided `firstTime.seconds` interval, and covers the V2 fragment `$or`, the V2 keyset-seek page,
 and the pattern path. The sharded plan shape (the SLAC deployment) remains unpinned — no sharded
-cluster in CI.
+cluster in CI. A companion test, `MongoSyncQueryClientMissingIndexTest`, pins that a missing hinted
+index is reported to the caller as an error on all four retrieval paths rather than throwing inside
+the handler's worker thread.
 
 ### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
 

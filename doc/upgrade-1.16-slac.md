@@ -103,7 +103,8 @@ Do **not** drop the shipped compound index or the shard key index (the snippet s
 key equals the shard key; if the shard key is `pvName`, the shipped compound index also supports it
 and `pvName_1` can still go). If the shipped index is ever
 missing on a shard, 1.16.0's hinted queries fail with a driver error naming the hint rather than
-silently falling back to a collection scan; the next service start re-creates it.
+silently falling back to a collection scan — the client gets an error response, not a stalled
+request — and the next service start re-creates it.
 
 Please also send back the `getIndexes()` output and the shard key for `buckets` (from `sh.status()`
 or `db.getSiblingDB("config").collections.findOne({_id: "<db>.buckets"}).key`) — the shard key was

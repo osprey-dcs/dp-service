@@ -748,6 +748,17 @@ missing from the result, not an error — so the invariants below are load-beari
   queries the planner was measured picking a `lastTime`-led index with a blocking `SORT`. The trade
   is deliberate: a missing index now fails the query with a driver error instead of degrading to a
   collection scan. Do not add a second `find()` on `mongoCollectionBuckets` in the query client.
+- **That driver error only reaches the caller because every retrieval method catches it.** The find
+  is issued by `cursor()`, so a `MongoException` — a missing hinted index on every call, or an
+  outage on any call — is thrown there, not at first iteration. Uncaught it escapes the job into
+  `QueueHandlerBase`'s worker, which logs it and takes the next job: `dispatcher.handleResult()`
+  never runs and the caller's stream stays open until it times out, with no error ever sent. So
+  every bucket retrieval method wraps `cursor()` and returns the null cursor that each dispatcher
+  turns into an error response. The V1 `executeBucketDocumentQuery` lacked that catch when the hint
+  landed, which made #271's "fails loudly" trade a hang on `queryData`/`queryTable`/data-block
+  export; `MongoSyncQueryClientMissingIndexTest` pins all four paths. A new bucket query method
+  owes the same catch — a throw here is strictly worse than a misclassified failure, because the
+  caller gets nothing at all.
 
 Schema migration v5 (`V5SeedPvStatsMaxBucketSpan`) seeds `pvStats` from the existing archive in one
 `$group`/`$merge` pipeline (`$max` on match, so re-runs and concurrent upgraded ingestion are safe)
@@ -901,6 +912,11 @@ positional list.
   (unhinted → rejected plans on other indexes) so the fixture cannot silently stop being
   adversarial. Extend it, not a result-level test, for any change to the overlap filter, the bucket
   index, the hint, or the sort. The explain walker reads the unsharded shape only.
+- **`MongoSyncQueryClientMissingIndexTest`** pins the failure *classification* the plan test cannot
+  see: with the hinted index dropped, each of the four retrieval methods must return a null cursor
+  rather than throw (see the catch invariant above). It asserts the healthy cursor first so a query
+  broken for an unrelated reason cannot pass as a correctly reported failure, and restores the index
+  in `tearDown` for the rest of the shared `dp-test` run.
 - **`PvStatsMaxSpanUpdaterTest`** pins the `$max` upsert and watermark semantics through a Mockito
   mock delegating to the real `dp-test` collection (call counting, write-model capture, fault
   injection). A closed-client handle is not a substitute: it throws a driver state exception, not

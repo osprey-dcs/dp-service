@@ -124,6 +124,21 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         return maxBucketSpanSeconds;
     }
 
+    /**
+     * Opens the V1 bucket retrieval cursor, reporting a database failure as the null cursor every
+     * dispatcher turns into an error response -- the same contract the V2 methods below follow.
+     *
+     * <p>The catch is not optional. {@code cursor()} issues the find, so a {@code MongoException}
+     * lands here and not at iteration: an unhinted query can fail this way for the usual reasons
+     * (an outage mid-request), and since #271 a missing {@link MongoClientBase#BUCKET_QUERY_INDEX_KEYS}
+     * index fails every call with {@code BadValue} "hint provided does not correspond to an
+     * existing index". Uncaught, that escapes {@code QueryDataJob}/{@code QueryTableJob} into
+     * {@code QueueHandlerBase}'s worker, which logs it and takes the next job -- so
+     * {@code dispatcher.handleResult()} never runs and the caller's response stream stays open
+     * until it times out, with no error ever sent. That is the failure mode #271's "fails loudly"
+     * trade-off (plan D3) depends on not happening, and it is what the release notes and the SLAC
+     * runbook promise operators. {@code MongoSyncQueryClientMissingIndexTest} pins it.
+     */
     public MongoCursor<BucketDocument> executeBucketDocumentQuery(
             Bson columnNameFilter,
             long startTimeSeconds,
@@ -132,10 +147,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos,
             long maxBucketSpanSeconds
     ) {
-        return bucketDocumentQuery(
-                columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
-                maxBucketSpanSeconds)
-                .cursor();
+        try {
+            return bucketDocumentQuery(
+                    columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                    maxBucketSpanSeconds)
+                    .cursor();
+        } catch (Exception ex) {
+            logger.error("executeBucketDocumentQuery database error: {}", ex.getMessage(), ex);
+            return null;
+        }
     }
 
     /**
@@ -664,8 +684,22 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * single-scan plan the interval {@code [minBegin - span, maxEnd]} instead. The cost between
      * fragments is scanned and filtered out, which is #203's remaining multiplier. A single
      * fragment needs no hoist: its own bounds are already top-level.
+     *
+     * <p>Rejects an empty interval list rather than building a filter for it. Both callers already
+     * screen the case -- {@code ResolvedQuery.isEmptyResult()} for the base filter, and
+     * {@code clampedIntervals.isEmpty()} on the samples path -- so arriving here with no intervals
+     * is a caller bug, and both ways of "handling" it fail in the silent direction: an empty
+     * {@code $or} is a driver error at query time, while the hoisted bounds would be built from
+     * the {@code Long.MAX_VALUE}/{@code MIN_VALUE} loop sentinels, giving an impossible interval
+     * that matches nothing and reads as an ordinary empty result. Fail at the call instead.
      */
     private static Bson fragmentsOverlapFilter(List<TimeInterval> intervals, long maxBucketSpanSeconds) {
+
+        if (intervals == null || intervals.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "fragmentsOverlapFilter requires at least one retrieval interval");
+        }
+
         final List<Bson> fragmentFilters = new ArrayList<>();
         long minBeginSeconds = Long.MAX_VALUE;
         long maxEndSeconds = Long.MIN_VALUE;

@@ -115,9 +115,33 @@ still applies per PV. Pre-existing API behavior, not changed here; recorded for 
 - `src/test/java/.../query/handler/mongo/client/MongoBucketQueryPlanTest.java`: adversarial index
   set, every-candidate-on-shipped-index and no-`SORT` assertions, two-sided interval assertions,
   V2 fragment/keyset/samples and pattern coverage, hinted-key-exists check, unhinted counterfactual.
+- `src/test/java/.../query/handler/mongo/client/MongoSyncQueryClientMissingIndexTest.java`
+  (review follow-up): a dropped hinted index is a null cursor, not a throw, on all four retrieval
+  methods; the empty-interval guard.
 - `doc/upgrade-1.16-slac.md`: index inventory and drop step; shard key request; #203 wording.
 - `doc/release-notes/rel-1.16.0.md`: #271 section; #203 known-limitation wording.
 - `CLAUDE.md`: bounds, `$or` hoist, and hint invariants; plan test description.
+
+## Review follow-ups (PR #272)
+
+Both found independently by the PR review and by Copilot on the same lines.
+
+- **D7: every bucket retrieval method must catch the failure the hint makes routine.** `cursor()`
+  issues the find, so the missing-index `BadValue` is thrown there. The V1
+  `executeBucketDocumentQuery` had no catch, so it escaped `QueryDataJob`/`QueryTableJob` into
+  `QueueHandlerBase`'s worker, which logs and moves on — the caller's stream stayed open with no
+  response at all. Reproduced end-to-end against the running services before fixing (client got
+  nothing in 20 s; the worker log carried the swallowed `MongoQueryException`). D3's "fails loudly"
+  trade, and the promise the release notes and runbook make to operators, both depend on this catch;
+  without it the loud failure is a hang. Now wrapped like the three V2 methods, returning the null
+  cursor every dispatcher renders as an error. Pinned by `MongoSyncQueryClientMissingIndexTest`
+  across all four paths, verified to fail on V1 alone with the catch removed.
+- **D8: `fragmentsOverlapFilter` rejects an empty interval list.** Unreachable today — both callers
+  screen it — but the hoisted bounds would otherwise be built from the loop's
+  `Long.MAX_VALUE`/`MIN_VALUE` sentinels, producing an impossible interval that matches nothing and
+  reads as an ordinary empty result. An `IllegalArgumentException` at the call is the loud option;
+  all three call sites already sit inside the `catch (Exception)` that returns the null cursor, so a
+  future caller bug surfaces as an error response rather than a wrong answer.
 
 ## Out of scope
 
