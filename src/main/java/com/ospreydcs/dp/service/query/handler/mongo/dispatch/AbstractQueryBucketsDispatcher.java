@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 
 /**
@@ -15,7 +16,8 @@ public abstract class AbstractQueryBucketsDispatcher extends QueryV2Dispatcher {
 
     protected final long byteBudget;
 
-    protected AbstractQueryBucketsDispatcher(long byteBudget) {
+    protected AbstractQueryBucketsDispatcher(long byteBudget, QueryTelemetry telemetry) {
+        super(telemetry);
         this.byteBudget = byteBudget;
     }
 

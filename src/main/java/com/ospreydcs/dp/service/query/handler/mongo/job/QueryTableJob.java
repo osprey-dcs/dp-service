@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.job;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryTableResponse;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryTableDispatcher;
 import io.grpc.stub.StreamObserver;
@@ -19,22 +20,33 @@ public class QueryTableJob extends HandlerJob {
     private final QueryTableDispatcher dispatcher;
     private final StreamObserver<QueryTableResponse> responseObserver;
     private final MongoQueryClientInterface mongoClient;
+    private final QueryTelemetry telemetry;
 
     public QueryTableJob(QueryTableRequest request,
                          StreamObserver<QueryTableResponse> responseObserver,
-                         MongoQueryClientInterface mongoClient
+                         MongoQueryClientInterface mongoClient,
+                         QueryTelemetry telemetry
     ) {
         this.request = request;
         this.responseObserver = responseObserver;
         this.mongoClient = mongoClient;
-        this.dispatcher = new QueryTableDispatcher(responseObserver, this.request);
+        this.telemetry = telemetry;
+        this.dispatcher = new QueryTableDispatcher(responseObserver, this.request, telemetry);
     }
 
+    /** See {@code QueryDataJob.execute()} for the db-stage and finally-completion rationale. */
     public void execute() {
         logger.debug("executing QueryTableJob id: {}", this.responseObserver.hashCode());
-        final var cursor = this.mongoClient.executeQueryTable(this.request);
-        logger.debug("dispatching QueryTableJob id: {}", this.responseObserver.hashCode());
-        dispatcher.handleResult(cursor);
+        telemetry.markJobStarted(this);
+        try {
+            final long queryStartNanos = System.nanoTime();
+            final var cursor = this.mongoClient.executeQueryTable(this.request);
+            telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
+            logger.debug("dispatching QueryTableJob id: {}", this.responseObserver.hashCode());
+            dispatcher.handleResult(cursor);
+        } finally {
+            telemetry.complete();
+        }
     }
 
 

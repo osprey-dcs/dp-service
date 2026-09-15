@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -21,9 +22,10 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
     public QueryDataStreamDispatcher(
             StreamObserver<QueryDataResponse> responseObserver,
-            QueryDataRequest.QuerySpec querySpec
+            QueryDataRequest.QuerySpec querySpec,
+            QueryTelemetry telemetry
     ) {
-        super(responseObserver, querySpec);
+        super(responseObserver, querySpec, telemetry);
     }
 
     @Override
@@ -75,6 +77,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 logger.trace("sending intermediate response id: " + getResponseObserver().hashCode());
+                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
                 queryDataBuilder = QueryDataResponse.QueryData.newBuilder();
                 messageSize = 0;
@@ -88,18 +91,22 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
         // close database cursor
         logger.trace("closing cursor id: " + getResponseObserver().hashCode());
         cursor.close();
+        recordCursorTime(cursor);
 
         if ( ! isError) {
 
             // send empty response message if cursor is empty
             if (emptyResponse) {
                 logger.trace("sending empty response id: " + getResponseObserver().hashCode());
+                telemetry.markEmpty();
+                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
             // send last response message
             else if (messageSize > 0) {
                 logger.trace("sending residual response id: " + getResponseObserver().hashCode());
+                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
@@ -109,6 +116,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
         } else {
             logger.trace("sending error response id: " + getResponseObserver().hashCode() + " msg: " + errorMsg);
+            telemetry.markError();
             QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
         }
     }

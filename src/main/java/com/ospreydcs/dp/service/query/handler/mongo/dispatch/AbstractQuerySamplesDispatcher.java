@@ -10,6 +10,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -31,7 +32,8 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
 
     protected final long byteBudget;
 
-    protected AbstractQuerySamplesDispatcher(long byteBudget) {
+    protected AbstractQuerySamplesDispatcher(long byteBudget, QueryTelemetry telemetry) {
+        super(telemetry);
         this.byteBudget = byteBudget;
     }
 

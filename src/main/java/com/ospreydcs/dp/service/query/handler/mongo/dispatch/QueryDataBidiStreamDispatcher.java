@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -15,6 +16,24 @@ import org.apache.logging.log4j.Logger;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Bidirectional-streaming {@code queryDataBidiStream} formatter: the client pulls one response at a
+ * time via {@code next()}, so this dispatcher outlives the job that created it.
+ *
+ * <p><b>Telemetry caveat (issue #212, out of scope note).</b> The {@code QueryTelemetry} for this
+ * request is completed by {@code QueryDataJob}'s {@code finally}, which runs when the first response
+ * has been sent -- not when the stream ends. So {@code dp.query.stage.duration} for
+ * {@code queryDataBidiStream} measures the time to the first response, and the response counters
+ * count only what was sent by then. The later pulls are still measured where it matters: their
+ * MongoDB round-trips appear in {@code db.client.operation.duration} (D4) and their job-free work is
+ * on the gRPC thread, which {@code grpc.server.call.duration} covers for the whole call.
+ *
+ * <p>Recording per pull instead would mean either completing the telemetry once per {@code next()}
+ * -- which counts one client request as many in {@code dp.query.requests}, inflating the request
+ * rate by the client's page count -- or holding the context open until the stream closes, which for
+ * an abandoned stream is never. Neither is worth it for a legacy client path; a per-request context
+ * keyed to the stream lifecycle is the follow-on if this path ever matters again.
+ */
 public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
 
     // static variables
@@ -29,9 +48,10 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
 
     public QueryDataBidiStreamDispatcher(
             StreamObserver<QueryDataResponse> responseObserver,
-            QueryDataRequest.QuerySpec querySpec
+            QueryDataRequest.QuerySpec querySpec,
+            QueryTelemetry telemetry
     ) {
-        super(responseObserver, querySpec);
+        super(responseObserver, querySpec, telemetry);
     }
 
     private void sendNextResponse(MongoCursor<BucketDocument> cursor) {
@@ -49,6 +69,7 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
                 // we probably received a "next" request before we finished executing the query and handling initial results
                 logger.trace("sending not ready response id: " + getResponseObserver().hashCode());
                 final QueryDataResponse statusResponse = QueryServiceImpl.queryDataResponseNotReady();
+                telemetry.recordResponse(statusResponse.getSerializedSize());
                 getResponseObserver().onNext(statusResponse);
                 return;
             }
@@ -120,14 +141,17 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
                 // send error response
                 logger.trace("error generating next response id: "
                         + getResponseObserver().hashCode() + " msg: " + errorMsg);
+                telemetry.markError();
                 QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
                 this.cursorClosed.set(true);
                 this.mongoCursor.close();
+                recordCursorTime(this.mongoCursor);
                 return;
 
             } else {
                 // send next query result response
                 logger.trace("sending query result response id: " + getResponseObserver().hashCode());
+                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
                 QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
             }
 
@@ -138,6 +162,7 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
                     logger.trace("closing cursor id: " + getResponseObserver().hashCode());
                     this.cursorClosed.set(true);
                     this.mongoCursor.close();
+                    recordCursorTime(this.mongoCursor);
 
                     if (nextBucket == null) {
                         // close responses stream since cursor is exhausted and there are no pending buckets
