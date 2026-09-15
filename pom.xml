@@ -23,6 +23,24 @@
         <main.basedir>${project.basedir}</main.basedir>
 
         <dp-grpc.version>1.16.0</dp-grpc.version>
+
+        <!--
+        io.grpc.version must equal the gRPC version dp-grpc depends on (it arrives here
+        transitively as io.grpc:grpc-all). grpc-opentelemetry is part of that same release train,
+        so a dp-grpc gRPC upgrade must bump this property in the same change.
+        -->
+        <io.grpc.version>1.65.1</io.grpc.version>
+
+        <!--
+        OpenTelemetry versions (issue #212). The instrumentation BOM (alpha) pins both the
+        stable core artifacts and the alpha ones (prometheus exporter, runtime telemetry) at a
+        combination that is tested together, so prefer adding artifacts unversioned over
+        introducing a second version property. This BOM itself imports opentelemetry-bom and
+        opentelemetry-bom-alpha (1.65.0), which is where the core api/sdk/exporter versions
+        come from; note the -alpha suffix is part of this artifact's version string.
+        -->
+        <opentelemetry.instrumentation.version>2.31.1-alpha</opentelemetry.instrumentation.version>
+
         <mongodb.version>5.4.0</mongodb.version>
         <log4j-version>2.25.5</log4j-version>
         <poi.version>5.4.0</poi.version>
@@ -62,6 +80,25 @@
             <url>https://maven.scijava.org/content/repositories/public/</url>
         </repository>
     </repositories>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+            Pins every io.opentelemetry artifact, including the ones grpc-all drags in
+            transitively at runtime scope (grpc-gcp-csm-observability and grpc-xds bring
+            opentelemetry-sdk 1.36.0 of their own). Without this import the SDK on the
+            classpath would be that older version rather than the one this code is built
+            against.
+            -->
+            <dependency>
+                <groupId>io.opentelemetry.instrumentation</groupId>
+                <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+                <version>${opentelemetry.instrumentation.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 
@@ -153,6 +190,58 @@
             <version>${poi.version}</version>
         </dependency>
 
+        <!--
+        OpenTelemetry metrics (issue #212). Versions come from the instrumentation BOM above.
+        The SDK and the exporters are runtime concerns but are declared at compile scope
+        because DpTelemetry builds the SDK programmatically rather than relying on the agent.
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-runtime-telemetry</artifactId>
+        </dependency>
+
+        <!--
+        Arrives transitively through grpc-all as well; declared explicitly so the gRPC
+        server interceptor this project configures is a stated dependency rather than an
+        accident of grpc-all's contents.
+        -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-opentelemetry</artifactId>
+            <version>${io.grpc.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-testing</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -230,6 +319,15 @@
                                 <Multi-Release>true</Multi-Release>
                             </manifestEntries>
                         </transformer>
+                        <!--
+                        Merges META-INF/services entries rather than letting one jar's copy
+                        overwrite another's. OpenTelemetry's autoconfigure module discovers its
+                        exporters through the ServiceLoader, and several jars declare providers
+                        under the same service file name: without this transformer the shaded jar
+                        keeps only one of them and the configured exporter is not found at runtime.
+                        -->
+                        <transformer
+                                implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                     </transformers>
                     <filters>
                         <filter>
