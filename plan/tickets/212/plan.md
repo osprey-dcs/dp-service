@@ -1365,8 +1365,14 @@ Considered and rejected during Task 11, recorded so it is not re-opened without 
 - **Distributed tracing / spans / exemplars** — follow-on ticket to be filed when this one closes
   ("OpenTelemetry tracing for query and ingestion"); the instrumentation points in D3 are where
   the spans go, and the OTel agent is the candidate for auto-instrumented gRPC/Mongo spans.
-- **Grafana dashboards and a docker-compose observability stack** — follow-on; `doc/metrics.md`
-  ships the PromQL the first dashboard needs.
+- **A local Prometheus + Grafana developer stack** — filed as
+  [#278](https://github.com/osprey-dcs/dp-service/issues/278). Its most valuable piece is a check
+  that executes the doc's PromQL, since manually doing that once during Task 11 is what caught two
+  queries that returned empty.
+- **A starter Grafana dashboard** — deliberately deferred rather than built blind. The doc's PromQL
+  is a diagnostic workflow walked on a complaint; a dashboard is a monitoring surface, and what
+  belongs on it depends on what the deployment watches. Ask the customer once data is flowing;
+  #278 makes building it cheap.
 - **Counting gRPC-layer validation rejects** — a request that fails `QueryServiceImpl`'s field
   validation is rejected before any `QueryTelemetry` exists, and the rejection travels as an `OK`
   response carrying an `ExceptionalResult`, so it raises neither `dp.query.requests` nor a non-`OK`
