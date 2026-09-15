@@ -1277,6 +1277,24 @@ Status: done.
   the reason recorded. This is the class of error that only appears when the doc is read as
   instructions rather than as prose.
 
+#### A race in the slow-query IT, found at commit time
+
+The first full IT run after the documentation work failed with "no slow query line was produced"
+in `QueryMetricsIT` (344 tests, 1 failure). It was **not** an ordering dependency: the class
+passes in isolation, passes with its immediate predecessor, passes with its whole package, and
+passed on a second unchanged full run. The cause is a genuine race in the test —
+`QueryTelemetry.complete()` increments `dp.query.requests` *before* it writes the slow-query
+line, so `awaitRequestRecorded()` can return in the window between the two, and a loaded
+full-suite run widens that window enough to lose.
+
+Fixed in the test by waiting for the line itself (`awaitSlowQueryLines`), kept deliberately
+separate from `awaitRequestRecorded` so that a test awaiting one signal cannot silently get the
+other. The production ordering is left alone — recording the metric before writing the log line
+is correct, since the metric is the thing that must not be lost.
+
+Worth noting for anyone adding a telemetry IT: **any assertion that reads the slow-query appender
+after awaiting a metric has this race**, and it will pass locally almost every time.
+
 #### Why the clock was not moved earlier
 
 Considered and rejected during Task 11, recorded so it is not re-opened without the reasoning:
