@@ -1343,6 +1343,44 @@ to "nothing tells a k8s operator which port to name", and prompted verifying the
    labelled series there. Worth knowing before anyone reads a benchmark scrape and concludes the
    Mongo instrumentation is broken; a follow-on could reorder the benchmark main().
 
+#### All four services verified live, and the ingestion metrics exercised for the first time
+
+With all four services running from this branch (on alternate ports, alongside another set) and a
+Prometheus scraping all four:
+
+1. **All four export correctly and coexist.** Each endpoint carries its own `dp_service` value, and
+   eight ports bound on one host without collision — the claim the release notes make. The
+   ingestion-stream service exports 13 families rather than 15: it has no Mongo client of its own,
+   so no `db_client_operation_*`, and `jvm_gc_duration_seconds` is simply absent until a GC. Both
+   are correct, but a reader comparing two scrapes could easily take either for a gap.
+
+2. **The ingestion counters are exactly right**, checked against the benchmark's own shape:
+   240,000,000 samples = 4000 PVs x 1000 samples x 60 s; 1,000 samples/bucket; 8.02 bytes/sample
+   for 8-byte doubles plus framing. Task 8 had only IT coverage before this.
+
+3. **`dp.ingest.duration` vs `grpc.server.call.duration` is a starker contrast than documented.**
+   Measured 50 gRPC calls against 3,000 ingestion requests — the gRPC family counts *streams*, so
+   its denominator is 60x smaller and its "mean call" of 1.21 s is a stream lifetime, not a
+   latency. `doc/metrics.md` said RPC duration measures "the enqueue", true for unary but
+   incomplete for streaming; it now states the differing denominators with these numbers.
+
+4. **An accidental 71% ingestion error rate demonstrated why `dp.outcome` exists.** Re-running the
+   ingestion benchmark six times replays a fixed start timestamp, so runs 2-6 collided on
+   duplicate `_id`s: 7,322 requests failed while the benchmark still reported a healthy 19.8M
+   values/sec. **Nothing client-side showed it** — only
+   `dp_ingest_requests_total{dp_outcome="error"}`. This also confirmed the counting decision in
+   the doc: `dp.ingest.buckets` stayed at 240,000 (success only) while `dp.ingest.samples` reached
+   1.1 billion (all offered load), so the ratio reads as "about a fifth of offered load was
+   stored". Excluding failures from the denominator would have read 1.0 throughout.
+
+5. **All 16 documented queries now execute against real data**, including the two fixed earlier in
+   this session (`buckets per query` = 10, `bytes per request` = 80,826) and the six that had never
+   run: mongo p95 by collection (`buckets`/`insert` at 48.8 ms, dominating an ingestion workload as
+   the doc predicts), ingest duration p95 (91.3 ms), ingest samples rate (1.54M/s), worker
+   saturation, and queue wait p95 (0.95 ms). Two remain value-unverified because they filter
+   `querySamples`, which no benchmark drives, and one — the query error ratio — is legitimately
+   empty because no query failed.
+
 #### Why the clock was not moved earlier
 
 Considered and rejected during Task 11, recorded so it is not re-opened without the reasoning:

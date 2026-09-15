@@ -343,6 +343,14 @@ matter how much was being dropped.
 On a streaming call, arrival is stamped **per request, not per stream**, so a long-lived bidi
 stream does not report durations that grow with the stream's age.
 
+**The two families are not counting the same thing, so their counts will not agree.**
+`grpc.server.call.duration` counts *calls* — one per stream — while `dp.ingest.*` counts
+*requests*, of which a stream carries many. A benchmark run measured 50 gRPC calls against 3,000
+ingestion requests (60 requests per stream): a mean "call" of 1.21 s next to a mean request of
+52 ms. Neither number is wrong and neither is a latency the other can be checked against. Use
+`dp.ingest.duration` for how long an ingestion took, and read a gRPC call duration on a streaming
+method as the stream's lifetime.
+
 ### Handler metrics (all services)
 
 Every service's request handler is a worker pool, and the base class times every job — so every
