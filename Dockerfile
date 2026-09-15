@@ -36,5 +36,18 @@ LABEL maintainer="dp-service CI"
 WORKDIR /app
 COPY --from=builder /build/artifact/app.jar /app/app.jar
 
-EXPOSE 8080
+# The gRPC port and the Prometheus metrics port (issue #212) of each service. Which pair is
+# actually served depends on the class this container runs: the jar's Main-Class is
+# IngestionGrpcServer, so a plain `java -jar` starts ingestion, and the other three services are
+# started by overriding the entrypoint, e.g.
+#
+#   java -cp /app/app.jar com.ospreydcs.dp.service.query.server.QueryGrpcServer
+#
+# EXPOSE documents the image's ports; it does not publish them. Kubernetes reaches a containerPort
+# whether or not it is declared here, so this list is for the operator writing that manifest.
+# Metrics are on by default and the service FAILS TO START if its metrics port cannot be bound
+# (set DP_TELEMETRY_ENABLED=false to disable). See doc/metrics.md.
+#
+#   ingestion 50051/9464   query 50052/9465   annotation 50053/9466   ingestion-stream 50054/9467
+EXPOSE 50051 50052 50053 50054 9464 9465 9466 9467
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

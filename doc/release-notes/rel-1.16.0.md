@@ -291,6 +291,12 @@ instrumented and is not — but it means an upgraded deployment needs these four
 settings below changed. Check for a conflict before upgrading: 9464–9467 are in the range some
 Prometheus exporters use by convention.
 
+**On Kubernetes**, the metrics port is an ordinary container port. `doc/metrics.md` now carries the
+`containerPort`, `ServiceMonitor`, and `prometheus.io/*` annotation forms, and the released image
+declares all eight ports (its previous `EXPOSE 8080` named a port no service listens on). Note that
+a port collision here is `CrashLoopBackOff` rather than a pod running without metrics, since the
+bind failure is deliberate.
+
 Each port is configurable (`DP_INGESTION_SERVER_METRICS_PORT`, `DP_QUERY_SERVER_METRICS_PORT`,
 `DP_ANNOTATION_SERVER_METRICS_PORT`, `DP_INGESTION_STREAM_SERVER_METRICS_PORT`), the bind interface
 is `DP_TELEMETRY_PROMETHEUS_HOST` (default `0.0.0.0`; set `127.0.0.1` to expose metrics only to a

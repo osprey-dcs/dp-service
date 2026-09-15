@@ -1295,6 +1295,54 @@ is correct, since the metric is the thing that must not be lost.
 Worth noting for anyone adding a telemetry IT: **any assertion that reads the slow-query appender
 after awaiting a metric has this race**, and it will pass locally almost every time.
 
+#### Kubernetes deployment and PromQL verification (post-PR, for the 1.16.0 release)
+
+The customer deployment (TIDF) runs Prometheus/Grafana on Kubernetes, managed by their platform
+team — they need to point a scrape at a URL. That relocated the remaining gap from "no dashboard"
+to "nothing tells a k8s operator which port to name", and prompted verifying the PromQL for real.
+
+1. **The released image declared the wrong port.** `Dockerfile` carried `EXPOSE 8080`, which no
+   service in this repo listens on, and declared neither the gRPC nor the metrics ports. The image
+   (`ghcr.io/osprey-dcs/dp-service`, published by `release-image.yml` on a tag) is what the customer
+   deploys, so that line is the machine-readable hint their platform team reads. Now declares all
+   eight real ports, with a comment that `EXPOSE` documents rather than publishes and that k8s
+   reaches a `containerPort` regardless. Verified by building a stub image and reading
+   `.Config.ExposedPorts`: exactly `[9464-9467, 50051-50054]`, and 8080 gone.
+
+2. **`doc/metrics.md` gained an "On Kubernetes" section** — `containerPort` with a named port, a
+   `ServiceMonitor` (the Prometheus Operator form, which is what "already set up by the k8s guys"
+   usually means), and the `prometheus.io/*` annotation fallback. Includes the two traps: a
+   `ServiceMonitor` whose labels miss the Operator's `serviceMonitorSelector` is *silently* ignored,
+   and a metrics port collision is `CrashLoopBackOff` rather than a pod running without metrics,
+   because the bind failure is deliberate.
+
+3. **Every PromQL query in the doc was executed against a real Prometheus** (`prom/prometheus` in
+   Docker, scraping a live instrumented service, with the benchmark generating sustained traffic so
+   `rate()` had two points in its window). All 16 parse and execute — but two returned **empty**:
+
+   **`buckets read per query` and `bytes per request` were broken.** Both divided
+   `rate(dp_query_buckets_total[...]) / rate(dp_query_requests_total[...])` directly, but
+   `dp_query_requests_total` carries a `dp_outcome` label the other counter does not, so vector
+   matching found no pair and the result was empty — no error, just a blank panel. This is the
+   third instance of the same label-matching class in this ticket's PromQL, and the one that got
+   past the earlier selector-level checking, which is exactly what executing the queries was for.
+   Both now aggregate with `sum by (rpc_method)` on each side, and the doc explains the rule.
+   Verified: 600 buckets/query (10 PVs x 60 buckets — correct for the benchmark) and 6,631,071
+   bytes/request (matching the Task 11 byte total).
+
+4. **The `dp_instance` fix was confirmed against a live Prometheus.** Scraping with a
+   `dp_instance` target label leaves `dp_service` at its code-emitted value (`query`) and creates no
+   `exported_dp_service` — the collision the doc now warns about does not occur.
+
+5. **The Mongo command metrics are absent from the *benchmark* server's scrape, and that is a
+   benchmark quirk rather than a shipping bug.** `BenchmarkQueryGrpcServer.main()` calls
+   `prepareBenchmarkDatabase()` *before* `server.start()`, so its first Mongo client is built while
+   `DpTelemetry` is still the no-op instance, and `DpMetrics`' lazily created histogram is cached
+   against the no-op meter. The production servers call `start()` first: a real `QueryGrpcServer`
+   exports **314 `db_client_operation_*` series**, and the step-3 query returns 24 correctly
+   labelled series there. Worth knowing before anyone reads a benchmark scrape and concludes the
+   Mongo instrumentation is broken; a follow-on could reorder the benchmark main().
+
 #### Why the clock was not moved earlier
 
 Considered and rejected during Task 11, recorded so it is not re-opened without the reasoning:

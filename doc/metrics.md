@@ -9,6 +9,7 @@ Added by [issue #212](https://github.com/osprey-dcs/dp-service/issues/212).
 ## Contents
 
 - [Quick start](#quick-start)
+- [On Kubernetes](#on-kubernetes)
 - [Configuration](#configuration)
 - [Exporting somewhere other than Prometheus](#exporting-somewhere-other-than-prometheus)
 - [The metrics](#the-metrics)
@@ -42,6 +43,13 @@ The benchmark servers use 60451 (ingestion) and 60452 (query), matching the 6005
 gRPC ports already follow. They must differ from the production ports: an unbindable metrics port
 fails startup, so a benchmark run on a host running the live service would otherwise not start.
 
+**The benchmark servers export no `db_client_operation_*` metrics**, and that is a property of the
+benchmark entry point rather than of the instrumentation. Their `main()` prepares the benchmark
+database *before* calling `start()`, so the first Mongo client is built while telemetry is still the
+no-op instance and the histogram is cached against it. The production servers initialize telemetry
+first and export the family normally. Do not read a benchmark scrape as evidence that the database
+instrumentation is broken.
+
 A minimal Prometheus scrape config for all four:
 
 ```yaml
@@ -65,6 +73,73 @@ default Prometheus keeps the target's value and renames the original to `exporte
 every query written against `dp_service` silently stops matching the handler metrics. The label
 above is only for telling the four endpoints apart, which is what `dp_instance` does without
 shadowing anything. The `job` label Prometheus adds on its own is usually enough.
+
+### On Kubernetes
+
+Prometheus needs a target, and on Kubernetes that means naming the port on the pod. The metrics
+port is an ordinary container port — declare it alongside the gRPC port and give it a name, because
+both the `ServiceMonitor` and the annotation form below refer to the port by name:
+
+```yaml
+    ports:
+      - name: grpc
+        containerPort: 50052
+      - name: metrics          # the name the scrape config targets
+        containerPort: 9465
+```
+
+If the cluster runs the **Prometheus Operator** (a `ServiceMonitor`/`PodMonitor` CRD exists), that
+is the idiomatic target. It selects a `Service` in front of the pods, and `port` is the *`Service`
+port name*, not the container's:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dp-query
+  labels:
+    release: prometheus       # must match the Operator's serviceMonitorSelector, or it is ignored
+spec:
+  selector:
+    matchLabels:
+      app: dp-query           # matches the Service, not the Pod
+  endpoints:
+    - port: metrics
+      interval: 15s
+```
+
+A `ServiceMonitor` the Operator's `serviceMonitorSelector` does not match is silently ignored — no
+error, just no data — so if a target never appears, check that label first. Which label the cluster
+expects is a property of how the Operator was installed; ask whoever installed it rather than
+guessing.
+
+Without the Operator, the annotation form works with a stock kubernetes-pods scrape config:
+
+```yaml
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9465"
+        prometheus.io/path: "/metrics"
+```
+
+Three things specific to these services:
+
+- **Each service is its own deployment with its own port.** The four ports exist so all four can run
+  on one host; in separate pods they could all use the same number, but the defaults differ, so the
+  port must match the service the pod runs. The image's `Main-Class` starts *ingestion*; the other
+  three are started by overriding the container command.
+- **A pod whose metrics port is already in use will not start.** Metrics fail closed by design (a
+  service silently running without them is discovered only when someone goes looking), so a port
+  collision is `CrashLoopBackOff`, not a running pod without metrics. `DP_TELEMETRY_ENABLED=false`
+  disables the endpoint and binds nothing.
+- **Do not add a `dp_service` target label.** See the warning above — it collides with the attribute
+  the services already emit. Kubernetes SD labels (`pod`, `namespace`, `container`) do not collide
+  and are worth keeping: with several replicas they are how one pod's numbers are told from another's.
+
+The endpoint has **no authentication and no TLS.** It exposes operational metrics, not archive data,
+but it should not be reachable outside the cluster — do not put it behind an Ingress.
 
 ## Configuration
 
@@ -517,8 +592,15 @@ histogram_quantile(0.95, sum by (db_collection_name, db_operation_name, le)
   (rate(db_client_operation_duration_seconds_bucket[5m])))
 
 # buckets read per query
-rate(dp_query_buckets_total[5m]) / rate(dp_query_requests_total[5m])
+sum by (rpc_method) (rate(dp_query_buckets_total[5m]))
+  / sum by (rpc_method) (rate(dp_query_requests_total[5m]))
 ```
+
+Both sides of that division are aggregated with `sum by (rpc_method)` rather than divided directly:
+`dp_query_requests_total` carries a `dp_outcome` label that `dp_query_buckets_total` does not, so a
+plain `a / b` finds no matching pair and returns **empty** — no error, just a blank panel. The same
+applies to bytes-per-request in step 5. Aggregating both sides to the labels they share is the
+general fix whenever two dp counters are combined.
 
 High command durations mean the database is slow. Normal command durations with a high buckets-per-
 query figure means the query is reading too much — check the time range and PV count in the
@@ -549,7 +631,8 @@ sum by (rpc_method) (rate(dp_query_requests_total{dp_outcome="error"}[5m]))
   / sum by (rpc_method) (rate(dp_query_requests_total[5m]))
 
 # bytes per request
-rate(dp_query_response_bytes_total[5m]) / rate(dp_query_requests_total[5m])
+sum by (rpc_method) (rate(dp_query_response_bytes_total[5m]))
+  / sum by (rpc_method) (rate(dp_query_requests_total[5m]))
 ```
 
 **Ingestion health**, for completeness:
