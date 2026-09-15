@@ -231,4 +231,49 @@ public class TimestampDataMapTest {
         drain(it);
         assertTrue(map.isEmpty());
     }
+
+    // ---- removeFrom (#274, plan D3: discarding a slice whose drain tripped the byte budget) ----
+
+    @Test
+    public void testRemoveFromClearsBoundarySecondByNanosAndEveryLaterSecond() {
+        final TimestampDataMap map = mapWithRows(
+                timestamps(10, 0, 10, 500, 11, 0, 11, 250, 12, 0), 1);
+        // boundary inside second 11: 11.250 and all of second 12 go (2 rows); 10.0, 10.500, 11.0 stay
+        assertEquals(2, map.removeFrom(11, 250));
+        assertEquals(3, map.size());
+        assertNull(map.get(11, 250));
+        assertNull(map.get(12, 0));
+        assertEquals(1, map.get(11, 0).size());
+        assertEquals(1, map.get(10, 500).size());
+    }
+
+    @Test
+    public void testRemoveFromDropsAnEmptiedBoundarySecond() {
+        final TimestampDataMap map = mapWithRows(timestamps(10, 0, 11, 0, 11, 500), 1);
+        assertEquals(2, map.removeFrom(11, 0));
+        assertEquals(1, map.size());
+        // the second-11 map is gone entirely, not left empty (an empty second would confuse the
+        // draining iterator's removal accounting)
+        assertEquals(1, map.entrySet().size());
+    }
+
+    @Test
+    public void testRemoveFromPastEverythingRemovesNothing() {
+        final TimestampDataMap map = mapWithRows(timestamps(10, 0, 11, 0), 1);
+        assertEquals(0, map.removeFrom(12, 0));
+        assertEquals(2, map.size());
+        assertEquals(0, new TimestampDataMap().removeFrom(0, 0));
+    }
+
+    // ---- getColumnIndex (#274, plan D9: hash-backed, order preserved) ----
+
+    @Test
+    public void testGetColumnIndexRegistersInFirstSeenOrderAndIsStable() {
+        final TimestampDataMap map = new TimestampDataMap();
+        assertEquals(0, map.getColumnIndex("b"));
+        assertEquals(1, map.getColumnIndex("a"));
+        assertEquals(0, map.getColumnIndex("b"));
+        assertEquals(2, map.getColumnIndex("c"));
+        assertEquals(List.of("b", "a", "c"), map.getColumnNameList());
+    }
 }

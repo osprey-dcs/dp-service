@@ -236,8 +236,12 @@ public class TabularDataUtility {
         // a slot (an all-empty column, not a missing one). Hoisting the range test above that loop
         // would silently drop such columns, so the registration is now explicit rather than a side
         // effect of the skipped path.
-        for (DataColumn dataColumn : dataColumns) {
-            tableValueMap.getColumnIndex(dataColumn.getName());
+        // The index is resolved once per column here, not once per sample below: the lookup used
+        // to sit inside the per-timestamp loop, costing a column-name search per retained value
+        // (issue #274, plan D9).
+        final int[] columnIndexes = new int[dataColumns.size()];
+        for (int i = 0; i < dataColumns.size(); i++) {
+            columnIndexes[i] = tableValueMap.getColumnIndex(dataColumns.get(i).getName());
         }
 
         // derserialize DataColumn content from document and the iterate DataValues in column
@@ -256,7 +260,8 @@ public class TabularDataUtility {
             }
 
             // add next value for each column to tableValueMap
-            for (DataColumn dataColumn : dataColumns) {
+            for (int i = 0; i < dataColumns.size(); i++) {
+                final DataColumn dataColumn = dataColumns.get(i);
 
                 // per-sample status filter (per-PV, so evaluated inside the column loop, unlike the
                 // column-independent interval test above): a filtered-out sample is never inserted,
@@ -266,7 +271,7 @@ public class TabularDataUtility {
                 }
 
                 final DataValue dataValue = dataColumn.getDataValues(valueIndex);
-                final int columnIndex = tableValueMap.getColumnIndex(dataColumn.getName());
+                final int columnIndex = columnIndexes[i];
 
                 // keep track of data size
                 dataValueSize = dataValueSize + dataValue.getSerializedSize();

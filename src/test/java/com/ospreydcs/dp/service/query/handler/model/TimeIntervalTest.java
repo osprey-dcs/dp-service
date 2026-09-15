@@ -170,4 +170,49 @@ public class TimeIntervalTest {
         assertEquals(List.of(new TimeInterval(10, 750, 20, 0)),
                 TimeInterval.clampToWindowBegin(List.of(fragment), 10, 750));
     }
+
+    // -----------------------------------------------------------------------
+    // clampToWindow (#274): the slice form of the clamp -- both ends bounded
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testClampToWindow_clampsBothEndsAndPreservesInteriorGaps() {
+        // window [15, 55) over three fragments: the first and third are clamped at one end each,
+        // the middle one is untouched, and the gaps between them remain gaps (not a collapsed window)
+        final List<TimeInterval> fragments = List.of(iv(10, 20), iv(30, 40), iv(50, 60));
+        assertEquals(List.of(iv(15, 20), iv(30, 40), iv(50, 55)),
+                TimeInterval.clampToWindow(fragments, 15, 0, 55, 0));
+    }
+
+    @Test
+    public void testClampToWindow_dropsFragmentsOutsideEitherEnd() {
+        final List<TimeInterval> fragments = List.of(iv(10, 20), iv(30, 40), iv(50, 60));
+        // window [25, 45): only the middle fragment survives
+        assertEquals(List.of(iv(30, 40)), TimeInterval.clampToWindow(fragments, 25, 0, 45, 0));
+        // window ending exactly at a fragment begin: half-open, that fragment contributes nothing
+        assertEquals(List.of(iv(10, 20)), TimeInterval.clampToWindow(fragments, 10, 0, 30, 0));
+    }
+
+    @Test
+    public void testClampToWindow_windowInsideAGapYieldsEmpty() {
+        // a slice entirely between two fragments: nothing to retrieve, no database call
+        assertTrue(TimeInterval.clampToWindow(List.of(iv(10, 20), iv(30, 40)), 22, 0, 28, 0).isEmpty());
+    }
+
+    @Test
+    public void testClampToWindow_windowStraddlingFragmentEndComparesNanos() {
+        final TimeInterval fragment = new TimeInterval(10, 0, 20, 500);
+        // window end 20.250 precedes the fragment end 20.500: clamped to 20.250
+        assertEquals(List.of(new TimeInterval(10, 0, 20, 250)),
+                TimeInterval.clampToWindow(List.of(fragment), 10, 0, 20, 250));
+        // window end 20.750 follows it: fragment end kept
+        assertEquals(List.of(fragment), TimeInterval.clampToWindow(List.of(fragment), 10, 0, 20, 750));
+    }
+
+    @Test
+    public void testClampToWindowBegin_isTheOpenEndedCase() {
+        final List<TimeInterval> fragments = List.of(iv(10, 20), iv(30, 40));
+        assertEquals(TimeInterval.clampToWindowBegin(fragments, 35, 0),
+                TimeInterval.clampToWindow(fragments, 35, 0, Long.MAX_VALUE, 0));
+    }
 }

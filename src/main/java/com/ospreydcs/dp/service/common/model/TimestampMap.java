@@ -50,6 +50,36 @@ public class TimestampMap<T> {
         return removed;
     }
 
+    /**
+     * Removes every value at or after {@code (seconds, nanos)}, returning how many were removed.
+     *
+     * <p>Exists for the querySamples slice retry (issue #274, plan D3): a slice whose drain
+     * tripped the byte budget is discarded whole, because under the PV-major cursor order none of
+     * its timestamps is known to be complete across PVs. The seconds map is a {@code TreeMap}, so
+     * everything strictly after the boundary second goes in one {@code tailMap().clear()}; the
+     * boundary second itself is trimmed by nanos and dropped if it empties.
+     */
+    public int removeFrom(long seconds, long nanos) {
+        int removed = 0;
+        final TreeMap<Long, Map<Long, T>> secondsMap = (TreeMap<Long, Map<Long, T>>) timestampMap;
+        final Map<Long, T> boundarySecond = secondsMap.get(seconds);
+        if (boundarySecond != null) {
+            final TreeMap<Long, T> nanosMap = (TreeMap<Long, T>) boundarySecond;
+            final Map<Long, T> tail = nanosMap.tailMap(nanos, true);
+            removed += tail.size();
+            tail.clear();
+            if (nanosMap.isEmpty()) {
+                secondsMap.remove(seconds);
+            }
+        }
+        final Map<Long, Map<Long, T>> laterSeconds = secondsMap.tailMap(seconds, false);
+        for (Map<Long, T> secondMap : laterSeconds.values()) {
+            removed += secondMap.size();
+        }
+        laterSeconds.clear();
+        return removed;
+    }
+
     /** True when no values remain. */
     public boolean isEmpty() {
         return timestampMap.isEmpty();

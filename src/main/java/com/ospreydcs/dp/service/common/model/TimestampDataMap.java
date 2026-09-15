@@ -3,6 +3,7 @@ package com.ospreydcs.dp.service.common.model;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -107,14 +108,28 @@ public class TimestampDataMap extends TimestampMap<Map<Integer, DataValue>> {
     }
 
     final private List<String> columnNameList = new ArrayList<>();
+    /**
+     * Name-to-index lookup backing {@link #getColumnIndex}. The list stays the source of column
+     * order (it is what the emitters iterate); the map makes the lookup O(1) instead of an
+     * {@code indexOf} over every registered column, which mattered because assembly used to
+     * resolve the index once per retained sample (issue #274, plan D9).
+     */
+    final private Map<String, Integer> columnIndexByName = new HashMap<>();
 
+    /**
+     * Returns the column index for {@code pvName}, registering the name at the next index if it is
+     * new. A mutator: registration is what puts a column in the emitted/exported column set, so
+     * callers register every column up front regardless of whether any sample survives trimming
+     * (see {@code TabularDataUtility.addColumnsToTable}).
+     */
     public int getColumnIndex(String pvName) {
-        int columnIndex = columnNameList.indexOf(pvName);
-        if (columnIndex == -1) {
-            // add column to list and get index
-            columnNameList.add(pvName);
-            columnIndex = columnNameList.size() - 1;
+        final Integer existing = columnIndexByName.get(pvName);
+        if (existing != null) {
+            return existing;
         }
+        columnNameList.add(pvName);
+        final int columnIndex = columnNameList.size() - 1;
+        columnIndexByName.put(pvName, columnIndex);
         return columnIndex;
     }
 
