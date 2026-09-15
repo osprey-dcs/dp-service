@@ -2,6 +2,8 @@ package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.Filters;
+import com.ospreydcs.dp.grpc.v1.common.Timestamp;
+import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketUtility;
@@ -18,6 +20,7 @@ import org.junit.Test;
 
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -46,6 +49,8 @@ import static org.junit.Assert.assertTrue;
 public class MongoSyncQueryClientMissingIndexTest {
 
     private static final String PV_NAME = "missingindexpv_1";
+    /** A second PV in a different span class (#274 D11), so a request naming both opens two cursors. */
+    private static final String PV_NAME_LONG_SPAN = "missingindexpv_2";
     private static final String PV_NAME_BASE = "missingindexpv_";
     private static final long BASE_SECONDS = 1_700_000_000L;
     private static final int NUM_BUCKETS = 10;
@@ -95,8 +100,9 @@ public class MongoSyncQueryClientMissingIndexTest {
         assertTrue(client.init());
 
         client.insertBuckets(BucketUtility.createBucketDocuments(
-                BASE_SECONDS, SAMPLES_PER_SECOND, 1, PV_NAME_BASE, 1, NUM_BUCKETS));
+                BASE_SECONDS, SAMPLES_PER_SECOND, 1, PV_NAME_BASE, 2, NUM_BUCKETS));
         client.recordSpan(PV_NAME, 1L);
+        client.recordSpan(PV_NAME_LONG_SPAN, 300L);
     }
 
     @After
@@ -121,6 +127,44 @@ public class MongoSyncQueryClientMissingIndexTest {
                 Filters.in(BsonConstants.BSON_KEY_PV_NAME, List.of(PV_NAME)),
                 BEGIN_SECONDS, 0L, END_SECONDS, 0L,
                 client.resolveMaxBucketSpanSeconds(List.of(PV_NAME))));
+    }
+
+    /**
+     * A request whose PVs fall in two span classes opens one cursor per class and merges them
+     * (#274, plan D11). The healthy case must return both PVs' buckets in {@code (pvName, firstTime)}
+     * order -- the merged cursor is what every dispatcher iterates -- and the failure must still be
+     * the null cursor: the second class's {@code cursor()} is where the driver throws here, after
+     * the first was opened, and that throw must reach the same catch.
+     */
+    @Test
+    public void testMultiClassRequestMergesBucketsAndReportsMissingIndexAsNullCursor() throws DpException {
+        final List<String> pvNames = List.of(PV_NAME, PV_NAME_LONG_SPAN);
+        assertEquals("fixture must span two classes", 2, client.resolveSpanClasses(pvNames).size());
+
+        final QueryDataRequest.QuerySpec querySpec = QueryDataRequest.QuerySpec.newBuilder()
+                .addAllPvNames(pvNames)
+                .setBeginTime(Timestamp.newBuilder().setEpochSeconds(BEGIN_SECONDS))
+                .setEndTime(Timestamp.newBuilder().setEpochSeconds(END_SECONDS))
+                .build();
+
+        try (final MongoCursor<BucketDocument> cursor = client.executeQueryData(querySpec)) {
+            assertNotNull(cursor);
+            final List<String> keys = new java.util.ArrayList<>();
+            while (cursor.hasNext()) {
+                final BucketDocument bucket = cursor.next();
+                keys.add(bucket.getPvName() + "@" + bucket.getDataTimestamps().getFirstTime().getSeconds());
+            }
+            // four buckets per PV overlap [BASE+2, BASE+6), PV_NAME's first in sort order
+            final List<String> expected = new java.util.ArrayList<>();
+            for (String pvName : pvNames) {
+                for (long second = BEGIN_SECONDS; second < END_SECONDS; second++) {
+                    expected.add(pvName + "@" + second);
+                }
+            }
+            assertEquals(expected, keys);
+        }
+
+        assertQueryReturnsBucketsThenNullWithoutTheIndex(() -> client.executeQueryData(querySpec));
     }
 
     /** The V2 unary buckets path. */
