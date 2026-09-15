@@ -43,6 +43,10 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             "QueryHandler.queryV2SamplesInitialSliceSeconds";
     private static final int DEFAULT_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS = 60;
 
+    // outbound flow control on the server-streaming responders (#274, plan D8)
+    private static final String CFG_KEY_STREAM_READY_TIMEOUT_SECONDS = "QueryHandler.streamReadyTimeoutSeconds";
+    private static final int DEFAULT_STREAM_READY_TIMEOUT_SECONDS = 300;
+
     // instance variables
     private final MongoQueryClientInterface mongoQueryClient;
     private final QueryV2Resolver queryV2Resolver;
@@ -74,6 +78,16 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return configMgr().getConfigInteger(
                 CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES,
                 DEFAULT_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES);
+    }
+
+    /**
+     * Longest a streaming dispatcher waits for the client to drain the transport buffer before
+     * abandoning the response (#274, plan D8). A non-positive value is treated as the default.
+     */
+    public static long getStreamReadyTimeoutSeconds() {
+        final int seconds = configMgr().getConfigInteger(
+                CFG_KEY_STREAM_READY_TIMEOUT_SECONDS, DEFAULT_STREAM_READY_TIMEOUT_SECONDS);
+        return seconds > 0 ? seconds : DEFAULT_STREAM_READY_TIMEOUT_SECONDS;
     }
 
     /**

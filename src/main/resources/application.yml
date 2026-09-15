@@ -182,6 +182,13 @@ QueryHandler:
   # steady sample rate; lower it only if most requests are for windows shorter than a minute.
   queryV2SamplesInitialSliceSeconds: ${DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS:60}
 
+  # QueryHandler.streamReadyTimeoutSeconds: How long a server-streaming query (queryDataStream,
+  # queryBucketsStream, querySamplesStream) waits for a slow client to drain gRPC's outbound buffer
+  # before abandoning the response (issue #274). gRPC never blocks a send, so without this wait a
+  # slow reader made the service buffer the entire result on the heap; with it, the worker thread
+  # serving that client blocks instead, for at most this long per message.
+  streamReadyTimeoutSeconds: ${DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS:300}
+
   # QueryHandler.slowQueryLogThresholdMillis: A query whose total handling time reaches this
   # threshold writes one WARN line to the "dp.slowquery" logger, carrying the per-stage breakdown
   # (resolve/queue/db/process) and the shape of the request -- PV count, the first few PV names,

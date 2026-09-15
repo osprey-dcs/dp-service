@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -20,12 +21,30 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
     // static variables
     private static final Logger logger = LogManager.getLogger();
 
+    /**
+     * Outbound flow control (#274, plan D8), built here because the handler constructs this
+     * dispatcher on the gRPC thread, where the ready handler must be registered.
+     */
+    private final OutboundReadinessGate gate;
+
     public QueryDataStreamDispatcher(
             StreamObserver<QueryDataResponse> responseObserver,
             QueryDataRequest.QuerySpec querySpec,
             QueryTelemetry telemetry
     ) {
         super(responseObserver, querySpec, telemetry);
+        this.gate = OutboundReadinessGate.forObserver(
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
+    }
+
+    /** Waits for the transport to take another message; false means abandon the response. */
+    private boolean awaitReadyOrAbandon() {
+        if (gate.awaitReady()) {
+            return true;
+        }
+        logger.warn("abandoning queryDataStream response id: {}: client cancelled or not draining",
+                getResponseObserver().hashCode());
+        return false;
     }
 
     @Override
@@ -76,6 +95,11 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
+                if (!awaitReadyOrAbandon()) {
+                    cursor.close();
+                    recordCursorTime(cursor);
+                    return;
+                }
                 logger.trace("sending intermediate response id: " + getResponseObserver().hashCode());
                 // Size the response actually sent. Taking it from the send helper's return value
                 // also drops a redundant build() of the repeated DataBucket list on the streaming
@@ -98,6 +122,10 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
         recordCursorTime(cursor);
 
         if ( ! isError) {
+
+            if (!awaitReadyOrAbandon()) {
+                return;
+            }
 
             // send empty response message if cursor is empty
             if (emptyResponse) {

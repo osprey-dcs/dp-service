@@ -243,6 +243,75 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
         return outcome;
     }
 
+    /**
+     * Runs the streaming dispatcher against a test-controlled {@code ServerCallStreamObserver}, so
+     * the outbound readiness gate (#274, plan D8) is live: the observer reports not-ready after
+     * every message and becomes ready again from another thread.
+     */
+    private com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> runStreamGated(
+            QueryBucketsRequest request, long byteBudget, boolean cancelAfterFirst) {
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.setAfterNext(() -> {
+            if (cancelAfterFirst) {
+                observer.cancelled.set(true);
+                return;
+            }
+            // the transport buffer is "full" until the reader drains it a moment later
+            observer.ready.set(false);
+            final Thread reader = new Thread(() -> {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                observer.becomeReady();
+            });
+            reader.setDaemon(true);
+            reader.start();
+        });
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+        return observer;
+    }
+
+    @Test
+    public void testStreamWaitsForReadinessBetweenMessages() {
+        // a small budget forces several chunks; every one must be sent only while the observer is
+        // ready, and all of them must arrive
+        final int expected = allStreamedBuckets(runStream(
+                bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false), Long.MAX_VALUE)).size();
+        assertTrue(expected > 1);
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                runStreamGated(bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false),
+                        Long.MAX_VALUE, false);
+        assertTrue(observer.completed);
+        assertEquals("no message may be sent while the transport is not ready", 0, observer.sentWhileNotReady);
+        int delivered = 0;
+        for (QueryBucketsResponse r : observer.messages) {
+            delivered += r.getBucketQueryResult().getDataBucketsCount();
+        }
+        assertEquals(expected, delivered);
+    }
+
+    @Test
+    public void testStreamStopsWhenTheClientCancels() {
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                runStreamGated(bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false),
+                        Long.MAX_VALUE, true);
+        assertEquals("one message went out before the cancel was observed", 1, observer.messages.size());
+        assertFalse("a cancelled call is not completed", observer.completed);
+    }
+
     private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {
         final List<DataBucket> all = new ArrayList<>();
         for (QueryBucketsResponse r : outcome.messages) {

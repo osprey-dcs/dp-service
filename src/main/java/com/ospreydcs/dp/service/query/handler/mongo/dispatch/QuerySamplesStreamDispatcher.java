@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
@@ -38,6 +39,11 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
     private static final Logger logger = LogManager.getLogger();
 
     private final StreamObserver<QuerySamplesResponse> responseObserver;
+    /**
+     * Outbound flow control (#274, plan D8), built here because the handler constructs this
+     * dispatcher on the gRPC thread, where the ready handler must be registered.
+     */
+    private final OutboundReadinessGate gate;
 
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
@@ -58,6 +64,8 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             long initialSliceNanos, QueryTelemetry telemetry) {
         super(byteBudget, initialSliceNanos, telemetry);
         this.responseObserver = responseObserver;
+        this.gate = OutboundReadinessGate.forObserver(
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
     }
 
     @Override
@@ -147,7 +155,8 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
     /**
      * Emits every row currently in the map as one or more chunks bounded by the row limit and the
      * byte budget, draining the map. Returns the number of rows emitted (0 when the map held
-     * none), or -1 after sending the indivisible-oversized-row error.
+     * none), or -1 when the caller must stop: after sending the indivisible-oversized-row error,
+     * or when the readiness gate refused a send (client cancelled or not draining; nothing sent).
      */
     private int emitAccumulated(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap) {
 
@@ -190,7 +199,9 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
             // byte flush: adding this row would overflow the budget and the chunk already has >= 1 row
             if (rowsInChunk >= 1 && chunkBytes + rowBytes > byteBudget) {
-                emitChunk(tableValueMap, timestamps, chunkStart, rowIndex, useSerialized);
+                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex, useSerialized)) {
+                    return -1;
+                }
                 chunkStart = rowIndex;
                 chunkBytes = 0;
             }
@@ -199,15 +210,18 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
             // count flush: the chunk reached the per-message row limit (inclusive of this row)
             if (rowIndex - chunkStart + 1 >= chunkRowLimit) {
-                emitChunk(tableValueMap, timestamps, chunkStart, rowIndex + 1, useSerialized);
+                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex + 1, useSerialized)) {
+                    return -1;
+                }
                 chunkStart = rowIndex + 1;
                 chunkBytes = 0;
             }
         }
 
         // flush the trailing partial chunk
-        if (chunkStart < timestamps.size()) {
-            emitChunk(tableValueMap, timestamps, chunkStart, timestamps.size(), useSerialized);
+        if (chunkStart < timestamps.size()
+                && !emitChunk(tableValueMap, timestamps, chunkStart, timestamps.size(), useSerialized)) {
+            return -1;
         }
         return timestamps.size();
     }
@@ -270,11 +284,20 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         return overhead;
     }
 
-    private void emitChunk(
+    /** Builds and emits one chunk; false when the gate refused (nothing built or sent). */
+    private boolean emitChunk(
             TimestampDataMap tableValueMap, List<long[]> timestamps,
             int fromRow, int toRow, boolean useSerialized) {
+        // Wait before building: the build drains the rows from the map, and a refused send would
+        // otherwise lose them (they are not re-queried on the stream path).
+        if (!gate.awaitReady()) {
+            logger.warn("abandoning querySamplesStream response id: {}: client cancelled or not draining",
+                    responseObserver.hashCode());
+            return false;
+        }
         final ColumnTable columnTable = buildColumnTable(tableValueMap, timestamps, fromRow, toRow, useSerialized);
         emit(columnTable);
+        return true;
     }
 
     private void emitEmptyChunkAndComplete() {

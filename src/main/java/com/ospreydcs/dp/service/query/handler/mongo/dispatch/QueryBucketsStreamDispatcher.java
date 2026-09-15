@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.query.QueryBucketsResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -33,6 +34,11 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
     private static final Logger logger = LogManager.getLogger();
 
     private final StreamObserver<QueryBucketsResponse> responseObserver;
+    /**
+     * Outbound flow control (#274, plan D8), built here because the handler constructs this
+     * dispatcher on the gRPC thread, where the ready handler must be registered.
+     */
+    private final OutboundReadinessGate gate;
 
     public QueryBucketsStreamDispatcher(
             StreamObserver<QueryBucketsResponse> responseObserver, QueryTelemetry telemetry) {
@@ -45,6 +51,8 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
             QueryTelemetry telemetry) {
         super(byteBudget, telemetry);
         this.responseObserver = responseObserver;
+        this.gate = OutboundReadinessGate.forObserver(
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
     }
 
     @Override
@@ -103,7 +111,9 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
                 // byte flush: if adding this bucket would overflow the budget, flush the current chunk
                 // first — but only if it already holds >= 1 bucket (zero-progress guard).
                 if (!chunk.isEmpty() && chunkBytes + bucketBytes > byteBudget) {
-                    emitChunk(chunk);
+                    if (!emitChunk(chunk)) {
+                        return; // client gone or not draining: abandon (cursor closed by the try)
+                    }
                     chunk.clear();
                     chunkBytes = 0;
                 }
@@ -124,15 +134,17 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
 
                 // count flush: chunk reached the per-message limit
                 if (chunk.size() >= chunkSizeLimit) {
-                    emitChunk(chunk);
+                    if (!emitChunk(chunk)) {
+                        return;
+                    }
                     chunk.clear();
                     chunkBytes = 0;
                 }
             }
 
             // flush any trailing partial chunk
-            if (!chunk.isEmpty()) {
-                emitChunk(chunk);
+            if (!chunk.isEmpty() && !emitChunk(chunk)) {
+                return;
             }
 
             responseObserver.onCompleted();
@@ -144,8 +156,17 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         }
     }
 
-    /** Emits one streamed BucketQueryResult message with an empty nextPageToken. */
-    private void emitChunk(List<DataBucket> buckets) {
+    /**
+     * Emits one streamed BucketQueryResult message with an empty nextPageToken, once the transport
+     * can take it. Returns false when the gate refused (the client cancelled or stopped reading):
+     * nothing was sent and the caller must stop.
+     */
+    private boolean emitChunk(List<DataBucket> buckets) {
+        if (!gate.awaitReady()) {
+            logger.warn("abandoning queryBucketsStream response id: {}: client cancelled or not draining",
+                    responseObserver.hashCode());
+            return false;
+        }
         final QueryBucketsResponse.BucketQueryResult result =
                 QueryBucketsResponse.BucketQueryResult.newBuilder()
                         .addAllDataBuckets(buckets)
@@ -155,5 +176,6 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         final QueryBucketsResponse response = QueryServiceImpl.queryBucketsResponse(result);
         telemetry.recordResponse(response.getSerializedSize());
         responseObserver.onNext(response);
+        return true;
     }
 }
