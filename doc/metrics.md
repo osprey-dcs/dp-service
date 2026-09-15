@@ -173,7 +173,20 @@ error initializing telemetry for service: query with prometheus endpoint: 0.0.0.
 To turn metrics off entirely, set `DP_TELEMETRY_ENABLED=false`. Instrumentation still runs but
 records into a no-op implementation, and no port is bound.
 
-To expose metrics only to a local scraper or sidecar, set `DP_TELEMETRY_PROMETHEUS_HOST=127.0.0.1`.
+**Restrict these ports at the firewall to the monitoring host.** The default bind is `0.0.0.0`, so
+on a routable interface the endpoint is readable by anything that can reach the host.
+
+The default is deliberately not loopback. Prometheus scrapes these ports over the network — in
+Kubernetes it reaches a pod's metrics port across the pod network, not the pod's loopback — so
+`127.0.0.1` silently yields no data in every scrape topology documented above. Because metrics fail
+closed on a *bind* failure but not on an unreachable one, that misconfiguration produces no error
+anywhere: the service starts, the port is bound, and the target simply never reports. Binding wide
+and restricting at the firewall is the combination that works. Note also that the gRPC ports
+(50051–50054) already bind all interfaces and serve archive data in plaintext, so a loopback metrics
+port would not change what an attacker with network access can reach.
+
+Set `DP_TELEMETRY_PROMETHEUS_HOST=127.0.0.1` only when the scraper or sidecar runs on the service
+host itself, where it is both safe and sufficient.
 **There is no authentication on the scrape endpoint.** It carries no data values and no PV names
 (see [cardinality](#cardinality-why-there-are-no-pv-names-here)), but it does reveal request rates,
 latencies, and collection names, so on a shared host bind it to the loopback interface.

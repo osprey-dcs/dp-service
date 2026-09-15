@@ -127,12 +127,39 @@ metrics was judged worse than a loud failure. The defaults:
 | annotation | 9466 |
 | ingestion stream | 9467 |
 
-Before the window, confirm nothing on each host already holds these (`ss -lntp | grep -E '946[4-7]'`)
-and decide whether they need a firewall rule. **The endpoint has no authentication and no TLS** — it
-exposes operational metrics, not archive data, but it should not be reachable from outside the
-deployment's network. To change a port set `DP_<SERVICE>_SERVER_METRICS_PORT`; to turn the whole
-thing off set `DP_TELEMETRY_ENABLED=false`, and no port is bound. Full reference:
-[metrics.md](../metrics.md).
+Before the window, confirm nothing on each host already holds these:
+
+```
+ss -lntp | grep -E '946[4-7]'
+```
+
+**Then restrict them at the firewall, to the monitoring host only.** This is a required step, not a
+judgment call. The endpoint binds `0.0.0.0` by default and has **no authentication and no TLS**, so
+on a routable interface it is readable by anything that can reach the host. It exposes no PV names
+and no data values — the cardinality policy in [metrics.md](../metrics.md) guarantees that — but it
+does reveal request rates, latencies, and collection names.
+
+The default is deliberately not loopback: Prometheus scrapes these ports over the network, so
+`127.0.0.1` would silently yield no data in any scrape topology except a node-local scraper or
+sidecar. Binding wide and restricting at the firewall is the combination that works; binding narrow
+would trade a visible security control for an invisible monitoring outage. Only if the scraper runs
+on the service host itself should you instead set `DP_TELEMETRY_PROMETHEUS_HOST=127.0.0.1`, which
+makes the firewall rule unnecessary.
+
+Confirm the rule does what you expect, from a host that is *not* the monitoring host:
+
+```
+curl -s --max-time 5 http://<service-host>:9465/metrics | head    # expect no response
+```
+
+and from the monitoring host, that scraping still works:
+
+```
+curl -s --max-time 5 http://<service-host>:9465/metrics | head    # expect metric lines
+```
+
+To change a port set `DP_<SERVICE>_SERVER_METRICS_PORT`; to turn the whole thing off set
+`DP_TELEMETRY_ENABLED=false`, and no port is bound. Full reference: [metrics.md](../metrics.md).
 
 ## The upgrade
 
