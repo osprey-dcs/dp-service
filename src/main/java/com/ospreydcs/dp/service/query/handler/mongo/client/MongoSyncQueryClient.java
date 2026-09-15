@@ -2,6 +2,7 @@ package com.ospreydcs.dp.service.query.handler.mongo.client;
 
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoIterable;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
@@ -22,6 +23,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoQueryFilterBuilder;
 import com.ospreydcs.dp.service.common.mongo.MongoSyncClient;
+import com.ospreydcs.dp.service.common.mongo.TimedMongoCursor;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedStatusFilter;
@@ -148,10 +150,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long maxBucketSpanSeconds
     ) {
         try {
-            return bucketDocumentQuery(
+            return timedCursor(bucketDocumentQuery(
                     columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
-                    maxBucketSpanSeconds)
-                    .cursor();
+                    maxBucketSpanSeconds));
         } catch (Exception ex) {
             logger.error("executeBucketDocumentQuery database error: {}", ex.getMessage(), ex);
             return null;
@@ -213,6 +214,28 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 .find(filter)
                 .sort(bucketSort())
                 .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
+    }
+
+    /**
+     * Opens a cursor wrapped in the {@link TimedMongoCursor} decorator that measures the query
+     * pipeline's {@code db} stage (issue #212, D3).
+     *
+     * <p>Every bucket retrieval cursor this client hands to a dispatcher goes through here, for the
+     * same reason {@link #bucketFind} exists: a second {@code .cursor()} call added elsewhere would
+     * return an unwrapped cursor, and the request it serves would report a {@code db} stage of
+     * roughly zero with all of its database time silently folded into {@code process}. That is a
+     * plausible-looking wrong number rather than a missing one, so it would survive review.
+     *
+     * <p>Deliberately separate from {@code bucketFind}, which returns a {@code FindIterable} so
+     * that {@code MongoBucketQueryPlanTest} can {@code explain()} the exact query the service
+     * issues (#232/#271). Wrapping inside {@code bucketFind} would mean the plan test explained a
+     * different object than production opens; wrapping here leaves that split intact.
+     *
+     * <p>Takes {@code MongoIterable} rather than {@code FindIterable} so an aggregate-backed
+     * retrieval path can use it unchanged.
+     */
+    static <T> MongoCursor<T> timedCursor(MongoIterable<T> iterable) {
+        return new TimedMongoCursor<>(iterable.cursor());
     }
 
     @Override
@@ -563,9 +586,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         }
 
         try {
-            return bucketQueryV2(resolvedQuery, maxBucketSpanSeconds)
-                    .limit(resolvedQuery.getPageSize() + 1) // +1 probe row to detect a following page
-                    .cursor();
+            return timedCursor(bucketQueryV2(resolvedQuery, maxBucketSpanSeconds)
+                    .limit(resolvedQuery.getPageSize() + 1)); // +1 probe row to detect a following page
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
             return null;
@@ -612,8 +634,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
         // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
         try {
-            return bucketFind(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds))
-                    .cursor();
+            return timedCursor(bucketFind(bucketBaseFilterV2(resolvedQuery, maxBucketSpanSeconds)));
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
             return null;
@@ -651,7 +672,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         }
 
         try {
-            return bucketSamplesQueryV2(resolvedQuery, clampedIntervals, maxBucketSpanSeconds).cursor();
+            return timedCursor(
+                    bucketSamplesQueryV2(resolvedQuery, clampedIntervals, maxBucketSpanSeconds));
         } catch (Exception ex) {
             logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
             return null;

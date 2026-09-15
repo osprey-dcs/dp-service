@@ -5,6 +5,7 @@ import com.ospreydcs.dp.grpc.v1.common.DataBucket;
 import com.ospreydcs.dp.grpc.v1.query.QueryBucketsResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -34,16 +35,19 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
 
     private final StreamObserver<QueryBucketsResponse> responseObserver;
 
-    public QueryBucketsUnaryDispatcher(StreamObserver<QueryBucketsResponse> responseObserver) {
-        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes());
+    public QueryBucketsUnaryDispatcher(
+            StreamObserver<QueryBucketsResponse> responseObserver, QueryTelemetry telemetry) {
+        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(), telemetry);
     }
 
     /**
      * Package/test constructor allowing the outgoing message-size budget to be injected, so the
      * byte-budget page-split and indivisible-oversized paths can be exercised deterministically.
      */
-    public QueryBucketsUnaryDispatcher(StreamObserver<QueryBucketsResponse> responseObserver, long byteBudget) {
-        super(byteBudget);
+    public QueryBucketsUnaryDispatcher(
+            StreamObserver<QueryBucketsResponse> responseObserver, long byteBudget,
+            QueryTelemetry telemetry) {
+        super(byteBudget, telemetry);
         this.responseObserver = responseObserver;
     }
 
@@ -52,20 +56,25 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
 
         // A query that resolves to no PVs or no retrieval intervals yields an empty result.
         if (resolvedQuery.isEmptyResult()) {
+            telemetry.markEmpty();
             QueryServiceImpl.sendQueryBucketsResponseEmpty(responseObserver);
             return;
         }
 
+        final long queryStartNanos = System.nanoTime();
         final MongoCursor<BucketDocument> cursor = mongoClient.executeQueryBucketsV2(resolvedQuery);
+        telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
         if (cursor == null) {
             final String msg = "executeQueryBucketsV2 returned null cursor";
             logger.error(msg + " id: " + responseObserver.hashCode());
+            telemetry.markError();
             QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
             return;
         }
 
         try (cursor) {
             if (!cursor.hasNext()) {
+                telemetry.markEmpty();
                 QueryServiceImpl.sendQueryBucketsResponseEmpty(responseObserver);
                 return;
             }
@@ -92,6 +101,7 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
                 } catch (DpException e) {
                     final String msg = "exception building bucket result: " + e.getMessage();
                     logger.error(msg, e);
+                    telemetry.markError();
                     QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
                     return;
                 }
@@ -113,6 +123,7 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
                             + " exceeds the outgoing message size limit (" + bucketBytes + " > "
                             + byteBudget + " bytes)";
                     logger.error(msg);
+                    telemetry.markError();
                     QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
                     return;
                 }
@@ -132,7 +143,17 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
                             .addAllDataBuckets(pageBuckets)
                             .setNextPageToken(nextPageToken);
 
-            QueryServiceImpl.sendQueryBucketsResponse(resultBuilder.build(), responseObserver);
+            final QueryBucketsResponse.BucketQueryResult result = resultBuilder.build();
+            // Size the response that is actually sent, not the nested result: the outer message
+            // adds a responseTime and its framing, and every dispatcher measures the same level.
+            telemetry.recordResponse(
+                    QueryServiceImpl.sendQueryBucketsResponse(result, responseObserver)
+                            .getSerializedSize());
+
+        } finally {
+            // In a finally so the db stage is folded in on every exit from the cursor block --
+            // the empty-result return, both error returns, and the success path alike.
+            recordCursorTime(cursor);
         }
     }
 }

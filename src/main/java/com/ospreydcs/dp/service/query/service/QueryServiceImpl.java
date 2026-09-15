@@ -75,7 +75,8 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
     }
 
     public static QueryDataResponse queryDataResponse(QueryDataResponse.QueryData.Builder queryDataBuilder) {
-        queryDataBuilder.build();
+        // (The discarded queryDataBuilder.build() that used to stand here was dead work: setQueryData
+        // below builds the same message again, copying the repeated DataBucket list a second time.)
         return QueryDataResponse.newBuilder()
                 .setResponseTime(TimestampUtility.getTimestampNow())
                 .setQueryData(queryDataBuilder)
@@ -96,12 +97,23 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryDataResponse(
+    /*
+     * The send* helpers below return the response they put on the wire, so that a caller recording
+     * dp.query.response.bytes measures the message actually sent rather than the nested payload it
+     * passed in. The outer response adds a responseTime plus field-tag and length-prefix framing,
+     * so the two differ on every message -- and six of the eight dispatchers were measuring the
+     * nested one while two measured the outer, which made the metric incomparable across query
+     * methods. Returning the sent message is what keeps one definition in one place.
+     */
+
+    /** @return the response sent, for response-byte accounting. */
+    public static QueryDataResponse sendQueryDataResponse(
             QueryDataResponse.QueryData.Builder queryDataBuilder,
             StreamObserver<QueryDataResponse> responseObserver
     ) {
         final QueryDataResponse response = queryDataResponse(queryDataBuilder);
         responseObserver.onNext(response);
+        return response;
     }
 
     // ---- Query API V2: queryBuckets response helpers ----
@@ -151,20 +163,29 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQueryBucketsResponse(
+    /** @return the response sent, for response-byte accounting. */
+    public static QueryBucketsResponse sendQueryBucketsResponse(
             QueryBucketsResponse.BucketQueryResult bucketQueryResult,
             StreamObserver<QueryBucketsResponse> responseObserver
     ) {
-        responseObserver.onNext(queryBucketsResponse(bucketQueryResult));
+        final QueryBucketsResponse response = queryBucketsResponse(bucketQueryResult);
+        responseObserver.onNext(response);
         responseObserver.onCompleted();
+        return response;
     }
 
-    /** Empty result is a normal (empty) payload, NOT an ExceptionalResult. */
-    public static void sendQueryBucketsResponseEmpty(
+    /**
+     * Empty result is a normal (empty) payload, NOT an ExceptionalResult.
+     *
+     * @return the response sent, for response-byte accounting.
+     */
+    public static QueryBucketsResponse sendQueryBucketsResponseEmpty(
             StreamObserver<QueryBucketsResponse> responseObserver) {
-        responseObserver.onNext(queryBucketsResponse(
-                QueryBucketsResponse.BucketQueryResult.getDefaultInstance()));
+        final QueryBucketsResponse response = queryBucketsResponse(
+                QueryBucketsResponse.BucketQueryResult.getDefaultInstance());
+        responseObserver.onNext(response);
         responseObserver.onCompleted();
+        return response;
     }
 
     @Override
@@ -231,20 +252,29 @@ public class QueryServiceImpl extends DpQueryServiceGrpc.DpQueryServiceImplBase 
         responseObserver.onCompleted();
     }
 
-    public static void sendQuerySamplesResponse(
+    /** @return the response sent, for response-byte accounting. */
+    public static QuerySamplesResponse sendQuerySamplesResponse(
             QuerySamplesResponse.SampleQueryResult sampleQueryResult,
             StreamObserver<QuerySamplesResponse> responseObserver
     ) {
-        responseObserver.onNext(querySamplesResponse(sampleQueryResult));
+        final QuerySamplesResponse response = querySamplesResponse(sampleQueryResult);
+        responseObserver.onNext(response);
         responseObserver.onCompleted();
+        return response;
     }
 
-    /** Empty result is a normal (empty) ColumnTable payload, NOT an ExceptionalResult. */
-    public static void sendQuerySamplesResponseEmpty(
+    /**
+     * Empty result is a normal (empty) ColumnTable payload, NOT an ExceptionalResult.
+     *
+     * @return the response sent, for response-byte accounting.
+     */
+    public static QuerySamplesResponse sendQuerySamplesResponseEmpty(
             StreamObserver<QuerySamplesResponse> responseObserver) {
-        responseObserver.onNext(querySamplesResponse(
-                QuerySamplesResponse.SampleQueryResult.getDefaultInstance()));
+        final QuerySamplesResponse response = querySamplesResponse(
+                QuerySamplesResponse.SampleQueryResult.getDefaultInstance());
+        responseObserver.onNext(response);
         responseObserver.onCompleted();
+        return response;
     }
 
     @Override

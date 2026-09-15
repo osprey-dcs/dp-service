@@ -6,6 +6,7 @@ import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -21,9 +22,10 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
 
     public QueryDataDispatcher(
             StreamObserver<QueryDataResponse> responseObserver,
-            QueryDataRequest.QuerySpec querySpec
+            QueryDataRequest.QuerySpec querySpec,
+            QueryTelemetry telemetry
     ) {
-        super(responseObserver, querySpec);
+        super(responseObserver, querySpec, telemetry);
     }
 
     @Override
@@ -79,15 +81,21 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
         }
 
         cursor.close();
+        recordCursorTime(cursor);
 
         if (isError) {
             logger.trace("sending error response id: " + getResponseObserver().hashCode() + " msg: " + errorMsg);
+            telemetry.markError();
             QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
 
         } else {
             // create response from buckets in result
             final QueryDataResponse response = QueryServiceImpl.queryDataResponse(queryDataBuilder);
             logger.trace("sending query response and closing response stream id: " + getResponseObserver().hashCode());
+            if (queryDataBuilder.getDataBucketsCount() == 0) {
+                telemetry.markEmpty();
+            }
+            telemetry.recordResponse(response.getSerializedSize());
             getResponseObserver().onNext(response);
             getResponseObserver().onCompleted();
         }

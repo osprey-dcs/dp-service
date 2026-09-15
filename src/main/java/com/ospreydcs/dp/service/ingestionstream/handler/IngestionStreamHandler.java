@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.ingestionstream.handler.interfaces.IngestionStre
 import com.ospreydcs.dp.service.ingestionstream.handler.job.EventMonitorSubscribeDataResponseJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.job.SubscribeDataEventJob;
 import com.ospreydcs.dp.service.ingestionstream.handler.monitor.EventMonitor;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -62,13 +63,13 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_INGESTION_STREAM;
+    }
+
     public void addJob(EventMonitorSubscribeDataResponseJob job) {
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, job.hashCode());
     }
 
     @Override
@@ -89,16 +90,7 @@ public class IngestionStreamHandler extends QueueHandlerBase implements Ingestio
         // create job for EventMonitor
         final SubscribeDataEventJob job = new SubscribeDataEventJob(this, eventMonitor, eventMonitorManager);
 
-        logger.debug("id: {} adding SubscribeDataEventJob to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error(
-                    "id: {} InterruptedException waiting for requestQueue.put",
-                    responseObserver.hashCode());
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
 
         return eventMonitor;
     }

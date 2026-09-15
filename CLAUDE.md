@@ -845,7 +845,10 @@ Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 
 ## Testing Strategy
 - **Framework**: JUnit 4 (`@Test`, `@Before`, `@After`)
-- **Integration Tests**: `src/test/java/com/ospreydcs/dp/service/integration/`
+- **Integration Tests**: `src/test/integration/java/com/ospreydcs/dp/service/integration/` — a
+  separate source root added by `build-helper-maven-plugin` (`pom.xml`), run by Failsafe, not
+  Surefire. Selecting them with `-Dit.test` needs slash-style package paths
+  (`com/ospreydcs/.../**`) or `**/ClassName.java`; dotted wildcards match nothing.
 - **Test Base Classes**: `AnnotationTestBase`, `QueryTestBase`, `IngestionTestBase`
 - **Test Database**: "dp-test" (cleaned between tests via `MongoTestClient.init()`)
 - **Temporary Files**: `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();`
@@ -925,6 +928,226 @@ positional list.
   ingested PV has a `pvStats` document with a span at least the request's;
   **`ExportDataBucketSpanIT`** covers the annotation export path (seeded span finds the over-long
   bucket, no entry excludes it); **`V5SeedPvStatsMaxBucketSpanTest`** covers the seed pipeline.
+
+## Metrics and Telemetry (issue #212)
+
+Every service exports OpenTelemetry metrics over a Prometheus endpoint (9464–9467, one per service),
+on by default. `doc/metrics.md` is the operator reference — what is measured, the query stage
+breakdown, the slow-query log, and the PromQL. The invariants that outlive the ticket:
+
+### Initialization order is load-bearing, and never `GlobalOpenTelemetry`
+
+`DpTelemetry.init()` must run **before** `initService_()`. `DpMetrics` creates each instrument lazily
+against whatever meter `DpTelemetry` holds at first use, and the Mongo client and the request
+handlers build their instruments during their own init — so an instrument created before `init()` is
+bound to the no-op meter and silently records nothing for the life of the process. `GrpcServerBase.start()`
+has the order right; a new server implementation must keep it.
+
+`DpTelemetry` never touches `GlobalOpenTelemetry`. That global is settable once per JVM and warns on
+every later attempt, while the integration tests build many servers in one JVM. Every lookup goes
+through `DpTelemetry.meter()`, which is also what lets a test install its own SDK with an in-memory
+reader (`initForTest`/`resetForTest`) and tear it down again.
+
+**An unbindable metrics port fails startup** (the #254 rule: a service that cannot complete
+initialization must not serve). `start()` therefore also shuts telemetry down if `initService_()`
+fails — the shutdown hook that would release the port is registered only after the failure throw,
+so without that an in-process retry would hit a port its own previous attempt still held and report
+a telemetry bind error in place of the real failure. The `serverBuilder.build().start()` call is
+wrapped for the identical reason: a gRPC port conflict throws with the metrics port already bound.
+
+**`shutdown()` discards the cached instruments, and that is a production requirement, not tidiness.**
+Every `DpMetrics` instrument is bound to the meter of the provider being closed. Left cached, the
+retry path above builds a fresh SDK that no instrument points at, and the process records nothing
+for the rest of its life while reporting a healthy startup. `DpMetrics.discardInstruments()` is
+named for production rather than tests for this reason; `initForTest` calls it too, so a test class
+is self-correcting rather than dependent on a prior `tearDown`. `DpTelemetryTest`'s
+`testShutdownDiscardsCachedInstruments` pins it, and asserts on the recorded *value* after shutdown
+rather than installing another SDK first — routing through `initForTest` would mask the very
+behavior under test.
+
+**Telemetry shuts down after the handler drains, not after the gRPC server terminates.**
+`stopServer()` calls `finiService_()` before `DpTelemetry.shutdown()`. The server terminating is not
+when in-flight work finishes: `QueueHandlerBase.fini()` runs `executorService.awaitTermination()`,
+and the jobs still draining there record `dp.handler.*`, `dp.query.*` and `dp.ingest.*` as they
+complete. Shutting the SDK down first sent every one of those into a closed provider. `finiService_()`
+is idempotent (`handler = null`, plus `QueueHandlerBase`'s own `shutdownRequested` guard), so the
+JVM shutdown hook and `blockUntilShutdown()` cannot double-drain.
+
+### Instrumentation must never disturb the request it measures
+
+Recordings happen in a `finally` on the response path, after the client's response has gone out. An
+exception escaping there would be thrown from a finally block, replacing whatever the try block was
+doing — so a metrics failure would present as a service failure. The composite recording sites are
+therefore guarded by a `catch` that logs and continues: `IngestionTelemetry.record()`,
+`QueryTelemetry.logSlowQuery()`, and both `DpMongoCommandListener` callbacks (which also must not
+throw into the driver).
+
+The bare single-instrument calls in `QueueHandlerBase.executeJob` are deliberately unguarded — an
+SDK `record()`/`add()` does not throw on the recording path, and wrapping each in its own try would
+obscure the `finally` that keeps `workers.active` balanced. Add the guard when a site does something
+that *can* fail: string formatting, a log call, or several recordings that must not be left
+half-applied.
+
+For the same reason `QueryTelemetry.complete()` is **idempotent**: every job calls it from a
+`finally`, but the streaming dispatchers also complete early on error paths and the bidi dispatcher
+outlives its job. A second recording would double-count the request in every histogram and counter —
+an inflated request rate that still looks plausible, so no test would catch it.
+
+**An unchecked throw out of a job must be classified before `complete()` runs.** `outcome` defaults
+to `success`, so the escape documented throughout this file — the worker swallows the throwable, the
+dispatcher never answers, the caller's stream hangs until it times out — was recorded as a
+*successful* request with a full set of stage histograms, leaving the error rate flat for precisely
+the requests that failed hardest. All three query jobs therefore `catch (RuntimeException)`, call
+`telemetry.markFailedWithException()`, and rethrow. That method does not overwrite an outcome
+already set, since a dispatcher that rejected and then threw has classified the request more
+precisely. A dropped job gets the same treatment through `HandlerJob.discarded()`, which
+`enqueueJob` calls when an interrupt discards a job that will never run.
+
+**`QueryTelemetry`'s mutators are `synchronized`, and that is load-bearing.** On
+`queryDataBidiStream` the worker thread calls `complete()` while gRPC threads still call
+`recordResponse()` through `QueryResultCursor.next()`. An earlier version left the counters
+unsynchronized on the reasoning that the dispatcher held its `cursorLock` — but `complete()` does
+not acquire `cursorLock`, so the two monitors established no happens-before edge, and `long` fields
+are not atomic under the JMM. Sharing this object's monitor across the mutators and `complete()` is
+what makes the published values correct.
+
+**`dp.query.response.bytes` measures the message actually sent.** The `send*` helpers on
+`QueryServiceImpl` return the response they put on the wire so a dispatcher can size that rather
+than the nested payload it passed in — the outer message adds a `responseTime` and its framing. Six
+of the eight dispatchers were measuring the nested result while two measured the outer, which made
+the metric incomparable across query methods. Using the return value also drops a redundant
+`build()` of the repeated bucket list on the streaming hot path. The counters deliberately exclude
+exceptional and pre-retrieval empty responses (see `recordResponse`'s javadoc): those requests are
+identified by `dp.outcome` instead, so the ratio to `dp.query.requests` is bytes per *request*, not
+per message.
+
+### The attribute vocabulary is closed (D8)
+
+The complete set of attributes dp instrumentation may attach is `dp.service`, `dp.job`, `dp.stage`,
+`dp.outcome`, `rpc.method`, `db.operation.name`, `db.collection.name`, `db.namespace`, `error.type`
+— all declared on `DpMetrics` and each bounded by something small and fixed.
+
+**A PV name, provider id, client request id, page token, or user identity must never become an
+attribute.** A facility with 10^5 PVs would turn one histogram into 10^5 time series; that is how a
+metrics backend is taken down by the service it monitors, while the service exports happily.
+Per-request detail of that kind goes in the slow-query log line, which carries the PV names precisely
+because the metrics do not. Integration tests assert the attribute key set of every dp metric and
+that no PV name appears as any attribute value; keep them passing rather than widening them.
+
+gRPC's own metrics are **not** governed by this vocabulary — they come from grpc-java's
+instrumentation and are labeled `grpc_method` (fully qualified, e.g.
+`dp.service.query.DpQueryService/queryData`) and `grpc_status`. Cardinality is bounded by the method
+set, so the intent holds.
+
+### Every duration is seconds, on one explicit bucket ladder (D9)
+
+`DpMetrics.DURATION_BUCKET_BOUNDARIES_SECONDS` — 1 ms to 120 s — with unit `s`, per OTel semantic
+convention. The SDK's default boundaries were chosen for milliseconds: with unit `s` every
+observation a healthy service produces lands in the first bucket and every percentile above p50
+reads as the bucket edge — plausible-looking, meaningless numbers. Every instrument is declared on
+`DpMetrics` and duration histograms are built through its private `durationHistogram()` helper, so a
+new one cannot miss the ladder; add instruments there rather than building one at a call site, and
+convert with `DpMetrics.nanosToSeconds()`.
+
+### Things that are measured where they are for a reason
+
+- **Every handler job is timed by `QueueHandlerBase`**, not by the job. `enqueueJob` is the single
+  enqueue path (`requestQueue.put` appears nowhere else — worth grepping for), and the worker records
+  `queue.wait`, `job.duration`, and the `workers.active` delta around `execute()`. A new job type is
+  covered with no work; a job that enqueues itself some other way is not covered at all.
+- **Every cursor-returning query-client method wraps its cursor in `TimedMongoCursor`.** The driver
+  issues the initial `find` on the first `hasNext()` and `getMore`s as iteration proceeds, and
+  decoding happens in `next()` — so timing the `executeQuery*()` call alone attributes nearly all
+  database time to `process`. Measured on a 50-bucket query, `db` was half of `total`. The wrapper
+  cannot move inside `bucketFind()`, which must keep returning the `FindIterable` that
+  `MongoBucketQueryPlanTest` explains.
+- **There is no queue-depth gauge**, and its absence is not an oversight: the request queue has
+  capacity 1, so depth reads 0 or 1 forever. Saturation is `workers.active` against `workers.max`,
+  and the wait it causes is the `queue.wait` distribution.
+- **Ingestion RPC duration is not ingestion latency.** Ingestion acks on enqueue and persists later
+  on a worker, so `grpc.server.call.duration` measures validation and enqueue only. `dp.ingest.duration`
+  measures arrival to end of handling, and is recorded in a `finally` with the outcome defaulting to
+  `error`, so a request that fails hard enough to escape its own job is counted as the failure it is
+  rather than vanishing from every counter.
+- **The shared server-builder helper is what the ITs exercise.** `GrpcIntegrationServiceWrapperBase`
+  builds an `InProcessServerBuilder` directly, so anything added only in `GrpcServerBase.start()` is
+  untested. Both call `DpTelemetry.configureServerBuilder()`. (The in-process server still produces
+  no `grpc.server.*` series, so an IT must assert on the dp instruments, not on those.)
+- **`ServicesResourceTransformer` must stay in the shade configuration.** The OTel autoconfigure
+  module discovers exporters through `ServiceLoader`, and two exporter jars each ship a
+  `META-INF/services/...ConfigurableMetricExporterProvider`. Without the transformer the last one
+  copied wins silently and the shaded jar finds `prometheus` or `otlp` but not both, depending on jar
+  order. The commented-out per-service shade executions in `pom.xml` predate this and carry only a
+  `ManifestResourceTransformer`; re-enabling one means adding the transformer to it as well.
+
+### `db.client.operation.duration` does not mean what it appears to
+
+All four verified against a real MongoDB, and each produces a plausible wrong answer rather than an
+error:
+
+- **`error.type` covers only commands the server refused, never a write error.** A duplicate key,
+  failed validation, or any per-document write error is carried in the response body of a command the
+  server *answered successfully* — the driver emits `commandSucceeded` while throwing to the caller.
+  An alert assuming every database exception raises this rate would never fire.
+- **A database outage makes the metric go silent rather than raising an error rate.** A
+  server-selection failure emits no command events at all. Alert on absence of data.
+- **`error.type` is the driver event's exception class, not the caller's.** A bad index hint arrives
+  as `MongoCommandException` while the caller catches `MongoQueryException`.
+- **`countDocuments()` issues an `aggregate`, not a `count`.** Only `estimatedDocumentCount()` issues
+  `count`.
+
+Correlation of a command's start (which carries the collection) to its end (which carries the
+duration) is a `ThreadLocal`, not a map: the driver delivers both on the same thread, verified across
+3364 commands on 25 threads. A map would need an eviction policy for an end event that never arrives.
+
+### RPC-layer validation rejects are invisible to `dp.query.requests`
+
+A request malformed enough to fail `QueryServiceImpl`'s field validation is rejected before the
+handler is entered, so no `QueryTelemetry` exists and nothing is counted. Resolution-stage rejects
+*are* counted (`completeRejectedResolution`) — the asymmetry is easy to miss.
+
+Nor are they visible as gRPC errors: the service reports a rejection as an `OK` response carrying
+an `ExceptionalResult` payload, so `grpc_status` stays `OK`. Verified against a running service —
+an empty `queryData` request produced two `grpc_server_call_started_total` and one
+`dp_query_requests_total` point, all `OK`. Counting them needs a telemetry context created at the
+service layer; that is a follow-on. Until then the only signal is the difference between the two
+counters, which `doc/metrics.md` documents as a prompt to read the log rather than a number to
+alert on.
+
+### The three timing layers nest, and the two gaps are not interchangeable
+
+`dp_query_stage_duration_seconds{dp_stage="total"}` starts at **handler entry**, not at the wire.
+Around it sit `grpc_server_call_duration_seconds` (the gRPC call, including decode) and, outside
+that, whatever the client measures. The three nest strictly, and the gaps were measured under load
+(#212 Task 11, 100 concurrent `queryDataStream` requests): ~9 ms/request between the gRPC span and
+the handler span, ~16 ms/request between the client and the gRPC span.
+
+So a client complaint of a slow query is not refuted by a healthy `dp_query_stage_duration` — that
+histogram cannot see request decode, response wire time, or client-side deserialization. Compare
+against the gRPC family for the first, and note that the two families' method labels do not join:
+`grpc_method` is fully qualified (`dp.service.query.DpQueryService/queryDataStream`) where
+`rpc_method` is bare.
+
+Within the handler span, `process` is computed as `total` minus the three measured stages, so the
+four stage fractions sum to 1 unconditionally. That identity is arithmetic, not a check that the
+stages are attributed correctly; do not treat it as one.
+
+### Testing telemetry
+
+`DpTelemetry.initForTest(sdk)` + an `InMemoryMetricReader` is the seam; `GrpcIntegrationTestBase`
+installs one before any wrapper's `init()` and resets after every `fini()`, so a handler closing its
+observable-gauge registration still finds a live meter provider.
+
+**Both services record their measurements after the response the client is waiting on has been
+sent** — `QueryTelemetry.complete()` once `executeAndDispatch` returns, ingestion's on the worker
+long after the enqueue ack. A test asserting as soon as the stub returns races the recording and
+fails intermittently against correct code. Poll the relevant `*.requests` counter to a deadline; at
+the unit level, enqueue a barrier job **of a distinct class** (so it gets its own `dp.job` point and
+cannot inflate the counts under test) and wait for it to start.
+
+`QueryHandler.slowQueryLogThresholdMillis` is resolved **once per JVM** and `ConfigurationManager`
+folds `-D` overrides in once at singleton init, so there is no per-test override: it is set to `0` in
+`src/test/resources/application.yml` for the whole suite. Production stays at 1000.
 
 ## Schema Migration (issue #254)
 

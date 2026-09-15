@@ -264,5 +264,93 @@ waiting services restart and come up once the migration completes. Do not clear 
 the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
 inventory.
 
+## Service metrics (Issue #212)
+
+Every service now collects and exports metrics — request rates, error rates, latency histograms, a
+per-stage breakdown of query handling, MongoDB command durations, handler queue and worker
+saturation, gRPC call metrics, and JVM runtime metrics. The operator reference is
+[`doc/metrics.md`](../metrics.md), which includes the PromQL for diagnosing a slow query.
+
+### DEPLOYMENT CHANGE: each service now binds a second port, and fails to start if it cannot
+
+Metrics are **on by default**, served on a Prometheus scrape endpoint per service:
+
+| Service          | gRPC port | metrics port |
+|------------------|-----------|--------------|
+| Ingestion        | 50051     | 9464         |
+| Query            | 50052     | 9465         |
+| Annotation       | 50053     | 9466         |
+| Ingestion Stream | 50054     | 9467         |
+
+(The benchmark servers use 60451 and 60452, so a benchmark still runs on a host running the live
+services.)
+
+**If a metrics port cannot be bound the service fails to start**, with an error naming the endpoint
+and the cause. This is deliberate — the alternative is a service an operator believes is
+instrumented and is not — but it means an upgraded deployment needs these four ports free, or the
+settings below changed. Check for a conflict before upgrading: 9464–9467 are in the range some
+Prometheus exporters use by convention.
+
+**On Kubernetes**, the metrics port is an ordinary container port. `doc/metrics.md` now carries the
+`containerPort`, `ServiceMonitor`, and `prometheus.io/*` annotation forms, and the released image
+declares all eight ports (its previous `EXPOSE 8080` named a port no service listens on). Note that
+a port collision here is `CrashLoopBackOff` rather than a pod running without metrics, since the
+bind failure is deliberate.
+
+Each port is configurable (`DP_INGESTION_SERVER_METRICS_PORT`, `DP_QUERY_SERVER_METRICS_PORT`,
+`DP_ANNOTATION_SERVER_METRICS_PORT`, `DP_INGESTION_STREAM_SERVER_METRICS_PORT`), the bind interface
+is `DP_TELEMETRY_PROMETHEUS_HOST` (default `0.0.0.0`; set `127.0.0.1` to expose metrics only to a
+local scraper), and the whole feature is switched off with `DP_TELEMETRY_ENABLED=false` — which
+binds no port and records nothing.
+
+**There is no authentication on the scrape endpoint.** It exposes no data values and no PV names,
+but it does reveal request rates, latencies, and collection names; bind it to the loopback interface
+on a shared host.
+
+To push to an OpenTelemetry collector instead of being scraped, the standard OTel environment
+variables apply with no rebuild: `OTEL_METRICS_EXPORTER=otlp` plus `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+### New: slow query log
+
+A query whose total handling time reaches `QueryHandler.slowQueryLogThresholdMillis` (default
+**1000 ms**, so this is on by default) writes one WARN line to a dedicated logger named
+`dp.slowquery`, carrying the per-stage breakdown (resolve / queue / database / process) and the
+shape of the request — PV count, first few PV names, time range, page size. It answers "why was
+*this* query slow" without a trace backend.
+
+The line goes to the existing root appender unless routed. `log4j2.xml` ships a
+`<Logger name="dp.slowquery" level="warn"/>` entry; add an `AppenderRef` with `additivity="false"`
+to send these to their own file. Set the threshold to `0` to log every query, or negative to
+disable. It is read once at startup.
+
+Also added to `log4j2.xml`: `io.opentelemetry` at `warn`, so the SDK does not log on every export
+interval.
+
+### Ingestion latency is now measurable
+
+`dp.ingest.duration` measures from request arrival to the end of handling, **including
+persistence**. This is the number the gRPC call duration cannot show: ingestion acknowledges a
+request as soon as it is validated and enqueued, so `grpc.server.call.duration` on an ingestion
+method covers validation and enqueue only. An operator watching that alone would see a healthy few
+milliseconds while the queue behind it fell arbitrarily far behind.
+
+### Note for anyone writing alerts
+
+Two behaviors of `db.client.operation.duration` are not what they look like, both verified against a
+real MongoDB and documented in `doc/metrics.md`:
+
+- `error.type` covers only commands the server **refused**. A duplicate key or a failed document
+  validation is a write error carried inside the response body of a command the server answered
+  successfully, so it never appears here. Use the application-level outcome counters for write
+  failures.
+- A total database outage makes this metric **go silent** rather than raising an error rate — a
+  server-selection failure emits no command events at all. Alert on absence of data.
+
+Likewise, a request rejected by gRPC-layer field validation never reaches the handler, so it is not
+counted in `dp.query.requests` — and because the service reports a rejection as an `OK` response
+carrying an `ExceptionalResult` rather than as a gRPC error, it is not visible as a non-`OK`
+`grpc_status` either. Such requests are still logged with their reason; counting them is a
+follow-on.
+
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*

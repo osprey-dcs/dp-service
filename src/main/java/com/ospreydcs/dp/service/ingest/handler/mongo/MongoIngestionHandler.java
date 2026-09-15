@@ -13,6 +13,7 @@ import com.ospreydcs.dp.service.ingest.handler.mongo.job.SubscribeDataJob;
 import com.ospreydcs.dp.service.ingest.model.SourceMonitor;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,6 +51,11 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
 //
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_INGESTION;
     }
 
     public SourceMonitorManager getSourceMonitorPublisher() {
@@ -98,14 +104,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         final RegisterProviderJob job = new RegisterProviderJob(
                 request, responseObserver, mongoIngestionClient, this);
 
-        logger.debug("adding RegisterProviderJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
 
     }
 
@@ -120,12 +119,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
                 handlerIngestionRequest.request.getProviderId(),
                 handlerIngestionRequest.request.getClientRequestId());
 
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, job.hashCode());
     }
 
     @Override
@@ -136,14 +130,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
         final QueryRequestStatusJob job =
                 new QueryRequestStatusJob(request, responseObserver, mongoIngestionClient);
 
-        logger.debug("adding QueryRequestStatusJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -167,16 +154,7 @@ public class MongoIngestionHandler extends QueueHandlerBase implements Ingestion
                         mongoIngestionClient,
                         mongoQueryClient);
 
-        logger.debug(
-                "adding SubscribeDataJob id: {} to queue",
-                monitor.responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, monitor.responseObserver.hashCode());
 
         return monitor;
     }

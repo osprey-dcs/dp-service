@@ -28,6 +28,7 @@ import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsUnaryDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryV2Job;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import io.grpc.stub.StreamObserver;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -182,9 +183,14 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { }
             @Override public void onCompleted() { }
         };
+        // One context shared by dispatcher and job, as MongoQueryHandler wires it in production:
+        // the dispatcher records outcome and response bytes into it and the job completes it. Two
+        // separate instances meant these tests exercised a wiring that does not exist, and the
+        // job's instance completed as a zero-count success on every call.
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
         final QueryBucketsUnaryDispatcher dispatcher =
-                new QueryBucketsUnaryDispatcher(observer, byteBudget);
-        new QueryV2Job(resolvedQuery, dispatcher, clientTestInterface).execute();
+                new QueryBucketsUnaryDispatcher(observer, byteBudget, telemetry);
+        new QueryV2Job(resolvedQuery, dispatcher, clientTestInterface, telemetry).execute();
         assertEquals("expected exactly one unary response", 1, responses.size());
         return responses.get(0);
     }
@@ -228,10 +234,12 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { outcome.errored = true; }
             @Override public void onCompleted() { outcome.completed = true; }
         };
+        // One shared context; see the unary helper above.
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
         final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
-                        observer, byteBudget);
-        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+                        observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         return outcome;
     }
 

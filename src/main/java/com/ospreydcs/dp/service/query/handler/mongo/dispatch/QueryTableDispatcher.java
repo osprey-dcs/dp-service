@@ -9,6 +9,8 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
+import com.ospreydcs.dp.service.common.mongo.TimedMongoCursor;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
@@ -29,12 +31,27 @@ public class QueryTableDispatcher extends Dispatcher {
     // constants
     public static final String TABLE_RESULT_TIMESTAMP_COLUMN_NAME = "timestamp";
 
+    private final QueryTelemetry telemetry;
+
     public QueryTableDispatcher(
             StreamObserver<QueryTableResponse> responseObserver,
-            QueryTableRequest request
+            QueryTableRequest request,
+            QueryTelemetry telemetry
     ) {
         this.responseObserver = responseObserver;
         this.request = request;
+        this.telemetry = telemetry;
+    }
+
+    /**
+     * Folds a finished cursor's accumulated time and document count into the request's {@code db}
+     * stage (issue #212, D3). See {@code QueryV2Dispatcher.recordCursorTime} for why the type check
+     * is a normal condition rather than a defensive one.
+     */
+    private void recordCursorTime(MongoCursor<?> cursor) {
+        if (cursor instanceof TimedMongoCursor<?> timedCursor) {
+            telemetry.addCursorTime(timedCursor.elapsedNanos(), timedCursor.documentCount());
+        }
     }
 
     private QueryTableResponse.TableResult columnTableResultFromMap(
@@ -148,15 +165,28 @@ public class QueryTableDispatcher extends Dispatcher {
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
             logger.error(msg + " id: " + this.responseObserver.hashCode());
+            telemetry.markError();
             QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
             return;
         }
+
+        try {
+            handleResult_(cursor);
+        } finally {
+            // In a finally so the db stage is folded in on every exit below, including each of the
+            // four error returns.
+            recordCursorTime(cursor);
+        }
+    }
+
+    private void handleResult_(MongoCursor<BucketDocument> cursor) {
 
         // send empty result response if query matched no data
         if (!cursor.hasNext()) {
             logger.trace(
                     "processQueryRequest: query matched no data, cursor is empty id: "
                             + this.responseObserver.hashCode());
+            telemetry.markEmpty();
             QueryServiceImpl.sendQueryTableResponseEmpty(request.getFormat(), this.responseObserver);
             return;
         }
@@ -186,6 +216,7 @@ public class QueryTableDispatcher extends Dispatcher {
         } catch (DpException e) {
             final String msg = "exception building tabular result: " + e.getMessage();
             logger.error(msg, e);
+            telemetry.markError();
             QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
             return;
         }
@@ -193,6 +224,7 @@ public class QueryTableDispatcher extends Dispatcher {
         if (sizeStats.sizeLimitExceeded()) {
             final String msg = "result exceeds gRPC message size limit";
             logger.error(msg);
+            telemetry.markError();
             QueryServiceImpl.sendQueryTableResponseError(msg, this.responseObserver);
             return;
         }
@@ -209,6 +241,7 @@ public class QueryTableDispatcher extends Dispatcher {
                 tableResult = rowMapTableResultFromMap(columnNameList, tableValueMap);
             }
             case UNRECOGNIZED -> {
+                telemetry.markError();
                 QueryServiceImpl.sendQueryTableResponseError(
                         "QueryTableRequest.format must be specified", this.responseObserver);
                 return;
@@ -217,6 +250,7 @@ public class QueryTableDispatcher extends Dispatcher {
 
         // create and send response, close response stream
         QueryTableResponse response = QueryServiceImpl.queryTableResponse(tableResult);
+        telemetry.recordResponse(response.getSerializedSize());
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }

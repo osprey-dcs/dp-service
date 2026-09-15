@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.ingest.server;
 
 import com.ospreydcs.dp.service.common.server.GrpcServerBase;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import com.ospreydcs.dp.service.ingest.handler.interfaces.IngestionHandlerInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
@@ -17,6 +18,8 @@ public class IngestionGrpcServer extends GrpcServerBase {
     // configuration
     public static final String CFG_KEY_PORT = "IngestionServer.port";
     public static final int DEFAULT_PORT = 50051;
+    public static final String CFG_KEY_METRICS_PORT = "IngestionServer.metricsPort";
+    public static final int DEFAULT_METRICS_PORT = 9464;
 
     // instance variables
     private final IngestionServiceImpl serviceImpl;
@@ -29,6 +32,16 @@ public class IngestionGrpcServer extends GrpcServerBase {
     @Override
     protected int getPort_() {
         return configMgr().getConfigInteger(CFG_KEY_PORT, DEFAULT_PORT);
+    }
+
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_INGESTION;
+    }
+
+    @Override
+    protected int getMetricsPort_() {
+        return configMgr().getConfigInteger(CFG_KEY_METRICS_PORT, DEFAULT_METRICS_PORT);
     }
 
     @Override

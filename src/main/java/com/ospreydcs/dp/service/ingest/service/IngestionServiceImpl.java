@@ -61,6 +61,36 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
         return numRequestValues;
     }
 
+    /**
+     * Counts the columns of every type in a request's data frame.
+     *
+     * <p>Extracted from {@code ingestionResponseAck()} for the {@code dp.ingest.samples} counter
+     * (issue #212). It is deliberately one method rather than a second copy of the sum: adding a
+     * column type already means touching seven places (see CLAUDE.md, "Systematic Process for
+     * Adding New Protobuf Column Types"), none of which mentions metrics, so a private copy here
+     * would quietly start undercounting the first time a type was added and report a plausible
+     * number while doing it.
+     */
+    public static int getNumRequestColumns(IngestDataRequest request) {
+        final DataFrame frame = request.getIngestionDataFrame();
+        return frame.getDataColumnsCount()
+                + frame.getSerializedDataColumnsCount()
+                + frame.getDoubleColumnsCount()
+                + frame.getFloatColumnsCount()
+                + frame.getInt64ColumnsCount()
+                + frame.getInt32ColumnsCount()
+                + frame.getBoolColumnsCount()
+                + frame.getStringColumnsCount()
+                + frame.getEnumColumnsCount()
+                + frame.getImageColumnsCount()
+                + frame.getStructColumnsCount()
+                + frame.getDoubleArrayColumnsCount()
+                + frame.getFloatArrayColumnsCount()
+                + frame.getInt32ArrayColumnsCount()
+                + frame.getInt64ArrayColumnsCount()
+                + frame.getBoolArrayColumnsCount();
+    }
+
     public static IngestDataResponse ingestionResponseReject(
             IngestDataRequest request, String msg) {
 
@@ -95,23 +125,7 @@ public class IngestionServiceImpl extends DpIngestionServiceGrpc.DpIngestionServ
 
         final int numRows = getNumRequestRows(request);
 
-        DataFrame frame = request.getIngestionDataFrame();
-        int numColumns = frame.getDataColumnsCount()
-                + frame.getSerializedDataColumnsCount()
-                + frame.getDoubleColumnsCount()
-                + frame.getFloatColumnsCount()
-                + frame.getInt64ColumnsCount()
-                + frame.getInt32ColumnsCount()
-                + frame.getBoolColumnsCount()
-                + frame.getStringColumnsCount()
-                + frame.getEnumColumnsCount()
-                + frame.getImageColumnsCount()
-                + frame.getStructColumnsCount()
-                + frame.getDoubleArrayColumnsCount()
-                + frame.getFloatArrayColumnsCount()
-                + frame.getInt32ArrayColumnsCount()
-                + frame.getInt64ArrayColumnsCount()
-                + frame.getBoolArrayColumnsCount();
+        final int numColumns = getNumRequestColumns(request);
 
         final IngestDataResponse.AckResult ackResult = IngestDataResponse.AckResult.newBuilder()
                 .setNumRows(numRows)

@@ -4,6 +4,7 @@ import com.ospreydcs.dp.grpc.v1.query.*;
 import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.QueryHandlerUtility;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.QueryV2Resolver;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.model.ResolutionResult;
@@ -13,6 +14,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.*;
 import com.ospreydcs.dp.service.query.handler.mongo.job.*;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,6 +60,11 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
     }
 
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_QUERY;
+    }
+
     public static int getOutgoingMessageSizeLimitBytes() {
         return configMgr().getConfigInteger(
                 CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES,
@@ -97,19 +104,14 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryDataStream(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final QueryDataStreamDispatcher dispatcher = new QueryDataStreamDispatcher(responseObserver, querySpec);
-        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final QueryTelemetry telemetry = newTelemetry("queryDataStream", querySpec);
+        final QueryDataStreamDispatcher dispatcher =
+                new QueryDataStreamDispatcher(responseObserver, querySpec, telemetry);
+        final QueryDataJob job =
+                new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient, telemetry);
 
-        logger.debug(
-                "handleQueryDataStream() adding QueryDataJob id: {}",
-                responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        telemetry.markEnqueued();
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -117,20 +119,15 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
 
-        final QueryDataBidiStreamDispatcher dispatcher = new QueryDataBidiStreamDispatcher(responseObserver, querySpec);
-        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final QueryTelemetry telemetry = newTelemetry("queryDataBidiStream", querySpec);
+        final QueryDataBidiStreamDispatcher dispatcher =
+                new QueryDataBidiStreamDispatcher(responseObserver, querySpec, telemetry);
+        final QueryDataJob job =
+                new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient, telemetry);
         final QueryResultCursor resultCursor = new QueryResultCursor(this, dispatcher);
 
-        logger.debug(
-                "handleQueryDataBidiStream() adding QueryDataJob id: {}",
-                responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        telemetry.markEnqueued();
+        enqueueJob(job, responseObserver.hashCode());
 
         return resultCursor;
     }
@@ -139,35 +136,27 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     public void handleQueryData(
             QueryDataRequest.QuerySpec querySpec, StreamObserver<QueryDataResponse> responseObserver) {
 
-        final QueryDataDispatcher dispatcher = new QueryDataDispatcher(responseObserver, querySpec);
-        final QueryDataJob job = new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient);
+        final QueryTelemetry telemetry = newTelemetry("queryData", querySpec);
+        final QueryDataDispatcher dispatcher =
+                new QueryDataDispatcher(responseObserver, querySpec, telemetry);
+        final QueryDataJob job =
+                new QueryDataJob(querySpec, dispatcher, responseObserver, mongoQueryClient, telemetry);
 
-        logger.debug(
-                "handleQueryData() adding QueryDataJob id: {}",
-                responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        telemetry.markEnqueued();
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
     public void handleQueryTable(
             QueryTableRequest request, StreamObserver<QueryTableResponse> responseObserver) {
 
-        final QueryTableJob job = new QueryTableJob(request, responseObserver, mongoQueryClient);
+        final QueryTelemetry telemetry = new QueryTelemetry("queryTable");
+        telemetry.captureShape(request);
+        final QueryTableJob job =
+                new QueryTableJob(request, responseObserver, mongoQueryClient, telemetry);
 
-        logger.debug("adding queryResponseTable job id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        telemetry.markEnqueued();
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -178,14 +167,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         final QueryPvStatsJob job =
                 new QueryPvStatsJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding QueryPvStatsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -196,14 +178,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         final QueryProvidersJob job =
                 new QueryProvidersJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding QueryProvidersJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -214,14 +189,7 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         final QueryProviderStatsJob job =
                 new QueryProviderStatsJob(request, responseObserver, mongoQueryClient);
 
-        logger.debug("adding QueryProviderStatsJob id: {} to queue", responseObserver.hashCode());
-
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        enqueueJob(job, responseObserver.hashCode());
     }
 
     @Override
@@ -229,12 +197,15 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryBucketsRequest request,
             StreamObserver<QueryBucketsResponse> responseObserver
     ) {
-        final ResolvedQuery resolvedQuery = resolveBucketsOrReject(request, false, responseObserver);
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBuckets");
+        final ResolvedQuery resolvedQuery =
+                resolveBucketsOrReject(request, false, responseObserver, telemetry);
         if (resolvedQuery == null) {
-            return; // reject already sent
+            return; // reject already sent and recorded
         }
-        final QueryBucketsUnaryDispatcher dispatcher = new QueryBucketsUnaryDispatcher(responseObserver);
-        enqueueQueryV2Job(resolvedQuery, dispatcher, "queryBuckets", responseObserver.hashCode());
+        final QueryBucketsUnaryDispatcher dispatcher =
+                new QueryBucketsUnaryDispatcher(responseObserver, telemetry);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, telemetry, responseObserver.hashCode());
     }
 
     @Override
@@ -242,12 +213,15 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QueryBucketsRequest request,
             StreamObserver<QueryBucketsResponse> responseObserver
     ) {
-        final ResolvedQuery resolvedQuery = resolveBucketsOrReject(request, true, responseObserver);
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsStream");
+        final ResolvedQuery resolvedQuery =
+                resolveBucketsOrReject(request, true, responseObserver, telemetry);
         if (resolvedQuery == null) {
-            return; // reject already sent (includes the non-empty-pageToken streaming rule)
+            return; // reject already sent and recorded (includes the non-empty-pageToken streaming rule)
         }
-        final QueryBucketsStreamDispatcher dispatcher = new QueryBucketsStreamDispatcher(responseObserver);
-        enqueueQueryV2Job(resolvedQuery, dispatcher, "queryBucketsStream", responseObserver.hashCode());
+        final QueryBucketsStreamDispatcher dispatcher =
+                new QueryBucketsStreamDispatcher(responseObserver, telemetry);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, telemetry, responseObserver.hashCode());
     }
 
     /**
@@ -257,7 +231,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
      */
     private ResolvedQuery resolveBucketsOrReject(
             QueryBucketsRequest request, boolean streaming,
-            StreamObserver<QueryBucketsResponse> responseObserver) {
+            StreamObserver<QueryBucketsResponse> responseObserver,
+            QueryTelemetry telemetry) {
 
         final ResolutionResult resolution = queryV2Resolver.resolve(
                 request.getQuerySpec(),
@@ -269,8 +244,10 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         if (resolution.isError()) {
             QueryServiceImpl.sendQueryBucketsResponseReject(
                     resolution.getErrorStatus().msg, responseObserver);
+            completeRejectedResolution(telemetry);
             return null;
         }
+        telemetry.captureShape(resolution.getResolvedQuery());
         return resolution.getResolvedQuery();
     }
 
@@ -279,12 +256,15 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QuerySamplesRequest request,
             StreamObserver<QuerySamplesResponse> responseObserver
     ) {
-        final ResolvedQuery resolvedQuery = resolveSamplesOrReject(request, false, responseObserver);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamples");
+        final ResolvedQuery resolvedQuery =
+                resolveSamplesOrReject(request, false, responseObserver, telemetry);
         if (resolvedQuery == null) {
-            return; // reject already sent
+            return; // reject already sent and recorded
         }
-        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(responseObserver);
-        enqueueQueryV2Job(resolvedQuery, dispatcher, "querySamples", responseObserver.hashCode());
+        final QuerySamplesUnaryDispatcher dispatcher =
+                new QuerySamplesUnaryDispatcher(responseObserver, telemetry);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, telemetry, responseObserver.hashCode());
     }
 
     @Override
@@ -292,12 +272,15 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
             QuerySamplesRequest request,
             StreamObserver<QuerySamplesResponse> responseObserver
     ) {
-        final ResolvedQuery resolvedQuery = resolveSamplesOrReject(request, true, responseObserver);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesStream");
+        final ResolvedQuery resolvedQuery =
+                resolveSamplesOrReject(request, true, responseObserver, telemetry);
         if (resolvedQuery == null) {
-            return; // reject already sent (includes the non-empty-pageToken streaming rule)
+            return; // reject already sent and recorded (includes the non-empty-pageToken streaming rule)
         }
-        final QuerySamplesStreamDispatcher dispatcher = new QuerySamplesStreamDispatcher(responseObserver);
-        enqueueQueryV2Job(resolvedQuery, dispatcher, "querySamplesStream", responseObserver.hashCode());
+        final QuerySamplesStreamDispatcher dispatcher =
+                new QuerySamplesStreamDispatcher(responseObserver, telemetry);
+        enqueueQueryV2Job(resolvedQuery, dispatcher, telemetry, responseObserver.hashCode());
     }
 
     /**
@@ -307,7 +290,8 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
      */
     private ResolvedQuery resolveSamplesOrReject(
             QuerySamplesRequest request, boolean streaming,
-            StreamObserver<QuerySamplesResponse> responseObserver) {
+            StreamObserver<QuerySamplesResponse> responseObserver,
+            QueryTelemetry telemetry) {
 
         final ResolutionResult resolution = queryV2Resolver.resolve(
                 request.getQuerySpec(),
@@ -319,24 +303,51 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         if (resolution.isError()) {
             QueryServiceImpl.sendQuerySamplesResponseReject(
                     resolution.getErrorStatus().msg, responseObserver);
+            completeRejectedResolution(telemetry);
             return null;
         }
+        telemetry.captureShape(resolution.getResolvedQuery());
         return resolution.getResolvedQuery();
     }
 
     private void enqueueQueryV2Job(
             ResolvedQuery resolvedQuery,
             com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryV2Dispatcher dispatcher,
-            String label, int observerId) {
+            QueryTelemetry telemetry, int observerId) {
 
-        final QueryV2Job job = new QueryV2Job(resolvedQuery, dispatcher, mongoQueryClient);
-        logger.debug("adding QueryV2Job ({}) id: {} to queue", label, observerId);
-        try {
-            requestQueue.put(job);
-        } catch (InterruptedException e) {
-            logger.error("InterruptedException waiting for requestQueue.put");
-            Thread.currentThread().interrupt();
-        }
+        final QueryV2Job job = new QueryV2Job(resolvedQuery, dispatcher, mongoQueryClient, telemetry);
+        logger.debug("adding QueryV2Job ({}) id: {} to queue", telemetry.getRpcMethod(), observerId);
+        telemetry.markEnqueued();
+        enqueueJob(job, observerId);
+    }
+
+    /**
+     * Builds the telemetry context for a legacy (V1) query and captures its request shape.
+     *
+     * <p>The V1 methods have no resolution phase, so their {@code resolve} stage is just the
+     * handler-entry-to-enqueue interval -- microseconds. That is not a defect in the measurement:
+     * it is the honest reading, and it is what makes a V2 method's resolve stage legible by
+     * contrast when comparing the two on one dashboard.
+     */
+    private static QueryTelemetry newTelemetry(String rpcMethod, QueryDataRequest.QuerySpec querySpec) {
+        final QueryTelemetry telemetry = new QueryTelemetry(rpcMethod);
+        telemetry.captureShape(querySpec);
+        return telemetry;
+    }
+
+    /**
+     * Completes the telemetry of a V2 request rejected during resolution, before any job exists.
+     *
+     * <p>Without this, the rejects that never reach a job -- a malformed page token, an unresolvable
+     * PV selector, a streaming request carrying a page token -- would be counted nowhere, and
+     * {@code dp.query.requests} would report a reject rate of zero for exactly the failures a client
+     * is most likely to be generating. Their stage breakdown is genuinely almost all {@code resolve},
+     * which is the right answer: resolution is where the work happened and where it stopped.
+     */
+    private static void completeRejectedResolution(QueryTelemetry telemetry) {
+        telemetry.markEnqueued(); // ends the resolve stage; no job follows
+        telemetry.markReject();
+        telemetry.complete();
     }
 
 }

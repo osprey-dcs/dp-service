@@ -16,6 +16,16 @@ public class BenchmarkQueryGrpcServer extends QueryGrpcServer {
     // constants
     public static final int QUERY_BENCHMARK_PORT = 60052;
 
+    /**
+     * Prometheus port for the benchmark server (issue #212, D7).
+     *
+     * <p>Overridden rather than inherited for the same reason {@link #getPort_()} is: the
+     * benchmark is normally run against the same host as a live QueryGrpcServer, and since an
+     * unbindable Prometheus port now fails startup outright, inheriting the parent's default
+     * would stop the benchmark server from starting at all.
+     */
+    public static final int QUERY_BENCHMARK_METRICS_PORT = 60452;
+
     public BenchmarkQueryGrpcServer(QueryServiceImpl serviceImpl) {
         super(serviceImpl);
     }
@@ -23,6 +33,11 @@ public class BenchmarkQueryGrpcServer extends QueryGrpcServer {
     @Override
     protected int getPort_() {
         return QUERY_BENCHMARK_PORT;
+    }
+
+    @Override
+    protected int getMetricsPort_() {
+        return QUERY_BENCHMARK_METRICS_PORT;
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {

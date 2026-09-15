@@ -17,6 +17,7 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataBidiStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryDataStreamDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryDataJob;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import io.grpc.stub.StreamObserver;
 import org.bson.Document;
 
@@ -143,10 +144,11 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         };
 
         // create QueryJob and execute it
+        final QueryTelemetry telemetry = new QueryTelemetry("queryDataStream");
         final QueryDataStreamDispatcher dispatcher =
-                new QueryDataStreamDispatcher(responseObserver, request.getQuerySpec());
-        final QueryDataJob job =
-                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+                new QueryDataStreamDispatcher(responseObserver, request.getQuerySpec(), telemetry);
+        final QueryDataJob job = new QueryDataJob(
+                request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface, telemetry);
         job.execute();
 
         return responseList;
@@ -203,11 +205,12 @@ public class MongoQueryHandlerTestBase extends QueryTestBase {
         ResponseCursorStreamObserver responseObserver = new ResponseCursorStreamObserver(finishLatch, responseList);
 
         // create QueryJob and execute it
+        final QueryTelemetry telemetry = new QueryTelemetry("queryDataBidiStream");
         final QueryDataBidiStreamDispatcher dispatcher =
-                new QueryDataBidiStreamDispatcher(responseObserver, request.getQuerySpec());
+                new QueryDataBidiStreamDispatcher(responseObserver, request.getQuerySpec(), telemetry);
         responseObserver.setDispatcher(dispatcher);
-        final QueryDataJob job =
-                new QueryDataJob(request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface);
+        final QueryDataJob job = new QueryDataJob(
+                request.getQuerySpec(), dispatcher, responseObserver, clientTestInterface, telemetry);
         job.execute();
 
         // check if RPC already completed

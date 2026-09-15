@@ -9,6 +9,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
@@ -43,13 +44,16 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
     private final StreamObserver<QuerySamplesResponse> responseObserver;
 
-    public QuerySamplesStreamDispatcher(StreamObserver<QuerySamplesResponse> responseObserver) {
-        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes());
+    public QuerySamplesStreamDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
+        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(), telemetry);
     }
 
     /** Package/test constructor allowing the outgoing message-size budget to be injected. */
-    public QuerySamplesStreamDispatcher(StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget) {
-        super(byteBudget);
+    public QuerySamplesStreamDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
+            QueryTelemetry telemetry) {
+        super(byteBudget, telemetry);
         this.responseObserver = responseObserver;
     }
 
@@ -57,6 +61,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
     public void executeAndDispatch(ResolvedQuery resolvedQuery, MongoQueryClientInterface mongoClient) {
 
         if (resolvedQuery.isEmptyResult()) {
+            telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
@@ -69,18 +74,22 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         final List<TabularDataUtility.RetentionInterval> retentionIntervals =
                 retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]);
         if (retentionIntervals.isEmpty()) {
+            telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
 
+        final long queryStartNanos = System.nanoTime();
         final MongoCursor<BucketDocument> cursor =
                 mongoClient.executeQuerySamplesV2(resolvedQuery, windowBegin[0], windowBegin[1]);
+        telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
 
         // Null is a retrieval failure (a database error, or a failed pvStats span read — #232 plan
         // D8): report an error rather than an empty stream, which would silently return no data.
         if (cursor == null) {
             final String msg = "executeQuerySamplesV2 returned null cursor";
             logger.error(msg + " id: " + responseObserver.hashCode());
+            telemetry.markError();
             QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
             return;
         }
@@ -90,8 +99,16 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         try (cursor) {
             // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
             // for the assembly-time join; composes with the fragment trim by intersection.
-            final TabularDataUtility.SampleStatusFilter statusFilter =
-                    statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
+            // Its own query against sampleStatusBuckets, invisible to the bucket cursor -- see the
+            // unary dispatcher for why it is timed separately, and why the fold is in a finally.
+            final long statusStartNanos = System.nanoTime();
+            final TabularDataUtility.SampleStatusFilter statusFilter;
+            try {
+                statusFilter =
+                        statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
+            } finally {
+                telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+            }
             // Assemble the full window once. No sizeLimit: streaming materializes the whole table
             // (memory-bounded, per the class note); the byte budget bounds each emitted chunk, below.
             // Trimming uses every resolved fragment rather than a collapsed window (#207).
@@ -103,17 +120,23 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
                     + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";
             logger.debug(msg);
+            telemetry.markReject();
             QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
             return;
         } catch (DpException e) {
             final String msg = "exception building sample result: " + e.getMessage();
             logger.error(msg, e);
+            telemetry.markError();
             QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
             return;
+        } finally {
+            // In a finally so the db stage is folded in on the reject and error paths too.
+            recordCursorTime(cursor);
         }
 
         final List<long[]> timestamps = collectTimestamps(tableValueMap);
         if (timestamps.isEmpty()) {
+            telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
@@ -143,6 +166,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
                         + " exceeds the outgoing message size limit (" + rowBytes + " > "
                         + byteBudget + " bytes); narrow the PV set or time range";
                 logger.error(msg);
+                telemetry.markError();
                 QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
                 return;
             }
@@ -248,6 +272,9 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
                         .setColumnTable(columnTable)
                         .setNextPageToken("") // stream signals completion; token always empty
                         .build();
-        responseObserver.onNext(QueryServiceImpl.querySamplesResponse(result));
+        // Size the response actually sent, not the nested result; see QueryBucketsUnaryDispatcher.
+        final QuerySamplesResponse response = QueryServiceImpl.querySamplesResponse(result);
+        telemetry.recordResponse(response.getSerializedSize());
+        responseObserver.onNext(response);
     }
 }

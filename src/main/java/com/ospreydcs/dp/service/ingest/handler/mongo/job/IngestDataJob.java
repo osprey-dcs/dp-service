@@ -7,12 +7,15 @@ import com.ospreydcs.dp.service.common.bson.RequestStatusDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.handler.HandlerJob;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionRequest;
 import com.ospreydcs.dp.service.ingest.handler.model.HandlerIngestionResult;
 import com.ospreydcs.dp.service.ingest.handler.mongo.client.MongoIngestionClientInterface;
 import com.ospreydcs.dp.service.ingest.handler.mongo.MongoIngestionHandler;
 import com.ospreydcs.dp.service.ingest.model.IngestionRequestStatus;
 import com.ospreydcs.dp.service.ingest.model.IngestionTaskResult;
+import com.ospreydcs.dp.service.ingest.service.IngestionServiceImpl;
+import io.opentelemetry.api.common.Attributes;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,6 +61,24 @@ public class IngestDataJob extends HandlerJob {
      */
     public HandlerIngestionResult handleIngestionRequest(HandlerIngestionRequest handlerIngestionRequest) {
 
+        // Telemetry (issue #212, section 2) is recorded in a finally rather than beside the return,
+        // because an exception escaping this method is caught and dropped by the QueueHandlerBase
+        // worker. Recorded on the return alone, the request the operator most needs to see -- one
+        // that failed hard enough to skip its own requestStatus insert -- would be the one request
+        // that appeared in no counter at all, and dp.ingest.requests would report a lower rate
+        // rather than a higher error rate.
+        final IngestionTelemetry telemetry = new IngestionTelemetry(handlerIngestionRequest);
+        try {
+            return handleIngestionRequest_(handlerIngestionRequest, telemetry);
+        } finally {
+            telemetry.record();
+        }
+    }
+
+    private HandlerIngestionResult handleIngestionRequest_(
+            HandlerIngestionRequest handlerIngestionRequest,
+            IngestionTelemetry telemetry
+    ) {
         final IngestDataRequest request = handlerIngestionRequest.request;
         logger.debug("id: {} handling ingestion request providerId: {} requestId: {}",
                 this.hashCode(), request.getProviderId(), request.getClientRequestId());
@@ -121,6 +142,12 @@ public class IngestDataJob extends HandlerJob {
                             long recordsInsertedCount = insertManyResult.getInsertedIds().size();
                             long recordsExpected = dataDocumentBatch.size();
 
+                            // Recorded ahead of the mismatch check, not inside the success branch.
+                            // A partial insert is the case this counter exists to reveal, and
+                            // recording it only when the counts match meant dp.ingest.buckets
+                            // reported zero for a request that had in fact persisted data.
+                            telemetry.recordBucketsInserted(recordsInsertedCount);
+
                             if (recordsInsertedCount != recordsExpected) {
                                 // check records inserted matches expected
                                 isError = true;
@@ -145,6 +172,8 @@ public class IngestDataJob extends HandlerJob {
             }
         }
         
+        telemetry.setStatus(status);
+
         // save request status and check result of insert operation
         if (providerName == null) {
             providerName = "";
@@ -173,6 +202,90 @@ public class IngestDataJob extends HandlerJob {
         }
 
         return new HandlerIngestionResult(isError, errorMsg);
+    }
+
+    /**
+     * Accumulates the telemetry for one handled ingestion request and records it once (issue #212).
+     *
+     * <p>Kept alongside the job rather than in a shared class because ingestion has exactly one
+     * job type; the query service's equivalent ({@code QueryTelemetry}) is separate only because
+     * its stages are threaded through three job types and nine dispatchers.
+     *
+     * <p>Per the D8 cardinality policy the only attribute attached is {@code dp.outcome}. In
+     * particular the provider id and the client request id are <em>not</em> attributes: a facility
+     * generates an unbounded number of client request ids, and one per time series is how a
+     * metrics backend is taken down by the service it monitors. Both are already recorded per
+     * request in the {@code requestStatus} collection, which is where a specific request is
+     * looked up.
+     */
+    private static final class IngestionTelemetry {
+
+        private final long arrivalNanos;
+        private final long requestBytes;
+        private final long sampleCount;
+
+        /**
+         * Defaults to {@code error} so that an exception escaping the job -- which never reaches
+         * {@code setStatus} -- is counted as the failure it is rather than as a success.
+         */
+        private String outcome = DpMetrics.OUTCOME_ERROR;
+        private long bucketCount = 0;
+
+        IngestionTelemetry(HandlerIngestionRequest handlerIngestionRequest) {
+            final IngestDataRequest request = handlerIngestionRequest.request;
+            this.arrivalNanos = handlerIngestionRequest.arrivalNanos;
+            this.requestBytes = request.getSerializedSize();
+            this.sampleCount = (long) IngestionServiceImpl.getNumRequestRows(request)
+                    * IngestionServiceImpl.getNumRequestColumns(request);
+        }
+
+        /**
+         * Records the buckets actually acknowledged by the database, not the size of the generated
+         * batch: the two differ exactly when the insert partially failed, and that is the case an
+         * operator is trying to see.
+         *
+         * <p>Called before the caller's count-mismatch check for that reason. Called from inside
+         * the success branch, it fired only when the two counts were equal -- so the partial
+         * insert it is meant to expose recorded zero buckets, the one number that made the partial
+         * write invisible.
+         */
+        void recordBucketsInserted(long count) {
+            this.bucketCount = count;
+        }
+
+        void setStatus(IngestionRequestStatus status) {
+            this.outcome = switch (status) {
+                case SUCCESS -> DpMetrics.OUTCOME_SUCCESS;
+                case REJECTED -> DpMetrics.OUTCOME_REJECT;
+                case ERROR -> DpMetrics.OUTCOME_ERROR;
+            };
+        }
+
+        void record() {
+            try {
+                final long totalNanos = System.nanoTime() - arrivalNanos;
+                final Attributes outcomeAttributes = Attributes.of(DpMetrics.ATTR_OUTCOME, outcome);
+
+                DpMetrics.ingestRequests().add(1, outcomeAttributes);
+                DpMetrics.ingestDuration()
+                        .record(DpMetrics.nanosToSeconds(totalNanos), outcomeAttributes);
+
+                // Counted on every outcome, not just success. A rejected or failed request
+                // contributes a zero bucket count but real bytes and samples, so the ratio of
+                // dp.ingest.buckets to dp.ingest.samples stays readable as "what fraction of the
+                // offered load was actually stored" rather than silently excluding the load that
+                // was not.
+                DpMetrics.ingestBuckets().add(bucketCount);
+                DpMetrics.ingestSamples().add(sampleCount);
+                DpMetrics.ingestRequestBytes().add(requestBytes);
+
+            } catch (RuntimeException ex) {
+                // This runs in a finally on the job's return path. A failure here must never
+                // replace the job's own outcome, or a metrics problem would present as an
+                // ingestion problem.
+                logger.error("error recording ingestion telemetry: {}", ex.getMessage(), ex);
+            }
+        }
     }
 
 }

@@ -36,6 +36,7 @@ import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesUnaryDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryV2Job;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import io.grpc.stub.StreamObserver;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -282,8 +283,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { }
             @Override public void onCompleted() { }
         };
-        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(observer, byteBudget);
-        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+        // One context shared by dispatcher and job, as MongoQueryHandler wires it in production;
+        // two separate instances exercised a wiring that does not exist and completed the job's
+        // instance as a zero-count success on every call.
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final QuerySamplesUnaryDispatcher dispatcher = new QuerySamplesUnaryDispatcher(observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         assertEquals("expected exactly one unary response", 1, responses.size());
         return responses.get(0);
     }
@@ -309,10 +314,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { outcome.errored = true; }
             @Override public void onCompleted() { outcome.completed = true; }
         };
+        // One shared context; see the unary helper above.
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher dispatcher =
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
-                        observer, byteBudget);
-        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+                        observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         return outcome;
     }
 
@@ -704,10 +711,11 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { }
             @Override public void onCompleted() { }
         };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         new QueryV2Job(
                 fragmentedSpanQuery(false),
-                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
-                clientTestInterface).execute();
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
 
         assertEquals(1, responses.size());
         final ColumnTable table = responses.get(0).getSampleQueryResult().getColumnTable();
@@ -730,11 +738,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { outcome.errored = true; }
             @Override public void onCompleted() { outcome.completed = true; }
         };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         new QueryV2Job(
                 fragmentedSpanQuery(true),
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
-                        observer, Long.MAX_VALUE),
-                clientTestInterface).execute();
+                        observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
 
         assertFalse(outcome.errored);
         assertTrue(outcome.completed);
@@ -769,8 +778,9 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 @Override public void onError(Throwable t) { }
                 @Override public void onCompleted() { }
             };
-            new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
-                    clientTestInterface).execute();
+            final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+            new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
+                    clientTestInterface, telemetry).execute();
             assertEquals(1, responses.size());
             final QuerySamplesResponse.SampleQueryResult result = responses.get(0).getSampleQueryResult();
             collected.addAll(spanOffsets(result.getColumnTable()));
@@ -813,8 +823,9 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             @Override public void onError(Throwable t) { }
             @Override public void onCompleted() { }
         };
-        new QueryV2Job(resolvedQuery, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE),
-                clientTestInterface).execute();
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(resolvedQuery, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
         assertEquals(1, responses.size());
         assertTrue(responses.get(0).hasSampleQueryResult());
         return responses.get(0).getSampleQueryResult().getColumnTable();
@@ -930,11 +941,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 List.of(PV_STATUS), wholeStatusRange(), DEFAULT_PAGE_SIZE, null, false, false,
                 ResolvedQuery.ResultMode.SAMPLE, true,
                 statusFilter(true, List.of(STATUS_LAYER_1), 7));
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         new QueryV2Job(
                 resolvedQuery,
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
-                        observer, Long.MAX_VALUE),
-                clientTestInterface).execute();
+                        observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
 
         assertFalse(outcome.errored);
         assertTrue(outcome.completed);

@@ -17,6 +17,7 @@ import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import io.grpc.stub.StreamObserver;
 import org.bson.conversions.Bson;
 import org.junit.Test;
@@ -124,7 +125,7 @@ public class QuerySamplesDispatcherNullCursorTest {
         final ResolvedQuery query = sampleQuery(
                 List.of(new TimeInterval(B, 0, B + 10, 0)), null, false);
 
-        new QuerySamplesUnaryDispatcher(observer, BYTE_BUDGET).executeAndDispatch(query, client);
+        new QuerySamplesUnaryDispatcher(observer, BYTE_BUDGET, new QueryTelemetry("querySamplesTest")).executeAndDispatch(query, client);
 
         assertEquals(1, client.samplesCalls);
         assertSingleErrorResponse(observer);
@@ -138,7 +139,7 @@ public class QuerySamplesDispatcherNullCursorTest {
         final ResolvedQuery query = sampleQuery(
                 List.of(new TimeInterval(B, 0, B + 10, 0)), KeysetPosition.ofSample(B + 10, 0), false);
 
-        new QuerySamplesUnaryDispatcher(observer, BYTE_BUDGET).executeAndDispatch(query, client);
+        new QuerySamplesUnaryDispatcher(observer, BYTE_BUDGET, new QueryTelemetry("querySamplesTest")).executeAndDispatch(query, client);
 
         assertEquals("empty window must be screened before the database call", 0, client.samplesCalls);
         assertSingleEmptyResponse(observer);
@@ -155,7 +156,7 @@ public class QuerySamplesDispatcherNullCursorTest {
         final ResolvedQuery query = sampleQuery(
                 List.of(new TimeInterval(B, 0, B + 10, 0)), null, true);
 
-        new QuerySamplesStreamDispatcher(observer, BYTE_BUDGET).executeAndDispatch(query, client);
+        new QuerySamplesStreamDispatcher(observer, BYTE_BUDGET, new QueryTelemetry("querySamplesTest")).executeAndDispatch(query, client);
 
         assertEquals(1, client.samplesCalls);
         assertSingleErrorResponse(observer);
@@ -169,7 +170,7 @@ public class QuerySamplesDispatcherNullCursorTest {
         final ResolvedQuery query = sampleQuery(
                 List.of(new TimeInterval(B, 0, B, 0)), null, true);
 
-        new QuerySamplesStreamDispatcher(observer, BYTE_BUDGET).executeAndDispatch(query, client);
+        new QuerySamplesStreamDispatcher(observer, BYTE_BUDGET, new QueryTelemetry("querySamplesTest")).executeAndDispatch(query, client);
 
         assertEquals("empty window must be screened before the database call", 0, client.samplesCalls);
         assertSingleEmptyResponse(observer);
