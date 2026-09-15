@@ -29,6 +29,29 @@ java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-
 java -Ddp.config=~/data-platform/config/dp.yml -Dlog4j.configurationFile=~/data-platform/config/log4j2.xml -cp ~/data-platform/lib/dp-service.jar com.ospreydcs.dp.service.ingestionstream.server.IngestionStreamGrpcServer"
 ```
 
+## service metrics
+
+Each service exports Prometheus metrics on its own port, in addition to its gRPC port. This is on by
+default, so **each service binds a second port**; if that port is not free the service fails to
+start. Scrape with `curl -s localhost:9465/metrics`.
+
+| Service          | gRPC port | metrics port |
+|------------------|-----------|--------------|
+| Ingestion        | 50051     | 9464         |
+| Query            | 50052     | 9465         |
+| Annotation       | 50053     | 9466         |
+| Ingestion Stream | 50054     | 9467         |
+
+The benchmark servers use 60451 (ingestion) and 60452 (query), so a benchmark can run on a host that
+is also running the live services.
+
+To turn metrics off, set `DP_TELEMETRY_ENABLED=false`. To bind the endpoint to the loopback interface
+only, set `DP_TELEMETRY_PROMETHEUS_HOST=127.0.0.1`. To push to an OpenTelemetry collector instead of
+being scraped, set `OTEL_METRICS_EXPORTER=otlp` and `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+See [`doc/metrics.md`](metrics.md) for what is measured, the query stage breakdown, the slow-query
+log, and the PromQL for diagnosing a slow query.
+
 ## performance benchmark applications
 
 The Data Platform includes tools for measuring performance of the Ingestion and Query Services.  There are special versions of the server applications that override the standard network port number and database, using the MongoDB database "dp-benchmark".  To run a benchmark for either service you must run both the server and client application.  Java command lines are given below.
@@ -142,22 +165,29 @@ Below is the list of environment variables referenced in the project's `applicat
 - `DP_GRPC_SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` : gRPC server keepalive timeout in seconds (default: `20`)
 - `DP_GRPC_SERVER_PERMIT_KEEP_ALIVE_TIME_SECONDS` : gRPC server permit-keepalive time in seconds (default: `30`)
 - `DP_GRPC_SERVER_PERMIT_KEEP_ALIVE_WITHOUT_CALLS` : gRPC server permit keepalive without calls (default: `true`)
+- `DP_TELEMETRY_ENABLED` : Collect and export metrics (default: `true`; see [doc/metrics.md](metrics.md))
+- `DP_TELEMETRY_PROMETHEUS_HOST` : Interface the metrics endpoints bind to (default: `0.0.0.0`)
 - `DP_INGESTION_SERVER_PORT` : Ingestion Service gRPC port (default: `50051`)
+- `DP_INGESTION_SERVER_METRICS_PORT` : Ingestion Service Prometheus metrics port (default: `9464`)
 - `DP_INGESTION_HANDLER_NUM_WORKERS` : Number of ingestion handler worker threads (default: `7`)
 - `DP_INGESTION_HANDLER_SOURCEMONITOR_VALIDATE_PVS` : Ingestion SourceMonitor validate PVs (default: `true`)
 - `DP_INGESTION_BENCHMARK_GRPC_CONNECT_STRING` : Ingestion benchmark gRPC `host:port` connect string (default: `localhost:60051`)
 - `DP_INGESTION_BENCHMARK_START_SECONDS` : Ingestion benchmark fixed start time (epoch seconds)
 - `DP_QUERY_SERVER_PORT` : Query Service gRPC port (default: `50052`)
+- `DP_QUERY_SERVER_METRICS_PORT` : Query Service Prometheus metrics port (default: `9465`)
 - `DP_QUERY_HANDLER_NUM_WORKERS` : Number of query handler worker threads (default: `7`)
 - `DP_QUERY_HANDLER_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES` : Query handler outgoing message size limit (default: `4096000`)
+- `DP_QUERY_HANDLER_SLOW_QUERY_LOG_THRESHOLD_MILLIS` : Slow query log threshold in ms; `0` logs every query, negative disables (default: `1000`)
 - `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING` : Query benchmark gRPC `host:port` connect string (default: `localhost:60052`)
 - `DP_ANNOTATION_SERVER_PORT` : Annotation Service gRPC port (default: `50053`)
+- `DP_ANNOTATION_SERVER_METRICS_PORT` : Annotation Service Prometheus metrics port (default: `9466`)
 - `DP_ANNOTATION_HANDLER_NUM_WORKERS` : Number of annotation handler worker threads (default: `7`)
 - `DP_EXPORT_SERVER_MOUNT_POINT` : Export server mount point (default: `/tmp`)
 - `DP_EXPORT_SHARE_MOUNT_POINT` : Export share mount point (defaults to server mount point if unset)
 - `DP_EXPORT_URL_BASE` : Base URL for accessing export files (default: `http://localhost:8081`)
 - `DP_EXPORT_TABULAR_EXPORT_FILE_SIZE_LIMIT_BYTES` : Tabular export file size limit (default: `4096000`)
 - `DP_INGESTION_STREAM_SERVER_PORT` : Ingestion Stream Service gRPC port (default: `50054`)
+- `DP_INGESTION_STREAM_SERVER_METRICS_PORT` : Ingestion Stream Service Prometheus metrics port (default: `9467`)
 - `DP_INGESTION_STREAM_HANDLER_NUM_WORKERS` : Number of ingestion stream handler worker threads (default: `7`)
 - `DP_INGESTION_STREAM_EVENTMONITOR_MAX_MESSAGE_SIZE_BYTES` : EventMonitor max message size (default: `4096000`)
 - `DP_INGESTION_STREAM_DATA_BUFFER_FLUSH_INTERVAL_MILLIS` : DataBuffer flush interval in ms (default: `500`)

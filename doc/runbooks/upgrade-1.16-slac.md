@@ -114,6 +114,26 @@ never captured, and it determines whether a single-PV query is targeted at one s
 any service and can be deleted from the deployment at any time. `DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS`
 becomes **ingestion-only** — see step 5.
 
+**Free up four ports, or the services will not start.** This is unrelated to the bucket-span work
+but lands in the same release, and it is the one 1.16.0 change that can stop a service from coming
+back up inside the window. Each service now binds a second port for its Prometheus metrics endpoint
+and **fails to start if it cannot bind it** (issue #212) — a service silently running without
+metrics was judged worse than a loud failure. The defaults:
+
+| service | metrics port |
+|---|---|
+| ingestion | 9464 |
+| query | 9465 |
+| annotation | 9466 |
+| ingestion stream | 9467 |
+
+Before the window, confirm nothing on each host already holds these (`ss -lntp | grep -E '946[4-7]'`)
+and decide whether they need a firewall rule. **The endpoint has no authentication and no TLS** — it
+exposes operational metrics, not archive data, but it should not be reachable from outside the
+deployment's network. To change a port set `DP_<SERVICE>_SERVER_METRICS_PORT`; to turn the whole
+thing off set `DP_TELEMETRY_ENABLED=false`, and no port is bound. Full reference:
+[metrics.md](../metrics.md).
+
 ## The upgrade
 
 **1. Stop all services** — ingestion, query, and annotation. This is what guarantees no pre-1.16
@@ -188,3 +208,26 @@ db.pvStats.updateOne({_id: "<pvName>"}, {$max: {maxBucketSpanSeconds: NumberLong
 
 **Lowering a stored value by hand requires an ingestion restart.** The ingestion process caches a
 per-PV high-watermark and will skip writes that the collection no longer reflects.
+
+**Confirm the metrics endpoints came up, and use them to check this upgrade's work.** One scrape per
+service:
+
+```
+curl -s localhost:9465/metrics | head
+```
+
+Verify by whether the port is listening rather than by the startup log line — under
+`OTEL_METRICS_EXPORTER=none` the service still logs a "prometheus endpoint" that was never bound.
+
+The new metrics are the most direct evidence of whether this upgrade did what it was meant to. After
+a representative query load, the buckets-read-per-query figure is what the bucket-span bound exists
+to reduce, and it should fall sharply for well-behaved PVs:
+
+```promql
+rate(dp_query_buckets_total[5m]) / rate(dp_query_requests_total[5m])
+```
+
+`doc/metrics.md` has the full diagnostic workflow, including the stage breakdown that says whether a
+slow query's time is in the database or elsewhere. Note that its step 0 matters here: the query
+stage histograms start at handler entry and cannot see wire time, so a client reporting slowness is
+not contradicted by healthy stage numbers.
