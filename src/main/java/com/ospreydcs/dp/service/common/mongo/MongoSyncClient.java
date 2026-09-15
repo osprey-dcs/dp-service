@@ -1,5 +1,7 @@
 package com.ospreydcs.dp.service.common.mongo;
 
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.ReadPreference;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
@@ -45,9 +47,26 @@ public class MongoSyncClient extends MongoClientBase {
     protected MongoCollection<SampleStatusBucketDocument> mongoCollectionSampleStatusBuckets = null;
     protected MongoCollection<PvStatsDocument> mongoCollectionPvStats = null;
 
+    /**
+     * Builds the client with the command listener that records {@code db.client.operation.duration}
+     * for every command this process issues (issue #212, D4).
+     *
+     * <p>Settings are built from the connection string rather than passing it to
+     * {@code MongoClients.create(String)}, which is the only way to attach a listener; everything
+     * the connection string specifies is still applied by {@code applyConnectionString}, so this is
+     * not a behavior change for any deployment's URI.
+     *
+     * <p>{@code MongoAsyncClient} is deliberately left without the listener. It is off every
+     * production path (CLAUDE.md, Schema Migration), so instrumenting it would add a second copy of
+     * this wiring to maintain in exchange for measuring a client nothing runs.
+     */
     @Override
     protected boolean initMongoClient(String connectString) {
-        mongoClient = MongoClients.create(connectString);
+        final MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(connectString))
+                .addCommandListener(new DpMongoCommandListener())
+                .build();
+        mongoClient = MongoClients.create(settings);
         return true;
     }
 
