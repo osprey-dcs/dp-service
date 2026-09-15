@@ -63,8 +63,8 @@ public class QueryV2ResolverTest {
         @Override public List<TimeInterval> resolveConfigurationIntervals(List<Bson> f) { return List.of(); }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery q) { return null; }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery q) { return null; }
-        @Override public MongoCursor<BucketDocument> executeQuerySamplesV2(ResolvedQuery q, long bs, long bn) { return null; }
-        @Override public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn) { return java.util.Map.of(); }
+        @Override public MongoCursor<BucketDocument> executeQuerySamplesV2(ResolvedQuery q, long bs, long bn, long es, long en) { return null; }
+        @Override public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn, long es, long en) { return java.util.Map.of(); }
         @Override public MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id) { return null; }

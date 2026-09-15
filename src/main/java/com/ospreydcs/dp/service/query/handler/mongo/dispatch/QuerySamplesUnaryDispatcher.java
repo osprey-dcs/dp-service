@@ -1,13 +1,10 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
@@ -27,12 +24,15 @@ import java.util.List;
  * emits a {@code SampleQueryResult} with a timestamp-advanced {@code nextPageToken} when more rows
  * follow.
  *
- * <p><b>Paging (Q1, drain-then-truncate):</b> query the page window {@code [windowBegin, end)},
- * assemble into a timestamp-ordered map, keep the first {@code pageSize} distinct timestamps (soft
- * cap — a timestamp is never split across pages), and set the token to the timestamp immediately
- * after the last kept row. The byte budget is a second stop condition (Q7): if assembly hits it the
- * last (possibly incomplete) timestamp is dropped and becomes the resume point, so no partial row is
- * emitted.
+ * <p><b>Paging (issue #274, plan D1–D3):</b> the page window {@code [windowBegin, end)} is
+ * retrieved in consecutive time slices, every slice over every resolved PV, through the shared
+ * {@link SliceDrain}. Slices are accepted until the map holds {@code pageSize} distinct timestamps
+ * (a slice is never split, so the map may overshoot; the page is then truncated to {@code pageSize}
+ * rows and the token is the first dropped timestamp), or until a slice trips the outgoing byte
+ * budget (the slice is discarded whole, the page ends with the rows accumulated so far, and the
+ * token is the slice's begin), or until the window is exhausted (no token). Every timestamp on a
+ * page is therefore complete across every PV; before #274 a budget trip partway through the
+ * PV-major cursor silently emitted the remaining PVs as all-unset.
  *
  * <p><b>Column seeding (Q9)</b> and the V2 {@link ColumnTable} build (incl. useSerializedColumns, Q5)
  * are shared with the streaming dispatcher via {@link AbstractQuerySamplesDispatcher}.
@@ -50,14 +50,22 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
 
     public QuerySamplesUnaryDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
-        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(), telemetry);
+        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
+                MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
     }
 
     /** Package/test constructor allowing the outgoing message-size budget to be injected. */
     public QuerySamplesUnaryDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
             QueryTelemetry telemetry) {
-        super(byteBudget, telemetry);
+        this(responseObserver, byteBudget, MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
+    }
+
+    /** Test constructor allowing the byte budget and the initial slice length to be injected. */
+    public QuerySamplesUnaryDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
+            long initialSliceNanos, QueryTelemetry telemetry) {
+        super(byteBudget, initialSliceNanos, telemetry);
         this.responseObserver = responseObserver;
     }
 
@@ -70,74 +78,57 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             return;
         }
 
-        // Only the window begin exists: it bounds the database retrieval (and is the resume point on a
-        // continuation page). The upper bound is per-fragment, applied by retentionIntervals() (#207).
+        // Only the window begin exists: it is where the first slice starts (and the resume point
+        // on a continuation page). The upper bound is per fragment and per slice (#207, #274).
         final long[] windowBegin = computeWindowBegin(resolvedQuery);
         final long windowBeginSecs = windowBegin[0];
         final long windowBeginNanos = windowBegin[1];
 
-        // Screen the empty page window here, ahead of the database call, so that a null cursor from
-        // the client can only mean a failure. These intervals come from the same
-        // TimeInterval.clampToWindowBegin the client's retrieval filter is built from (#207), so this
-        // check and the client's own empty-window check cannot disagree. A continuation page whose
-        // resume timestamp lies at or past every fragment's end overlaps nothing: empty last page.
-        final List<TabularDataUtility.RetentionInterval> retentionIntervals =
-                retentionIntervals(resolvedQuery, windowBeginSecs, windowBeginNanos);
-        if (retentionIntervals.isEmpty()) {
-            telemetry.markEmpty();
-            QueryServiceImpl.sendQuerySamplesResponseEmpty(responseObserver);
-            return;
-        }
-
-        final long queryStartNanos = System.nanoTime();
-        final MongoCursor<BucketDocument> cursor =
-                mongoClient.executeQuerySamplesV2(resolvedQuery, windowBeginSecs, windowBeginNanos);
-        telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
-
-        // With the empty resolution and the empty window screened above, null is a retrieval failure
-        // (a database error, or a failed pvStats span read — #232 plan D8). Report it as an error, as
-        // the bucket dispatchers do: treating it as an empty page would silently return no data.
-        if (cursor == null) {
-            final String msg = "executeQuerySamplesV2 returned null cursor";
-            logger.error(msg + " id: " + responseObserver.hashCode());
-            telemetry.markError();
-            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
-            return;
-        }
-
         final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
+        final SliceDrain drain = new SliceDrain(
+                resolvedQuery, mongoClient, tableValueMap, windowBeginSecs, windowBeginNanos);
+        final int pageSize = resolvedQuery.getPageSize();
 
-        final boolean byteBudgetHit;
-        try (cursor) {
-            // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
-            // for the assembly-time join; composes with the fragment trim by intersection.
-            // Timed separately: resolveSampleStatusTimestamps is its own query against
-            // sampleStatusBuckets, and the bucket cursor cannot see it. Left out, a status-filtered
-            // query would attribute that whole read to the process stage.
-            //
-            // The fold is in a finally so a DpException from the lookup still contributes the time
-            // it took to fail. Recorded after the call instead, a failed status read reported a db
-            // stage of zero and its whole duration landed in the process residual -- an operator
-            // diagnosing the failure would see a CPU-bound stage and look at assembly code.
-            final long statusStartNanos = System.nanoTime();
-            final TabularDataUtility.SampleStatusFilter statusFilter;
-            try {
-                statusFilter =
-                        statusRetentionFilter(resolvedQuery, mongoClient, windowBeginSecs, windowBeginNanos);
-            } finally {
-                telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+        long[] resumeAt = null;
+        try {
+            drainLoop:
+            while (true) {
+                switch (drain.drainNext()) {
+                    case ACCEPTED -> {
+                        if (tableValueMap.size() >= pageSize) {
+                            // Page full. On overshoot emitPage truncates and the token is the first
+                            // dropped row; on an exact fill nothing is dropped, so the token is the
+                            // drain's position -- the next slice begin -- unless the window is
+                            // exhausted. Without this an exactly-filled page ended the traversal
+                            // with rows still unread.
+                            if (tableValueMap.size() == pageSize && !drain.isExhausted()) {
+                                resumeAt = new long[]{drain.resumeSecs(), drain.resumeNanos()};
+                            }
+                            break drainLoop;
+                        }
+                    }
+                    case BUDGET_TRIP -> {
+                        resumeAt = new long[]{drain.resumeSecs(), drain.resumeNanos()};
+                        break drainLoop;
+                    }
+                    case EXHAUSTED -> {
+                        break drainLoop;
+                    }
+                    case OVERSIZED -> {
+                        // A single timestamp exceeds the whole byte budget: paging cannot make
+                        // progress past it (the next page would re-assemble the same row and hit
+                        // the same boundary forever). Error out naming the timestamp.
+                        final String msg = "single querySamples row at timestamp "
+                                + drain.resumeSecs() + "." + drain.resumeNanos()
+                                + " exceeds the outgoing message size limit (" + byteBudget
+                                + " bytes); narrow the PV set";
+                        logger.error(msg);
+                        telemetry.markError();
+                        QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+                        return;
+                    }
+                }
             }
-            // Trim against every resolved fragment, not the collapsed window (#207): the database
-            // filters fragments only per-bucket, so a bucket spanning a gap arrives with its in-gap
-            // samples intact.
-            final TabularDataUtility.TimestampDataMapSizeStats sizeStats = TabularDataUtility.addBucketsToTable(
-                    tableValueMap,
-                    cursor,
-                    0,
-                    (int) Math.min(Integer.MAX_VALUE, byteBudget),
-                    retentionIntervals,
-                    statusFilter);
-            byteBudgetHit = sizeStats.sizeLimitExceeded();
         } catch (NonScalarColumnException e) {
             // Q4: scalar-only. Translate the neutral shared exception into querySamples guidance.
             final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
@@ -148,55 +139,33 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             return;
         } catch (DpException e) {
             final String msg = "exception building sample result: " + e.getMessage();
-            logger.error(msg, e);
+            logger.error(msg + " id: " + responseObserver.hashCode(), e);
             telemetry.markError();
             QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
             return;
-        } finally {
-            // In a finally so the db stage is folded in on the reject and error paths too.
-            recordCursorTime(cursor);
         }
 
-        emitPage(resolvedQuery, tableValueMap, byteBudgetHit);
+        emitPage(resolvedQuery, tableValueMap, resumeAt);
     }
 
     /**
      * Truncates the assembled map to at most {@code pageSize} distinct timestamps and emits the V2
-     * ColumnTable. Sets the {@code nextPageToken} to the first dropped timestamp (empty if none).
+     * ColumnTable. The {@code nextPageToken} is the first dropped timestamp when truncating,
+     * otherwise {@code resumeAt} (the begin of a slice discarded on a budget trip, or the drain's
+     * position after an exactly-filled page), otherwise empty.
      */
-    private void emitPage(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap, boolean byteBudgetHit) {
+    private void emitPage(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap, long[] resumeAt) {
 
         final int pageSize = resolvedQuery.getPageSize();
         final List<long[]> allTimestamps = collectTimestamps(tableValueMap);
 
         int keepCount = allTimestamps.size();
-        long[] resumeAt = null;
-
         if (allTimestamps.size() > pageSize) {
-            // count-driven page boundary: keep pageSize rows, resume at the next timestamp
+            // count-driven page boundary: keep pageSize rows, resume at the next timestamp. Every
+            // row in the map is complete across PVs (accepted slices only), so truncating at any
+            // row is safe.
             keepCount = pageSize;
             resumeAt = allTimestamps.get(pageSize);
-        } else if (byteBudgetHit && !allTimestamps.isEmpty()) {
-            // byte-driven boundary: the last assembled timestamp may be incomplete (later buckets
-            // that would contribute to it were not drained), so drop it and resume there.
-            keepCount = allTimestamps.size() - 1;
-            resumeAt = allTimestamps.get(allTimestamps.size() - 1);
-
-            // Indivisible-oversized guard (mirrors the buckets dispatchers' isIndivisibleOversized):
-            // if dropping the last timestamp leaves nothing to emit, this single row is larger than
-            // the whole byte budget. Dropping it and resuming there would re-assemble the identical
-            // oversized row on the next page and hit the same boundary forever (zero forward
-            // progress). Error out instead, naming the timestamp, rather than loop empty pages.
-            if (keepCount == 0) {
-                final String msg = "single querySamples row at timestamp "
-                        + resumeAt[0] + "." + resumeAt[1]
-                        + " exceeds the outgoing message size limit (" + byteBudget
-                        + " bytes); narrow the PV set or time range";
-                logger.error(msg);
-                telemetry.markError();
-                QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
-                return;
-            }
         }
 
         if (allTimestamps.isEmpty()) {

@@ -775,21 +775,25 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     @Override
     public MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) {
 
         if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
             return null;
         }
 
-        // Each fragment's lower bound is clamped to the page window begin (windowBegin = resume
-        // timestamp on a continuation page, or timeRange begin on page 1). The clamp lives on
-        // TimeInterval so this filter and the dispatcher's sample-level retention trim are derived
-        // from the same interval set (#207) — see clampToWindowBegin.
-        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindowBegin(
-                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
+        // Each fragment is intersected with the slice window [windowBegin, windowEnd) (#274): the
+        // begin is the resume timestamp on a continuation page or the previous slice's end, the
+        // end is the slice end. The clamp lives on TimeInterval so this filter and the
+        // dispatcher's sample-level retention trim are derived from the same interval set (#207)
+        // — see clampToWindow.
+        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindow(
+                resolvedQuery.getRetrievalIntervals(),
+                windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
         if (clampedIntervals.isEmpty()) {
-            // nothing overlaps the page window. The samples dispatchers screen this same condition,
-            // from the same clamp, before calling — so a null they receive is one of the failures below.
+            // nothing overlaps the slice. The samples dispatchers screen this same condition, from
+            // the same clamp, before calling — so a null they receive is one of the failures below.
             return null;
         }
 
@@ -815,7 +819,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     /**
      * Builds the V2 samples retrieval query over {@code clampedIntervals} (the output of
-     * {@code TimeInterval.clampToWindowBegin}, non-empty) without opening a cursor, so that
+     * {@code TimeInterval.clampToWindow}, non-empty) without opening a cursor, so that
      * {@code MongoBucketQueryPlanTest} can {@code explain()} the exact fragment {@code $or}
      * {@link #executeQuerySamplesV2} issues. Package-private on purpose.
      */
@@ -899,20 +903,23 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
 
     @Override
     public Map<String, Set<Long>> resolveSampleStatusTimestamps(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) throws DpException {
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) throws DpException {
 
         final ResolvedStatusFilter statusFilter = resolvedQuery.getStatusFilter();
         if (statusFilter == null) {
             return Map.of();
         }
 
-        // Bound the fetch by the same clamped page window the sample retrieval uses (#207): a
+        // Bound the fetch by the same clamped slice the sample retrieval uses (#207, #274): a
         // status can only affect samples inside some clamped fragment. The bounds here are the
-        // window extremes [first fragment begin, last fragment end) — statuses in the gaps between
+        // slice's extremes [first fragment begin, last fragment end) — statuses in the gaps between
         // fragments are harmless to include (their samples are dropped by the fragment retention
         // test regardless of mode), so per-fragment precision is not required for correctness.
-        final List<TimeInterval> clampedFragments = TimeInterval.clampToWindowBegin(
-                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
+        final List<TimeInterval> clampedFragments = TimeInterval.clampToWindow(
+                resolvedQuery.getRetrievalIntervals(),
+                windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
         if (clampedFragments.isEmpty()) {
             return Map.of();
         }

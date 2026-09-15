@@ -185,7 +185,7 @@ public class MongoSyncQueryClientMissingIndexTest {
     @Test
     public void testV2SamplesQueryReportsMissingIndexAsNullCursor() {
         assertQueryReturnsBucketsThenNullWithoutTheIndex(
-                () -> client.executeQuerySamplesV2(resolvedQuery(true), BEGIN_SECONDS, 0L));
+                () -> client.executeQuerySamplesV2(resolvedQuery(true), BEGIN_SECONDS, 0L, END_SECONDS, 0L));
     }
 
     /**

@@ -99,21 +99,22 @@ public interface MongoQueryClientInterface {
     MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
 
     /**
-     * Retrieves buckets for a Query API V2 sample (column-table) query, over the page window
-     * {@code [windowBeginSecs.windowBeginNanos, endTime)} intersected with the resolved config
-     * fragments (Q3), for the resolved PV list. The window begin is the resume timestamp
-     * ({@code pageStart}) on a continuation page, or each fragment's own begin on the first page;
-     * the caller passes the effective window-begin so the same overlap machinery is reused. Sorted
-     * by {@code (pvName, firstTimeSecs, firstTimeNanos)}. Unlike the bucket path there is no keyset
-     * seek and no {@code pageSize+1} probe — the sample page is bounded by distinct-timestamp count
-     * and the byte budget during assembly, not by a bucket-count limit. Returns null on a null/empty
-     * resolution, when no fragment overlaps the page window (see
-     * {@code TimeInterval.clampToWindowBegin}), or on a retrieval failure (a database error, or a
-     * failed pvStats span read — #232 plan D8). The samples dispatchers screen the first two before
-     * calling, so a null they receive is reported as an error, never as an empty page.
+     * Retrieves buckets for one time slice of a Query API V2 sample (column-table) query: the
+     * half-open window {@code [windowBegin, windowEnd)} intersected with the resolved config
+     * fragments (Q3, via {@code TimeInterval.clampToWindow}), for the resolved PV list. The samples
+     * dispatchers retrieve a page as a sequence of such slices, each over every resolved PV, so
+     * that every slice is complete across PVs before any row is emitted (issue #274, plan D1);
+     * the first slice of a page begins at the resume timestamp ({@code pageStart}) or the earliest
+     * fragment begin. Sorted by {@code (pvName, firstTimeSecs, firstTimeNanos)}; no keyset seek and
+     * no {@code pageSize+1} probe. Returns null on a null/empty resolution, when no fragment
+     * overlaps the slice, or on a retrieval failure (a database error, or a failed pvStats span
+     * read — #232 plan D8). The samples dispatchers screen the first two before calling, so a null
+     * they receive is reported as an error, never as an empty slice.
      */
     MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos);
 
     /**
      * Resolves the query's sampleStatusSelector to the per-PV sets of epoch-nanos timestamps whose
@@ -122,13 +123,16 @@ public interface MongoQueryClientInterface {
      * the standard span-overlap predicate, expands the matching documents, and keeps a timestamp
      * when its status code is in the selector's statusCodes (empty = any code). PVs with no
      * matching statuses are absent from the map. The map is the assembly-time join input: memory
-     * is bounded by the number of labeled samples in the window. Returns an empty map when the
-     * clamped window is empty, or null on database error.
+     * is bounded by the number of labeled samples in the window, which since #274 is one time
+     * slice {@code [windowBegin, windowEnd)} rather than the whole page. Returns an empty map when
+     * the clamped window is empty, or null on database error.
      *
      * @throws DpException when a stored sample status document is malformed
      */
     Map<String, Set<Long>> resolveSampleStatusTimestamps(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) throws DpException;
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) throws DpException;
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

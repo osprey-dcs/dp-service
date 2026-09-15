@@ -38,6 +38,11 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
     private static final String CFG_KEY_QUERY_V2_MAX_RESOLVED_PV_COUNT = "QueryHandler.queryV2MaxResolvedPvCount";
     private static final int DEFAULT_QUERY_V2_MAX_RESOLVED_PV_COUNT = 10_000;
 
+    // querySamples time-sliced retrieval (#274, plan D2): the first slice of every page/stream
+    private static final String CFG_KEY_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS =
+            "QueryHandler.queryV2SamplesInitialSliceSeconds";
+    private static final int DEFAULT_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS = 60;
+
     // instance variables
     private final MongoQueryClientInterface mongoQueryClient;
     private final QueryV2Resolver queryV2Resolver;
@@ -69,6 +74,18 @@ public class MongoQueryHandler extends QueueHandlerBase implements QueryHandlerI
         return configMgr().getConfigInteger(
                 CFG_KEY_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES,
                 DEFAULT_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES);
+    }
+
+    /**
+     * The length in nanos of the first retrieval slice of a querySamples page or stream (#274,
+     * plan D2). A non-positive configured value is treated as the default: a zero-length slice
+     * would never advance.
+     */
+    public static long getQuerySamplesInitialSliceNanos() {
+        final int seconds = configMgr().getConfigInteger(
+                CFG_KEY_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS,
+                DEFAULT_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS);
+        return (seconds > 0 ? seconds : DEFAULT_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS) * 1_000_000_000L;
     }
 
     @Override
