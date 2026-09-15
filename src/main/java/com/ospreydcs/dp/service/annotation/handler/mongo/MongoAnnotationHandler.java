@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.common.handler.QueueHandlerBase;
 import com.ospreydcs.dp.service.common.model.ResultStatus;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -77,6 +78,11 @@ public class MongoAnnotationHandler extends QueueHandlerBase implements Annotati
 
     protected int getNumWorkers_() {
         return configMgr().getConfigInteger(CFG_KEY_NUM_WORKERS, DEFAULT_NUM_WORKERS);
+    }
+
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_ANNOTATION;
     }
 
     @Override
