@@ -144,8 +144,11 @@ public class QueryBucketsUnaryDispatcher extends AbstractQueryBucketsDispatcher 
                             .setNextPageToken(nextPageToken);
 
             final QueryBucketsResponse.BucketQueryResult result = resultBuilder.build();
-            telemetry.recordResponse(result.getSerializedSize());
-            QueryServiceImpl.sendQueryBucketsResponse(result, responseObserver);
+            // Size the response that is actually sent, not the nested result: the outer message
+            // adds a responseTime and its framing, and every dispatcher measures the same level.
+            telemetry.recordResponse(
+                    QueryServiceImpl.sendQueryBucketsResponse(result, responseObserver)
+                            .getSerializedSize());
 
         } finally {
             // In a finally so the db stage is folded in on every exit from the cursor block --

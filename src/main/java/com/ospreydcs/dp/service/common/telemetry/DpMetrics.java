@@ -16,9 +16,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Instruments are created lazily on first use rather than in a static initializer, because
  * {@link DpTelemetry#init} runs after this class may already have been loaded, and because
- * {@link DpTelemetry#resetForTest()} swaps the SDK between integration tests — an instrument built
+ * {@link DpTelemetry#shutdown()} and the test hooks swap the SDK out — an instrument built
  * eagerly against the meter that existed at class-load time would keep recording into a provider
- * that has since been shut down. {@link #resetForTest()} discards them so the next lookup rebuilds
+ * that has since been shut down. {@link #discardInstruments()} discards them so the next lookup rebuilds
  * against the current SDK.
  *
  * <p><b>Cardinality policy (D8).</b> The attribute keys declared here are the complete vocabulary
@@ -108,7 +108,14 @@ public class DpMetrics {
 
     private static final double NANOS_PER_SECOND = TimeUnit.SECONDS.toNanos(1);
 
-    // instruments, created on first use and discarded by resetForTest()
+    // Instruments, created on first use and discarded by discardInstruments(). Every accessor
+    // below is synchronized: the check-then-assign is not atomic, and two threads racing on first
+    // use would each build an instrument. The SDK returns equivalent instruments for the same
+    // name/unit/description so the duplicate records correctly, but it also logs a
+    // duplicate-instrument warning under some configurations, and an accessor that looks
+    // thread-safe but is not is the kind of thing that gets copied. Contention is a non-issue:
+    // after the first call every invocation is an uncontended lock on an already-built field.
+
 
     private static volatile DoubleHistogram handlerQueueWait = null;
     private static volatile DoubleHistogram handlerJobDuration = null;
@@ -148,7 +155,7 @@ public class DpMetrics {
     // handler instruments (D2)
 
     /** Time a job spent between construction and the start of {@code execute()}. */
-    public static DoubleHistogram handlerQueueWait() {
+    public static synchronized DoubleHistogram handlerQueueWait() {
         DoubleHistogram instrument = handlerQueueWait;
         if (instrument == null) {
             instrument = durationHistogram(
@@ -160,7 +167,7 @@ public class DpMetrics {
     }
 
     /** Wall time of {@code job.execute()}. */
-    public static DoubleHistogram handlerJobDuration() {
+    public static synchronized DoubleHistogram handlerJobDuration() {
         DoubleHistogram instrument = handlerJobDuration;
         if (instrument == null) {
             instrument = durationHistogram(
@@ -175,13 +182,15 @@ public class DpMetrics {
      * Workers currently inside {@code job.execute()}.
      *
      * <p>There is deliberately <b>no queue-depth gauge</b> alongside this, and its absence is not
-     * an oversight: the handler queues are unbounded {@code LinkedBlockingQueue}s, so a depth
-     * reading is a sample of an instantaneous value between two scrape intervals and says nothing
-     * about whether work is actually backing up. Sustained saturation shows up here — active
-     * workers pinned at the configured maximum — and the wait it causes shows up in
-     * {@link #handlerQueueWait()}, which is a distribution rather than a sample.
+     * an oversight: {@code QueueHandlerBase} uses a {@code LinkedBlockingQueue} of capacity
+     * {@code MAX_QUEUE_SIZE == 1}, so depth is never a meaningful number — it is 0 or 1, sampled
+     * between two scrape intervals. Backpressure on this design does not accumulate in the queue
+     * at all; it blocks the calling gRPC thread inside {@code enqueueJob}'s {@code put()}.
+     * Sustained saturation therefore shows up here — active workers pinned at the configured
+     * maximum — and the wait it causes shows up in {@link #handlerQueueWait()}, which is a
+     * distribution rather than a sample.
      */
-    public static LongUpDownCounter handlerWorkersActive() {
+    public static synchronized LongUpDownCounter handlerWorkersActive() {
         LongUpDownCounter instrument = handlerWorkersActive;
         if (instrument == null) {
             instrument = meter().upDownCounterBuilder(METRIC_HANDLER_WORKERS_ACTIVE)
@@ -216,7 +225,7 @@ public class DpMetrics {
     // query instruments (D3)
 
     /** Per-stage durations of a query request; see {@code QueryTelemetry} for the stage set. */
-    public static DoubleHistogram queryStageDuration() {
+    public static synchronized DoubleHistogram queryStageDuration() {
         DoubleHistogram instrument = queryStageDuration;
         if (instrument == null) {
             instrument = durationHistogram(
@@ -228,7 +237,7 @@ public class DpMetrics {
     }
 
     /** Completed query requests, by outcome. */
-    public static LongCounter queryRequests() {
+    public static synchronized LongCounter queryRequests() {
         LongCounter instrument = queryRequests;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_QUERY_REQUESTS)
@@ -240,7 +249,7 @@ public class DpMetrics {
     }
 
     /** Bucket documents read from MongoDB while serving query requests. */
-    public static LongCounter queryBuckets() {
+    public static synchronized LongCounter queryBuckets() {
         LongCounter instrument = queryBuckets;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_QUERY_BUCKETS)
@@ -252,7 +261,7 @@ public class DpMetrics {
     }
 
     /** Response messages sent to query clients. */
-    public static LongCounter queryResponseMessages() {
+    public static synchronized LongCounter queryResponseMessages() {
         LongCounter instrument = queryResponseMessages;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_QUERY_RESPONSE_MESSAGES)
@@ -264,7 +273,7 @@ public class DpMetrics {
     }
 
     /** Serialized response bytes sent to query clients. */
-    public static LongCounter queryResponseBytes() {
+    public static synchronized LongCounter queryResponseBytes() {
         LongCounter instrument = queryResponseBytes;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_QUERY_RESPONSE_BYTES)
@@ -279,7 +288,7 @@ public class DpMetrics {
     // ingestion instruments (Task 8)
 
     /** Ingestion requests whose handling completed, by outcome. */
-    public static LongCounter ingestRequests() {
+    public static synchronized LongCounter ingestRequests() {
         LongCounter instrument = ingestRequests;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_INGEST_REQUESTS)
@@ -299,7 +308,7 @@ public class DpMetrics {
      * worker thread. An operator reading only the RPC duration would conclude ingestion was
      * healthy while the queue behind it fell arbitrarily far behind.
      */
-    public static DoubleHistogram ingestDuration() {
+    public static synchronized DoubleHistogram ingestDuration() {
         DoubleHistogram instrument = ingestDuration;
         if (instrument == null) {
             instrument = durationHistogram(
@@ -311,7 +320,7 @@ public class DpMetrics {
     }
 
     /** Bucket documents written by the ingestion service. */
-    public static LongCounter ingestBuckets() {
+    public static synchronized LongCounter ingestBuckets() {
         LongCounter instrument = ingestBuckets;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_INGEST_BUCKETS)
@@ -323,7 +332,7 @@ public class DpMetrics {
     }
 
     /** Individual samples ingested, across all columns of all handled requests. */
-    public static LongCounter ingestSamples() {
+    public static synchronized LongCounter ingestSamples() {
         LongCounter instrument = ingestSamples;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_INGEST_SAMPLES)
@@ -335,7 +344,7 @@ public class DpMetrics {
     }
 
     /** Serialized bytes of the ingestion requests handled. */
-    public static LongCounter ingestRequestBytes() {
+    public static synchronized LongCounter ingestRequestBytes() {
         LongCounter instrument = ingestRequestBytes;
         if (instrument == null) {
             instrument = meter().counterBuilder(METRIC_INGEST_REQUEST_BYTES)
@@ -356,7 +365,7 @@ public class DpMetrics {
      * so that a dashboard or alert written against the convention works against this service
      * without a dp-specific translation.
      */
-    public static DoubleHistogram dbOperationDuration() {
+    public static synchronized DoubleHistogram dbOperationDuration() {
         DoubleHistogram instrument = dbOperationDuration;
         if (instrument == null) {
             instrument = durationHistogram(
@@ -368,10 +377,13 @@ public class DpMetrics {
     }
 
     /**
-     * Discards every cached instrument so the next use rebuilds against the current SDK. Called by
-     * {@link DpTelemetry#resetForTest()}; there is no production caller.
+     * Discards every cached instrument so the next use rebuilds against the current SDK.
+     *
+     * <p>Called by {@link DpTelemetry#shutdown()} as well as the test hooks, which is why this is
+     * not named for tests: an instrument outliving the provider it was built against records into
+     * a closed SDK forever, and {@code shutdown()} is a production path.
      */
-    static synchronized void resetForTest() {
+    static synchronized void discardInstruments() {
         handlerQueueWait = null;
         handlerJobDuration = null;
         handlerWorkersActive = null;

@@ -99,12 +99,16 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         try (cursor) {
             // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
             // for the assembly-time join; composes with the fragment trim by intersection.
-            final long statusStartNanos = System.nanoTime();
-            final TabularDataUtility.SampleStatusFilter statusFilter =
-                    statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
             // Its own query against sampleStatusBuckets, invisible to the bucket cursor -- see the
-            // unary dispatcher for why it is timed separately.
-            telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+            // unary dispatcher for why it is timed separately, and why the fold is in a finally.
+            final long statusStartNanos = System.nanoTime();
+            final TabularDataUtility.SampleStatusFilter statusFilter;
+            try {
+                statusFilter =
+                        statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
+            } finally {
+                telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+            }
             // Assemble the full window once. No sizeLimit: streaming materializes the whole table
             // (memory-bounded, per the class note); the byte budget bounds each emitted chunk, below.
             // Trimming uses every resolved fragment rather than a collapsed window (#207).
@@ -268,7 +272,9 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
                         .setColumnTable(columnTable)
                         .setNextPageToken("") // stream signals completion; token always empty
                         .build();
-        telemetry.recordResponse(result.getSerializedSize());
-        responseObserver.onNext(QueryServiceImpl.querySamplesResponse(result));
+        // Size the response actually sent, not the nested result; see QueryBucketsUnaryDispatcher.
+        final QuerySamplesResponse response = QueryServiceImpl.querySamplesResponse(result);
+        telemetry.recordResponse(response.getSerializedSize());
+        responseObserver.onNext(response);
     }
 }

@@ -151,7 +151,9 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
                         .addAllDataBuckets(buckets)
                         .setNextPageToken("") // stream signals completion; token always empty
                         .build();
-        telemetry.recordResponse(result.getSerializedSize());
-        responseObserver.onNext(QueryServiceImpl.queryBucketsResponse(result));
+        // Size the response actually sent, not the nested result; see QueryBucketsUnaryDispatcher.
+        final QueryBucketsResponse response = QueryServiceImpl.queryBucketsResponse(result);
+        telemetry.recordResponse(response.getSerializedSize());
+        responseObserver.onNext(response);
     }
 }

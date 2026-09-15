@@ -24,6 +24,20 @@ public abstract class HandlerJob {
 
     public abstract void execute();
 
+    /**
+     * Called by {@code QueueHandlerBase} when a job is discarded without ever running -- today
+     * only when {@code enqueueJob} is interrupted during shutdown.
+     *
+     * <p>Exists so a dropped job is not silently absent from the metrics. The caller's response
+     * stream is never answered in that case (documented at {@code enqueueJob}), and without this
+     * hook the request would appear in no counter at all: the query jobs complete their telemetry
+     * from {@code execute()}, which never runs. A request that vanished is exactly the one an
+     * operator needs to see, so the default is a no-op only for job types that carry no telemetry.
+     */
+    public void discarded() {
+        // no-op by default; job types carrying telemetry override to record the outcome
+    }
+
     public long getCreatedNanos() {
         return createdNanos;
     }

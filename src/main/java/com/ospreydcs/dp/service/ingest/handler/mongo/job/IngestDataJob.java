@@ -142,6 +142,12 @@ public class IngestDataJob extends HandlerJob {
                             long recordsInsertedCount = insertManyResult.getInsertedIds().size();
                             long recordsExpected = dataDocumentBatch.size();
 
+                            // Recorded ahead of the mismatch check, not inside the success branch.
+                            // A partial insert is the case this counter exists to reveal, and
+                            // recording it only when the counts match meant dp.ingest.buckets
+                            // reported zero for a request that had in fact persisted data.
+                            telemetry.recordBucketsInserted(recordsInsertedCount);
+
                             if (recordsInsertedCount != recordsExpected) {
                                 // check records inserted matches expected
                                 isError = true;
@@ -154,7 +160,6 @@ public class IngestDataJob extends HandlerJob {
                                 for (var entry : insertManyResult.getInsertedIds().entrySet()) {
                                     idsCreated.add(entry.getValue().asString().getValue());
                                 }
-                                telemetry.recordBucketsInserted(recordsInsertedCount);
                             }
                         }
                     }
@@ -238,6 +243,11 @@ public class IngestDataJob extends HandlerJob {
          * Records the buckets actually acknowledged by the database, not the size of the generated
          * batch: the two differ exactly when the insert partially failed, and that is the case an
          * operator is trying to see.
+         *
+         * <p>Called before the caller's count-mismatch check for that reason. Called from inside
+         * the success branch, it fired only when the two counts were equal -- so the partial
+         * insert it is meant to expose recorded zero buckets, the one number that made the partial
+         * write invisible.
          */
         void recordBucketsInserted(long count) {
             this.bucketCount = count;

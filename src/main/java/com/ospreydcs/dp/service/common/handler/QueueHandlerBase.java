@@ -56,6 +56,14 @@ public abstract class QueueHandlerBase {
         } catch (InterruptedException e) {
             logger.error("InterruptedException adding {} id: {} to requestQueue, job dropped",
                     job.getClass().getSimpleName(), jobId, e);
+            // Record the drop before restoring the interrupt: execute() will never run, so this is
+            // the only chance to account for a request that is about to disappear without a
+            // response.
+            try {
+                job.discarded();
+            } catch (RuntimeException ex) {
+                logger.error("error recording discarded job telemetry: {}", ex.getMessage(), ex);
+            }
             Thread.currentThread().interrupt();
         }
     }

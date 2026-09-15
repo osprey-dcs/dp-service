@@ -151,8 +151,17 @@ public class QueryDataBidiStreamDispatcher extends QueryDataAbstractDispatcher {
             } else {
                 // send next query result response
                 logger.trace("sending query result response id: " + getResponseObserver().hashCode());
-                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
-                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
+                if (queryDataBuilder.getDataBucketsCount() == 0) {
+                    // A genuinely empty first response: the query matched nothing. The job
+                    // completes the telemetry as soon as this response is sent (see the class
+                    // note), so an empty result left unmarked was permanently recorded as success.
+                    // Distinct from the not-ready status response above, which is a handshake
+                    // rather than a result and is deliberately not classified here.
+                    telemetry.markEmpty();
+                }
+                telemetry.recordResponse(
+                        QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver())
+                                .getSerializedSize());
             }
 
             // close cursor if we have exhausted it

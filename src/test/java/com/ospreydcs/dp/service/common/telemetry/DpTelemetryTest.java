@@ -213,4 +213,76 @@ public class DpTelemetryTest {
             server.awaitTermination(5, TimeUnit.SECONDS);
         }
     }
+
+    /**
+     * {@code shutdown()} must discard the cached instruments, not merely close the SDK.
+     *
+     * <p>This is the production analogue of {@link #testResetRebindsInstrumentsToTheNextSdk()} and
+     * it guards a real startup path: {@code GrpcServerBase.start()} calls {@code DpTelemetry.init()},
+     * and if {@code initService_()} then fails it calls {@code shutdown()} so an in-process caller
+     * can retry. Before this, {@code shutdown()} left every instrument bound to the closed
+     * provider, so the retry's fresh SDK received nothing and the process ran blind for its whole
+     * life while reporting a healthy startup.
+     *
+     * <p>Asserts on the meter each instrument is bound to immediately after {@code shutdown()},
+     * deliberately <em>without</em> installing another SDK first. Routing through
+     * {@link #installTestSdk()} would call {@code initForTest}, which discards instruments itself
+     * and would mask a {@code shutdown()} that had failed to — the assertion would then hold
+     * whether or not the behavior under test was present.
+     */
+    @Test
+    public void testShutdownDiscardsCachedInstruments() {
+
+        installTestSdk();
+        // Build an instrument against the SDK, exactly as a handler does during init.
+        DpMetrics.ingestBuckets().add(11);
+        assertNotNull(
+                "precondition: the installed SDK should have received the recording",
+                metricNamed(metricReader.collectAllMetrics(), DpMetrics.METRIC_INGEST_BUCKETS));
+
+        // The production teardown path, not the test hook.
+        DpTelemetry.shutdown();
+
+        // The instrument handed out now must be a freshly built one bound to the no-op meter, not
+        // the cached one still pointing at the provider shutdown() just closed.
+        assertSame(
+                "after shutdown() the meter must be the no-op instance",
+                OpenTelemetry.noop().getMeter(DpTelemetry.INSTRUMENTATION_SCOPE_NAME).getClass(),
+                DpTelemetry.meter().getClass());
+
+        // Recording now must not reach the closed provider. The reader still reports the point it
+        // collected before shutdown(), so the check is on the VALUE: a cached instrument still
+        // bound to the closed SDK would add to it and carry the sum to 16.
+        DpMetrics.ingestBuckets().add(5);
+        final MetricData afterShutdown =
+                metricNamed(metricReader.collectAllMetrics(), DpMetrics.METRIC_INGEST_BUCKETS);
+        assertNotNull("precondition: reader still holds its pre-shutdown point", afterShutdown);
+        assertEquals(
+                "recording after shutdown() reached the closed provider's reader, so the "
+                        + "instrument was never discarded",
+                11L,
+                afterShutdown.getLongSumData().getPoints().iterator().next().getValue());
+    }
+
+    /**
+     * {@code initForTest} must discard instruments too, so a test class is self-correcting rather
+     * than dependent on a previous test's {@code tearDown} having run. An instrument built earlier
+     * in the same JVM fork — by a unit test that never bootstrapped, so against the no-op meter —
+     * would otherwise stay cached and the new reader would legitimately see nothing.
+     */
+    @Test
+    public void testInitForTestDiscardsInstrumentsCachedAgainstTheNoopMeter() {
+
+        // Record against the no-op meter, caching an instrument bound to it.
+        DpMetrics.ingestSamples().add(99);
+
+        installTestSdk();
+        DpMetrics.ingestSamples().add(4);
+
+        final MetricData metric =
+                metricNamed(metricReader.collectAllMetrics(), DpMetrics.METRIC_INGEST_SAMPLES);
+        assertNotNull(
+                "instrument stayed bound to the no-op meter after initForTest()", metric);
+        assertEquals(4L, metric.getLongSumData().getPoints().iterator().next().getValue());
+    }
 }

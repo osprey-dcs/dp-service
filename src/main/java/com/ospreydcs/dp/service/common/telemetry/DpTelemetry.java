@@ -183,8 +183,16 @@ public class DpTelemetry {
     }
 
     /**
-     * Shuts the SDK down, flushing a final export. Called from {@code stopServer()} after the gRPC
-     * server has terminated so that the last requests' measurements are included.
+     * Shuts the SDK down, flushing a final export. Called from {@code stopServer()} once the gRPC
+     * server has terminated <em>and</em> the handler has drained, so that the last requests'
+     * measurements are included.
+     *
+     * <p>Discards the cached {@link DpMetrics} instruments as part of shutting down, and that is
+     * not merely tidiness: every instrument is bound to the meter of the provider being closed
+     * here. Left cached, a subsequent {@link #init} would build a fresh SDK that no instrument
+     * points at, and the process would record nothing for the rest of its life while reporting a
+     * healthy startup. The retry path in {@code GrpcServerBase.start()} -- init succeeds,
+     * {@code initService_()} fails, shutdown, caller retries -- is exactly that sequence.
      */
     public static synchronized void shutdown() {
 
@@ -204,6 +212,10 @@ public class DpTelemetry {
 
         openTelemetry = OpenTelemetry.noop();
         initialized = false;
+
+        // After the provider is closed and the instance reverted, so an instrument rebuilt by a
+        // concurrent recording lands on the no-op meter rather than the closed provider.
+        DpMetrics.discardInstruments();
     }
 
     /** The OpenTelemetry instance for this process; the no-op instance until {@code init()}. */
@@ -239,6 +251,13 @@ public class DpTelemetry {
         // a test that supplied its own reader is responsible for its lifecycle.
         openTelemetry = sdk;
         initialized = true;
+
+        // Discard instruments cached against whatever meter was in place before, so this SDK's
+        // reader sees every recording. Without it, an instrument built earlier in the same JVM
+        // fork -- by a unit test that never bootstrapped, so against the no-op meter -- would stay
+        // cached, and the test's assertions would fail against a reader that legitimately saw
+        // nothing. Makes setUp() self-correcting rather than dependent on a prior tearDown().
+        DpMetrics.discardInstruments();
     }
 
     /**
@@ -248,11 +267,20 @@ public class DpTelemetry {
      * meter of the SDK being removed.
      */
     public static synchronized void resetForTest() {
-        runtimeTelemetry = null;
+        if (runtimeTelemetry != null) {
+            // Closed rather than dropped, so a test that ran the real init() does not leave the
+            // RuntimeTelemetry callbacks registered against the provider it is abandoning.
+            try {
+                runtimeTelemetry.close();
+            } catch (Exception e) {
+                LOGGER.warn("error closing runtime telemetry: {}", e.getMessage(), e);
+            }
+            runtimeTelemetry = null;
+        }
         openTelemetrySdk = null;
         openTelemetry = OpenTelemetry.noop();
         initialized = false;
-        DpMetrics.resetForTest();
+        DpMetrics.discardInstruments();
     }
 
     /** True once {@code init()} or {@code initForTest()} has run. */

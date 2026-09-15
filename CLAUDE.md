@@ -952,7 +952,26 @@ reader (`initForTest`/`resetForTest`) and tear it down again.
 initialization must not serve). `start()` therefore also shuts telemetry down if `initService_()`
 fails — the shutdown hook that would release the port is registered only after the failure throw,
 so without that an in-process retry would hit a port its own previous attempt still held and report
-a telemetry bind error in place of the real failure.
+a telemetry bind error in place of the real failure. The `serverBuilder.build().start()` call is
+wrapped for the identical reason: a gRPC port conflict throws with the metrics port already bound.
+
+**`shutdown()` discards the cached instruments, and that is a production requirement, not tidiness.**
+Every `DpMetrics` instrument is bound to the meter of the provider being closed. Left cached, the
+retry path above builds a fresh SDK that no instrument points at, and the process records nothing
+for the rest of its life while reporting a healthy startup. `DpMetrics.discardInstruments()` is
+named for production rather than tests for this reason; `initForTest` calls it too, so a test class
+is self-correcting rather than dependent on a prior `tearDown`. `DpTelemetryTest`'s
+`testShutdownDiscardsCachedInstruments` pins it, and asserts on the recorded *value* after shutdown
+rather than installing another SDK first — routing through `initForTest` would mask the very
+behavior under test.
+
+**Telemetry shuts down after the handler drains, not after the gRPC server terminates.**
+`stopServer()` calls `finiService_()` before `DpTelemetry.shutdown()`. The server terminating is not
+when in-flight work finishes: `QueueHandlerBase.fini()` runs `executorService.awaitTermination()`,
+and the jobs still draining there record `dp.handler.*`, `dp.query.*` and `dp.ingest.*` as they
+complete. Shutting the SDK down first sent every one of those into a closed provider. `finiService_()`
+is idempotent (`handler = null`, plus `QueueHandlerBase`'s own `shutdownRequested` guard), so the
+JVM shutdown hook and `blockUntilShutdown()` cannot double-drain.
 
 ### Instrumentation must never disturb the request it measures
 
@@ -973,6 +992,34 @@ For the same reason `QueryTelemetry.complete()` is **idempotent**: every job cal
 `finally`, but the streaming dispatchers also complete early on error paths and the bidi dispatcher
 outlives its job. A second recording would double-count the request in every histogram and counter —
 an inflated request rate that still looks plausible, so no test would catch it.
+
+**An unchecked throw out of a job must be classified before `complete()` runs.** `outcome` defaults
+to `success`, so the escape documented throughout this file — the worker swallows the throwable, the
+dispatcher never answers, the caller's stream hangs until it times out — was recorded as a
+*successful* request with a full set of stage histograms, leaving the error rate flat for precisely
+the requests that failed hardest. All three query jobs therefore `catch (RuntimeException)`, call
+`telemetry.markFailedWithException()`, and rethrow. That method does not overwrite an outcome
+already set, since a dispatcher that rejected and then threw has classified the request more
+precisely. A dropped job gets the same treatment through `HandlerJob.discarded()`, which
+`enqueueJob` calls when an interrupt discards a job that will never run.
+
+**`QueryTelemetry`'s mutators are `synchronized`, and that is load-bearing.** On
+`queryDataBidiStream` the worker thread calls `complete()` while gRPC threads still call
+`recordResponse()` through `QueryResultCursor.next()`. An earlier version left the counters
+unsynchronized on the reasoning that the dispatcher held its `cursorLock` — but `complete()` does
+not acquire `cursorLock`, so the two monitors established no happens-before edge, and `long` fields
+are not atomic under the JMM. Sharing this object's monitor across the mutators and `complete()` is
+what makes the published values correct.
+
+**`dp.query.response.bytes` measures the message actually sent.** The `send*` helpers on
+`QueryServiceImpl` return the response they put on the wire so a dispatcher can size that rather
+than the nested payload it passed in — the outer message adds a `responseTime` and its framing. Six
+of the eight dispatchers were measuring the nested result while two measured the outer, which made
+the metric incomparable across query methods. Using the return value also drops a redundant
+`build()` of the repeated bucket list on the streaming hot path. The counters deliberately exclude
+exceptional and pre-retrieval empty responses (see `recordResponse`'s javadoc): those requests are
+identified by `dp.outcome` instead, so the ratio to `dp.query.requests` is bytes per *request*, not
+per message.
 
 ### The attribute vocabulary is closed (D8)
 

@@ -77,8 +77,12 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 logger.trace("sending intermediate response id: " + getResponseObserver().hashCode());
-                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
-                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
+                // Size the response actually sent. Taking it from the send helper's return value
+                // also drops a redundant build() of the repeated DataBucket list on the streaming
+                // hot path -- this ran once per emitted message for the whole result.
+                telemetry.recordResponse(
+                        QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver())
+                                .getSerializedSize());
                 queryDataBuilder = QueryDataResponse.QueryData.newBuilder();
                 messageSize = 0;
             }
@@ -99,15 +103,17 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             if (emptyResponse) {
                 logger.trace("sending empty response id: " + getResponseObserver().hashCode());
                 telemetry.markEmpty();
-                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
-                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
+                telemetry.recordResponse(
+                        QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver())
+                                .getSerializedSize());
             }
 
             // send last response message
             else if (messageSize > 0) {
                 logger.trace("sending residual response id: " + getResponseObserver().hashCode());
-                telemetry.recordResponse(queryDataBuilder.build().getSerializedSize());
-                QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver());
+                telemetry.recordResponse(
+                        QueryServiceImpl.sendQueryDataResponse(queryDataBuilder, getResponseObserver())
+                                .getSerializedSize());
             }
 
             // close response stream

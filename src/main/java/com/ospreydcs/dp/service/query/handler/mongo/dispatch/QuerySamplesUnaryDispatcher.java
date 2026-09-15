@@ -111,13 +111,22 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
         try (cursor) {
             // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
             // for the assembly-time join; composes with the fragment trim by intersection.
-            final long statusStartNanos = System.nanoTime();
-            final TabularDataUtility.SampleStatusFilter statusFilter =
-                    statusRetentionFilter(resolvedQuery, mongoClient, windowBeginSecs, windowBeginNanos);
             // Timed separately: resolveSampleStatusTimestamps is its own query against
             // sampleStatusBuckets, and the bucket cursor cannot see it. Left out, a status-filtered
             // query would attribute that whole read to the process stage.
-            telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+            //
+            // The fold is in a finally so a DpException from the lookup still contributes the time
+            // it took to fail. Recorded after the call instead, a failed status read reported a db
+            // stage of zero and its whole duration landed in the process residual -- an operator
+            // diagnosing the failure would see a CPU-bound stage and look at assembly code.
+            final long statusStartNanos = System.nanoTime();
+            final TabularDataUtility.SampleStatusFilter statusFilter;
+            try {
+                statusFilter =
+                        statusRetentionFilter(resolvedQuery, mongoClient, windowBeginSecs, windowBeginNanos);
+            } finally {
+                telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+            }
             // Trim against every resolved fragment, not the collapsed window (#207): the database
             // filters fragments only per-bucket, so a bucket spanning a gap arrives with its in-gap
             // samples intact.
@@ -190,6 +199,16 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             }
         }
 
+        if (allTimestamps.isEmpty()) {
+            // Retrieval produced no rows -- an empty window, or a status filter that excluded every
+            // sample. QuerySamplesStreamDispatcher classifies the identical condition as empty, and
+            // without this the unary path recorded it as success: the same operational state would
+            // read as two different outcomes depending on which method the client called, and the
+            // near-zero latencies would dilute the success distribution the outcome exists to keep
+            // clean. Still a normal (empty) payload, not an ExceptionalResult.
+            telemetry.markEmpty();
+        }
+
         final ColumnTable columnTable = buildColumnTable(
                 tableValueMap, allTimestamps, 0, keepCount, resolvedQuery.isUseSerializedColumns());
 
@@ -203,7 +222,9 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
                         .setNextPageToken(nextPageToken)
                         .build();
 
-        telemetry.recordResponse(result.getSerializedSize());
-        QueryServiceImpl.sendQuerySamplesResponse(result, responseObserver);
+        // Size the response actually sent, not the nested result; see QueryBucketsUnaryDispatcher.
+        telemetry.recordResponse(
+                QueryServiceImpl.sendQuerySamplesResponse(result, responseObserver)
+                        .getSerializedSize());
     }
 }

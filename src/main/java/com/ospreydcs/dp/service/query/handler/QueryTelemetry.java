@@ -40,12 +40,17 @@ import java.util.concurrent.TimeUnit;
  * <p>The stage fields are written on one thread and read on another -- {@code resolveNanos} on the
  * gRPC thread, everything else on the worker -- with the handoff through {@code enqueueJob}'s
  * {@code BlockingQueue}, which establishes happens-before for everything written before the put.
- * The response counters are the exception: {@code recordResponse} is called from the dispatcher,
- * and {@code QueryDataBidiStreamDispatcher} drives its dispatch from more than one thread. Those
- * three counters are therefore {@code volatile}-free but updated only under that dispatcher's
- * existing cursor lock, or from the single worker thread on every other path. They are counters for
- * a log line and a monotonic metric, not control flow: a lost update would understate a byte count,
- * never change a response.
+ *
+ * <p>The mutable counters are a different matter, and the {@code synchronized} on every mutator
+ * below is load-bearing rather than defensive. On {@code queryDataBidiStream} the job's worker
+ * thread calls {@link #complete()} while gRPC request threads are still calling
+ * {@link #recordResponse} through {@code QueryResultCursor.next()}. An earlier version of this
+ * class left those counters unsynchronized on the reasoning that the dispatcher already held its
+ * {@code cursorLock} -- but {@code complete()} does not acquire {@code cursorLock}, so the two
+ * monitors established no happens-before edge between them at all, and {@code long} fields are not
+ * guaranteed atomic by the JMM. Sharing this object's own monitor across the mutators and
+ * {@code complete()} is what makes the published values correct. They are counters for a log line
+ * and a monotonic metric, not control flow, so contention is irrelevant; correctness is not.
  */
 public class QueryTelemetry {
 
@@ -123,7 +128,7 @@ public class QueryTelemetry {
      * (PV existence, configuration activations). Called at enqueue; for the legacy methods, which
      * do no resolution, it is simply the small handler-entry-to-enqueue interval.
      */
-    public void markEnqueued() {
+    public synchronized void markEnqueued() {
         resolveNanos = System.nanoTime() - arrivalNanos;
     }
 
@@ -134,7 +139,7 @@ public class QueryTelemetry {
      * query stage breakdown are then the same number by construction, and a dashboard comparing
      * them cannot be reading two slightly different measurements.
      */
-    public void markJobStarted(HandlerJob job) {
+    public synchronized void markJobStarted(HandlerJob job) {
         queueWaitNanos = job.getQueueWaitNanos();
     }
 
@@ -146,20 +151,37 @@ public class QueryTelemetry {
      * operation -- the samples paths resolve status timestamps before retrieving buckets, and the
      * table path has both a find and an aggregate.
      */
-    public void addDbNanos(long nanos) {
+    public synchronized void addDbNanos(long nanos) {
         dbNanos += nanos;
     }
 
     /** Folds a finished {@code TimedMongoCursor}'s accumulated time and document count in. */
-    public void addCursorTime(long cursorNanos, long documentCount) {
+    public synchronized void addCursorTime(long cursorNanos, long documentCount) {
         dbNanos += cursorNanos;
         bucketCount += documentCount;
     }
 
     // ---- outcome and results -----------------------------------------------------------------
 
-    /** Records one response message of {@code bytes} serialized size sent to the client. */
-    public void recordResponse(int bytes) {
+    /**
+     * Records one <em>result-bearing</em> response message of {@code bytes} serialized size sent to
+     * the client.
+     *
+     * <p>Scope worth being precise about, because the instrument names say "response": the
+     * exceptional responses -- the reject and error {@code ExceptionalResult} messages, and the
+     * pre-retrieval empty payloads sent before a page is assembled -- are deliberately <b>not</b>
+     * counted here. They are a fixed handful of bytes carrying a status rather than data, they are
+     * emitted from 29 call sites across nine dispatchers, and counting them would put a
+     * near-constant term into a counter whose whole purpose is to measure result volume.
+     *
+     * <p>Nothing is lost by the omission: those requests are already individually identified by
+     * {@code dp.outcome} on {@code dp.query.requests}, which is where a rise in rejects or errors
+     * is meant to be read. What it does mean is that
+     * {@code dp.query.response.bytes / dp.query.requests} is bytes per <em>request</em>, not bytes
+     * per message -- a request that rejected contributes a denominator with no numerator. Divide by
+     * {@code dp.query.response.messages} for a per-message average.
+     */
+    public synchronized void recordResponse(int bytes) {
         responseMessages++;
         responseBytes += bytes;
     }
@@ -170,12 +192,12 @@ public class QueryTelemetry {
      * in rejects means clients are sending something wrong, and a rise in errors means the service
      * is failing, and an alert that cannot tell them apart pages the wrong person.
      */
-    public void markReject() {
+    public synchronized void markReject() {
         outcome = DpMetrics.OUTCOME_REJECT;
     }
 
     /** Marks the request as failed by the service. */
-    public void markError() {
+    public synchronized void markError() {
         outcome = DpMetrics.OUTCOME_ERROR;
     }
 
@@ -185,8 +207,30 @@ public class QueryTelemetry {
      * usually a client asking for the wrong window, and it would otherwise dilute the success
      * latency distribution with a population of near-zero requests.
      */
-    public void markEmpty() {
+    public synchronized void markEmpty() {
         outcome = DpMetrics.OUTCOME_EMPTY;
+    }
+
+    /**
+     * Marks a request whose handling threw an unchecked exception out of the job.
+     *
+     * <p>Distinct from {@link #markError()} only in intent -- both record {@code outcome=error} --
+     * but the call site is what matters: this one is the {@code catch} in each query job, and it
+     * exists because {@code outcome} defaults to {@code success}. Without it, the escape documented
+     * throughout CLAUDE.md (the worker swallows the throwable, the dispatcher never answers, and
+     * the caller's stream hangs until it times out) was recorded in
+     * {@code dp.query.requests} as a <em>success</em>, with a full set of stage histograms. The
+     * error rate stayed flat for precisely the requests that failed hardest, which is the one
+     * reading an operator cannot afford to have wrong.
+     *
+     * <p>It does not overwrite an outcome already set: a dispatcher that marked the request
+     * rejected or empty and then threw while sending its response has already classified it more
+     * precisely than "something escaped".
+     */
+    public synchronized void markFailedWithException() {
+        if (DpMetrics.OUTCOME_SUCCESS.equals(outcome)) {
+            outcome = DpMetrics.OUTCOME_ERROR;
+        }
     }
 
     // ---- request shape (slow-query line only) ------------------------------------------------

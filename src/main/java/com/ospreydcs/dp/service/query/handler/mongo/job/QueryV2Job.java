@@ -41,8 +41,9 @@ public class QueryV2Job extends HandlerJob {
      * the dispatcher throws. That escape is the hang documented throughout CLAUDE.md -- the worker
      * swallows the exception, the dispatcher never answers, and the caller's stream stays open
      * until it times out. The metrics cannot prevent it, but completing here means it is at least
-     * visible: the request appears in {@code dp.query.requests}, and the outcome it carries is
-     * whichever one had been set before the throw.
+     * visible, and the {@code catch} classifies it: the request appears in
+     * {@code dp.query.requests} as an <em>error</em> rather than carrying the default outcome of
+     * success, which is what it silently did before.
      */
     @Override
     public void execute() {
@@ -50,8 +51,24 @@ public class QueryV2Job extends HandlerJob {
         telemetry.markJobStarted(this);
         try {
             dispatcher.executeAndDispatch(resolvedQuery, mongoClient);
+        } catch (RuntimeException e) {
+            // Classify before completing. The worker swallows whatever escapes here, so without
+            // this the request -- which never sent a response and left the caller's stream hanging
+            // -- would be recorded with the telemetry's default outcome of success.
+            telemetry.markFailedWithException();
+            throw e;
         } finally {
             telemetry.complete();
         }
+    }
+
+    /**
+     * Records the request as an error when the job is dropped before it ever runs; see
+     * {@code HandlerJob.discarded()}.
+     */
+    @Override
+    public void discarded() {
+        telemetry.markFailedWithException();
+        telemetry.complete();
     }
 }

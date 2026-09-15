@@ -146,7 +146,17 @@ public abstract class GrpcServerBase {
         // what the ITs exercise is the configuration production runs.
         DpTelemetry.configureServerBuilder(serverBuilder);
 
-        server = serverBuilder.build().start();
+        try {
+            server = serverBuilder.build().start();
+        } catch (IOException | RuntimeException e) {
+            // Same reasoning as the initService_() branch above: the metrics port is already bound
+            // and the shutdown hook that would release it is registered below, past this throw.
+            // Without this, an in-process caller that catches and retries hits a metrics port its
+            // own previous attempt still holds, and reports a telemetry bind error in place of the
+            // real gRPC bind failure.
+            DpTelemetry.shutdown();
+            throw e;
+        }
 
         LOGGER.info("Server started, listening on " + port);
 
@@ -170,13 +180,24 @@ public abstract class GrpcServerBase {
             server.shutdown().awaitTermination(TIMEOUT_TERMINATION_SECS, TimeUnit.SECONDS);
         }
 
-        // After the server has terminated, so that the final export includes the measurements of
-        // the requests that were still in flight when shutdown began.
+        // Drain the handler before shutting telemetry down. The gRPC server terminating is NOT
+        // when in-flight work finishes: finiService_() is where QueueHandlerBase.fini() runs
+        // executorService.awaitTermination(), and the jobs still draining there record
+        // dp.handler.*, dp.query.* and dp.ingest.* as they complete. Shutting the SDK down first
+        // sent every one of those measurements -- and the workers.max gauge close -- into a closed
+        // provider, losing exactly the tail of work an operator investigating a shutdown wants.
+        finiService_();
+
         DpTelemetry.shutdown();
     }
 
     /**
      * Await termination on the main thread since the grpc library uses daemon threads.
+     *
+     * <p>{@code finiService_()} is called by {@code stopServer()} rather than here, so that the
+     * handler drain happens before telemetry shuts down. It is idempotent
+     * ({@code QueueHandlerBase.fini()} returns early once {@code shutdownRequested} is set), so
+     * the JVM shutdown hook and this path cannot double-drain.
      */
     protected void blockUntilShutdown() throws InterruptedException {
         if (server != null) {

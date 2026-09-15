@@ -54,9 +54,23 @@ public class QueryDataJob extends HandlerJob {
             telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
             logger.debug("dispatching QueryJob id: {}", this.responseObserver.hashCode());
             dispatcher.handleResult(cursor);
+        } catch (RuntimeException e) {
+            // See QueryV2Job: the worker swallows this, so classify it before complete() records
+            // the request with its default outcome of success.
+            telemetry.markFailedWithException();
+            throw e;
         } finally {
             telemetry.complete();
         }
     }
 
+    /**
+     * Records the request as an error when the job is dropped before it ever runs; see
+     * {@code HandlerJob.discarded()}.
+     */
+    @Override
+    public void discarded() {
+        telemetry.markFailedWithException();
+        telemetry.complete();
+    }
 }

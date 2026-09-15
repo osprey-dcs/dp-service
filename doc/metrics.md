@@ -238,8 +238,20 @@ slow-query log is for the individual request.
 | `dp.query.stage.duration` | histogram | s | `rpc.method`, `dp.stage` | Time in one stage of handling a query — see [Query stages](#query-stages) |
 | `dp.query.requests` | counter | — | `rpc.method`, `dp.outcome` | Completed query requests |
 | `dp.query.buckets` | counter | — | `rpc.method` | Bucket documents read from MongoDB serving queries |
-| `dp.query.response.messages` | counter | — | `rpc.method` | Response messages sent to clients |
-| `dp.query.response.bytes` | counter | By | `rpc.method` | Serialized response bytes sent to clients |
+| `dp.query.response.messages` | counter | — | `rpc.method` | Result-bearing response messages sent to clients |
+| `dp.query.response.bytes` | counter | By | `rpc.method` | Serialized bytes of those messages, as sent on the wire |
+
+The two response counters cover **result-bearing** messages only. Reject and error
+(`ExceptionalResult`) responses, and the empty payloads sent before a page is assembled, are not
+counted: they carry a status rather than data, and a near-constant term would distort a counter
+whose purpose is measuring result volume. Those requests are identified by `dp.outcome` on
+`dp.query.requests` instead.
+
+The consequence for a dashboard: `dp.query.response.bytes / dp.query.requests` is bytes per
+**request** — a rejected request contributes a denominator with no numerator. Divide by
+`dp.query.response.messages` for a per-message average. The byte count is the size of the message
+actually put on the wire, including the response envelope and its timestamp, not the nested result
+payload.
 
 `rpc.method` is the bare method name, and covers the eight **data retrieval** methods:
 
