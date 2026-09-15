@@ -13,6 +13,37 @@ MongoClient:
   # exercises the fresh-install path on every run — which is the path production installs take too.
   runSchemaMigrationsOnStartup: ${DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP:true}
 
+# Telemetry: Metrics collection and export (issue #212). See doc/metrics.md.
+# Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.
+#
+# Deliberately left ENABLED, contrary to this ticket's plan, which called for disabling it here on
+# the reasoning that unit tests constructing handlers without a server should get the no-op SDK.
+# They already do, and not because of this key: DpTelemetry holds the no-op instance until
+# init() is called, and the only production caller is GrpcServerBase.start(), which no unit test
+# runs. The integration tests install their own SDK through initForTest(), which does not consult
+# this key at all.
+#
+# So the only test that reads it is DpTelemetryPrometheusTest, which calls the real init() and
+# asserts against a live /metrics scrape -- the one test covering the exporter, the renderer, and
+# the endpoint. Setting this false would make it the only test that cannot pass.
+Telemetry:
+  enabled: ${DP_TELEMETRY_ENABLED:true}
+  prometheusHost: ${DP_TELEMETRY_PROMETHEUS_HOST:0.0.0.0}
+
+# The per-service metrics ports, mirrored for parity. This file REPLACES the main application.yml
+# rather than merging with it, so a key absent here falls back to the DEFAULT_* constant in code
+# instead of the main file's value. No test reads these today (nothing under test calls
+# getMetricsPort_(), since no test starts a server through GrpcServerBase), but a key that silently
+# resolves somewhere other than where a reader expects is the trap this file's shadowing sets.
+IngestionServer:
+  metricsPort: ${DP_INGESTION_SERVER_METRICS_PORT:9464}
+QueryServer:
+  metricsPort: ${DP_QUERY_SERVER_METRICS_PORT:9465}
+AnnotationServer:
+  metricsPort: ${DP_ANNOTATION_SERVER_METRICS_PORT:9466}
+IngestionStreamServer:
+  metricsPort: ${DP_INGESTION_STREAM_SERVER_METRICS_PORT:9467}
+
 # Buckets: Limits on the buckets collection, enforced by the ingestion service.
 # Mirrors the main application.yml key so tests exercise the same default; see that file for docs.
 Buckets:
@@ -24,6 +55,11 @@ QueryHandler:
   queryV2DefaultPageSize: ${DP_QUERY_HANDLER_QUERY_V2_DEFAULT_PAGE_SIZE:10000}
   queryV2MaxPageSize: ${DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE:100000}
   queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
+  # Zero rather than the production default of 1000 (issue #212, D5): every test query is then
+  # "slow", so QueryMetricsIT can assert the slow-query line is produced and carries the stage
+  # breakdown. The threshold is resolved once per JVM, and the integration tests share one, so a
+  # per-test override is not available -- this is the only place it can be set for the suite.
+  slowQueryLogThresholdMillis: ${DP_QUERY_HANDLER_SLOW_QUERY_LOG_THRESHOLD_MILLIS:0}
 
 # AnnotationHandler: Annotation Service request handler settings (sample status paging/size limits).
 # Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.

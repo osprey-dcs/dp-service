@@ -10,6 +10,15 @@
         <Logger name="io.grpc.netty" level="error"/>
         <Logger name="io.netty.util" level="off"/>
         <Logger name="org.mongodb.driver" level="error"/>
+        <!-- Slow query log (issue #212). One WARN line per query whose total handling time reaches
+             QueryHandler.slowQueryLogThresholdMillis, carrying the resolve/queue/db/process
+             breakdown and the request's shape. Named as a literal rather than a class name so that
+             it stays a stable routing target: add an <AppenderRef> here, with additivity="false",
+             to send these lines to their own file. See doc/metrics.md. -->
+        <Logger name="dp.slowquery" level="warn"/>
+        <!-- The OpenTelemetry SDK logs at info on every export interval; warn keeps genuine export
+             failures visible without a line per scrape. -->
+        <Logger name="io.opentelemetry" level="warn"/>
         <Root level="info">
             <AppenderRef ref="console" />
         </Root>

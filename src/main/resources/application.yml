@@ -80,11 +80,41 @@ Buckets:
   # reads it.
   maxBucketSpanSeconds: ${DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS:86400}
 
+# Telemetry: Metrics collection and export (issue #212). See doc/metrics.md.
+Telemetry:
+
+  # Telemetry.enabled: Whether the service collects and exports metrics. When false the service
+  # installs a no-op OpenTelemetry instance: instrumentation still runs but records nothing, no
+  # metrics port is bound, and there is no measurable cost.
+  #
+  # Enabled by default, which means every service binds a second port (see <Service>Server.metricsPort
+  # below). If that port cannot be bound the service FAILS TO START rather than running without
+  # metrics -- a service that silently has no metrics is discovered only by an operator going
+  # looking for a number that is not there.
+  enabled: ${DP_TELEMETRY_ENABLED:true}
+
+  # Telemetry.prometheusHost: Interface the Prometheus scrape endpoint binds to. Deployment-wide
+  # rather than per-service, since all four services on a host share an interface. Use 127.0.0.1
+  # to expose metrics only to a local scraper or sidecar.
+  prometheusHost: ${DP_TELEMETRY_PROMETHEUS_HOST:0.0.0.0}
+
+  # The exporter itself is configured through the standard OTEL_* environment variables, which
+  # override the dp-supplied defaults (metrics exporter "prometheus", traces and logs off). To push
+  # to an OpenTelemetry collector instead of being scraped:
+  #   OTEL_METRICS_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+  # To leave telemetry on but export nothing: OTEL_METRICS_EXPORTER=none.
+
 # IngestionServer: Settings for the Ingestion server process.
 IngestionServer:
 
   # IngestionServer.port: Network port for Ingestion Service gRPC.
   port: ${DP_INGESTION_SERVER_PORT:50051}
+
+  # IngestionServer.metricsPort: Port for this service's Prometheus scrape endpoint, serving /metrics.
+  # Each service has its own so all four can run on one host. No port is bound when
+  # Telemetry.enabled is false. If the port is already bound the service fails to start (see
+  # Telemetry.enabled above).
+  metricsPort: ${DP_INGESTION_SERVER_METRICS_PORT:9464}
 
 # IngestionHandler: Settings for the Ingestion Service request handler.
 IngestionHandler:
@@ -114,6 +144,12 @@ QueryServer:
   # QueryServer.port: Network port for Query Service gRPC.
   port: ${DP_QUERY_SERVER_PORT:50052}
 
+  # QueryServer.metricsPort: Port for this service's Prometheus scrape endpoint, serving /metrics.
+  # Each service has its own so all four can run on one host. No port is bound when
+  # Telemetry.enabled is false. If the port is already bound the service fails to start (see
+  # Telemetry.enabled above).
+  metricsPort: ${DP_QUERY_SERVER_METRICS_PORT:9465}
+
 # QueryHandler: Settings for the Query Service request handler.
 QueryHandler:
 
@@ -138,6 +174,16 @@ QueryHandler:
   # to. A selector resolving to more PVs is rejected, directing the caller to narrow the selector.
   queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
 
+  # QueryHandler.slowQueryLogThresholdMillis: A query whose total handling time reaches this
+  # threshold writes one WARN line to the "dp.slowquery" logger, carrying the per-stage breakdown
+  # (resolve/queue/db/process) and the shape of the request -- PV count, the first few PV names,
+  # time range, page size. That per-request detail is deliberately NOT in the metrics, whose
+  # attributes must stay bounded (see doc/metrics.md); the log line is where it lives.
+  #
+  # Set to 0 to log every query, or to a negative value to disable the line entirely. Resolved once
+  # per process at the first query, so a change requires a restart.
+  slowQueryLogThresholdMillis: ${DP_QUERY_HANDLER_SLOW_QUERY_LOG_THRESHOLD_MILLIS:1000}
+
 # QueryBenchmark: Settings for the Query Service performance benchmark applications.
 QueryBenchmark:
 
@@ -149,6 +195,12 @@ AnnotationServer:
 
   # annotationServer.port: Network port for Annotation Service gRPC.
   port: ${DP_ANNOTATION_SERVER_PORT:50053}
+
+  # AnnotationServer.metricsPort: Port for this service's Prometheus scrape endpoint, serving /metrics.
+  # Each service has its own so all four can run on one host. No port is bound when
+  # Telemetry.enabled is false. If the port is already bound the service fails to start (see
+  # Telemetry.enabled above).
+  metricsPort: ${DP_ANNOTATION_SERVER_METRICS_PORT:9466}
 
 # annotationHandler: Settings for the annotation Service request handler.
 AnnotationHandler:
@@ -200,6 +252,12 @@ IngestionStreamServer:
 
   # ingestionStreamServer.port: Network port for Ingestion Stream Service gRPC.
   port: ${DP_INGESTION_STREAM_SERVER_PORT:50054}
+
+  # IngestionStreamServer.metricsPort: Port for this service's Prometheus scrape endpoint, serving /metrics.
+  # Each service has its own so all four can run on one host. No port is bound when
+  # Telemetry.enabled is false. If the port is already bound the service fails to start (see
+  # Telemetry.enabled above).
+  metricsPort: ${DP_INGESTION_STREAM_SERVER_METRICS_PORT:9467}
 
 # ingestionStreamHandler: Settings for the Ingestion Stream Service request handler.
 IngestionStreamHandler:
