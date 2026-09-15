@@ -804,10 +804,11 @@ public class QueryClient extends ServiceApiClientBase {
      * <em>silently clamped</em> rather than rejected.  A page is bounded by whichever of the row
      * limit and the outgoing message byte budget trips first.
      *
-     * <p><strong>A small {@code limit} costs server work without saving any.</strong>  The
-     * underlying Mongo retrieval is not limited; the server drains buckets until the byte budget
-     * trips and then truncates the assembled table to {@code limit} rows.  Leave {@code limit}
-     * unset unless the caller needs small pages for a specific reason.
+     * <p><strong>The server retrieves a page in time slices sized toward {@code limit}</strong>
+     * (dp-service #274): every slice covers every selected PV, so a page is complete across PVs,
+     * and the slice length adapts so a page costs a few retrievals rather than one per fixed
+     * interval.  A small {@code limit} therefore does save work, but each page still pays a
+     * per-retrieval cost; leave {@code limit} unset unless the caller needs small pages.
      *
      * <p>{@code pageToken} continues a unary query from a prior result's {@code nextPageToken} and
      * <strong>must be empty for the streaming method</strong> — the server rejects a non-empty
@@ -1352,10 +1353,12 @@ public class QueryClient extends ServiceApiClientBase {
      * <p><strong>Paging.</strong>  Pass a prior result's {@code nextPageToken} as {@code
      * params.pageToken} to continue; an empty {@code nextPageToken} indicates the last page.  A
      * page is bounded by whichever of {@code limit} rows and the outgoing message byte budget
-     * (4,096,000 bytes by default) trips first.  The byte accounting measures sample values only —
-     * not the timestamp list, per-column framing, names, or the response envelope — so a page can
-     * <strong>overshoot the budget by up to one bucket</strong>.  Raise the client channel's
-     * {@code maxInboundMessageSize} accordingly.
+     * (4,096,000 bytes by default) trips first; a page ended by the budget holds the rows of the
+     * time slices that fit, and {@code nextPageToken} resumes at the first slice that did not
+     * (dp-service #274).  The byte accounting measures sample values only — not the timestamp
+     * list, per-column framing, names, or the response envelope — so a page's wire size can exceed
+     * the budget by that framing.  Raise the client channel's {@code maxInboundMessageSize}
+     * accordingly.
      *
      * <p><strong>A single oversized row is a hard error, not a page.</strong>  If the values for
      * one timestamp across all selected PVs exceed the byte budget, the request fails.  The

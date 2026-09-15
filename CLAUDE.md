@@ -675,8 +675,10 @@ The query-side bucket overlap filter adds a `firstTime` lower bound,
 `MongoQueryFilterBuilder.bucketOverlapsRangeFilter()`. The span is **not configuration**: it is the
 largest `lastTime.seconds - firstTime.seconds` ever ingested for each PV, recorded by the ingestion
 service in the `pvStats` collection (`PvStatsDocument`, `_id` = pvName) and resolved on every query
-by `MongoSyncQueryClient.resolveMaxBucketSpanSeconds()` as the maximum over the request's PVs
-(pattern queries run the same regex against `pvStats._id`). This replaced the #197 startup scan
+by `MongoSyncQueryClient.resolveSpanClasses()`, which partitions the request's PVs into
+power-of-two span classes, each bounded by its own actual maximum (#274, below; the V1 `queryTable`
+pattern arm has no PV list and keeps `resolveMaxBucketSpanSeconds()` over the `pvStats._id`
+regex matches). This replaced the #197 startup scan
 that verified the whole archive against the configured limit and disabled the bound process-wide
 on violation. Every failure mode is a **silent wrong answer** — a bucket the bound excludes is
 missing from the result, not an error — so the invariants below are load-bearing:
@@ -713,9 +715,28 @@ missing from the result, not an error — so the invariants below are load-beari
   throws `DpException` on a read failure, the client returns a null cursor, and every dispatcher
   reports that as an error. A stored *negative* span is instead logged at `warn` and clamped to 0 —
   no writing path can produce one (ingestion `$max`es a non-negative span; the v5 seed filters
-  `$gte 0`), so it means hand-editing, and rejecting it would fail every query naming that PV and,
-  since the bound is a maximum over the request's PVs, every multi-PV query including it. Clamping
-  narrows that one PV to the no-document bound (D6), which is what D10 already chose at write time.
+  `$gte 0`), so it means hand-editing, and rejecting it would fail every query naming that PV and
+  every multi-PV query including it. Clamping narrows that one PV to the no-document bound (D6),
+  which is what D10 already chose at write time.
+- **The overlap residual runs after the fetch, so the span bound is a document-fetch bound, and
+  the request is partitioned by span class (#274).** Measured with `explain` on the exact
+  production filter, sort, and hint: the `lastTime >= begin` half and the nanos half of
+  `firstTime < end` are evaluated on the `FETCH` stage, and `totalDocsExamined` equals
+  `totalKeysExamined`. Every index key inside `[begin − span, end]` is a fetched document. A single
+  bound taken as the maximum over a request's PVs therefore made one long-span PV (the customer
+  archive has 42-day spans) fetch that span's worth of history for *every* PV in the request.
+  `SpanClass` assigns each PV to a class by its own span (class 0 for spans ≤ 1 s, which includes
+  PVs with no `pvStats` document; class *k* for `2^(k−1) < span ≤ 2^k`), each class's find carries
+  the class's actual maximum, and `MergedBucketCursor` merges the class cursors in
+  `(pvName, firstTime)` order. A request whose PVs share one class returns that class's cursor
+  directly with a filter identical to the pre-partition query, so the plan-shape test's existing
+  assertions keep pinning the common case. All class cursors are opened eagerly inside the
+  retrieval method's `try`/`catch`, so a class that fails to open (missing hinted index, outage)
+  still reports the null cursor; `MongoSyncQueryClientMissingIndexTest` pins a two-class request.
+  The merged cursor is wrapped in `TimedMongoCursor` with plain inner cursors, so the `db` stage
+  covers the merge. If a future server version evaluates the residual on the index scan, the
+  `totalDocsExamined == totalKeysExamined` assertion in the plan-shape test (#275) is the signal
+  that the partition's cost model has changed.
   Never degrade to the unbounded scan — on the customer archive that is a four-minute query hiding a database problem
   behind slow but "successful" responses.
 - **`Buckets.maxBucketSpanSeconds` is ingestion-only.** `BucketSpanLimits` validates it once
@@ -786,6 +807,70 @@ Like the max-bucket-span invariant, the failure mode is a **silent wrong answer*
 
 - **Never collapse the fragments** into a single `[min begin, max end)` window for sample filtering; that window spans the gaps. `computeWindowBegin()` deliberately returns only a begin — there is no correct single upper bound. Do not reintroduce a window end.
 - **`TimestampDataMap.getColumnIndex()` is a mutator.** It appends unseen names to the list that determines the emitted/exported column set, so it must be called for every column regardless of whether any sample survives trimming — otherwise a PV with no in-range samples is silently dropped instead of emitted as an all-empty column. `addColumnsToTable()` registers columns up front for this reason; `AnnotationCalculationsIT` (16 columns expected) is the regression guard.
+
+### querySamples Retrieval Is Time-Sliced (issue #274)
+
+Every bucket query is sorted `(pvName, firstTime)`, so its cursor is **PV-major**: all of one PV's
+buckets in the window, then the next PV's. Before #274 the unary `querySamples` page was assembled
+by draining that cursor until the outgoing byte budget tripped, on the assumption that only the
+last assembled timestamp could be incomplete. Under PV-major order that is false: a trip partway
+through the first PV left every later PV with nothing, the page went out with those columns
+all-unset (indistinguishable from "no sample here"), and the timestamp token resumed at the same
+position, so the later PVs were **never returned** — a silent wrong answer reproduced with two PVs
+and a 40-byte budget (30 values for the first PV, 0 for the second, no error). With the production
+budget the trip point is ~455k values from the first PV in name order: a window over ~7.5 minutes at
+1 kHz, ~12 hours at 10 Hz, ~5 days at 1 Hz.
+
+Both samples paths therefore retrieve through `AbstractQuerySamplesDispatcher.SliceDrain`:
+
+- **A slice is one query over every resolved PV, and is accepted whole or discarded whole.** A
+  timestamp inside an accepted slice is complete across every PV by construction. Never emit rows
+  from a partially drained retrieval on these paths.
+- **The slice end is a retrieval bound applied per fragment, not a collapsed retention window.**
+  `TimeInterval.clampToWindow()` intersects each resolved fragment with the slice and is the single
+  source for both the client's per-fragment `$or` (`executeQuerySamplesV2`) and the dispatcher's
+  retention intervals, so the #207 gap trim still holds inside a slice. `computeWindowBegin()`
+  stays begin-only for that reason. A slice that intersects no fragment costs no database call; the
+  position jumps to the next fragment begin.
+- **Slice length adapts proportionally, because each retrieval pays the span scan.** After an
+  accepted slice of *r* rows toward a target of `pageSize`, the length is multiplied by
+  `clamp(pageSize / max(r, 1), 1, 16)`, reaching a 10k-row page in two or three retrievals at any
+  steady rate. Doubling would need eight retrievals at 1 Hz, each fetching `[begin − span, end]`.
+  The start is `QueryHandler.queryV2SamplesInitialSliceSeconds` (60), in both `application.yml`s.
+- **A budget trip discards the slice and ends the page at the slice begin** (`TimestampMap.removeFrom`).
+  Only when the page is still empty is the slice halved and retried; a trip at one nanosecond is
+  the indivisible-oversized error. Every non-error page still makes progress, and the token is the
+  first undrained timestamp — including on an **exactly filled** page, where nothing is truncated
+  and the token is the drain's position (a missing token there silently ended the traversal early;
+  `testGapWiderThanTheSliceIsJumpedWithoutRetrieval` pins it).
+- **The stream path is bounded by the budget plus one slice.** It emits after each slice that
+  reaches the row limit, on every budget trip (then retries the slice), and at exhaustion. It no
+  longer materializes the window; do not reintroduce a `null` size limit on a samples path.
+- **The status join is resolved per slice** (`resolveSampleStatusTimestamps` takes the slice end),
+  and each slice's retrieval and cursor are timed into the request's `db` stage.
+
+The regression guards are the two-PV byte-budget tests in `MongoSyncQuerySamplesV2Test` (unary and
+stream), which count set values per column across every page; the single-PV seam test cannot see
+this class of defect. `TimestampDataMap.getColumnIndex()` is hash-backed and
+`TabularDataUtility.addColumnsToTable()` resolves each column's index once per call, not once per
+retained sample (it was an `indexOf` per value, O(columns) string compares per sample on wide
+queries).
+
+### Outbound Flow Control on Streaming Responders (issue #274)
+
+gRPC never blocks `onNext`; every message a slow client has not consumed is buffered in the
+transport. `queryDataStream`, `queryBucketsStream`, and `querySamplesStream` therefore call
+`OutboundReadinessGate.awaitReady()` (`common/grpc`) before every streamed send. The gate wraps
+`ServerCallStreamObserver.isReady()`/`setOnReadyHandler()`; a plain `StreamObserver` (the unit
+tests) yields a no-op gate. It is built in the dispatcher **constructor** because the handler
+constructs stream dispatchers synchronously inside the service method, on the gRPC thread, which is
+where gRPC requires the ready handler to be registered — a dispatcher constructed later (on a worker)
+would register too late. `awaitReady()` returns false on client cancellation or after
+`QueryHandler.streamReadyTimeoutSeconds` (300), and the dispatcher then closes its cursor and
+returns without completing: a cancelled call has no reader, and a stalled one is better left
+incomplete than given another buffered message. The trade is deliberate — a slow reader now
+occupies one worker instead of the heap. `queryDataBidiStream` is client-paced and ungated.
+`FakeServerCallStreamObserver` (test) drives the gate without a server.
 
 ## Sample Status API (issue #238)
 
