@@ -4,6 +4,7 @@ import com.ospreydcs.dp.service.annotation.handler.interfaces.AnnotationHandlerI
 import com.ospreydcs.dp.service.annotation.handler.mongo.MongoAnnotationHandler;
 import com.ospreydcs.dp.service.annotation.service.AnnotationServiceImpl;
 import com.ospreydcs.dp.service.common.server.GrpcServerBase;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,6 +18,8 @@ public class AnnotationGrpcServer extends GrpcServerBase {
     // configuration
     public static final String CFG_KEY_PORT = "AnnotationServer.port";
     public static final int DEFAULT_PORT = 50053;
+    public static final String CFG_KEY_METRICS_PORT = "AnnotationServer.metricsPort";
+    public static final int DEFAULT_METRICS_PORT = 9466;
 
     // instance variables
     private final AnnotationServiceImpl serviceImpl;
@@ -29,6 +32,16 @@ public class AnnotationGrpcServer extends GrpcServerBase {
     @Override
     protected int getPort_() {
         return configMgr().getConfigInteger(CFG_KEY_PORT, DEFAULT_PORT);
+    }
+
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_ANNOTATION;
+    }
+
+    @Override
+    protected int getMetricsPort_() {
+        return configMgr().getConfigInteger(CFG_KEY_METRICS_PORT, DEFAULT_METRICS_PORT);
     }
 
     @Override

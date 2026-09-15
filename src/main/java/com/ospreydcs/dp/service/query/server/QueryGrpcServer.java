@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.server;
 
 import com.ospreydcs.dp.service.common.server.GrpcServerBase;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import com.ospreydcs.dp.service.query.handler.interfaces.QueryHandlerInterface;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
@@ -16,6 +17,8 @@ public class QueryGrpcServer extends GrpcServerBase {
     // configuration
     public static final String CFG_KEY_PORT = "QueryServer.port";
     public static final int DEFAULT_PORT = 50052;
+    public static final String CFG_KEY_METRICS_PORT = "QueryServer.metricsPort";
+    public static final int DEFAULT_METRICS_PORT = 9465;
 
     // instance variables
     private final QueryServiceImpl serviceImpl;
@@ -28,6 +31,16 @@ public class QueryGrpcServer extends GrpcServerBase {
     @Override
     protected int getPort_() {
         return configMgr().getConfigInteger(CFG_KEY_PORT, DEFAULT_PORT);
+    }
+
+    @Override
+    protected String getServiceName_() {
+        return DpMetrics.SERVICE_QUERY;
+    }
+
+    @Override
+    protected int getMetricsPort_() {
+        return configMgr().getConfigInteger(CFG_KEY_METRICS_PORT, DEFAULT_METRICS_PORT);
     }
 
     @Override
