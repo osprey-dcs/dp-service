@@ -133,6 +133,33 @@ public class QueryMetricsIT extends GrpcIntegrationTestBase {
      * <p>Polls rather than sleeps a fixed interval so a slow machine does not need a longer
      * constant, and fails with the stages actually seen rather than a bare timeout.
      */
+    /**
+     * Waits for at least one captured slow-query line containing {@code match}.
+     *
+     * <p>Separate from {@link #awaitRequestRecorded} because the two signals are written at
+     * different points of {@code QueryTelemetry.complete()} -- the counter first, the log line
+     * afterwards -- so a test that awaits the counter and then reads the appender has a real race
+     * against the recording thread.
+     */
+    private List<String> awaitSlowQueryLines(String match) {
+        final long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            final List<String> lines = slowQueryAppender.messages().stream()
+                    .filter(message -> message.contains(match))
+                    .toList();
+            if (!lines.isEmpty()) {
+                return lines;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return List.of();
+    }
+
     private void awaitRequestRecorded(String rpcMethod, long expectedRequests) {
         final long deadline = System.currentTimeMillis() + 30_000;
         long seen = 0;
@@ -405,11 +432,12 @@ public class QueryMetricsIT extends GrpcIntegrationTestBase {
         final QueryBucketsRequest request =
                 QueryTestBase.buildQueryBucketsRequest(spec(List.of(PV_1)), 0, null, false, false);
         queryServiceWrapper.sendQueryBuckets(request);
-        awaitRequestRecorded("queryBuckets", 1);
 
-        final List<String> lines = slowQueryAppender.messages().stream()
-                .filter(message -> message.contains("method: queryBuckets"))
-                .toList();
+        // Wait for the log line itself, not for dp.query.requests. complete() increments the
+        // counter before it writes the line, so awaiting the counter can return in the window
+        // between the two -- an intermittent "no slow query line was produced" that reproduces
+        // only under a loaded full-suite run.
+        final List<String> lines = awaitSlowQueryLines("method: queryBuckets");
         assertFalse("no slow query line was produced", lines.isEmpty());
 
         final String line = lines.get(lines.size() - 1);
