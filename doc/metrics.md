@@ -707,7 +707,9 @@ Stated explicitly, because each of these is something an operator might reasonab
   See [Ingestion metrics](#ingestion-metrics).
 - **gRPC-layer validation rejects are counted nowhere** — not in `dp.query.requests` (no telemetry
   context exists yet) and not as a gRPC error (a rejection is an `OK` response carrying an
-  `ExceptionalResult`). See [Query metrics](#query-metrics).
+  `ExceptionalResult`). Affects the V1 methods only; the V2 methods validate inside the handler,
+  where a context exists, and their resolution rejects are counted. Tracked as
+  [#279](https://github.com/osprey-dcs/dp-service/issues/279). See [Query metrics](#query-metrics).
 - **The annotation and ingestion-stream services have handler and database metrics but no
   request-level ones of their own** — no equivalent of `dp.query.requests` or `dp.ingest.requests`.
   Their `dp.handler.*` series (by `dp_service` and `dp_job`) plus `grpc.server.call.duration` are
