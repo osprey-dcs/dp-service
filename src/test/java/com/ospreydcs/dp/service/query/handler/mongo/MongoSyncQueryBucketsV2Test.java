@@ -28,6 +28,7 @@ import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient;
 import com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsUnaryDispatcher;
 import com.ospreydcs.dp.service.query.handler.mongo.job.QueryV2Job;
+import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import io.grpc.stub.StreamObserver;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -183,8 +184,8 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
             @Override public void onCompleted() { }
         };
         final QueryBucketsUnaryDispatcher dispatcher =
-                new QueryBucketsUnaryDispatcher(observer, byteBudget);
-        new QueryV2Job(resolvedQuery, dispatcher, clientTestInterface).execute();
+                new QueryBucketsUnaryDispatcher(observer, byteBudget, new QueryTelemetry("queryBucketsTest"));
+        new QueryV2Job(resolvedQuery, dispatcher, clientTestInterface, new QueryTelemetry("queryBucketsTest")).execute();
         assertEquals("expected exactly one unary response", 1, responses.size());
         return responses.get(0);
     }
@@ -230,8 +231,8 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
         };
         final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
-                        observer, byteBudget);
-        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface).execute();
+                        observer, byteBudget, new QueryTelemetry("queryBucketsTest"));
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, new QueryTelemetry("queryBucketsTest")).execute();
         return outcome;
     }
 
