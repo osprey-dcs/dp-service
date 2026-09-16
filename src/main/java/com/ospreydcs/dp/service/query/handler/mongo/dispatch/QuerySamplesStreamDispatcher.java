@@ -1,31 +1,28 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
-import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
-import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
-import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
-import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Server-streaming {@code querySamplesStream} formatter (Q4/Q5/Q8/Q9). Fire-and-consume: assembles
- * the complete union table for the whole window <em>once</em> (like V1 queryTable), then emits it in
- * row-chunks of {@code limit} timestamps — sidestepping the unary path's window-sizing/token
- * machinery entirely (there is no resumable boundary).
+ * Server-streaming {@code querySamplesStream} formatter (Q4/Q5/Q8/Q9). Retrieves the window in time
+ * slices through the shared {@link SliceDrain} (issue #274) and emits the accumulated rows in
+ * chunks of {@code limit} timestamps whenever an accepted slice brings the accumulation to at least
+ * {@code limit} rows, whenever a slice trips the byte budget (the accumulated rows go out and the
+ * slice is retried against a fresh budget), and once more at exhaustion. Memory is therefore
+ * bounded by the byte budget plus one slice, rather than by the whole window as before #274.
  *
  * <p>Column seeding (Q9) is computed once, so the column set and order are trivially stable across
  * streamed chunks. Each chunk also respects the outgoing message-size budget: a chunk is flushed
@@ -33,28 +30,36 @@ import java.util.Map;
  * rows. {@code nextPageToken} is empty on every message (the stream signals completion via
  * {@code onCompleted}). An empty result emits a single empty message. A non-scalar PV is rejected
  * (Q4), same as the unary path.
- *
- * <p><b>Memory note:</b> this materializes the full table server-side (bounded by heap, not the
- * per-message byte limit); for very large ranges the bounded-memory, resumable unary
- * {@code querySamples} is the intended path.
  */
 public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher {
 
-    private static final Logger logger = LogManager.getLogger();
-
-    private final StreamObserver<QuerySamplesResponse> responseObserver;
+    /**
+     * Outbound flow control (#274, plan D8), built here because the handler constructs this
+     * dispatcher on the gRPC thread, where the ready handler must be registered.
+     */
+    private final OutboundReadinessGate gate;
 
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
-        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(), telemetry);
+        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
+                MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
     }
 
     /** Package/test constructor allowing the outgoing message-size budget to be injected. */
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
             QueryTelemetry telemetry) {
-        super(byteBudget, telemetry);
-        this.responseObserver = responseObserver;
+        this(responseObserver, byteBudget, MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
+    }
+
+    /** Test constructor allowing the byte budget and the initial slice length to be injected. */
+    public QuerySamplesStreamDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
+            long initialSliceNanos, QueryTelemetry telemetry) {
+        super(responseObserver, byteBudget, initialSliceNanos, telemetry);
+        this.gate = OutboundReadinessGate.forObserver(
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds(),
+                "querySamplesStream id: " + responseObserver.hashCode());
     }
 
     @Override
@@ -67,78 +72,75 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         }
 
         final long[] windowBegin = computeWindowBegin(resolvedQuery);
+        final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
+        final SliceDrain drain = new SliceDrain(
+                resolvedQuery, mongoClient, tableValueMap, windowBegin[0], windowBegin[1]);
+        final int chunkRowLimit = resolvedQuery.getPageSize();
 
-        // Screen the empty window ahead of the database call so that a null cursor from the client
-        // can only mean a failure; same clamp as the client's retrieval filter (#207), so the two
-        // checks cannot disagree. See QuerySamplesUnaryDispatcher for the full rationale.
-        final List<TabularDataUtility.RetentionInterval> retentionIntervals =
-                retentionIntervals(resolvedQuery, windowBegin[0], windowBegin[1]);
-        if (retentionIntervals.isEmpty()) {
+        boolean emittedAnything = false;
+        try {
+            drainLoop:
+            while (true) {
+                switch (drain.drainNext()) {
+                    case ACCEPTED -> {
+                        if (tableValueMap.size() >= chunkRowLimit) {
+                            final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
+                            if (emitted < 0) {
+                                return; // oversized-row error already sent
+                            }
+                            emittedAnything |= emitted > 0;
+                            drain.markEmitted();
+                        }
+                    }
+                    case BUDGET_TRIP -> {
+                        // the accumulated rows fill the budget; send them, then retry the slice
+                        final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
+                        if (emitted < 0) {
+                            return;
+                        }
+                        emittedAnything |= emitted > 0;
+                        drain.markEmitted();
+                    }
+                    case EXHAUSTED -> {
+                        final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
+                        if (emitted < 0) {
+                            return;
+                        }
+                        emittedAnything |= emitted > 0;
+                        break drainLoop;
+                    }
+                    case OVERSIZED -> {
+                        // a single timestamp larger than the whole budget cannot be chunked; error
+                        // out naming it rather than emit an over-limit message gRPC would abort on
+                        sendOversizedRowError(drain.resumeSecs(), drain.resumeNanos(), byteBudget);
+                        return;
+                    }
+                }
+            }
+        } catch (DpException e) {
+            sendDrainFailure(e); // scalar-only reject (Q4), or error
+            return;
+        }
+
+        if (!emittedAnything) {
             telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
+        responseObserver.onCompleted();
+    }
 
-        final long queryStartNanos = System.nanoTime();
-        final MongoCursor<BucketDocument> cursor =
-                mongoClient.executeQuerySamplesV2(resolvedQuery, windowBegin[0], windowBegin[1]);
-        telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
-
-        // Null is a retrieval failure (a database error, or a failed pvStats span read — #232 plan
-        // D8): report an error rather than an empty stream, which would silently return no data.
-        if (cursor == null) {
-            final String msg = "executeQuerySamplesV2 returned null cursor";
-            logger.error(msg + " id: " + responseObserver.hashCode());
-            telemetry.markError();
-            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
-            return;
-        }
-
-        final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
-
-        try (cursor) {
-            // Resolve the sampleStatusSelector (null when absent) to per-PV matching-timestamp sets
-            // for the assembly-time join; composes with the fragment trim by intersection.
-            // Its own query against sampleStatusBuckets, invisible to the bucket cursor -- see the
-            // unary dispatcher for why it is timed separately, and why the fold is in a finally.
-            final long statusStartNanos = System.nanoTime();
-            final TabularDataUtility.SampleStatusFilter statusFilter;
-            try {
-                statusFilter =
-                        statusRetentionFilter(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1]);
-            } finally {
-                telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
-            }
-            // Assemble the full window once. No sizeLimit: streaming materializes the whole table
-            // (memory-bounded, per the class note); the byte budget bounds each emitted chunk, below.
-            // Trimming uses every resolved fragment rather than a collapsed window (#207).
-            TabularDataUtility.addBucketsToTable(
-                    tableValueMap, cursor, 0, null,
-                    retentionIntervals,
-                    statusFilter);
-        } catch (NonScalarColumnException e) {
-            final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
-                    + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";
-            logger.debug(msg);
-            telemetry.markReject();
-            QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
-            return;
-        } catch (DpException e) {
-            final String msg = "exception building sample result: " + e.getMessage();
-            logger.error(msg, e);
-            telemetry.markError();
-            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
-            return;
-        } finally {
-            // In a finally so the db stage is folded in on the reject and error paths too.
-            recordCursorTime(cursor);
-        }
+    /**
+     * Emits every row currently in the map as one or more chunks bounded by the row limit and the
+     * byte budget, draining the map. Returns the number of rows emitted (0 when the map held
+     * none), or -1 when the caller must stop: after sending the indivisible-oversized-row error,
+     * or when the readiness gate refused a send (client cancelled or not draining; nothing sent).
+     */
+    private int emitAccumulated(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap) {
 
         final List<long[]> timestamps = collectTimestamps(tableValueMap);
         if (timestamps.isEmpty()) {
-            telemetry.markEmpty();
-            emitEmptyChunkAndComplete();
-            return;
+            return 0;
         }
 
         final int chunkRowLimit = resolvedQuery.getPageSize();
@@ -158,22 +160,20 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             final int rowsInChunk = rowIndex - chunkStart;
 
             // indivisible-oversized guard (mirrors the buckets streaming dispatcher): a single row
-            // larger than the whole budget cannot be chunked. Error out naming the timestamp rather
-            // than emit an over-limit message that gRPC would abort the whole stream on.
+            // larger than the whole budget cannot be chunked. The drain bounds a slice's DataValue
+            // bytes by the budget, but the estimate here adds per-row and per-column framing, so a
+            // row can still exceed a small budget. Error out naming the timestamp rather than emit
+            // an over-limit message that gRPC would abort the whole stream on.
             if (rowsInChunk == 0 && rowBytes > byteBudget) {
-                final String msg = "single querySamples row at timestamp "
-                        + timestamps.get(rowIndex)[0] + "." + timestamps.get(rowIndex)[1]
-                        + " exceeds the outgoing message size limit (" + rowBytes + " > "
-                        + byteBudget + " bytes); narrow the PV set or time range";
-                logger.error(msg);
-                telemetry.markError();
-                QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
-                return;
+                sendOversizedRowError(timestamps.get(rowIndex)[0], timestamps.get(rowIndex)[1], rowBytes);
+                return -1;
             }
 
             // byte flush: adding this row would overflow the budget and the chunk already has >= 1 row
             if (rowsInChunk >= 1 && chunkBytes + rowBytes > byteBudget) {
-                emitChunk(tableValueMap, timestamps, chunkStart, rowIndex, useSerialized);
+                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex, useSerialized)) {
+                    return -1;
+                }
                 chunkStart = rowIndex;
                 chunkBytes = 0;
             }
@@ -182,18 +182,20 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
             // count flush: the chunk reached the per-message row limit (inclusive of this row)
             if (rowIndex - chunkStart + 1 >= chunkRowLimit) {
-                emitChunk(tableValueMap, timestamps, chunkStart, rowIndex + 1, useSerialized);
+                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex + 1, useSerialized)) {
+                    return -1;
+                }
                 chunkStart = rowIndex + 1;
                 chunkBytes = 0;
             }
         }
 
         // flush the trailing partial chunk
-        if (chunkStart < timestamps.size()) {
-            emitChunk(tableValueMap, timestamps, chunkStart, timestamps.size(), useSerialized);
+        if (chunkStart < timestamps.size()
+                && !emitChunk(tableValueMap, timestamps, chunkStart, timestamps.size(), useSerialized)) {
+            return -1;
         }
-
-        responseObserver.onCompleted();
+        return timestamps.size();
     }
 
     /**
@@ -254,11 +256,19 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         return overhead;
     }
 
-    private void emitChunk(
+    /** Builds and emits one chunk; false when the gate refused (nothing built or sent). */
+    private boolean emitChunk(
             TimestampDataMap tableValueMap, List<long[]> timestamps,
             int fromRow, int toRow, boolean useSerialized) {
+        // Wait before building: the build drains the rows from the map, and a refused send would
+        // otherwise lose them (they are not re-queried on the stream path).
+        if (!gate.awaitReady()) {
+            telemetry.markAbandoned();
+            return false; // abandoned: the gate logged why
+        }
         final ColumnTable columnTable = buildColumnTable(tableValueMap, timestamps, fromRow, toRow, useSerialized);
         emit(columnTable);
+        return true;
     }
 
     private void emitEmptyChunkAndComplete() {

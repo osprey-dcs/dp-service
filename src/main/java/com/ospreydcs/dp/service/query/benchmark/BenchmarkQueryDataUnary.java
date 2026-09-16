@@ -16,7 +16,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
 
     public static class QueryResponseSingleTask extends QueryDataResponseTask {
 
-        public QueryResponseSingleTask(Channel channel, QueryDataRequestTaskParams params) {
+        public QueryResponseSingleTask(Channel channel, QueryTaskParams params) {
             super(channel, params);
         }
 
@@ -27,7 +27,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
 
         private QueryTaskResult sendQueryResponseSingle(
                 Channel channel,
-                QueryDataRequestTaskParams params) {
+                QueryTaskParams params) {
 
             final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -88,7 +88,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
         }
     }
 
-    protected QueryResponseSingleTask newQueryTask(Channel channel, QueryDataRequestTaskParams params) {
+    protected QueryResponseSingleTask newQueryTask(Channel channel, QueryTaskParams params) {
         return new QueryResponseSingleTask(channel, params);
     }
 
@@ -99,7 +99,7 @@ public class BenchmarkQueryDataUnary extends QueryBenchmarkBase {
         final int[] numThreadsArray = {/*1, 3,*/ 5/*, 7*/};
 
         BenchmarkQueryDataUnary benchmark = new BenchmarkQueryDataUnary();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, args, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
     }
 
 }

@@ -55,6 +55,8 @@ QueryHandler:
   queryV2DefaultPageSize: ${DP_QUERY_HANDLER_QUERY_V2_DEFAULT_PAGE_SIZE:10000}
   queryV2MaxPageSize: ${DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE:100000}
   queryV2MaxResolvedPvCount: ${DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT:10000}
+  queryV2SamplesInitialSliceSeconds: ${DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS:60}
+  streamReadyTimeoutSeconds: ${DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS:300}
   # Zero rather than the production default of 1000 (issue #212, D5): every test query is then
   # "slow", so QueryMetricsIT can assert the slow-query line is produced and carries the stage
   # breakdown. The threshold is resolved once per JVM, and the integration tests share one, so a

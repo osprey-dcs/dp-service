@@ -99,21 +99,75 @@ public interface MongoQueryClientInterface {
     MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery resolvedQuery);
 
     /**
-     * Retrieves buckets for a Query API V2 sample (column-table) query, over the page window
-     * {@code [windowBeginSecs.windowBeginNanos, endTime)} intersected with the resolved config
-     * fragments (Q3), for the resolved PV list. The window begin is the resume timestamp
-     * ({@code pageStart}) on a continuation page, or each fragment's own begin on the first page;
-     * the caller passes the effective window-begin so the same overlap machinery is reused. Sorted
-     * by {@code (pvName, firstTimeSecs, firstTimeNanos)}. Unlike the bucket path there is no keyset
-     * seek and no {@code pageSize+1} probe — the sample page is bounded by distinct-timestamp count
-     * and the byte budget during assembly, not by a bucket-count limit. Returns null on a null/empty
-     * resolution, when no fragment overlaps the page window (see
-     * {@code TimeInterval.clampToWindowBegin}), or on a retrieval failure (a database error, or a
-     * failed pvStats span read — #232 plan D8). The samples dispatchers screen the first two before
-     * calling, so a null they receive is reported as an error, never as an empty page.
+     * Retrieves buckets for one time slice of a Query API V2 sample (column-table) query: the
+     * half-open window {@code [windowBegin, windowEnd)} intersected with the resolved config
+     * fragments (Q3, via {@code TimeInterval.clampToWindow}), for the resolved PV list. The samples
+     * dispatchers retrieve a page as a sequence of such slices, each over every resolved PV, so
+     * that every slice is complete across PVs before any row is emitted (issue #274, plan D1);
+     * the first slice of a page begins at the resume timestamp ({@code pageStart}) or the earliest
+     * fragment begin. Sorted by {@code (pvName, firstTimeSecs, firstTimeNanos)}; no keyset seek and
+     * no {@code pageSize+1} probe. Returns null on a null/empty resolution, when no fragment
+     * overlaps the slice, or on a retrieval failure (a database error, or a failed pvStats span
+     * read — #232 plan D8). The samples dispatchers screen the first two before calling, so a null
+     * they receive is reported as an error, never as an empty slice.
      */
     MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos);
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos);
+
+    /**
+     * Slice-drain form of
+     * {@link #executeQuerySamplesV2(ResolvedQuery, long, long, long, long)}, carrying a scratch
+     * holder that lets the implementation resolve the request's {@code pvStats} span-class
+     * partition once for the whole page instead of once per slice (#274).
+     *
+     * <p>The partition depends only on the request's PV list and the stored spans, so it is the
+     * same for every slice of one request; without the holder a page re-read {@code pvStats} once
+     * per slice. The holder is created by the caller per retrieval loop and discarded with it —
+     * that is what keeps this a <b>per-request</b> hoist. Spans must never be held across requests
+     * (#232, plan D7): a stored span only grows, so a stale one is too small, and a too-small
+     * {@code firstTime} bound silently omits buckets rather than failing.
+     *
+     * <p>Defaulted to the unhoisted call so a test double or an alternate client implementation
+     * need not know about span classes at all; only {@code MongoSyncQueryClient} overrides it.
+     */
+    default MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos,
+            SpanClassHolder spanClassHolder) {
+        return executeQuerySamplesV2(
+                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
+    }
+
+    /**
+     * A one-request scratch slot for the resolved span-class partition, so the samples slice drain
+     * resolves it once per page rather than once per slice (#274).
+     *
+     * <p>Deliberately a plain mutable holder created and dropped inside a single retrieval loop,
+     * not a cache: it is keyed by nothing, outlives nothing, and cannot be consulted by a later
+     * request. See the #232 "never cache on the read side" invariant — the whole hazard is a span
+     * that has grown since it was read, and a holder scoped to one page cannot go stale within it.
+     */
+    final class SpanClassHolder {
+        private List<SpanClass> spanClasses;
+        private boolean resolved = false;
+
+        public boolean isResolved() {
+            return resolved;
+        }
+
+        public List<SpanClass> get() {
+            return spanClasses;
+        }
+
+        /** Records the partition for the rest of this page; null means resolution failed. */
+        public void set(List<SpanClass> resolvedSpanClasses) {
+            this.spanClasses = resolvedSpanClasses;
+            this.resolved = true;
+        }
+    }
 
     /**
      * Resolves the query's sampleStatusSelector to the per-PV sets of epoch-nanos timestamps whose
@@ -122,13 +176,16 @@ public interface MongoQueryClientInterface {
      * the standard span-overlap predicate, expands the matching documents, and keeps a timestamp
      * when its status code is in the selector's statusCodes (empty = any code). PVs with no
      * matching statuses are absent from the map. The map is the assembly-time join input: memory
-     * is bounded by the number of labeled samples in the window. Returns an empty map when the
-     * clamped window is empty, or null on database error.
+     * is bounded by the number of labeled samples in the window, which since #274 is one time
+     * slice {@code [windowBegin, windowEnd)} rather than the whole page. Returns an empty map when
+     * the clamped window is empty, or null on database error.
      *
      * @throws DpException when a stored sample status document is malformed
      */
     Map<String, Set<Long>> resolveSampleStatusTimestamps(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) throws DpException;
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) throws DpException;
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

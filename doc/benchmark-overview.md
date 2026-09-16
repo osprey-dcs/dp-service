@@ -212,15 +212,57 @@ Unlike the ingestion benchmark clients, the query benchmark clients connect to M
 
 If the benchmark server is not running on `localhost:60052`, override the connect string via the `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING` environment variable or the `-Ddp.QueryBenchmark.grpcConnectString` VM option.
 
-There are three query benchmark client applications, each exercising a different query API:
+There are eight query benchmark client applications, each exercising a different query API:
 
 | Class | API |
 |---|---|
 | `BenchmarkQueryDataStream` | `queryDataStream` — server-streaming response |
 | `BenchmarkQueryDataBidiStream` | `queryDataBidiStream` — bidirectional cursor-based streaming |
 | `BenchmarkQueryDataUnary` | `queryData` — unary response (use small PV counts to avoid message size limits) |
+| `BenchmarkQueryTable` | `queryTable` — column-format table (small requests; the result must fit one message) |
+| `BenchmarkQuerySamples` | `querySamples` — unary V2 sample table, each task paging one query to completion |
+| `BenchmarkQuerySamplesStream` | `querySamplesStream` — server-streaming V2 sample table |
+| `BenchmarkQueryBuckets` | `queryBuckets` — unary V2 buckets, each task paging one query to completion |
+| `BenchmarkQueryBucketsStream` | `queryBucketsStream` — server-streaming V2 buckets; same default scenario as `BenchmarkQueryDataStream` for a direct V1/V2 comparison |
 
-None of the query benchmark clients accept column type arguments.
+None of the query benchmark clients accept column type arguments. All of them accept the loader
+options below.
+
+### Loader options
+
+The query benchmark clients load their own fixture before querying. With no options the fixture is
+the historical one: 4,000 PVs at 1,000 samples/s in one-second buckets over 60 s (240,000 buckets),
+and the query window is that same 60 s. The options add **history depth**, which is what the bucket
+query cost actually depends on (scan cost is per PV history behind the window, not collection size):
+
+```
+--pvs=N                  PVs to load (default 4000)
+--samples-per-second=N   samples per second per PV (default 1000)
+--seconds-per-bucket=N   seconds per bucket (default 1)
+--history-seconds=N      seconds of history to load per PV; the query window is the LAST 60 s of it (default 60)
+--long-span-pvs=N        additional PVs holding one bucket spanning --long-span-seconds (one sample per minute)
+--long-span-seconds=N    span of each long-span PV's bucket (default: the whole history)
+--include-long-span      add the long-span PVs to every query request (shows the span-class partition at work)
+--skip-load              reuse the fixture already in the benchmark database; the load writes a marker
+                         (`benchmarkMetadata`) that places the query window
+--help                   print the options and exit
+```
+
+A day of history behind a one-minute window, in about 1.7M buckets of 100 samples (~200 MB), loads
+in a few minutes:
+
+```bash
+java ... com.ospreydcs.dp.service.query.benchmark.BenchmarkQuerySamples \
+  --pvs=200 --samples-per-second=10 --seconds-per-bucket=10 --history-seconds=86400
+```
+
+Re-run any client against the same fixture with `--skip-load`; it fails fast if the stored fixture
+holds fewer PVs than the client's scenarios query, or if `--include-long-span` is given against a
+fixture loaded without long-span PVs — those requests would otherwise name PVs holding no data and
+report a rate computed over a fraction of the intended columns. Note that **starting
+`BenchmarkQueryGrpcServer` drops the benchmark database**: start the server first, then load.
+The loader records every PV's bucket span in `pvStats` through the production updater, so the
+query-side span bound sees the fixture as it would see ingested data.
 
 ### Command lines
 

@@ -16,7 +16,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
     private static final Logger logger = LogManager.getLogger();
 
     final private int streamNumber;
-    final private QueryBenchmarkBase.QueryDataRequestTaskParams params;
+    final private QueryBenchmarkBase.QueryTaskParams params;
     final public CountDownLatch finishLatch;
     final private QueryBenchmarkBase.QueryDataResponseTask task;
     protected AtomicBoolean isError = new AtomicBoolean(false);
@@ -28,7 +28,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
     public QueryDataResponseObserver(
             int streamNumber,
-            QueryBenchmarkBase.QueryDataRequestTaskParams params,
+            QueryBenchmarkBase.QueryTaskParams params,
             CountDownLatch finishLatch,
             QueryBenchmarkBase.QueryDataResponseTask task
     ) {
@@ -128,7 +128,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
         if (success) {
 
-            final int numBucketsExpected = params.columnNames().size() * params.numSeconds();
+            final int numBucketsExpected = params.expectedBucketCount();
             final int numBucketsReceivedValue = numBucketsReceived.get();
 
             if  ( numBucketsReceivedValue < numBucketsExpected) {

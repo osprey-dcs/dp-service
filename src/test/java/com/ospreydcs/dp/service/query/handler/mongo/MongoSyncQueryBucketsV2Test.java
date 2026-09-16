@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import org.bson.Document;
 import com.ospreydcs.dp.grpc.v1.common.ColumnMetadata;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
@@ -241,6 +242,113 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
                         observer, byteBudget, telemetry);
         new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         return outcome;
+    }
+
+    /**
+     * Runs the streaming dispatcher against a test-controlled {@code ServerCallStreamObserver}, so
+     * the outbound readiness gate (#274, plan D8) is live: the observer reports not-ready after
+     * every message and becomes ready again from another thread.
+     */
+    private com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> runStreamGated(
+            QueryBucketsRequest request, long byteBudget, boolean cancelAfterFirst) {
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.setAfterNext(() -> {
+            if (cancelAfterFirst) {
+                observer.cancelled.set(true);
+                return;
+            }
+            // the transport buffer is "full" until the reader drains it a moment later
+            observer.ready.set(false);
+            final Thread reader = new Thread(() -> {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                observer.becomeReady();
+            });
+            reader.setDaemon(true);
+            reader.start();
+        });
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+        return observer;
+    }
+
+    @Test
+    public void testStreamWaitsForReadinessBetweenMessages() {
+        // a small budget forces several chunks; every one must be sent only while the observer is
+        // ready, and all of them must arrive
+        final int expected = allStreamedBuckets(runStream(
+                bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false), Long.MAX_VALUE)).size();
+        assertTrue(expected > 1);
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                runStreamGated(bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false),
+                        Long.MAX_VALUE, false);
+        assertTrue(observer.completed);
+        assertEquals("no message may be sent while the transport is not ready", 0, observer.sentWhileNotReady);
+        int delivered = 0;
+        for (QueryBucketsResponse r : observer.messages) {
+            delivered += r.getBucketQueryResult().getDataBucketsCount();
+        }
+        assertEquals(expected, delivered);
+    }
+
+    @Test
+    public void testStreamStopsWhenTheClientCancels() {
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                runStreamGated(bucketsRequest(List.of(COL_1_NAME, COL_2_NAME), startSeconds, startSeconds + 10, 1, null, false),
+                        Long.MAX_VALUE, true);
+        assertEquals("one message went out before the cancel was observed", 1, observer.messages.size());
+        assertFalse("a cancelled call is not completed", observer.completed);
+    }
+
+    /**
+     * The empty-result paths must honour a gate refusal like every other send (Copilot review on
+     * #281). Both of them -- the resolved-to-nothing branch and the cursor-with-no-buckets branch
+     * -- previously discarded emitChunk's return and called onCompleted() regardless, so a stream
+     * abandoned because the client was gone was still reported as a completed RPC.
+     */
+    @Test
+    public void testEmptyResultDoesNotCompleteWhenTheGateRefuses() {
+        // a window with no data: the cursor opens and has no buckets (the second empty branch)
+        final QueryBucketsRequest request = bucketsRequest(
+                List.of(COL_1_NAME), startSeconds + 900_000, startSeconds + 900_010, 1, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        // client already gone before the empty message is emitted
+        observer.ready.set(false);
+        observer.cancelled.set(true);
+
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, Long.MAX_VALUE, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("an abandoned stream must not be completed", observer.completed);
+        // The wire behavior above is identical for a genuine empty result and a refused one, so the
+        // outcome is the only thing that distinguishes them. Classifying before the send is known to
+        // have succeeded recorded a cancelled client as a successful-but-empty request, which is the
+        // condition outbound flow control exists to make visible.
+        assertEquals("a refused empty send is abandoned, not empty",
+                DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
     }
 
     private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {

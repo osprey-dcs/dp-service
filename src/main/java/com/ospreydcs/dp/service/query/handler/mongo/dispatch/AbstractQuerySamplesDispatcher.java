@@ -1,19 +1,27 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
+import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.common.DataColumn;
 import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
+import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
+import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
-import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
+import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,19 +30,92 @@ import java.util.Set;
 
 /**
  * Shared base for the Query API V2 sample dispatchers (unary {@link QuerySamplesUnaryDispatcher} and
- * streaming {@code QuerySamplesStreamDispatcher}). Holds the outgoing message-size budget and the
- * column-table assembly building blocks — page-window computation, column seeding from the resolved
- * PV list (Q9), distinct-timestamp collection, and the V2 {@link ColumnTable} builder over a row
- * range (with the useSerializedColumns handling, Q5) — so the two dispatchers differ only in how they
- * bound rows (single truncated page vs. successive row-chunks).
+ * streaming {@link QuerySamplesStreamDispatcher}). Holds the outgoing message-size budget, the
+ * time-sliced retrieval loop ({@link SliceDrain}, issue #274), and the column-table assembly
+ * building blocks — page-window computation, column seeding from the resolved PV list (Q9),
+ * distinct-timestamp collection, and the V2 {@link ColumnTable} builder over a row range (with the
+ * useSerializedColumns handling, Q5) — so the two dispatchers differ only in what they do with an
+ * accepted slice (accumulate toward one truncated page vs. emit successive row-chunks).
+ *
+ * <h2>Why retrieval is sliced in time (issue #274)</h2>
+ *
+ * <p>Every bucket query is sorted {@code (pvName, firstTime)}, so its cursor is <b>PV-major</b>:
+ * all of one PV's buckets in the window, then all of the next PV's. Before #274 a page was
+ * assembled by draining that cursor until the outgoing byte budget tripped, on the assumption that
+ * only the last assembled timestamp could then be incomplete. Under PV-major order that assumption
+ * is false: when the budget trips partway through the first PV, every later PV has contributed
+ * nothing, so every timestamp is incomplete and the page went out with those columns silently
+ * all-unset -- and the resume token, a timestamp, put the next page in the same position. The
+ * later PVs were never returned.
+ *
+ * <p>The retrieval is therefore made in consecutive time slices, each a single query over
+ * <em>all</em> resolved PVs, and a slice is either drained completely or discarded (plan D1). A
+ * timestamp inside an accepted slice is complete across every PV by construction. The slice
+ * length adapts toward the page size (plan D2), so a page costs two or three retrievals at any
+ * steady sample rate rather than one retrieval per fixed slice -- which matters because each
+ * retrieval pays the #232 span scan (a document fetch per index key in {@code [begin - span, end]}).
  */
 public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
 
-    protected final long byteBudget;
+    private static final Logger logger = LogManager.getLogger();
 
-    protected AbstractQuerySamplesDispatcher(long byteBudget, QueryTelemetry telemetry) {
+    /** Largest single-step growth of the slice length (plan D2). */
+    static final long MAX_SLICE_GROWTH_FACTOR = 16L;
+
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
+
+    protected final StreamObserver<QuerySamplesResponse> responseObserver;
+    protected final long byteBudget;
+    protected final long initialSliceNanos;
+
+    protected AbstractQuerySamplesDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver,
+            long byteBudget, long initialSliceNanos, QueryTelemetry telemetry) {
         super(telemetry);
+        this.responseObserver = responseObserver;
         this.byteBudget = byteBudget;
+        this.initialSliceNanos = Math.max(1L, initialSliceNanos);
+    }
+
+    // ---- exceptional responses, shared so the two dispatchers cannot drift ----------------------
+
+    /** Sends an error response, recording the outcome; {@code cause} may be null. */
+    protected void sendError(String msg, Throwable cause) {
+        if (cause != null) {
+            logger.error(msg + " id: " + responseObserver.hashCode(), cause);
+        } else {
+            logger.error(msg + " id: " + responseObserver.hashCode());
+        }
+        telemetry.markError();
+        QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+    }
+
+    /** Sends a reject response (a client mistake, #235), recording the outcome. */
+    protected void sendReject(String msg) {
+        logger.debug(msg);
+        telemetry.markReject();
+        QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
+    }
+
+    /**
+     * The indivisible-oversized error: a single timestamp's row is larger than the whole outgoing
+     * message budget, so neither paging nor chunking can make progress past it. Only reducing the
+     * PV count can help -- the row is one instant, so narrowing the time range cannot.
+     */
+    protected void sendOversizedRowError(long seconds, long nanos, long rowBytes) {
+        sendError("single querySamples row at timestamp " + seconds + "." + nanos
+                + " exceeds the outgoing message size limit (" + rowBytes + " > " + byteBudget
+                + " bytes); narrow the PV set", null);
+    }
+
+    /** Classifies an exception out of the slice drain: scalar-only reject (Q4), otherwise error. */
+    protected void sendDrainFailure(DpException e) {
+        if (e instanceof NonScalarColumnException nonScalar) {
+            sendReject("querySamples supports scalar PVs only: PV '" + nonScalar.getPvName()
+                    + "' has non-scalar column type " + nonScalar.getColumnType() + "; use queryBuckets");
+        } else {
+            sendError("exception building sample result: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -42,11 +123,12 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      * continuation token) or, on the first page, the earliest fragment begin. Returns
      * {@code {beginSecs, beginNanos}}.
      *
-     * <p>Deliberately begin-only. There is no corresponding window <em>end</em>, because there is no
-     * single upper bound that is correct to filter on: the resolved fragments may be disjoint, and a
-     * collapsed {@code [min begin, max end)} window spans the gaps between them. Filtering samples
-     * against such a window is precisely the #207 defect. The upper bound is applied per fragment, by
-     * {@link #retentionIntervals}; do not reintroduce a window end here.
+     * <p>Deliberately begin-only. There is no corresponding window <em>end</em> for retention,
+     * because there is no single upper bound that is correct to filter samples on: the resolved
+     * fragments may be disjoint, and a collapsed {@code [min begin, max end)} window spans the gaps
+     * between them. Filtering samples against such a window is precisely the #207 defect. The
+     * slice end that {@link SliceDrain} applies is a <em>retrieval</em> bound intersected with each
+     * fragment by {@link TimeInterval#clampToWindow}, not a retention window; do not turn it into one.
      */
     protected static long[] computeWindowBegin(ResolvedQuery resolvedQuery) {
         final List<TimeInterval> intervals = resolvedQuery.getRetrievalIntervals();
@@ -59,25 +141,28 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
     }
 
     /**
-     * The sample-retention windows for the resolved query: one {@link TabularDataUtility.RetentionInterval}
-     * per resolved retrieval fragment, each clamped on the left to the page window begin (the resume
-     * timestamp on a continuation page).
+     * The sample-retention windows for one slice: one {@link TabularDataUtility.RetentionInterval}
+     * per resolved retrieval fragment that overlaps {@code [windowBegin, windowEnd)}, each clamped
+     * to the slice.
      *
-     * <p>Assembly must trim against this full list rather than a single collapsed
-     * {@code [min begin, max end)} window (issue #207). The database filters fragments only at
-     * <em>bucket</em> granularity, so a bucket spanning the gap between two fragments is retrieved with
-     * its in-gap samples intact; trimming against a collapsed window would leave them in the result.
+     * <p>Assembly must trim against this full list rather than a single collapsed window (issue
+     * #207). The database filters fragments only at <em>bucket</em> granularity, so a bucket
+     * spanning the gap between two fragments is retrieved with its in-gap samples intact; trimming
+     * against a collapsed window would leave them in the result.
      *
-     * <p>The clamp itself comes from {@link TimeInterval#clampToWindowBegin}, the same call
+     * <p>The clamp itself comes from {@link TimeInterval#clampToWindow}, the same call
      * {@code MongoSyncQueryClient.executeQuerySamplesV2} uses to build its per-fragment database
      * filters — so the retrieval filter and this trim cannot drift apart.
      */
     protected static List<TabularDataUtility.RetentionInterval> retentionIntervals(
-            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) {
 
         final List<TabularDataUtility.RetentionInterval> intervals = new ArrayList<>();
-        for (TimeInterval fragment : TimeInterval.clampToWindowBegin(
-                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos)) {
+        for (TimeInterval fragment : TimeInterval.clampToWindow(
+                resolvedQuery.getRetrievalIntervals(),
+                windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos)) {
             intervals.add(new TabularDataUtility.RetentionInterval(
                     fragment.getBeginSeconds(), fragment.getBeginNanos(),
                     fragment.getEndSeconds(), fragment.getEndNanos()));
@@ -89,8 +174,8 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      * Resolves the query's sampleStatusSelector to a {@link TabularDataUtility.SampleStatusFilter}
      * for assembly-time per-sample filtering, or {@code null} when the request carries no selector.
      * The per-PV matching-timestamp sets come from the sampleStatusBuckets collection over the same
-     * clamped page window the bucket retrieval uses, so the join input covers exactly the samples
-     * that can appear on this page. Composition with the configurationSelector is by intersection:
+     * clamped slice the bucket retrieval uses, so the join input covers exactly the samples that
+     * can appear in this slice. Composition with the configurationSelector is by intersection:
      * this filter and the fragment retention test are both applied in the same per-sample retention
      * decision.
      *
@@ -100,14 +185,14 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
     protected static TabularDataUtility.SampleStatusFilter statusRetentionFilter(
             ResolvedQuery resolvedQuery,
             MongoQueryClientInterface mongoClient,
-            long windowBeginSecs,
-            long windowBeginNanos) throws DpException {
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) throws DpException {
 
         if (resolvedQuery.getStatusFilter() == null) {
             return null;
         }
-        final Map<String, Set<Long>> matchingTimestampsByPv =
-                mongoClient.resolveSampleStatusTimestamps(resolvedQuery, windowBeginSecs, windowBeginNanos);
+        final Map<String, Set<Long>> matchingTimestampsByPv = mongoClient.resolveSampleStatusTimestamps(
+                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
         if (matchingTimestampsByPv == null) {
             throw new DpException("sample status selector resolution failed (database error)");
         }
@@ -137,6 +222,285 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             }
         }
         return timestamps;
+    }
+
+    // ---- time-sliced retrieval (issue #274) ------------------------------------------------------
+
+    /** What one {@link SliceDrain#drainNext()} call did. */
+    enum SliceOutcome {
+        /** The slice was drained completely for every PV and its rows are in the map. */
+        ACCEPTED,
+        /**
+         * The slice tripped the byte budget while the map already held rows from earlier slices:
+         * the slice's rows were discarded and the position was not advanced. The caller must
+         * consume the accumulated rows (end the page, or emit and {@link SliceDrain#markEmitted()})
+         * before calling again; the resume point is {@link SliceDrain#resumeSecs()}/{@code Nanos()}.
+         */
+        BUDGET_TRIP,
+        /** Every fragment has been retrieved; nothing remains. */
+        EXHAUSTED,
+        /**
+         * The map was empty and a slice one nanosecond wide still tripped the budget: a single
+         * timestamp is larger than the whole message budget and cannot be paged.
+         */
+        OVERSIZED
+    }
+
+    /**
+     * The retrieval loop for one page or stream (issue #274, plan D1–D4): consecutive time slices
+     * over every resolved PV, each intersected with the resolved fragments through
+     * {@link TimeInterval#clampToWindow}, drained into the shared map and either accepted whole or
+     * discarded whole.
+     *
+     * <p><b>Slice length</b> (plan D2) starts at the configured initial length and, after each
+     * accepted slice of {@code r} distinct timestamps toward a target of {@code pageSize}, is
+     * multiplied by {@code clamp(pageSize / max(r, 1), 1, 16)}: proportional rather than doubling,
+     * so a page is reached in two or three retrievals at any steady rate and an empty slice grows
+     * sixteenfold. It never shrinks except on a budget trip.
+     *
+     * <p><b>Budget trip</b> (plan D3): the cumulative data size across accepted-but-unconsumed
+     * slices is bounded by the outgoing message budget. When a slice trips it, its rows are removed
+     * from the map ({@code removeFrom(sliceBegin)}) and, if earlier slices left rows behind, the
+     * caller is told to consume them ({@link SliceOutcome#BUDGET_TRIP}); otherwise the slice is
+     * halved and retried from the same begin, down to one nanosecond, where a trip means a single
+     * timestamp exceeds the whole budget ({@link SliceOutcome#OVERSIZED}). Every non-error page or
+     * chunk therefore makes progress, as before.
+     *
+     * <p><b>Gaps</b> (plan D4): a slice that intersects no fragment is skipped without a database
+     * call, and the position jumps to the next fragment's begin.
+     *
+     * <p>Each slice's retrieval and cursor are timed into the request's {@code db} stage (#212), so
+     * a sliced page reports one {@code db} figure spanning all its slices.
+     */
+    final class SliceDrain {
+
+        private final ResolvedQuery resolvedQuery;
+        private final MongoQueryClientInterface mongoClient;
+        private final TimestampDataMap tableValueMap;
+        private final long windowEndSecs;
+        private final long windowEndNanos;
+
+        /**
+         * The request's span-class partition, resolved on the first slice and reused by the rest
+         * (#274): it depends only on the PV list and the stored pvStats spans, so re-resolving it
+         * per slice re-read pvStats two or three times per page. Created here and dropped with the
+         * drain, which is what keeps it a per-request hoist rather than a cache (#232, plan D7).
+         */
+        private final MongoQueryClientInterface.SpanClassHolder spanClassHolder =
+                new MongoQueryClientInterface.SpanClassHolder();
+
+        private long sliceNanos;
+        private long cursorSecs;
+        private long cursorNanos;
+        private int dataSize = 0;
+        private boolean exhausted = false;
+        private int retrievals = 0;
+
+        SliceDrain(
+                ResolvedQuery resolvedQuery,
+                MongoQueryClientInterface mongoClient,
+                TimestampDataMap tableValueMap,
+                long windowBeginSecs,
+                long windowBeginNanos) {
+            this.resolvedQuery = resolvedQuery;
+            this.mongoClient = mongoClient;
+            this.tableValueMap = tableValueMap;
+            this.sliceNanos = initialSliceNanos;
+            this.cursorSecs = windowBeginSecs;
+            this.cursorNanos = windowBeginNanos;
+            final List<TimeInterval> fragments = resolvedQuery.getRetrievalIntervals();
+            final TimeInterval last = fragments.get(fragments.size() - 1);
+            this.windowEndSecs = last.getEndSeconds();
+            this.windowEndNanos = last.getEndNanos();
+            if (TimeInterval.compareInstant(cursorSecs, cursorNanos, windowEndSecs, windowEndNanos) >= 0) {
+                exhausted = true;
+            }
+        }
+
+        /** The first timestamp not yet retrieved: the resume point after a budget trip. */
+        long resumeSecs() {
+            return cursorSecs;
+        }
+
+        long resumeNanos() {
+            return cursorNanos;
+        }
+
+        /** Number of database retrievals issued so far (for tests and the slow-query log). */
+        int retrievals() {
+            return retrievals;
+        }
+
+        /** True once every fragment has been retrieved; the position is then past the window end. */
+        boolean isExhausted() {
+            return exhausted;
+        }
+
+        /** Resets the cumulative data size after the caller has emitted and drained the map. */
+        void markEmitted() {
+            dataSize = 0;
+        }
+
+        SliceOutcome drainNext() throws DpException {
+            while (true) {
+                if (exhausted) {
+                    return SliceOutcome.EXHAUSTED;
+                }
+
+                final long[] sliceEnd = addNanos(cursorSecs, cursorNanos, sliceNanos, windowEndSecs, windowEndNanos);
+                final List<TabularDataUtility.RetentionInterval> retention = retentionIntervals(
+                        resolvedQuery, cursorSecs, cursorNanos, sliceEnd[0], sliceEnd[1]);
+
+                if (retention.isEmpty()) {
+                    // The slice lies in a gap between fragments (or past the last one): jump to the
+                    // next fragment begin without a database call.
+                    if (!jumpToNextFragmentBegin(sliceEnd[0], sliceEnd[1])) {
+                        exhausted = true;
+                        return SliceOutcome.EXHAUSTED;
+                    }
+                    continue;
+                }
+
+                final int rowsBefore = tableValueMap.size();
+                final TabularDataUtility.TimestampDataMapSizeStats sizeStats =
+                        retrieveSlice(cursorSecs, cursorNanos, sliceEnd[0], sliceEnd[1], retention);
+
+                if (sizeStats.sizeLimitExceeded()) {
+                    // Discard the slice whole: under PV-major order none of its timestamps is
+                    // known to be complete (class javadoc). Rows from earlier slices precede the
+                    // slice begin and survive.
+                    tableValueMap.removeFrom(cursorSecs, cursorNanos);
+                    if (rowsBefore > 0) {
+                        return SliceOutcome.BUDGET_TRIP;
+                    }
+                    if (sliceNanos <= 1L) {
+                        return SliceOutcome.OVERSIZED;
+                    }
+                    sliceNanos = Math.max(1L, sliceNanos / 2);
+                    continue;
+                }
+
+                dataSize = sizeStats.currentDataSize();
+                final int rowsInSlice = tableValueMap.size() - rowsBefore;
+                cursorSecs = sliceEnd[0];
+                cursorNanos = sliceEnd[1];
+                if (TimeInterval.compareInstant(cursorSecs, cursorNanos, windowEndSecs, windowEndNanos) >= 0) {
+                    exhausted = true;
+                }
+                logger.trace("accepted slice ending {}.{} rows: {} dataSize: {} retrievals: {}",
+                        cursorSecs, cursorNanos, rowsInSlice, dataSize, retrievals);
+                growSlice(rowsInSlice);
+                return SliceOutcome.ACCEPTED;
+            }
+        }
+
+        private TabularDataUtility.TimestampDataMapSizeStats retrieveSlice(
+                long beginSecs, long beginNanos, long endSecs, long endNanos,
+                List<TabularDataUtility.RetentionInterval> retention) throws DpException {
+
+            retrievals++;
+            final long queryStartNanos = System.nanoTime();
+            final MongoCursor<BucketDocument> cursor = mongoClient.executeQuerySamplesV2(
+                    resolvedQuery, beginSecs, beginNanos, endSecs, endNanos, spanClassHolder);
+            telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
+
+            // The empty-window case was screened by the clamp above, so null is a retrieval
+            // failure (a database error, or a failed pvStats span read — #232 plan D8). Report it
+            // as an error; treating it as an empty slice would silently return no data.
+            if (cursor == null) {
+                throw new DpException("executeQuerySamplesV2 returned null cursor");
+            }
+
+            try (cursor) {
+                // The status filter is its own query against sampleStatusBuckets, invisible to the
+                // bucket cursor, so it is timed separately -- and in a finally, so a failed read
+                // still contributes the time it took to fail rather than landing in "process".
+                final long statusStartNanos = System.nanoTime();
+                final TabularDataUtility.SampleStatusFilter statusFilter;
+                try {
+                    statusFilter = statusRetentionFilter(
+                            resolvedQuery, mongoClient, beginSecs, beginNanos, endSecs, endNanos);
+                } finally {
+                    telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
+                }
+                // Trim against every resolved fragment intersected with the slice, not a collapsed
+                // window (#207): the database filters fragments only per-bucket.
+                return TabularDataUtility.addBucketsToTable(
+                        tableValueMap,
+                        cursor,
+                        dataSize,
+                        (int) Math.min(Integer.MAX_VALUE, byteBudget),
+                        retention,
+                        statusFilter);
+            } catch (RuntimeException ex) {
+                // The find is issued by executeQuerySamplesV2 above, but the driver fetches the
+                // rest of the batches during iteration -- which happens inside addBucketsToTable.
+                // So a mid-slice failure (a getMore against a failed-over server, a connection
+                // dropped mid-cursor, a decode error) surfaces here as an unchecked MongoException
+                // rather than as the null cursor the open path returns. Only DpException is caught
+                // by the drain loops, so uncaught this escapes the job into QueueHandlerBase's
+                // worker, which logs it and takes the next job: the dispatcher never answers and
+                // the caller's stream stays open until it times out. Wrapping it as DpException
+                // routes it to sendDrainFailure() -> an error response, the same contract the
+                // null-cursor path already has (CLAUDE.md, "every bucket retrieval method owes the
+                // same catch").
+                throw new DpException("querySamples slice retrieval failed: " + ex.getMessage(), ex);
+            } finally {
+                // In a finally so the db stage is folded in on the reject and error paths too.
+                recordCursorTime(cursor);
+            }
+        }
+
+        /**
+         * Moves the position to the next fragment begin at or after {@code (secs, nanos)}, through
+         * the same clamp the retrieval uses (#207: one source for "which fragment is next"). Called
+         * only when no fragment overlaps the slice ending there, so the first surviving fragment's
+         * clamped begin is its own begin; the resolver emits fragments sorted and disjoint
+         * ({@code TimeInterval.union}), which the constructor's window-end lookup relies on too.
+         * Returns false when every fragment is behind the position.
+         */
+        private boolean jumpToNextFragmentBegin(long secs, long nanos) {
+            final List<TimeInterval> ahead = TimeInterval.clampToWindowBegin(
+                    resolvedQuery.getRetrievalIntervals(), secs, nanos);
+            if (ahead.isEmpty()) {
+                return false;
+            }
+            cursorSecs = ahead.get(0).getBeginSeconds();
+            cursorNanos = ahead.get(0).getBeginNanos();
+            return true;
+        }
+
+        private void growSlice(int rowsInSlice) {
+            final long target = Math.max(1, resolvedQuery.getPageSize());
+            final long factor = Math.max(1L, Math.min(MAX_SLICE_GROWTH_FACTOR, target / Math.max(1, rowsInSlice)));
+            try {
+                sliceNanos = Math.multiplyExact(sliceNanos, factor);
+            } catch (ArithmeticException ex) {
+                sliceNanos = Long.MAX_VALUE;
+            }
+        }
+    }
+
+    /**
+     * {@code (secs, nanos) + deltaNanos}, capped at {@code (capSecs, capNanos)}; saturates rather
+     * than overflowing, since it only ever bounds a retrieval window.
+     */
+    static long[] addNanos(long secs, long nanos, long deltaNanos, long capSecs, long capNanos) {
+        long endSecs;
+        long endNanos;
+        try {
+            final long totalNanos = Math.addExact(nanos, deltaNanos % NANOS_PER_SECOND);
+            endSecs = Math.addExact(Math.addExact(secs, deltaNanos / NANOS_PER_SECOND), totalNanos / NANOS_PER_SECOND);
+            endNanos = totalNanos % NANOS_PER_SECOND;
+        } catch (ArithmeticException ex) {
+            endSecs = capSecs;
+            endNanos = capNanos;
+        }
+        if (TimeInterval.compareInstant(endSecs, endNanos, capSecs, capNanos) > 0) {
+            endSecs = capSecs;
+            endNanos = capNanos;
+        }
+        return new long[]{endSecs, endNanos};
     }
 
     /**

@@ -17,7 +17,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
 
     protected static class QueryResponseCursorTask extends QueryDataResponseTask {
 
-        public QueryResponseCursorTask(Channel channel, QueryDataRequestTaskParams params) {
+        public QueryResponseCursorTask(Channel channel, QueryTaskParams params) {
             super(channel, params);
         }
 
@@ -27,7 +27,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
 
             public QueryResponseCursorObserver(
                     int streamNumber,
-                    QueryDataRequestTaskParams params,
+                    QueryTaskParams params,
                     CountDownLatch finishLatch,
                     QueryDataResponseTask task
             ) {
@@ -67,7 +67,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
 
          private QueryTaskResult sendQueryResponseCursor(
                 Channel channel,
-                QueryDataRequestTaskParams params
+                QueryTaskParams params
         ) {
             final int streamNumber = params.streamNumber();
             final CountDownLatch finishLatch = new CountDownLatch(1);
@@ -158,7 +158,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
 
     }
 
-    protected QueryResponseCursorTask newQueryTask(Channel channel, QueryDataRequestTaskParams params) {
+    protected QueryResponseCursorTask newQueryTask(Channel channel, QueryTaskParams params) {
         return new QueryResponseCursorTask(channel, params);
     }
 
@@ -173,7 +173,7 @@ public class BenchmarkQueryDataBidiStream extends QueryBenchmarkBase {
         final int[] numThreadsArray = {7};
 
         BenchmarkQueryDataBidiStream benchmark = new BenchmarkQueryDataBidiStream();
-        runBenchmark(benchmark, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
+        runBenchmark(benchmark, args, totalNumPvsArray, numPvsPerRequestArray, numThreadsArray);
     }
 
 }

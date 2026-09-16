@@ -354,3 +354,60 @@ follow-on.
 
 *(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
 are also part of 1.16.0; their notes are collected when this draft is finalized.)*
+
+## querySamples correctness and query-path hardening (Issue #274)
+
+### BUG FIX: unary `querySamples` silently omitted PVs on large pages
+
+Before this release, a unary `querySamples` page was assembled by draining the bucket cursor until
+the outgoing message budget tripped. The cursor is ordered by PV, so when the budget tripped partway
+through the first PV, every later PV was emitted as all-unset values with no error, and the page
+token resumed at the same position — those PVs were never returned. With the default budget this
+affected any request whose first PV (in name order) had more than roughly 455,000 samples in the
+window: about 7.5 minutes at 1 kHz, 12 hours at 10 Hz, or 5 days at 1 Hz.
+
+Pages are now retrieved in time slices, each covering every selected PV, so every row on a page is
+complete across PVs. Behavior changes a client may notice:
+
+- A page ended by the byte budget may hold fewer rows than `limit`; `nextPageToken` resumes at the
+  first time slice that did not fit. Page boundaries are still gap-free and duplicate-free.
+- A small `limit` now saves server work (previously the whole budget was retrieved regardless).
+- New configuration key `QueryHandler.queryV2SamplesInitialSliceSeconds` (default 60), the length
+  of the first slice; later slices adapt toward `limit`.
+
+### `querySamplesStream` is now bounded in memory
+
+The stream previously assembled the entire requested window in memory before emitting. It now emits
+as slices are retrieved, bounded by the message budget plus one slice. A request over a very long
+range no longer risks exhausting the query server's heap.
+
+### Streaming responses now apply outbound flow control
+
+`queryDataStream`, `queryBucketsStream`, and `querySamplesStream` wait for the client to drain the
+gRPC transport buffer before sending the next message. A slow client no longer causes the server
+to buffer the whole result. New configuration key `QueryHandler.streamReadyTimeoutSeconds` (default
+300): how long a response waits for a stalled client before it is abandoned. A cancelled call stops
+promptly.
+
+### Bucket retrieval is partitioned by span class
+
+The #232 per-PV span bound was applied as one maximum over all PVs in a request, and measurement
+showed each index key inside that bound is a document fetch. One long-span PV in a request therefore
+made every other PV's retrieval fetch that span's worth of history. Requests are now partitioned
+into power-of-two span classes, one find per class bounded by its own maximum, merged in sort
+order. A request whose PVs share one class is unchanged. The V1 `queryTable` pattern form (no PV
+list) keeps a single bound.
+
+### Table assembly hot path
+
+Column-index lookup during `queryTable`/`querySamples` assembly was a linear search per sample; it
+is now constant time.
+
+## Query benchmarks (Issue #275)
+
+Five new query benchmark clients cover `queryTable`, `querySamples`, `querySamplesStream`,
+`queryBuckets`, and `queryBucketsStream`, and the loader takes options for history depth per PV,
+long-span PVs, and fixture reuse (`--skip-load`). See `doc/benchmark-overview.md`, section 6. The
+plan-shape test now includes a deep-history case pinning that bucket scan cost is independent of a
+PV's history depth.
+

@@ -143,41 +143,68 @@ public final class TimeInterval {
     }
 
     /**
-     * Clamps each interval's lower bound up to {@code (windowBeginSecs, windowBeginNanos)} and drops
-     * any interval left empty by the clamp (one ending at or before the window begin). The result
-     * preserves input order and is the set of fragments that can contribute to the page starting at
-     * that window begin.
-     *
-     * <p><b>Single source for the querySamples fragment clamp (issue #207).</b> The page's bucket
-     * retrieval filter and its sample-level retention trim must be derived from the <em>same</em>
-     * interval set, or the database and the assembly disagree about which samples belong to the page
-     * — the exact class of defect #207 fixed. {@code MongoSyncQueryClient.executeQuerySamplesV2}
-     * builds its per-fragment {@code $or} of bucket-overlap predicates from this, and
-     * {@code AbstractQuerySamplesDispatcher.retentionIntervals} builds its retention windows from it.
-     * Do not reimplement the clamp at either call site.
-     *
-     * <p>An empty result means nothing overlaps the page window; callers treat that as an empty page
-     * rather than an unfiltered query.
+     * Clamps each interval's begin to the window begin, dropping intervals entirely at or before
+     * it: the {@code end = +infinity} case of {@link #clampToWindow}. Retained for callers that
+     * bound a page on the left only (the samples dispatchers' page-window screen).
      */
     public static List<TimeInterval> clampToWindowBegin(
             List<TimeInterval> intervals, long windowBeginSecs, long windowBeginNanos) {
+        return clampToWindow(intervals, windowBeginSecs, windowBeginNanos, Long.MAX_VALUE, 0L);
+    }
+
+    /**
+     * Intersects each interval with the half-open window
+     * {@code [windowBegin, windowEnd)}: begin becomes {@code max(fragment.begin, windowBegin)},
+     * end becomes {@code min(fragment.end, windowEnd)}, and intervals left empty are dropped.
+     * Order is preserved.
+     *
+     * <p><b>Single source for the querySamples retrieval clamp (issues #207, #274).</b> A page's
+     * bucket retrieval filter and its sample-level retention trim must be derived from the
+     * <em>same</em> interval set, or the database and the assembly disagree about which samples
+     * belong to the page -- the exact class of defect #207 fixed. Under #274 the samples paths
+     * retrieve the page in time slices, every slice over all PVs, and each slice is this method
+     * applied to the resolved fragments with the slice as the window:
+     * {@code MongoSyncQueryClient.executeQuerySamplesV2} builds its per-fragment {@code $or} of
+     * bucket-overlap predicates from the result, and
+     * {@code AbstractQuerySamplesDispatcher.retentionIntervals} builds its retention windows from
+     * it. Do not reimplement the clamp at either call site.
+     *
+     * <p>The window end is a <em>retrieval</em> bound applied to each fragment. It is not a
+     * collapsed {@code [min begin, max end)} retention window -- gaps between fragments inside the
+     * window are still absent from the result, so the #207 sample trim keeps working per fragment.
+     *
+     * <p>An empty result means nothing overlaps the window; callers treat that as an empty slice
+     * or page rather than an unfiltered query.
+     */
+    public static List<TimeInterval> clampToWindow(
+            List<TimeInterval> intervals,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos) {
 
         final List<TimeInterval> clamped = new ArrayList<>();
         for (TimeInterval iv : intervals) {
             // begin = max(fragment.begin, windowBegin)
             final long beginSecs;
             final long beginNanos;
-            if (compareInstant(
-                    iv.beginSeconds, iv.beginNanos, windowBeginSecs, windowBeginNanos) >= 0) {
+            if (compareInstant(iv.beginSeconds, iv.beginNanos, windowBeginSecs, windowBeginNanos) >= 0) {
                 beginSecs = iv.beginSeconds;
                 beginNanos = iv.beginNanos;
             } else {
                 beginSecs = windowBeginSecs;
                 beginNanos = windowBeginNanos;
             }
-            final TimeInterval result =
-                    new TimeInterval(beginSecs, beginNanos, iv.endSeconds, iv.endNanos);
-            // drop fragments entirely at or before the window begin (they contribute nothing here)
+            // end = min(fragment.end, windowEnd)
+            final long endSecs;
+            final long endNanos;
+            if (compareInstant(iv.endSeconds, iv.endNanos, windowEndSecs, windowEndNanos) <= 0) {
+                endSecs = iv.endSeconds;
+                endNanos = iv.endNanos;
+            } else {
+                endSecs = windowEndSecs;
+                endNanos = windowEndNanos;
+            }
+            final TimeInterval result = new TimeInterval(beginSecs, beginNanos, endSecs, endNanos);
+            // drop fragments entirely outside the window (they contribute nothing here)
             if (result.isEmpty()) {
                 continue;
             }

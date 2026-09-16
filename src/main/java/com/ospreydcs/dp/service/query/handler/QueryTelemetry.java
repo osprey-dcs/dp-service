@@ -121,6 +121,20 @@ public class QueryTelemetry {
         return rpcMethod;
     }
 
+    /**
+     * The outcome recorded so far, for tests that must distinguish the {@code dp.outcome} value a
+     * path lands on from the wire behavior it produces. A refused send and a genuinely empty result
+     * are indistinguishable on the wire (both send nothing further), so a test asserting only on the
+     * observer cannot see the classification -- which is how a refused empty send went on recording
+     * {@code empty} after the completion half of that bug was fixed.
+     *
+     * <p>Read-only, and the only accessor on the outcome: it is set through the {@code mark*}
+     * methods so their precedence rules cannot be bypassed.
+     */
+    public synchronized String getOutcome() {
+        return outcome;
+    }
+
     // ---- stage marks -------------------------------------------------------------------------
 
     /**
@@ -199,6 +213,25 @@ public class QueryTelemetry {
     /** Marks the request as failed by the service. */
     public synchronized void markError() {
         outcome = DpMetrics.OUTCOME_ERROR;
+    }
+
+    /**
+     * Marks a server-streaming response abandoned part-way because the client cancelled or stopped
+     * draining the transport (#274, the {@code OutboundReadinessGate} refusal paths).
+     *
+     * <p>Without this the request recorded {@code success}, since that is the default outcome and
+     * the abandon paths return without marking anything: a stream cut short after the readiness
+     * timeout landed in the success bucket with a full set of stage histograms, leaving the one
+     * condition outbound flow control exists to manage invisible to metrics -- the same defect
+     * {@link #markFailedWithException()} exists to prevent for escaping exceptions.
+     *
+     * <p>Like that method it does not overwrite an outcome already set: a dispatcher that rejected
+     * or errored and only then hit a refused send has classified the request more precisely.
+     */
+    public synchronized void markAbandoned() {
+        if (DpMetrics.OUTCOME_SUCCESS.equals(outcome)) {
+            outcome = DpMetrics.OUTCOME_ABANDONED;
+        }
     }
 
     /**

@@ -51,7 +51,7 @@ public class QueryDataDispatcher extends QueryDataAbstractDispatcher {
                         "exception deserializing protobuf data for BucketDocument id: "
                                 + getResponseObserver().hashCode()
                                 + " exception: " + e.getMessage();
-                logger.error(errorMsg);
+                logger.error(errorMsg, e);
                 break;
             }
             Objects.requireNonNull(bucket);
