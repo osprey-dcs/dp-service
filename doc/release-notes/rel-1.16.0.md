@@ -403,3 +403,11 @@ list) keeps a single bound.
 Column-index lookup during `queryTable`/`querySamples` assembly was a linear search per sample; it
 is now constant time.
 
+## Query benchmarks (Issue #275)
+
+Five new query benchmark clients cover `queryTable`, `querySamples`, `querySamplesStream`,
+`queryBuckets`, and `queryBucketsStream`, and the loader takes options for history depth per PV,
+long-span PVs, and fixture reuse (`--skip-load`). See `doc/benchmark-overview.md`, section 6. The
+plan-shape test now includes a deep-history case pinning that bucket scan cost is independent of a
+PV's history depth.
+

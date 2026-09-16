@@ -293,14 +293,14 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
     private static class IntegrationTestQueryTaskValidationHelper {
 
         // instance variables
-        final QueryBenchmarkBase.QueryDataRequestTaskParams params;
+        final QueryBenchmarkBase.QueryTaskParams params;
         final Map<String,boolean[]> columnBucketMap = new TreeMap<>();
         private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
         private final Lock readLock = rwLock.readLock();
         private final Lock writeLock = rwLock.writeLock();
         private final AtomicInteger responseCount = new AtomicInteger(0);
 
-        public IntegrationTestQueryTaskValidationHelper(QueryBenchmarkBase.QueryDataRequestTaskParams params) {
+        public IntegrationTestQueryTaskValidationHelper(QueryBenchmarkBase.QueryTaskParams params) {
             this.params = params;
         }
 
@@ -418,7 +418,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
         {
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseCursorTask(Channel channel, QueryDataRequestTaskParams params
+            public IntegrationTestQueryResponseCursorTask(Channel channel, QueryTaskParams params
             ) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
@@ -443,7 +443,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
 
         @Override
         protected QueryResponseCursorTask newQueryTask(
-                Channel channel, QueryDataRequestTaskParams params
+                Channel channel, QueryTaskParams params
         ) {
             return new IntegrationTestQueryResponseCursorTask(channel, params);
         }
@@ -457,7 +457,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
 
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseStreamTask(Channel channel, QueryDataRequestTaskParams params) {
+            public IntegrationTestQueryResponseStreamTask(Channel channel, QueryTaskParams params) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
             }
@@ -481,7 +481,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
 
         @Override
         protected QueryResponseStreamTask newQueryTask(
-                Channel channel, QueryDataRequestTaskParams params
+                Channel channel, QueryTaskParams params
         ) {
             return new IntegrationTestQueryResponseStreamTask(channel, params);
         }
@@ -494,7 +494,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
 
             final private IntegrationTestQueryTaskValidationHelper helper;
 
-            public IntegrationTestQueryResponseSingleTask(Channel channel, QueryDataRequestTaskParams params) {
+            public IntegrationTestQueryResponseSingleTask(Channel channel, QueryTaskParams params) {
                 super(channel, params);
                 helper = new IntegrationTestQueryTaskValidationHelper(params);
             }
@@ -517,7 +517,7 @@ public class BenchmarkIntegrationIT extends GrpcIntegrationTestBase {
 
         @Override
         protected IntegrationTestQueryResponseSingleTask newQueryTask(
-                Channel channel, QueryDataRequestTaskParams params
+                Channel channel, QueryTaskParams params
         ) {
             return new IntegrationTestQueryResponseSingleTask(channel, params);
         }
