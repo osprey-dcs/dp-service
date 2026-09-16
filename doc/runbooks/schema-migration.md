@@ -168,6 +168,15 @@ Every migration is also individually idempotent, so re-running one that had alre
 
 ---
 
+## Before a release upgrade
+
+Take a restorable backup first. There are no downgrade migrations, and a binary rolled back to the
+previous release does not refuse a migrated database — it misreads it (a renamed field reads as
+absent, a dropped marker collection re-triggers work the old build did at startup). Restoring the
+pre-upgrade backup is the only supported way back, and it discards anything written after the
+upgrade began. Rehearse the migrations against a restored copy beforehand:
+[schema-migration-rehearsal.md](schema-migration-rehearsal.md).
+
 ## Concurrent startup
 
 The documented deployment starts three service processes (ingestion, query, annotation) against one

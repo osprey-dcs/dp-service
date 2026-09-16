@@ -182,6 +182,8 @@ Below is the list of environment variables referenced in the project's `applicat
 - `DP_QUERY_HANDLER_NUM_WORKERS` : Number of query handler worker threads (default: `7`)
 - `DP_QUERY_HANDLER_OUTGOING_MESSAGE_SIZE_LIMIT_BYTES` : Query handler outgoing message size limit (default: `4096000`)
 - `DP_QUERY_HANDLER_SLOW_QUERY_LOG_THRESHOLD_MILLIS` : Slow query log threshold in ms; `0` logs every query, negative disables (default: `1000`)
+- `DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS` : Length of the first time slice a `querySamples`/`querySamplesStream` page retrieves; later slices adapt toward the page size (default: `60`)
+- `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` : How long a server-streaming query waits for a slow client to drain the outbound buffer before the response is abandoned; the worker serving the stream is held for the wait (default: `300`)
 - `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING` : Query benchmark gRPC `host:port` connect string (default: `localhost:60052`)
 - `DP_ANNOTATION_SERVER_PORT` : Annotation Service gRPC port (default: `50053`)
 - `DP_ANNOTATION_SERVER_METRICS_PORT` : Annotation Service Prometheus metrics port (default: `9466`)

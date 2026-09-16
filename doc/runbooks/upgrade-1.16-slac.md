@@ -6,10 +6,11 @@ restart. Companion to [schema-migration.md](schema-migration.md), which explains
 mechanism and what each startup failure means, and to the
 [1.16.0 release notes](../release-notes/rel-1.16.0.md), which describe what changed and why.
 
-This runbook covers the bucket-span work (#232) specifically. The other 1.16.0 migrations (v1–v4)
-touch the annotations, calculations, and buckets collections and are covered by the general
-mechanism doc; [schema-migration-rehearsal.md](schema-migration-rehearsal.md) describes rehearsing
-v1–v3 against a restored copy.
+This runbook covers the bucket-span work (#232), the span-class partition and outbound flow control
+that build on it (#274), and the deployment changes that land in the same release. The other
+1.16.0 migrations (v1–v4) touch the annotations, calculations, and buckets collections and are
+covered by the general mechanism doc; [schema-migration-rehearsal.md](schema-migration-rehearsal.md)
+describes rehearsing v1–v3 against a restored copy.
 
 ## Why this upgrade needs a window
 
@@ -32,11 +33,23 @@ archive size at all.
 
 ## Before the window
 
-**Measure the seed's cost.** Run the v5 pipeline's grouping stage read-only against a secondary, to
-get the PV count and confirm the span distribution. This is the same work the migration does, minus
-the write:
+**Take a backup you can restore from, and treat it as the only way back.** There are no downgrade
+migrations. Rolling the binaries back to 1.15.0 after the migrations have run leaves the database
+in a state 1.15.0 misreads rather than refuses: migration v1 renamed the annotation `comment` field,
+so a 1.15.0 service reads every annotation's comment as empty; v5 dropped the
+`bucketSpanVerification` marker, so a 1.15.0 service repeats the hours-long startup scan (or needs
+the hand-seeded marker again). Going back therefore means restoring the pre-upgrade backup, which
+also discards anything ingested after the window opened. Take a `mongodump` of the metadata
+collections at minimum (the rehearsal doc's Part 1 command captures exactly those, indexes
+included), and a filesystem or cluster snapshot for `buckets` if one is available — a 35M-bucket
+dump is not something to start during the window.
+
+**Measure the seed's cost.** Run the v5 pipeline's grouping stage read-only, through `mongos` with a
+secondary read preference so it runs on each shard's secondaries, to get the PV count and confirm
+the span distribution. This is the same work the migration does, minus the write:
 
 ```js
+db.getMongo().setReadPref("secondary")
 db.buckets.aggregate([
   {$match: {$expr: {$eq: [{$type: "$pvName"}, "string"]}}},
   {$group: {_id: "$pvName", maxBucketSpanSeconds: {$max: {$subtract: [
@@ -110,9 +123,13 @@ Please also send back the `getIndexes()` output and the shard key for `buckets` 
 or `db.getSiblingDB("config").collections.findOne({_id: "<db>.buckets"}).key`) — the shard key was
 never captured, and it determines whether a single-PV query is targeted at one shard or broadcast.
 
-**Know the two settings you will change.** `DP_BUCKETS_VERIFY_SPANS_ON_STARTUP` is no longer read by
+**Know the settings you will change.** `DP_BUCKETS_VERIFY_SPANS_ON_STARTUP` is no longer read by
 any service and can be deleted from the deployment at any time. `DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS`
-becomes **ingestion-only** — see step 5.
+becomes **ingestion-only** — see step 5. Two query-service settings are new and need no change for
+this upgrade; know they exist for the tuning notes after the window:
+`DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS` (60) and
+`DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` (300), both described in
+[running.md](../running.md).
 
 **Free up four ports, or the services will not start.** This is unrelated to the bucket-span work
 but lands in the same release, and it is the one 1.16.0 change that can stop a service from coming
@@ -198,6 +215,26 @@ A PV legitimately has no `pvStats` document when every one of its buckets lacks 
 has `lastTime` before `firstTime`; such buckets are unreadable on the query path regardless. A
 materially short count otherwise is worth investigating before proceeding.
 
+Also capture the span-class distribution, and send it back with the index inventory. Since #274
+every bucket query partitions its PVs into power-of-two span classes (class 0 for spans up to 1 s,
+class *k* for spans in `(2^(k−1), 2^k]`) and issues one find per class present in the request, so
+this histogram says how many finds a typical multi-PV request will cost and which PVs share a
+class with the outliers:
+
+```js
+db.pvStats.aggregate([
+  {$project: {cls: {$cond: [{$lte: ["$maxBucketSpanSeconds", 1]}, 0,
+      {$ceil: {$log: ["$maxBucketSpanSeconds", 2]}}]}}},
+  {$group: {_id: "$cls", pvs: {$sum: 1}}},
+  {$sort: {_id: 1}}
+])
+```
+
+(`$log` is floating-point, so a span that is an exact power of two may land one class high; the
+service computes the class exactly. The shape of the histogram is what matters here.) On the
+numbers measured in August — spans from 10 s to 3,650,327 s with a 186 s average — expect most PVs
+in classes 4 through 8 and the four outliers alone in class 22.
+
 **5. Lower `DP_BUCKETS_MAX_BUCKET_SPAN_SECONDS` back to 86,400 on ingestion.** The 3,700,000 value
 exists only because the 1.15 query side sized its lower bound from this setting and the archive
 contained 42-day buckets. The query side no longer reads it. Setting it back to the intended limit
@@ -207,17 +244,36 @@ are unaffected by this setting.
 
 Remove the setting entirely from the query and annotation deployments; it does nothing there.
 
-**6. Start the remaining services and spot-check a query.** Pick a PV with 1-second buckets and a
-window well after its first data, and confirm results are returned and the latency reflects a short
-lookback rather than a 42-day one.
+**6. Start the remaining services and spot-check two queries.** First, pick a PV with short
+buckets and a window well after its first data, and confirm results are returned and the latency
+reflects a short lookback rather than a 42-day one. Second, run a `querySamples` naming that PV
+**and** one of the four outlier PVs over a window where both have data, and confirm that both
+columns come back populated: this is the request shape #274 fixed (before it, a large page could
+return the second PV all-empty with no error) and the one the span-class partition exists for (the
+short-bucket PV's retrieval is no longer widened by the outlier's 42-day span). If either query
+takes over a second it appears in the `dp.slowquery` log with its stage breakdown, which is the
+fastest way to see whether the time went to the database or to assembly.
 
 ## After the upgrade
 
-**Expect the improvement to be uneven, and that is the point.** Queries naming only well-behaved PVs
-get a lower bound sized by that PV's own longest bucket — seconds, not weeks. Queries naming one of
-the four outlier PVs still carry a ~42-day lookback for that PV, because the bound is the maximum
-over the PVs the request names. Repairing those buckets (issue #258) would close that last gap; it
-is no longer urgent, since the outliers no longer affect anyone else's queries.
+**Expect the improvement to be uneven, and that is the point.** Every PV's retrieval is bounded by
+its own span class — seconds to minutes for the well-behaved majority. A request naming one of the
+four outlier PVs still pays a ~42-day lookback **for that PV's find only**: since #274 the request
+is split into one find per span class, so the outlier no longer widens the retrieval of the other
+PVs named alongside it (under #232 alone it did, because the bound was the maximum over the whole
+request). The cost of the outlier's own find is what repairing those buckets (issue #258) would
+remove; it is no longer urgent, since it no longer affects anyone else's queries.
+
+**Slow streaming clients now occupy a worker instead of the heap.** `queryDataStream`,
+`queryBucketsStream`, and `querySamplesStream` wait for the client to drain each message before
+sending the next, for up to `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` (300) per message. A
+client that reads slowly holds its query worker for the life of the stream, and the query service
+has `DP_QUERY_HANDLER_NUM_WORKERS` (7) of them: seven stalled readers stop every other query until
+one of them drains or times out. Watch `dp_handler_workers_active{dp_service="query"}` against
+`dp_handler_workers_max`, and the `abandoned` outcome in `dp_query_requests_total`, which counts
+streams cut short by a cancel or a readiness timeout. If a site has many long-lived streaming
+consumers, raise the worker count rather than the timeout — a longer timeout only lengthens how
+long a dead client holds a worker.
 
 **Queries with a `ConfigurationSelector` improve but retain a known cost.** A request that resolves
 to several retrieval fragments is bounded on the index by the earliest fragment's begin (minus the
