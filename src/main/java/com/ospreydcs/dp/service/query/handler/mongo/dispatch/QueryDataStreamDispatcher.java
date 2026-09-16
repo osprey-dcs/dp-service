@@ -87,6 +87,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
                 if (!gate.awaitReady()) {
+                    telemetry.markAbandoned();
                     cursor.close();
                     recordCursorTime(cursor);
                     return;
@@ -115,6 +116,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
         if ( ! isError) {
 
             if (!gate.awaitReady()) {
+                telemetry.markAbandoned();
                 return; // abandoned: the gate logged why
             }
 

@@ -263,6 +263,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         // Wait before building: the build drains the rows from the map, and a refused send would
         // otherwise lose them (they are not re-queried on the stream path).
         if (!gate.awaitReady()) {
+            telemetry.markAbandoned();
             return false; // abandoned: the gate logged why
         }
         final ColumnTable columnTable = buildColumnTable(tableValueMap, timestamps, fromRow, toRow, useSerialized);

@@ -164,6 +164,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
      */
     private boolean emitChunk(List<DataBucket> buckets) {
         if (!gate.awaitReady()) {
+            telemetry.markAbandoned();
             return false; // abandoned: the gate logged why
         }
         final QueryBucketsResponse.BucketQueryResult result =

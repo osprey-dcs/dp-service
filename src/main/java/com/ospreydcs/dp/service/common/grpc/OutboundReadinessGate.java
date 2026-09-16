@@ -69,6 +69,14 @@ public class OutboundReadinessGate {
         }
         final OutboundReadinessGate gate = new OutboundReadinessGate(serverCallStreamObserver, timeoutSeconds, label);
         serverCallStreamObserver.setOnReadyHandler(gate::signal);
+        // Cancellation must wake a blocked waiter too. gRPC dispatches cancel and ready through
+        // separate handlers -- a cancel never fires the ready handler, and isReady() is false for
+        // good once the call is closed -- so without this the awaitReady() loop below has no way to
+        // observe a cancellation it did not see before it started waiting: it sleeps out the whole
+        // timeout (measured: the full bound, not early) holding a worker for a call that already
+        // has no reader, then reports it as a drain timeout. Signalling here makes the loop's
+        // isCancelled() check fire promptly; it changes no outcome, only how long it takes.
+        serverCallStreamObserver.setOnCancelHandler(gate::signal);
         return gate;
     }
 
@@ -95,6 +103,9 @@ public class OutboundReadinessGate {
      * <p>Re-checks {@code isReady()} after every wake-up rather than trusting the handler: the
      * handler can fire before this thread reaches the wait (the signal is not lost, because the
      * check precedes each wait under the same lock), and it can also fire spuriously.
+     *
+     * <p>Both the ready handler and the cancel handler signal this condition, so a cancellation
+     * arriving while this thread is parked is noticed at once rather than at the timeout.
      */
     public boolean awaitReady() {
         if (observer == null) {

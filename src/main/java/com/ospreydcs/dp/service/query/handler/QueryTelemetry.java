@@ -202,6 +202,25 @@ public class QueryTelemetry {
     }
 
     /**
+     * Marks a server-streaming response abandoned part-way because the client cancelled or stopped
+     * draining the transport (#274, the {@code OutboundReadinessGate} refusal paths).
+     *
+     * <p>Without this the request recorded {@code success}, since that is the default outcome and
+     * the abandon paths return without marking anything: a stream cut short after the readiness
+     * timeout landed in the success bucket with a full set of stage histograms, leaving the one
+     * condition outbound flow control exists to manage invisible to metrics -- the same defect
+     * {@link #markFailedWithException()} exists to prevent for escaping exceptions.
+     *
+     * <p>Like that method it does not overwrite an outcome already set: a dispatcher that rejected
+     * or errored and only then hit a refused send has classified the request more precisely.
+     */
+    public synchronized void markAbandoned() {
+        if (DpMetrics.OUTCOME_SUCCESS.equals(outcome)) {
+            outcome = DpMetrics.OUTCOME_ABANDONED;
+        }
+    }
+
+    /**
      * Marks a successful request that returned no data. Separate from {@code success} because an
      * empty result is a different operational question -- a query returning nothing quickly is
      * usually a client asking for the wrong window, and it would otherwise dilute the success

@@ -18,6 +18,7 @@ public class FakeServerCallStreamObserver<T> extends ServerCallStreamObserver<T>
     public final AtomicBoolean ready = new AtomicBoolean(true);
     public final AtomicBoolean cancelled = new AtomicBoolean(false);
     public final AtomicReference<Runnable> onReady = new AtomicReference<>();
+    public final AtomicReference<Runnable> onCancel = new AtomicReference<>();
     public final List<T> messages = new ArrayList<>();
     public int sentWhileNotReady = 0;
     public boolean completed = false;
@@ -31,7 +32,7 @@ public class FakeServerCallStreamObserver<T> extends ServerCallStreamObserver<T>
     }
 
     @Override public boolean isCancelled() { return cancelled.get(); }
-    @Override public void setOnCancelHandler(Runnable onCancelHandler) { }
+    @Override public void setOnCancelHandler(Runnable onCancelHandler) { onCancel.set(onCancelHandler); }
     @Override public void setCompression(String compression) { }
     @Override public boolean isReady() { return ready.get(); }
     @Override public void setOnReadyHandler(Runnable onReadyHandler) { onReady.set(onReadyHandler); }
@@ -50,6 +51,15 @@ public class FakeServerCallStreamObserver<T> extends ServerCallStreamObserver<T>
 
     @Override public void onError(Throwable t) { error = t; }
     @Override public void onCompleted() { completed = true; }
+
+    /** Cancels the call and fires the registered cancel handler, as gRPC would. */
+    public void cancel() {
+        cancelled.set(true);
+        final Runnable handler = onCancel.get();
+        if (handler != null) {
+            handler.run();
+        }
+    }
 
     /** Marks the transport ready again and fires the registered ready handler, as gRPC would. */
     public void becomeReady() {

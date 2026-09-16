@@ -87,6 +87,14 @@ public class DpMetrics {
     public static final String OUTCOME_REJECT = "reject";
     public static final String OUTCOME_ERROR = "error";
     public static final String OUTCOME_EMPTY = "empty";
+    /**
+     * A server-streaming response abandoned part-way because the client cancelled or stopped
+     * draining the transport (#274). Deliberately distinct from {@code error}: the service did
+     * nothing wrong and the data it did send was correct, but the response is incomplete, so
+     * counting it as {@code success} would hide the one condition outbound flow control exists to
+     * manage.
+     */
+    public static final String OUTCOME_ABANDONED = "abandoned";
 
     /** Unit for every duration instrument, per OTel semantic conventions. */
     public static final String UNIT_SECONDS = "s";
