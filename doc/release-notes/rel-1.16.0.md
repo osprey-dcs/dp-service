@@ -193,6 +193,23 @@ Tabular formats (CSV, XLSX) export typed *scalar* calculations columns; a calcul
 with no tabular representation (array, image, struct, serialized) is rejected with guidance to
 export to HDF5 instead — a rejection, not an error, per the classification above.
 
+### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
+
+The first 1.16.0 service to start against an existing database runs schema migration v4
+(`V4StampColumnDiscriminators`), stamping the `_t` class discriminator on embedded legacy columns
+written before rel-1.13.0, in `buckets` and `calculations` alike. Without the stamp, such columns
+cannot be decoded under the polymorphic field types — which reads as silently empty query and
+export results, not an error.
+
+Operationally this is a **one-time full scan of the `buckets` collection**: expect minutes up to
+roughly an hour on archives in the tens of millions of buckets. While the elected process runs
+the migration, other starting services wait five minutes on the migration claim and then exit
+with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
+branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
+waiting services restart and come up once the migration completes. Do not clear the claim while
+the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
+inventory.
+
 ## Sample Status API (Issues dp-grpc #121, dp-service #238)
 
 The Annotation Service implements `saveSampleStatuses`, `querySampleStatuses`,
@@ -395,23 +412,6 @@ and the pattern path. The sharded plan shape (the SLAC deployment) remains unpin
 cluster in CI. A companion test, `MongoSyncQueryClientMissingIndexTest`, pins that a missing hinted
 index is reported to the caller as an error on all four retrieval paths rather than throwing inside
 the handler's worker thread.
-
-### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
-
-The first 1.16.0 service to start against an existing database runs schema migration v4
-(`V4StampColumnDiscriminators`), stamping the `_t` class discriminator on embedded legacy columns
-written before rel-1.13.0, in `buckets` and `calculations` alike. Without the stamp, such columns
-cannot be decoded under the polymorphic field types — which reads as silently empty query and
-export results, not an error.
-
-Operationally this is a **one-time full scan of the `buckets` collection**: expect minutes up to
-roughly an hour on archives in the tens of millions of buckets. While the elected process runs
-the migration, other starting services wait five minutes on the migration claim and then exit
-with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
-branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
-waiting services restart and come up once the migration completes. Do not clear the claim while
-the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
-inventory.
 
 ## Service metrics (Issue #212)
 
