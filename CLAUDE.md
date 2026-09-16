@@ -993,7 +993,17 @@ positional list.
 - **`MongoBucketQueryPlanTest`** is the repo's only `explain`-based plan-shape test: it pins the
   `[begin − span, end]` index interval on the compound bucket index, resolved through the production
   resolver from `pvStats` documents seeded through the production updater, for the V1 named and
-  pattern paths and the V2 fragment-`$or`, keyset-page, and samples queries. It runs against an
+  pattern paths and the V2 fragment-`$or`, keyset-page, and samples queries — the V2 and mixed-span
+  cases explaining **one find per span class**, the shape production issues since #274. Since #275
+  it also carries a deep-history PV (20,000 one-second buckets ending where the other PVs' history
+  ends) and asserts that the same window costs the same keys and documents 1,000 s and 19,000 s
+  into that history: scan cost depends on window plus span, not on history depth, which is the
+  customer-archive risk a 300-bucket fixture cannot distinguish from "bounded by the history". It
+  asserts `totalDocsExamined == totalKeysExamined` on the wide-span case, pinning that the overlap
+  residual runs after the fetch (the cost model behind the span-class partition); a server that
+  starts evaluating it on the index would fail that assertion, which is a change to understand,
+  not to silence. The mixed-span counterfactual explains the pre-#274 single-bound shape so the
+  widening the partition removes stays visible in numbers. It runs against an
   adversarial index set (#271: the retired `pvName_1` and `(pvName, firstTime.seconds,
   firstTime.nanos)` plus a `(pvName, lastTime, firstTime)`), asserts every candidate plan is on the
   shipped index exactly and that the winner has no `SORT` stage, and keeps a counterfactual

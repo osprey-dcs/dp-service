@@ -201,7 +201,7 @@ public class MongoSyncQueryClientMissingIndexTest {
                 ResolvedQuery.ResultMode.SAMPLE, false);
         final IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> client.bucketSamplesQueryV2(resolvedQuery, List.of(), 1L));
+                () -> client.bucketSamplesQueryV2(resolvedQuery, List.of(), new SpanClass(List.of(PV_NAME), 1L)));
         assertTrue(ex.getMessage(), ex.getMessage().contains("at least one retrieval interval"));
     }
 

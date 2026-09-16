@@ -71,7 +71,16 @@ import static org.junit.Assert.assertTrue;
  *
  * <p>Fixture: two PVs with one-second buckets over three hundred consecutive seconds, and a
  * seeded span of 300 s for the first PV and 7 s for the second. The window queried lies near the
- * end of that history so the two spans give visibly different scans.
+ * end of that history so the two spans give visibly different scans. A third, "deep" PV carries
+ * twenty thousand one-sample one-second buckets ending at the same second as the other two
+ * (#275): the customer archive's risk is scan cost growing with a PV's history depth, not with
+ * collection size, and this PV is deep enough to tell "bounded by the window" from "bounded by
+ * the history" -- the same window is queried early and late in its history and must cost the same.
+ *
+ * <p>The V2 and mixed-span cases explain one find per span class, the shape production issues
+ * since #274 (plan D11): a request's PVs are partitioned by span, each class carries its own bound,
+ * and the class cursors are merged. The pre-#274 single-bound shape is retained only as the
+ * counterfactual in {@link #testMixedSpanCounterfactualSingleBoundWidensTheShortSpanPv}.
  *
  * <p>The plan walker reads the unsharded explain shape (a stage tree under
  * {@code queryPlanner.winningPlan}, or under its {@code queryPlan} when the slot-based engine
@@ -90,6 +99,14 @@ public class MongoBucketQueryPlanTest {
     private static final int SAMPLES_PER_SECOND = 10;
     private static final long SPAN_PV_1_SECONDS = 300L;
     private static final long SPAN_PV_2_SECONDS = 7L;
+
+    // the deep-history PV (#275): one-sample one-second buckets whose history ENDS where the
+    // other PVs' does, so the shared window has DEEP_BUCKETS - 300 buckets of history behind it
+    private static final String PV_DEEP_BASE = "deeppv_";
+    private static final String PV_DEEP = PV_DEEP_BASE + "1";
+    private static final int DEEP_BUCKETS = 20_000;
+    private static final long DEEP_BASE_SECONDS = BASE_SECONDS + NUM_BUCKETS_PER_PV - DEEP_BUCKETS;
+    private static final int INSERT_BATCH = 5_000;
 
     // query window [BASE+290, BASE+295): the five buckets starting at seconds 290..294
     private static final long BEGIN_SECONDS = BASE_SECONDS + 290;
@@ -116,14 +133,16 @@ public class MongoBucketQueryPlanTest {
             BsonConstants.BSON_KEY_BUCKET_LAST_TIME_NANOS);
 
     /**
-     * An interval as explain renders it, e.g. {@code "[1700000283, 1700000295]"} or
-     * {@code "[1700000283, inf.0]"}; group 1 is the lower end, group 2 the upper end (a number, or
-     * {@code inf}), group 3 the closing bracket. Anchored on an inclusive {@code [}: an exclusive
+     * An interval as explain renders it, e.g. {@code "[1700000283, 1700000295]"},
+     * {@code "[1700000283, inf.0]"}, or {@code "(1700000293, 1700000295]"}; group 1 is the opening
+     * bracket, group 2 the lower end, group 3 the upper end (a number, or {@code inf}), group 4
+     * the closing bracket. The span-bound assertions require the inclusive {@code [}: an exclusive
      * {@code (} would drop the buckets starting exactly {@code span} seconds before {@code begin},
-     * which can still overlap.
+     * which can still overlap. A keyset seek on a single-PV class legitimately opens with
+     * {@code (}: the planner folds "strictly after the position" into the bounds (#275).
      */
-    private static final Pattern INCLUSIVE_LOWER_BOUND =
-            Pattern.compile("^\\[(-?\\d+)(?:\\.0)?, (-?\\d+|inf)(?:\\.0)?([\\]\\)])$");
+    private static final Pattern INDEX_INTERVAL =
+            Pattern.compile("^([\\[(])(-?\\d+)(?:\\.0)?, (-?\\d+|inf)(?:\\.0)?([\\]\\)])$");
 
     private static class TestSyncClient extends MongoSyncQueryClient {
 
@@ -187,6 +206,16 @@ public class MongoBucketQueryPlanTest {
 
         client.recordSpan(PV_1, SPAN_PV_1_SECONDS);
         client.recordSpan(PV_2, SPAN_PV_2_SECONDS);
+
+        // deep PV: 20,000 tiny buckets, inserted in batches; span 0, as ingestion records for
+        // one-second buckets
+        final List<BucketDocument> deep = BucketUtility.createBucketDocuments(
+                DEEP_BASE_SECONDS, 1, 1, PV_DEEP_BASE, 1, DEEP_BUCKETS);
+        assertEquals(DEEP_BUCKETS, deep.size());
+        for (int from = 0; from < deep.size(); from += INSERT_BATCH) {
+            client.insertBuckets(deep.subList(from, Math.min(deep.size(), from + INSERT_BATCH)));
+        }
+        client.recordSpan(PV_DEEP, 0L);
     }
 
     @AfterClass
@@ -306,16 +335,20 @@ public class MongoBucketQueryPlanTest {
         // its own copy of the lower bound. No index scan may reach below the earliest fragment's
         // bound, and the sort must still stream from the index.
         final List<String> pvNames = List.of(PV_1, PV_2);
-        final long spanSeconds = client.resolveMaxBucketSpanSeconds(pvNames);
         final ResolvedQuery resolvedQuery = resolvedQuery(pvNames, null, false);
 
-        final Document explanation = client.bucketQueryV2(resolvedQuery, spanSeconds)
-                .explain(ExplainVerbosity.EXECUTION_STATS);
-        assertShippedIndexPlan(explanation);
-        assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - SPAN_PV_1_SECONDS, END_SECONDS);
-        // buckets 290, 291 from fragment 1 and 293, 294 from fragment 2, for each PV; bucket 292
-        // overlaps neither ([292, 293) meets fragment 1's exclusive end and fragment 2's begin)
-        assertEquals(2 * 4, executionStat(explanation, "nReturned"));
+        // one find per span class (#274 D11): PV_1 (span 300) and PV_2 (span 7) are two classes
+        final List<SpanClass> classes = client.resolveSpanClasses(pvNames);
+        assertEquals(2, classes.size());
+        for (SpanClass spanClass : classes) {
+            final Document explanation = client.bucketQueryV2(resolvedQuery, spanClass)
+                    .explain(ExplainVerbosity.EXECUTION_STATS);
+            assertShippedIndexPlan(explanation);
+            assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS);
+            // buckets 290, 291 from fragment 1 and 293, 294 from fragment 2; bucket 292 overlaps
+            // neither ([292, 293) meets fragment 1's exclusive end and fragment 2's begin)
+            assertEquals(4, executionStat(explanation, "nReturned"));
+        }
     }
 
     @Test
@@ -323,33 +356,143 @@ public class MongoBucketQueryPlanTest {
         // A continuation page ANDs the keyset seek $or at top level (Q3); the planner must keep
         // the shipped index and the streaming sort with that extra predicate in play.
         final List<String> pvNames = List.of(PV_1, PV_2);
-        final long spanSeconds = client.resolveMaxBucketSpanSeconds(pvNames);
         final KeysetPosition pageStart = KeysetPosition.ofBucket(PV_1, BASE_SECONDS + 293, 0L);
         final ResolvedQuery resolvedQuery = resolvedQuery(pvNames, pageStart, false);
 
-        final Document explanation = client.bucketQueryV2(resolvedQuery, spanSeconds)
-                .explain(ExplainVerbosity.EXECUTION_STATS);
-        assertShippedIndexPlan(explanation);
-        assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - SPAN_PV_1_SECONDS, END_SECONDS);
-        // PV_1 strictly after (293, 0): bucket 294; PV_2: all four
-        assertEquals(1 + 4, executionStat(explanation, "nReturned"));
+        // the seek is applied to every class find; PV_1 strictly after (293, 0) yields bucket 294,
+        // PV_2 (which sorts after PV_1) all four. On the single-PV class holding PV_1 the planner
+        // folds the seek into the bounds and the scan opens at (293 -- tighter than the span
+        // bound, which is why that class is not held to starting exactly at it.
+        for (SpanClass spanClass : client.resolveSpanClasses(pvNames)) {
+            final boolean holdsSeekPv = spanClass.pvNames().contains(PV_1);
+            final Document explanation = client.bucketQueryV2(resolvedQuery, spanClass)
+                    .explain(ExplainVerbosity.EXECUTION_STATS);
+            assertShippedIndexPlan(explanation);
+            assertIndexScansWithin(winningPlan(explanation),
+                    BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS, !holdsSeekPv);
+            assertEquals(holdsSeekPv ? 1 : 4, executionStat(explanation, "nReturned"));
+        }
     }
 
     @Test
     public void testV2SamplesFragmentOrStaysOnTheShippedIndex() throws DpException {
         // executeQuerySamplesV2 builds its own fragment $or over the clamped intervals (#207)
         final List<String> pvNames = List.of(PV_1, PV_2);
-        final long spanSeconds = client.resolveMaxBucketSpanSeconds(pvNames);
         final ResolvedQuery resolvedQuery = resolvedQuery(pvNames, null, true);
-        final List<TimeInterval> clamped = TimeInterval.clampToWindowBegin(
-                resolvedQuery.getRetrievalIntervals(), BEGIN_SECONDS, 0L);
+        final List<TimeInterval> clamped = TimeInterval.clampToWindow(
+                resolvedQuery.getRetrievalIntervals(), BEGIN_SECONDS, 0L, END_SECONDS, 0L);
         assertEquals(2, clamped.size());
 
-        final Document explanation = client.bucketSamplesQueryV2(resolvedQuery, clamped, spanSeconds)
+        for (SpanClass spanClass : client.resolveSpanClasses(pvNames)) {
+            final Document explanation = client.bucketSamplesQueryV2(resolvedQuery, clamped, spanClass)
+                    .explain(ExplainVerbosity.EXECUTION_STATS);
+            assertShippedIndexPlan(explanation);
+            assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS);
+            assertEquals(4, executionStat(explanation, "nReturned"));
+        }
+    }
+
+    // ---- deep history, the FETCH-stage residual, and span classes (#275, #274 D11) --------------
+
+    /** Explains the V1 query for one PV over an arbitrary window with an explicit span. */
+    private static Document explainV1Window(
+            String pvName, long beginSeconds, long endSeconds, long spanSeconds) {
+        return client.bucketDocumentQuery(
+                        Filters.in(BsonConstants.BSON_KEY_PV_NAME, List.of(pvName)),
+                        beginSeconds, 0L, endSeconds, 0L, spanSeconds)
                 .explain(ExplainVerbosity.EXECUTION_STATS);
-        assertShippedIndexPlan(explanation);
-        assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - SPAN_PV_1_SECONDS, END_SECONDS);
-        assertEquals(2 * 4, executionStat(explanation, "nReturned"));
+    }
+
+    @Test
+    public void testDeepHistoryScanIsIndependentOfWindowPosition() throws DpException {
+        // The same five-second window queried 1,000 s into the deep PV's history and 19,000 s in:
+        // identical keys and documents examined, equal to the window plus the bound (span 0) plus
+        // the inclusive end second -- the cost does not depend on where in the history the window
+        // sits, which is what the #232 bound and the #271 upper bound exist to guarantee, and what
+        // no 300-bucket fixture can distinguish from "bounded by the history".
+        final List<SpanClass> classes = client.resolveSpanClasses(List.of(PV_DEEP));
+        assertEquals(1, classes.size());
+        assertEquals(0L, classes.get(0).maxSpanSeconds());
+
+        final long[] offsets = {1_000L, 19_000L};
+        final int windowSeconds = 5;
+        long[] keys = new long[2];
+        for (int i = 0; i < offsets.length; i++) {
+            final long begin = DEEP_BASE_SECONDS + offsets[i];
+            final Document explanation = explainV1Window(PV_DEEP, begin, begin + windowSeconds, 0L);
+            assertShippedIndexPlan(explanation);
+            assertEquals(windowSeconds, executionStat(explanation, "nReturned"));
+            keys[i] = executionStat(explanation, "totalKeysExamined");
+            assertEquals("window + span + inclusive end second", windowSeconds + 1, keys[i]);
+            assertEquals(keys[i], executionStat(explanation, "totalDocsExamined"));
+        }
+        assertEquals("cost must not depend on the window's position in the history", keys[0], keys[1]);
+        assertTrue("the fixture must be deep enough for the test to mean something",
+                DEEP_BUCKETS > 100 * (windowSeconds + 1));
+    }
+
+    @Test
+    public void testOverlapResidualIsEvaluatedAfterFetch() {
+        // The overlap predicate's $or halves cannot be index bounds and the planner evaluates them
+        // on the FETCH stage, not on the index keys: under the archive-wide span every key in
+        // [begin - 300, end] is a fetched document. This is the cost model behind #274's span-class
+        // partition. If a server version ever evaluates the residual on the index scan, docs
+        // examined drops below keys examined and this fails -- the signal that the partition's
+        // rationale should be revisited, not a failure to loosen.
+        final Document wide = explainV1(List.of(PV_2), SPAN_PV_1_SECONDS, ExplainVerbosity.EXECUTION_STATS);
+        final long keys = executionStat(wide, "totalKeysExamined");
+        assertTrue("the wide span must examine many more keys than it returns", keys > 10 * BUCKETS_IN_WINDOW);
+        assertEquals("every examined key is a fetched document", keys, executionStat(wide, "totalDocsExamined"));
+    }
+
+    @Test
+    public void testMixedSpanRequestBoundsEachClassSeparately() throws DpException {
+        // deeppv_1 (span 0) and planpv_1 (span 300) named together: two classes, each find with
+        // its own bound. The deep PV examines window + 1 keys, not window + 300 + 1.
+        final List<SpanClass> classes = client.resolveSpanClasses(List.of(PV_DEEP, PV_1));
+        assertEquals(2, classes.size());
+        for (SpanClass spanClass : classes) {
+            assertEquals(1, spanClass.pvNames().size());
+            final String pvName = spanClass.pvNames().get(0);
+            final Document explanation = explainV1Window(pvName, BEGIN_SECONDS, END_SECONDS, spanClass.maxSpanSeconds());
+            assertShippedIndexPlan(explanation);
+            assertIndexScanBoundedAt(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), List.of(pvName));
+            assertEquals(BUCKETS_IN_WINDOW, executionStat(explanation, "nReturned"));
+            final long expectedKeys = pvName.equals(PV_DEEP)
+                    ? BUCKETS_IN_WINDOW + 1                       // [290, 295] on the deep PV
+                    : END_SECONDS - BASE_SECONDS + 1;              // begin - 300 precedes PV_1's history
+            assertEquals(pvName, expectedKeys, executionStat(explanation, "totalKeysExamined"));
+            assertEquals(pvName, expectedKeys, executionStat(explanation, "totalDocsExamined"));
+        }
+    }
+
+    @Test
+    public void testMixedSpanCounterfactualSingleBoundWidensTheShortSpanPv() throws DpException {
+        // The pre-#274 shape: one bound, the request maximum (300), applied to the deep PV. Its
+        // scan widens to [290 - 300, 295] -- 306 keys and 306 fetched documents for five returned
+        // buckets. If the partition silently stopped partitioning, the mixed-span test above would
+        // see these numbers; keeping the counterfactual makes that difference explicit.
+        final long requestMaximum = client.resolveMaxBucketSpanSeconds(List.of(PV_DEEP, PV_1));
+        assertEquals(SPAN_PV_1_SECONDS, requestMaximum);
+        final Document explanation = explainV1Window(PV_DEEP, BEGIN_SECONDS, END_SECONDS, requestMaximum);
+        assertEquals(BUCKETS_IN_WINDOW, executionStat(explanation, "nReturned"));
+        final long widened = END_SECONDS - (BEGIN_SECONDS - SPAN_PV_1_SECONDS) + 1;
+        assertEquals(widened, executionStat(explanation, "totalKeysExamined"));
+        assertEquals(widened, executionStat(explanation, "totalDocsExamined"));
+    }
+
+    @Test
+    public void testSpanClassesAreDecidedPerPv() throws DpException {
+        // spans 300 and 7 land in classes 9 (256 < 300 <= 512) and 3 (4 < 7 <= 8), each bounded by
+        // its own span, not by the request maximum
+        final List<SpanClass> classes = client.resolveSpanClasses(List.of(PV_1, PV_2));
+        assertEquals(2, classes.size());
+        assertEquals(List.of(PV_2), classes.get(0).pvNames());
+        assertEquals(SPAN_PV_2_SECONDS, classes.get(0).maxSpanSeconds());
+        assertEquals(3, SpanClass.classIndex(classes.get(0).maxSpanSeconds()));
+        assertEquals(List.of(PV_1), classes.get(1).pvNames());
+        assertEquals(SPAN_PV_1_SECONDS, classes.get(1).maxSpanSeconds());
+        assertEquals(9, SpanClass.classIndex(classes.get(1).maxSpanSeconds()));
     }
 
     // ---- the counterfactual that keeps the adversarial fixture honest --------------------------
@@ -507,6 +650,16 @@ public class MongoBucketQueryPlanTest {
      * reaches outside the window's bounds, and neither bound is merely a filter.
      */
     private static void assertIndexScansWithin(Document winningPlan, long expectedLowerBound, long expectedUpperBound) {
+        assertIndexScansWithin(winningPlan, expectedLowerBound, expectedUpperBound, true);
+    }
+
+    /**
+     * As above; with {@code exactStart} false the scans need not start exactly at the lower bound
+     * -- a keyset seek folded into a single-PV class's bounds legitimately starts later, and
+     * exclusively -- but must still stay within it and must still end exactly at the upper bound.
+     */
+    private static void assertIndexScansWithin(
+            Document winningPlan, long expectedLowerBound, long expectedUpperBound, boolean exactStart) {
         final String planJson = winningPlan.toJson();
         final List<Document> indexScans = indexScans(winningPlan);
         assertFalse("winning plan has no index scan: " + planJson, indexScans.isEmpty());
@@ -521,19 +674,24 @@ public class MongoBucketQueryPlanTest {
             assertFalse("empty bounds on firstTime.seconds: " + planJson, secondsIntervals.isEmpty());
             for (String interval : secondsIntervals) {
                 final Matcher matcher = intervalMatcher(interval);
-                final long lowerBound = Long.parseLong(matcher.group(1));
+                final long lowerBound = Long.parseLong(matcher.group(2));
                 assertTrue("index scan reaches below the span bound " + expectedLowerBound + ": " + interval,
                         lowerBound >= expectedLowerBound);
+                if (exactStart) {
+                    assertEquals("span-bound scans must open inclusively: " + interval, "[", matcher.group(1));
+                }
                 lowestLowerBound = Math.min(lowestLowerBound, lowerBound);
 
-                assertNotEquals("index scan has no upper bound: " + interval, "inf", matcher.group(2));
-                final long upperBound = Long.parseLong(matcher.group(2));
+                assertNotEquals("index scan has no upper bound: " + interval, "inf", matcher.group(3));
+                final long upperBound = Long.parseLong(matcher.group(3));
                 assertTrue("index scan reaches above the window end " + expectedUpperBound + ": " + interval,
                         upperBound <= expectedUpperBound);
                 highestUpperBound = Math.max(highestUpperBound, upperBound);
             }
         }
-        assertEquals("no index scan starts at the span bound: " + planJson, expectedLowerBound, lowestLowerBound);
+        if (exactStart) {
+            assertEquals("no index scan starts at the span bound: " + planJson, expectedLowerBound, lowestLowerBound);
+        }
         assertEquals("no index scan ends at the window end: " + planJson, expectedUpperBound, highestUpperBound);
     }
 
@@ -544,15 +702,18 @@ public class MongoBucketQueryPlanTest {
     }
 
     private static Matcher intervalMatcher(String interval) {
-        final Matcher matcher = INCLUSIVE_LOWER_BOUND.matcher(interval);
-        assertTrue("not an inclusive numeric interval: " + interval, matcher.find());
+        final Matcher matcher = INDEX_INTERVAL.matcher(interval);
+        assertTrue("not a numeric interval: " + interval, matcher.find());
         return matcher;
     }
 
-    /** The interval with explain's {@code .0} decorations stripped, e.g. {@code "[1, 2]"}. */
+    /**
+     * The interval with explain's {@code .0} decorations stripped, e.g. {@code "[1, 2]"}; keeps
+     * both brackets, so a comparison against {@code "[lower, upper]"} also asserts inclusiveness.
+     */
     private static String normalizedInterval(String interval) {
         final Matcher matcher = intervalMatcher(interval);
-        return "[" + matcher.group(1) + ", " + matcher.group(2) + matcher.group(3);
+        return matcher.group(1) + matcher.group(2) + ", " + matcher.group(3) + matcher.group(4);
     }
 
     /** Collects every stage document in the plan tree, depth first. */

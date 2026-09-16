@@ -704,19 +704,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     /**
-     * Builds the V2 bucket retrieval query -- base filter plus the keyset seek when the query
-     * resumes a page -- without a limit or cursor, so that {@code MongoBucketQueryPlanTest} can
-     * {@code explain()} the exact query {@link #executeQueryBucketsV2} issues (the same split
+     * Builds the V2 bucket retrieval query for one span class -- the class's PV list and its own
+     * bound (issue #274, plan D11), plus the keyset seek when the query resumes a page -- without
+     * a limit or cursor, so that {@code MongoBucketQueryPlanTest} can {@code explain()} the exact
+     * query {@link #executeQueryBucketsV2} issues per class (the same split
      * {@link #bucketDocumentQuery} makes for V1). Package-private on purpose.
-     */
-    FindIterable<BucketDocument> bucketQueryV2(ResolvedQuery resolvedQuery, long maxBucketSpanSeconds) {
-        return bucketQueryV2(resolvedQuery, new SpanClass(resolvedQuery.getPvNames(), maxBucketSpanSeconds));
-    }
-
-    /**
-     * The per-span-class form of {@link #bucketQueryV2(ResolvedQuery, long)}: the class's PV list
-     * and its own bound (issue #274, plan D11). {@link #executeQueryBucketsV2} issues one of these
-     * per class; the plan test explains each.
      */
     FindIterable<BucketDocument> bucketQueryV2(ResolvedQuery resolvedQuery, SpanClass spanClass) {
         // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
@@ -804,20 +796,10 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     /**
-     * Builds the V2 samples retrieval query over {@code clampedIntervals} (the output of
-     * {@code TimeInterval.clampToWindow}, non-empty) without opening a cursor, so that
+     * Builds the V2 samples retrieval query for one span class over {@code clampedIntervals} (the
+     * output of {@code TimeInterval.clampToWindow}, non-empty) without opening a cursor, so that
      * {@code MongoBucketQueryPlanTest} can {@code explain()} the exact fragment {@code $or}
-     * {@link #executeQuerySamplesV2} issues. Package-private on purpose.
-     */
-    FindIterable<BucketDocument> bucketSamplesQueryV2(
-            ResolvedQuery resolvedQuery, List<TimeInterval> clampedIntervals, long maxBucketSpanSeconds) {
-        return bucketSamplesQueryV2(
-                resolvedQuery, clampedIntervals, new SpanClass(resolvedQuery.getPvNames(), maxBucketSpanSeconds));
-    }
-
-    /**
-     * The per-span-class form of {@link #bucketSamplesQueryV2(ResolvedQuery, List, long)} (issue
-     * #274, plan D11): the class's PV list and its own bound over the same clamped fragments.
+     * {@link #executeQuerySamplesV2} issues per class (#274, plan D11). Package-private on purpose.
      */
     FindIterable<BucketDocument> bucketSamplesQueryV2(
             ResolvedQuery resolvedQuery, List<TimeInterval> clampedIntervals, SpanClass spanClass) {
