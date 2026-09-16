@@ -331,10 +331,15 @@ must be restarted.** Follow the v4 guidance above: check `migratingSince`/`migra
 migrating process finish, restart the others, and do **not** clear the claim while the migrating
 host is alive. Memory is bounded by the number of distinct PVs, not the number of buckets.
 
-**Stop every service, or upgrade ingestion first.** A pre-upgrade ingestion process still writing
-after the seed has run produces buckets no statistic covers, and a bucket longer than its PV's
-recorded span is skipped by any query whose window begins after the bucket starts. An upgraded
-ingestion process running against a not-yet-upgraded query service is harmless.
+**Stop every service.** A pre-upgrade ingestion process still writing after the seed has run
+produces buckets no statistic covers, and a bucket longer than its PV's recorded span is skipped by
+any query whose window begins after the bucket starts. The migration claim coordinates only the
+processes that are *starting*; it does nothing to a pre-upgrade process already running, which
+keeps serving against the schema the migrations change underneath it — after v1, a still-running
+1.15 annotation service reads every annotation's comment as empty. If a full stop is impossible,
+upgrade ingestion first and let it run the migrations, but stop or upgrade the query and annotation
+services before it starts. An upgraded ingestion service against a not-yet-*started* query or
+annotation service is harmless; against a still-*running* 1.15 one it is not.
 
 A PV is left **without** a `pvStats` document — span zero, the same as a PV never seen — when every
 one of its buckets is unusable for the measure: no `dataTimestamps` subdocument, or `lastTime`

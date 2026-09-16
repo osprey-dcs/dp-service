@@ -347,13 +347,17 @@ PVs, not the number of buckets. While the elected process migrates, other starti
 five minutes on the claim and then exit; under a supervisor they restart and come up once the
 migration finishes. Do not clear the claim while the migrating host is alive.
 
-### UPGRADE ORDERING: stop every service, or upgrade ingestion first
+### UPGRADE ORDERING: stop every service
 
 A pre-1.16.0 ingestion process that keeps writing after the seed has run produces buckets that no
 statistic covers, and **a bucket longer than its PV's recorded span is silently missing from query
-results** — not an error. Either stop all services for the upgrade, or upgrade ingestion before the
-seed runs. An upgraded ingestion service running against a not-yet-upgraded query service is
-harmless.
+results** — not an error. Stop all services for the upgrade. The migration claim coordinates only
+the processes that are starting, not one already running: a still-running 1.15.0 annotation
+service keeps serving after migration v1 and reads every annotation's comment as empty. If a full
+stop is impossible, upgrade ingestion first and let it run the migrations, but stop or upgrade the
+query and annotation services before it starts; an upgraded ingestion service against a
+not-yet-started query or annotation service is harmless, against a still-running 1.15.0 one it is
+not. See the "Upgrading from 1.15.0" checklist at the top of these notes.
 
 The same constraint applies permanently to any writer that bypasses ingestion — a direct Mongo
 import, or a restore that adds buckets. Such a writer must raise the affected PVs' statistics with
