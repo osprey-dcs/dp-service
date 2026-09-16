@@ -1,9 +1,107 @@
-# dp-service 1.16.0 Release Notes (draft)
+# dp-service 1.16.0 Release Notes
 
-This file collects the release-note lines for changes landing in 1.16.0 as they merge; it is a
-draft until the release is cut.
+Changes since rel-1.15.0. Builds against dp-grpc 1.16.0 (tag `rel-1.16.0`), which carries the
+protobuf changes referenced below by dp-grpc issue number.
+
+## Upgrading from 1.15.0 — read this first
+
+1.16.0 is the first release delivered through the schema migration mechanism, and its first
+startup against an existing database changes stored data. In order:
+
+1. **Free ports 9464–9467** on every service host (or set the metrics-port variables); each
+   service now binds a metrics endpoint and refuses to start without it (#212, below).
+2. **Take a restorable backup.** There are no downgrade migrations, and a 1.15.0 binary against a
+   migrated database misreads it rather than refusing: it sees every annotation's comment as empty
+   (v1 renamed the field) and repeats its hours-long startup bucket scan (v5 dropped the marker
+   that skipped it). Restoring the backup is the only way back.
+3. **Stop every service.** A 1.15.0 ingestion process writing after migration v5 has seeded
+   `pvStats` produces buckets that queries can silently miss (#232). The migration claim
+   coordinates the *migrating* processes only — it does not hold off a 1.15.0 process that is
+   already running, and such a process keeps serving against the migrated schema: after v1 a
+   1.15.0 annotation service reads every annotation's comment as empty, exactly as it would after
+   a rollback. If a full stop is impossible, upgrade ingestion first and let it migrate, but stop
+   or upgrade query and annotation before it does — leaving them up is a live wrong answer, not
+   just a risk window.
+4. **Start one service and let it migrate.** Five migrations run in the first upgraded process,
+   two of them full scans of `buckets`; budget the window from a read-only measurement of the
+   archive (the SLAC runbook has the query). Other services started meanwhile exit after a
+   five-minute claim wait and must be restarted once the migration finishes.
+5. **Verify** the marker (`version: 5`), the `pvStats` count, and the index set, then start the
+   rest.
+
+The mechanism and its failure messages: [`doc/runbooks/schema-migration.md`](../runbooks/schema-migration.md).
+Rehearsing against a restored copy: [`schema-migration-rehearsal.md`](../runbooks/schema-migration-rehearsal.md).
+The SLAC sequence with measured numbers: [`upgrade-1.16-slac.md`](../runbooks/upgrade-1.16-slac.md).
+
+## Schema migration mechanism (Issue #254)
+
+### DEPLOYMENT CHANGE: services migrate the database at startup and fail closed
+
+Every service now records the database's schema version in `serviceMetadata` and applies pending
+migrations during `MongoClientBase.init()`, before its port binds. A database whose version the
+binary cannot establish — newer than the build, a migration that failed partway, a claim held by a
+process that did not finish within five minutes — **stops the service** instead of being served
+from. The choice is deliberate: every migration in this release exists because the unmigrated shape
+reads as a wrong answer rather than an error (a null description, an unmatchable tag, an invisible
+bucket), and a delivery mechanism that logged and continued would compound one silent failure with
+another.
+
+Concurrent startup is the normal case: one process wins an atomic claim on the marker and migrates,
+the others wait and then proceed. A database with no marker is classified by content — empty means
+a fresh install stamped at the current version; any document in any managed collection means a
+legacy database migrated from version 0. **Restore backups before the first start**, never
+underneath a marker.
+
+Migrations can be disabled with `DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP=false`, which skips
+*applying* them but not the version check: a mismatched database still refuses to start. The five
+migrations shipped in 1.16.0 (v1–v3 on `annotations`, v4 and v5 on `buckets`) are described in
+their owning sections below and inventoried in the runbook. The async Mongo client cannot run the
+check and logs a warning; it is on no production path.
 
 ## Modernized DataSets and Annotations APIs (Issues dp-grpc #132, dp-service #248)
+
+### API CHANGE: message shapes follow the current conventions (#248 Phase 1)
+
+dp-grpc #132 reshaped the oldest generation of `DpAnnotationService` to the conventions the PV
+metadata, machine configuration, and sample status APIs established, and 1.16.0 implements the
+service side. Clients built against 1.15.0 protos must be regenerated. The changes a caller sees:
+
+- `Annotation` is a top-level message, and its `comment` field is now `description`. Stored
+  annotations are renamed by **schema migration v1**, which also replaces the annotations text
+  index (now over `name` and `description` with ascending `ownerId`; `event.description` is no
+  longer indexed). The migration halts rather than overwrite if a document carries both fields —
+  the runbook has the pre-check.
+- `SaveDataSetRequest` is flat: the dataset's fields are on the request, not on a nested
+  `dataSet`.
+- Every query criterion takes **repeated** values; a criterion with one value behaves exactly as
+  the old singular one. Two keep a singular field: `TextCriterion` is still a single `text`, and
+  `AttributesCriterion` is a single `key` alongside repeated `values` (an empty `values` list is a
+  key-only existence search).
+- `queryAnnotations` returns references only: the `dataSets` field is gone, and
+  `Annotation.calculations` is populated by `getAnnotation` alone (below). Callers that read
+  embedded dataset or calculations content from query results must fetch it by id.
+- `CalculationsDataFrame` carries its frame under a `frame` submessage.
+
+### New CRUD methods, entity fields, and delete semantics (#248 Phase 2)
+
+`getDataSet`, `getAnnotation`, `getCalculations`, `deleteDataSet`, and `deleteAnnotation` are
+implemented; `patchDataSet` and `patchAnnotation` respond "not yet implemented". All entities emit
+`modifiedBy`, `createdTime`, and `updatedTime` (unset until the first update), and DataSets carry
+tags and attributes. The behaviors worth knowing:
+
+- A malformed ObjectId on any get/delete is a **rejection**, as is a not-found.
+- `deleteDataSet` is rejected while any annotation references the dataset; the message names one
+  referencing annotation and the total count.
+- `deleteAnnotation` also deletes the annotation's calculations document, and is not blocked by
+  other annotations' references to it — those links may dangle. `saveAnnotation` likewise deletes
+  the calculations document it replaces or clears.
+- `getAnnotation` reports a `calculationsId` that resolves to no document as an **error**, never as
+  empty calculations.
+- Annotation tags are now normalized (lowercase, deduplicated, sorted) on save like every other
+  tagged entity; **schema migration v2** normalizes previously stored annotation tags, without
+  which a stored mixed-case tag could never match a `TagsCriterion` value. **Schema migration v3**
+  canonicalizes stored `dataSetIds`/`annotationIds` to lowercase hex, which the reference checks
+  compare as strings.
 
 ### BEHAVIOR CHANGE: query criteria combine with AND (#248 Phase 3)
 
@@ -103,6 +201,91 @@ Tabular formats (CSV, XLSX) export typed *scalar* calculations columns; a calcul
 with no tabular representation (array, image, struct, serialized) is rejected with guidance to
 export to HDF5 instead — a rejection, not an error, per the classification above.
 
+### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
+
+The first 1.16.0 service to start against an existing database runs schema migration v4
+(`V4StampColumnDiscriminators`), stamping the `_t` class discriminator on embedded legacy columns
+written before rel-1.13.0, in `buckets` and `calculations` alike. Without the stamp, such columns
+cannot be decoded under the polymorphic field types — which reads as silently empty query and
+export results, not an error.
+
+Operationally this is a **one-time full scan of the `buckets` collection**: expect minutes up to
+roughly an hour on archives in the tens of millions of buckets. While the elected process runs
+the migration, other starting services wait five minutes on the migration claim and then exit
+with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
+branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
+waiting services restart and come up once the migration completes. Do not clear the claim while
+the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
+inventory.
+
+## Sample Status API (Issues dp-grpc #121, dp-service #238)
+
+The Annotation Service implements `saveSampleStatuses`, `querySampleStatuses`,
+`querySampleStatusesStream`, and `deleteSampleStatuses`; the two domain-registry methods
+(`saveSampleStatusDomain`, `querySampleStatusDomains`) respond "not yet implemented". A status is
+keyed by (pvName, timestamp, domain, layer) at nanosecond precision and stored in the new
+`sampleStatusBuckets` collection, whose indexes every service creates at startup. Saving carves
+exactly-colliding timestamps out of existing documents before inserting, so no two documents ever
+assert a status for the same key; deleting is exact at the sample axis over `[beginTime, endTime)`;
+querying returns boundary documents whole, ordered by (pvName, domain, layer, firstTime), with
+keyset page tokens that are **rejected** when malformed. Timestamps are range-checked on the save,
+query, and delete paths against the epoch-nanos representation the storage and query paths key on:
+`epochSeconds` above 9,223,372,036 (~year 2262) is rejected, because the conversion would wrap
+negative and write a document no overlap query could find. The check is on seconds alone, so at
+exactly 9,223,372,036 s a `nanoseconds` value above 854,775,807 still overflows; tightening that
+boundary is issue #284.
+
+Three new `AnnotationHandler` settings: `sampleStatusQueryDefaultPageSize` (10000),
+`sampleStatusQueryMaxPageSize` (100000, larger requests are clamped), and
+`sampleStatusSaveMaxStatuses` (1000000 per request).
+
+### `QuerySpec.sampleStatusSelector` on querySamples
+
+`querySamples` and `querySamplesStream` accept a `sampleStatusSelector` that keeps (INCLUDE) or
+drops (EXCLUDE) samples labeled with a matching status at their exact timestamp; it composes with a
+`configurationSelector` by intersection. `queryBuckets`/`queryBucketsStream` reject it, since a
+whole storage bucket cannot represent per-sample filtering. A status-join failure is reported as an
+error, never as "no statuses" — in EXCLUDE mode that would silently return the filtered-out samples.
+
+## Annotation Service query and classification changes (Issues #235, #245)
+
+### BEHAVIOR CHANGE: an empty criteria list is match-all, and every query is bounded (#245)
+
+`queryPvMetadata`, `queryConfigurations`, and `queryConfigurationActivations` previously
+**rejected** an empty criteria list, and no match-all criterion existed, so "list everything" was
+unaskable. An empty list now matches all records. A supplied criterion must still be well-formed.
+Every one of these queries now applies a default limit of 100 when `limit` is unset and returns a
+`nextPageToken` when more remain — `queryPvMetadata` in particular previously returned every match
+with an always-blank token when `limit` was unset, so a caller that relied on that unbounded read
+now needs to page.
+
+**`queryDataSets` and `queryAnnotations` changed the same way**, as part of #248 Phase 1 rather
+than #245. Both previously rejected an empty criteria list (`"QueryDataSetsRequest.criteria list
+must not be empty"` and its `queryAnnotations` counterpart); both now treat it as match-all and
+apply the same default limit of 100. So a request that 1.15.0 rejected outright now succeeds and
+returns the first page of the whole collection — worth checking wherever client code relied on
+that rejection to catch an unfilled filter.
+
+### BEHAVIOR CHANGE: business-rule failures are rejections, not errors (#235)
+
+Six failures the Annotation Service detected inside its Mongo client were reported as
+`RESULT_STATUS_ERROR`; they are client mistakes and now arrive as `RESULT_STATUS_REJECT`:
+`saveDataSet`/`saveAnnotation` with an `id` matching no record, `saveConfiguration` changing a
+category that has activations, `deleteConfiguration` with activations present, and
+`saveConfigurationActivation` naming a missing configuration or overlapping an existing activation.
+Messages are unchanged. In the same change, a Mongo lookup failure during a save is now reported as
+an error rather than as "not found", and `saveDataSet`/`saveAnnotation` no longer upsert on an
+`_id` filter (a document deleted between lookup and write is now a rejection instead of a silently
+re-created record under a new id).
+
+## API CHANGE: `DataValue.ValueStatus` removed (Issues dp-grpc #143, dp-service #252)
+
+dp-grpc 1.16.0 removes `DataValue.ValueStatus` and its `StatusCode`/`Severity` enums; the Sample
+Status API above is the replacement. No server path ever read the field, so there is no stored
+behavior to preserve: archived values that carried it still parse (the field number is reserved and
+reads as unknown), and no migration is needed. Clients that set it must regenerate against the new
+protos; the client library's `IngestionRequestParams` loses its `valuesStatus` parameter.
+
 ## Per-PV bucket span bound; the startup span scan is removed (Issue #232)
 
 ### The startup full-collection scan is gone
@@ -127,10 +310,12 @@ limit, which had to cover the **longest bucket anywhere in the archive** — so 
 over-long buckets on a few PVs imposed that same lookback on every query for every other PV.
 
 The bound is now derived per query from `pvStats.maxBucketSpanSeconds`, the largest span ever
-ingested for each PV, taken as the maximum over the PVs the request names. A PV with normal bucket
-sizes is no longer penalized by an unrelated PV's outliers. On an archive where the configured
-limit had been raised to accommodate outliers, this is the difference between a lookback measured
-in weeks and one measured in seconds for the well-behaved majority.
+ingested for each PV. As first merged it was taken as the maximum over the PVs the request names;
+#274 (below) then partitioned each request by span class so that an outlier PV bounds only its own
+retrieval. A PV with normal bucket sizes is no longer penalized by an unrelated PV's outliers, in
+the same request or elsewhere in the archive. On an archive where the configured limit had been
+raised to accommodate outliers, this is the difference between a lookback measured in weeks and one
+measured in seconds for the well-behaved majority.
 
 ### BEHAVIOR CHANGE: `Buckets.maxBucketSpanSeconds` is now ingestion-only
 
@@ -247,23 +432,6 @@ cluster in CI. A companion test, `MongoSyncQueryClientMissingIndexTest`, pins th
 index is reported to the caller as an error on all four retrieval paths rather than throwing inside
 the handler's worker thread.
 
-### Schema migration v4 — one-time full bucket scan at first startup (#248 Phase 4)
-
-The first 1.16.0 service to start against an existing database runs schema migration v4
-(`V4StampColumnDiscriminators`), stamping the `_t` class discriminator on embedded legacy columns
-written before rel-1.13.0, in `buckets` and `calculations` alike. Without the stamp, such columns
-cannot be decoded under the polymorphic field types — which reads as silently empty query and
-export results, not an error.
-
-Operationally this is a **one-time full scan of the `buckets` collection**: expect minutes up to
-roughly an hour on archives in the tens of millions of buckets. While the elected process runs
-the migration, other starting services wait five minutes on the migration claim and then exit
-with the held-claim message; during a long v4 run this is the "a migration is genuinely running"
-branch of that message's triage, not a stuck claim. Under a supervisor this self-heals — the
-waiting services restart and come up once the migration completes. Do not clear the claim while
-the migrating host is alive. See `doc/runbooks/schema-migration.md` for triage guidance and the migration
-inventory.
-
 ## Service metrics (Issue #212)
 
 Every service now collects and exports metrics — request rates, error rates, latency histograms, a
@@ -349,11 +517,8 @@ real MongoDB and documented in `doc/metrics.md`:
 Likewise, a request rejected by gRPC-layer field validation never reaches the handler, so it is not
 counted in `dp.query.requests` — and because the service reports a rejection as an `OK` response
 carrying an `ExceptionalResult` rather than as a gRPC error, it is not visible as a non-`OK`
-`grpc_status` either. Such requests are still logged with their reason; counting them is a
-follow-on.
-
-*(Phases 1 and 2 — the modernized message shapes, entity/audit fields, and new CRUD methods —
-are also part of 1.16.0; their notes are collected when this draft is finalized.)*
+`grpc_status` either. Such requests are still logged with their reason; counting them is
+follow-on issue #279.
 
 ## querySamples correctness and query-path hardening (Issue #274)
 
@@ -389,6 +554,13 @@ to buffer the whole result. New configuration key `QueryHandler.streamReadyTimeo
 300): how long a response waits for a stalled client before it is abandoned. A cancelled call stops
 promptly.
 
+**Operational trade:** the wait happens on the query worker serving the stream, so a slow reader now
+occupies one of `QueryHandler.numWorkers` (default 7) for the life of its stream instead of growing
+the heap. A site with many long-lived streaming consumers should size the worker count for them;
+`dp_handler_workers_active` against `dp_handler_workers_max` shows saturation, and streams cut
+short by a cancel or a readiness timeout are counted under the new `dp.outcome=abandoned` value of
+`dp.query.requests`.
+
 ### Bucket retrieval is partitioned by span class
 
 The #232 per-PV span bound was applied as one maximum over all PVs in a request, and measurement
@@ -410,4 +582,48 @@ Five new query benchmark clients cover `queryTable`, `querySamples`, `querySampl
 long-span PVs, and fixture reuse (`--skip-load`). See `doc/benchmark-overview.md`, section 6. The
 plan-shape test now includes a deep-history case pinning that bucket scan cost is independent of a
 PV's history depth.
+
+## Client API layer (`com.ospreydcs.dp.client`)
+
+The convenience client layer shipped in the same jar gained coverage for most of the APIs above,
+and several fixes to how it reports failures:
+
+- **New wrappers:** `AnnotationClient.savePvMetadata()` (#224), `saveConfiguration()`,
+  `saveConfigurationActivation()`, and `getConfiguration()`; query and get wrappers for PV
+  metadata and configuration (#243); the Sample Status API (#238); `getDataSet()`,
+  `getAnnotation()`, and `getCalculations()` (#248 Phase 2); and `QueryClient` wrappers for all
+  four Query API V2 methods — `queryBuckets`, `queryBucketsStream`, `querySamples`,
+  `querySamplesStream` (#244). The V2 wrappers model the `PvSelector` oneof as a sealed type so an
+  invalid combination fails to compile, drop `pageToken` on the streaming forms (the server rejects
+  it there), and report a streamed `useSerializedColumns` result that spans more than one page as
+  fragmented rather than silently mis-assembled.
+- **Blank criterion values never reach the server (#243).** A blank `prefix`/`contains` value was
+  a silent match-all on the server; every criterion builder now drops blank and null entries, and a
+  criterion whose entries are all blank is omitted. This holds for the V2 `metadataQuery` selector
+  too. The one deliberate exception is a `configurationCriteria` list from which no criterion
+  survives, which is forwarded empty for the server to reject — omitting it would silently widen
+  the query.
+- **Results expose the service's classification (#230).** `ApiResultBase` carries an
+  `ApiResultStatus` and `isReject()`, so a caller can tell a rejection from a service error
+  without matching on the message. Server rejection messages are passed through unmodified (#240);
+  previously they were prefixed with the observer's class name.
+- **Observer fixes:** an observer that received an error no longer leaves its caller waiting until
+  the await timeout; an await timeout is reported as an error rather than an empty success; a
+  duplicate response and a save response missing its result field are reported as failures
+  instead of yielding a default-valued success.
+- Column metadata can be attached to ingestion requests built through `IngestionRequestParams`
+  (`setColumnMetadata`/`clearColumnMetadata`).
+
+## Dependencies and build
+
+- log4j 2.25.4 → 2.25.5 (Dependabot alert).
+- `cisd:jhdf5`, which is not on Maven Central, is vendored under `third-party/cisd-jhdf5/` so a
+  build no longer depends on `maven.scijava.org` being up (a 503 on that host broke CI in August).
+- GitHub Actions are pinned to commit SHAs; the release image workflow resolves the dp-grpc ref
+  from the pom version on release builds. Note the fallback: if `rel-<pom dp-grpc.version>` does
+  not exist in dp-grpc and no explicit `dp_grpc_ref` was supplied, the workflow silently builds
+  against dp-grpc `main` rather than failing. **Tag dp-grpc `rel-1.16.0` before building the
+  release image**, or the published image may be built against a different proto revision than the
+  release it is named for. (`release.yml`, which builds the release artifacts, has no such
+  fallback — it fails outright when the matching tag is absent.)
 

@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run tests: `mvn test`
 - Run single test: `mvn test -Dtest=TestClassName` or `mvn test -Dtest=TestClassName#testMethodName`
 - Run specific service:
-  - Ingestion: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.14.0-shaded.jar com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer`
-  - Query: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.14.0-shaded.jar com.ospreydcs.dp.service.query.server.QueryGrpcServer`
-  - Annotation: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.14.0-shaded.jar com.ospreydcs.dp.service.annotation.server.AnnotationGrpcServer`
+  - Ingestion: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.16.0-shaded.jar com.ospreydcs.dp.service.ingest.server.IngestionGrpcServer`
+  - Query: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.16.0-shaded.jar com.ospreydcs.dp.service.query.server.QueryGrpcServer`
+  - Annotation: `java -Ddp.config=path/to/config.yml -Dlog4j.configurationFile=path/to/log4j2.xml -cp target/dp-service-1.16.0-shaded.jar com.ospreydcs.dp.service.annotation.server.AnnotationGrpcServer`
 
 ## Architecture Overview
 This is a Data Platform service implementation with three main services:
