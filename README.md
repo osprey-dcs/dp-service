@@ -398,6 +398,21 @@ The services apply pending database schema migrations at startup and refuse to s
 
 * [running the integration tests](./doc/testing-overview.md)
 * [running ingestion and query performance benchmarks](./doc/benchmark-overview.md)
+
+## Release Notes
+
+Per-release notes live under [`doc/release-notes/`](doc/release-notes/), one document per release,
+covering what changed since the previous one and what upgrading requires.
+
+| Release | Notes |
+|---|---|
+| 1.16.0 | [rel-1.16.0](doc/release-notes/rel-1.16.0.md) — schema migration at startup, per-PV bucket span bound, metrics endpoints, Sample Status API, modernized DataSet and Annotation APIs.  **Breaking.** |
+| 1.14.0 | [rel-1.14.0](doc/release-notes/rel-1.14.0.md) — column-level metadata in ingestion. |
+
+Releases not listed above were documented on the
+[GitHub release](https://github.com/osprey-dcs/dp-service/releases) itself.  The `rel-*` tags remain
+the authority on what any past release contained.
+
 ## Operator runbooks
 
 * [schema migration: mechanism, startup failures, and triage](./doc/runbooks/schema-migration.md)

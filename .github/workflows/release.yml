@@ -40,6 +40,20 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      # Checked before the build rather than left to action-gh-release, which fails the job on
+      # a missing body_path only after the multi-minute build, test, and upload steps have run.
+      # Every release from 1.16.0 on ships notes; see CLAUDE.md "Releases".
+      - name: Verify release notes exist
+        shell: bash
+        run: |
+          NOTES="doc/release-notes/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::Release notes not found at $NOTES."
+            echo "::error::Add the notes for ${VERSION} and re-run, or retag once they are on the tagged commit."
+            exit 1
+          fi
+          echo "NOTES_PATH=$NOTES" >> "$GITHUB_ENV"
+
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -114,6 +128,7 @@ jobs:
           files: |
             release/dp-service-${{ env.VERSION }}.jar
             release/dp-service-${{ env.VERSION }}.jar.sha256
+          body_path: ${{ env.NOTES_PATH }}
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
