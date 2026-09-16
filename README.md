@@ -398,6 +398,7 @@ The services apply pending database schema migrations at startup and refuse to s
 
 * [running the integration tests](./doc/testing-overview.md)
 * [running ingestion and query performance benchmarks](./doc/benchmark-overview.md)
+
 ## Release Notes
 
 Per-release notes live under [`doc/release-notes/`](doc/release-notes/), one document per release,
