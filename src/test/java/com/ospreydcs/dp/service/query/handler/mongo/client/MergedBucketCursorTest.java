@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
+import com.mongodb.MongoException;
 import com.mongodb.ServerAddress;
 import com.mongodb.ServerCursor;
 import com.mongodb.client.MongoCursor;
@@ -135,5 +136,49 @@ public class MergedBucketCursorTest {
     @Test
     public void testRequiresAtLeastOneInput() {
         assertThrows(IllegalArgumentException.class, () -> new MergedBucketCursor(List.of()));
+    }
+
+    /**
+     * When one span class's cursor fails to open, the classes already opened must be closed before
+     * the exception propagates. The caller converts that exception into the null cursor either way,
+     * so a dropped cleanup loop is invisible from outside -- it just leaks a server cursor per
+     * failed multi-class query. Drives {@code openSpanClassCursors} directly with a finder that
+     * throws on the second class; the function never touches the database.
+     */
+    @Test
+    public void testPartialOpenFailureClosesAlreadyOpenedCursors() {
+        final MongoSyncQueryClient client = new MongoSyncQueryClient();
+        final ListCursor first = new ListCursor(List.of(bucket("pv_a", 0, 0)));
+        final List<SpanClass> classes = List.of(
+                new SpanClass(List.of("pv_a"), 0L),
+                new SpanClass(List.of("pv_b"), 4L));
+
+        final MongoException failure = new MongoException("hint provided does not correspond to an existing index");
+        final RuntimeException thrown = assertThrows(MongoException.class, () ->
+                client.openSpanClassCursors(classes, spanClass -> {
+                    if (spanClass.pvNames().contains("pv_a")) {
+                        // a FindIterable whose cursor() hands back the tracked fake
+                        return findIterableReturning(first);
+                    }
+                    throw failure;
+                }));
+
+        assertEquals(failure, thrown);
+        assertTrue("the cursor opened for the first span class must be closed", first.closed);
+    }
+
+    /** A FindIterable stub whose only usable method is cursor(); the rest are unreachable here. */
+    @SuppressWarnings("unchecked")
+    private static com.mongodb.client.FindIterable<BucketDocument> findIterableReturning(
+            MongoCursor<BucketDocument> cursor) {
+        return (com.mongodb.client.FindIterable<BucketDocument>) java.lang.reflect.Proxy.newProxyInstance(
+                MergedBucketCursorTest.class.getClassLoader(),
+                new Class<?>[]{com.mongodb.client.FindIterable.class},
+                (proxy, method, args) -> {
+                    if ("cursor".equals(method.getName()) || "iterator".equals(method.getName())) {
+                        return cursor;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 }

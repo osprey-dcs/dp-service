@@ -73,6 +73,16 @@ public class MergedBucketCursor implements MongoCursor<BucketDocument> {
         return best;
     }
 
+    /**
+     * Orders two buckets the way the server's {@code (pvName, firstTime)} sort does.
+     *
+     * <p>The name comparison assumes PV names are ASCII. MongoDB sorts strings by raw UTF-8 bytes
+     * (no collation is configured on this collection or its sort), which agrees with Java's
+     * UTF-16 code-unit order for ASCII and the whole BMP, and diverges only for supplementary-plane
+     * characters. That matters here because the keyset page resume filters {@code pvName > last}
+     * server-side: if this merge ever disagreed with the server's order, a continuation page could
+     * skip or repeat a PV -- a silent wrong answer rather than an error.
+     */
     static int compare(BucketDocument a, BucketDocument b) {
         final int byName = nullFirst(a.getPvName()).compareTo(nullFirst(b.getPvName()));
         if (byName != 0) {
@@ -153,6 +163,17 @@ public class MergedBucketCursor implements MongoCursor<BucketDocument> {
             available += cursors.get(i).available() + (heads[i] == null ? 0 : 1);
         }
         return available;
+    }
+
+    /**
+     * Unsupported, inheriting {@link java.util.Iterator}'s throwing default. Deliberately different
+     * from the sibling {@code TimedMongoCursor}, which delegates {@code remove()} because it is a
+     * transparent decorator over one cursor; a merge has no single underlying cursor to remove
+     * from. No bucket-query caller invokes it.
+     */
+    @Override
+    public void remove() {
+        throw new UnsupportedOperationException("remove() is not supported on a merged bucket cursor");
     }
 
     /** No single server cursor stands for a merge; null, as an exhausted driver cursor reports. */
