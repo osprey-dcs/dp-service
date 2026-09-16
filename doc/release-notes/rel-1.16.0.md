@@ -29,9 +29,9 @@ startup against an existing database changes stored data. In order:
 5. **Verify** the marker (`version: 5`), the `pvStats` count, and the index set, then start the
    rest.
 
-The mechanism and its failure messages: [`doc/runbooks/schema-migration.md`](../runbooks/schema-migration.md).
-Rehearsing against a restored copy: [`schema-migration-rehearsal.md`](../runbooks/schema-migration-rehearsal.md).
-The SLAC sequence with measured numbers: [`upgrade-1.16-slac.md`](../runbooks/upgrade-1.16-slac.md).
+The mechanism and its failure messages: [`doc/runbooks/schema-migration.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/runbooks/schema-migration.md).
+Rehearsing against a restored copy: [`schema-migration-rehearsal.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/runbooks/schema-migration-rehearsal.md).
+The SLAC sequence with measured numbers: [`upgrade-1.16-slac.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/runbooks/upgrade-1.16-slac.md).
 
 ## Schema migration mechanism (Issue #254)
 
@@ -362,10 +362,10 @@ not. See the "Upgrading from 1.15.0" checklist at the top of these notes.
 The same constraint applies permanently to any writer that bypasses ingestion — a direct Mongo
 import, or a restore that adds buckets. Such a writer must raise the affected PVs' statistics with
 a `$max` upsert on `pvStats`; the one-line recourse, and the reason lowering a value by hand
-requires an ingestion restart, are in [`doc/runbooks/schema-migration.md`](../runbooks/schema-migration.md).
+requires an ingestion restart, are in [`doc/runbooks/schema-migration.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/runbooks/schema-migration.md).
 
 SLAC-specific upgrade sequencing, with the site's measured numbers and verification queries, is in
-[`doc/runbooks/upgrade-1.16-slac.md`](../runbooks/upgrade-1.16-slac.md).
+[`doc/runbooks/upgrade-1.16-slac.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/runbooks/upgrade-1.16-slac.md).
 
 ### Known limitation: between-fragment cost under a ConfigurationSelector (#203)
 
@@ -441,7 +441,7 @@ the handler's worker thread.
 Every service now collects and exports metrics — request rates, error rates, latency histograms, a
 per-stage breakdown of query handling, MongoDB command durations, handler queue and worker
 saturation, gRPC call metrics, and JVM runtime metrics. The operator reference is
-[`doc/metrics.md`](../metrics.md), which includes the PromQL for diagnosing a slow query.
+[`doc/metrics.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/metrics.md), which includes the PromQL for diagnosing a slow query.
 
 ### DEPLOYMENT CHANGE: each service now binds a second port, and fails to start if it cannot
 
@@ -623,9 +623,9 @@ and several fixes to how it reports failures:
 Every setting below is new in 1.16.0 and has a working default, so an existing config file needs
 no edit to start. They are collected here because several change behavior an operator may want to
 tune after reading the sections above. Each is documented in-line in
-[`application.yml`](../../src/main/resources/application.yml), in the environment-variable
-reference in [`doc/running.md`](../running.md#service-configuration), and — for the telemetry
-group — in [`doc/metrics.md`](../metrics.md).
+[`application.yml`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/src/main/resources/application.yml), in the environment-variable
+reference in [`doc/running.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/running.md#service-configuration), and — for the telemetry
+group — in [`doc/metrics.md`](https://github.com/osprey-dcs/dp-service/blob/rel-1.16.0/doc/metrics.md).
 
 | Setting | Environment variable | Default | Section |
 |---|---|---|---|
