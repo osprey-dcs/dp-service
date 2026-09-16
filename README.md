@@ -366,7 +366,18 @@ Notes for running the Data Platform server and client applications are linked [h
 
 ## Service configuration options
 
-Options for configuring Data Platform services are desribed in more detail in [the configuration documentation](doc/configuration.md).
+Options for configuring Data Platform services are described in more detail in
+[the service configuration section of the running documentation](doc/running.md#service-configuration),
+which covers the default config file, overriding it, and the accepted environment variables.
+[`application.yml`](src/main/resources/application.yml) carries an in-line comment for every
+individual setting.
+
+## Service metrics
+
+Every service exports metrics on a Prometheus scrape endpoint, enabled by default, and **fails to
+start if that port cannot be bound**.  [The metrics documentation](doc/metrics.md) is the operator
+reference: what is measured, the per-stage breakdown of query handling, the slow query log, and the
+PromQL for diagnosing a slow query.
 
 ## Database schema migration
 
