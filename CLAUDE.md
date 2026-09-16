@@ -1451,6 +1451,24 @@ silent return leaves `server` null, so `blockUntilShutdown()` falls through to `
 the process exits 0 — a supervisor reads that as a clean shutdown and never alerts. Any new server
 implementation must return its `serviceImpl.init(...)` result rather than swallowing it.
 
+## Releases
+
+Tagged as `rel-<version>`; `release.yml` builds dp-grpc at the matching tag, runs the full
+`mvn verify` against a MongoDB container, and attaches the shaded JAR plus its SHA-256 checksum.
+
+Release notes are version-controlled under `doc/release-notes/`, one document per release
+(`rel-<version>.md`). A release note is organized by issue ticket rather than by PR, since a ticket
+often spans several PRs, and a breaking release leads with an "Upgrading from <previous>" checklist
+that calls out silent behavior changes separately from compile errors. Add each new document to the
+table in the `## Release Notes` section of `README.md`.
+
+`release.yml` publishes `doc/release-notes/rel-<version>.md` as the GitHub release body via
+`body_path`, and **the notes must be on the tagged commit**: write and merge them *before* pushing
+the `rel-*` tag. The workflow checks for the file immediately after deriving the version rather than
+leaving it to `action-gh-release` — here the build runs a MongoDB container and a full `mvn verify`,
+so an unchecked missing-notes failure would surface only after several minutes of work, with the
+release already half-published. Retagging is the only fix once the tag is pushed.
+
 ## Continuous Integration
 - **GitHub Actions**: `.github/workflows/ci.yml`
 - **Multi-Repository Setup**: builds dp-grpc before dp-service
