@@ -39,10 +39,31 @@ in a state 1.15.0 misreads rather than refuses: migration v1 renamed the annotat
 so a 1.15.0 service reads every annotation's comment as empty; v5 dropped the
 `bucketSpanVerification` marker, so a 1.15.0 service repeats the hours-long startup scan (or needs
 the hand-seeded marker again). Going back therefore means restoring the pre-upgrade backup, which
-also discards anything ingested after the window opened. Take a `mongodump` of the metadata
-collections at minimum (the rehearsal doc's Part 1 command captures exactly those, indexes
-included), and a filesystem or cluster snapshot for `buckets` if one is available — a 35M-bucket
-dump is not something to start during the window.
+also discards anything ingested after the window opened.
+
+**What each migration touches, and what that means for the backup:**
+
+| migration | collection(s) written | recoverable from a metadata-only dump? |
+|---|---|---|
+| v1, v2, v3 | `annotations` | yes |
+| v4 | `buckets`, `calculations` | `calculations` yes; `buckets` **no** |
+| v5 | `pvStats` (created), drops `bucketSpanVerification` | yes — `pvStats` is derived, and re-seeding is just a re-run |
+
+A `mongodump` of everything except `buckets` and `sampleStatusBuckets` covers v1–v3 and v5
+completely. The rehearsal doc's Part 1 command produces exactly that dump, but it is written for
+*rehearsal*, not backup — it excludes `sampleStatusBuckets` as well, which is data, not derived
+state. For a backup, drop that second exclusion.
+
+That leaves v4's write to `buckets`, and the reassuring part is that **v4 does not need to be
+rolled back**. It only adds `_t: "dataColumn"` to legacy embedded columns, and 1.15.0 already
+declared `BucketDocument.dataColumn` as the abstract `ColumnDocumentBase` with
+`@BsonDiscriminator` on `DataColumnDocument` (since #173) — so the stamped discriminator is exactly
+what a rolled-back 1.15.0 binary expects to read. A 1.15.0 service reads a v4-migrated `buckets`
+correctly. Take a filesystem or cluster snapshot of `buckets` if one is cheaply available, but a
+35M-bucket `mongodump` is not something to start during the window, and v4 is not the reason to.
+
+What a `buckets` backup *would* buy you is recovering post-window ingestion if you roll back — the
+same thing a snapshot of any live collection buys. Decide that on the usual grounds, not on v4.
 
 **Measure the seed's cost.** Run the v5 pipeline's grouping stage read-only, through `mongos` with a
 secondary read preference so it runs on each shard's secondaries, to get the PV count and confirm
@@ -50,6 +71,7 @@ the span distribution. This is the same work the migration does, minus the write
 
 ```js
 db.getMongo().setReadPref("secondary")
+db.getMongo().getReadPrefMode()   // confirm: "secondary", not "primary"
 db.buckets.aggregate([
   {$match: {$expr: {$eq: [{$type: "$pvName"}, "string"]}}},
   {$group: {_id: "$pvName", maxBucketSpanSeconds: {$max: {$subtract: [
@@ -131,18 +153,23 @@ this upgrade; know they exist for the tuning notes after the window:
 `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` (300), both described in
 [running.md](../running.md).
 
-**Free up four ports, or the services will not start.** This is unrelated to the bucket-span work
-but lands in the same release, and it is the one 1.16.0 change that can stop a service from coming
-back up inside the window. Each service now binds a second port for its Prometheus metrics endpoint
-and **fails to start if it cannot bind it** (issue #212) — a service silently running without
-metrics was judged worse than a loud failure. The defaults:
+**Free up a metrics port for every service you run, or that service will not start.** This is
+unrelated to the bucket-span work but lands in the same release, and it is the one 1.16.0 change
+that can stop a service from coming back up inside the window. Each service now binds a second port
+for its Prometheus metrics endpoint and **fails to start if it cannot bind it** (issue #212) — a
+service silently running without metrics was judged worse than a loud failure. The defaults:
 
-| service | metrics port |
-|---|---|
-| ingestion | 9464 |
-| query | 9465 |
-| annotation | 9466 |
-| ingestion stream | 9467 |
+| service | metrics port | notes |
+|---|---|---|
+| ingestion | 9464 | |
+| query | 9465 | |
+| annotation | 9466 | |
+| ingestion stream | 9467 | only if this service is deployed |
+
+The rest of this runbook refers to the three services this deployment is known to run — ingestion,
+query, and annotation. The ingestion stream service is a separate process (see
+[running.md](../running.md)); if SLAC runs it, free 9467 as well and include it wherever the steps
+below say "all services". If not, 9464–9466 are enough.
 
 Before the window, confirm nothing on each host already holds these:
 
@@ -181,10 +208,18 @@ To change a port set `DP_<SERVICE>_SERVER_METRICS_PORT`; to turn the whole thing
 ## The upgrade
 
 **1. Stop all services** — ingestion, query, and annotation. This is what guarantees no pre-1.16
-ingestion process writes after the seed. If a full stop is not acceptable, the alternative is to
-upgrade **ingestion first** and let it be the process that runs the migrations; an upgraded
-ingestion service against a not-yet-upgraded query service is harmless, but a 1.15 ingestion
-service against a seeded database is not.
+ingestion process writes after the seed.
+
+If a full stop is not acceptable, the alternative is to upgrade **ingestion first** and let it be
+the process that runs the migrations — but query and annotation must still be stopped or upgraded
+before it starts. The migration claim coordinates only the processes that are *starting*; it has
+no effect on a 1.15 process already running, which keeps serving against the schema the migrations
+are changing underneath it. Concretely, once v1 renames the annotation `comment` field, a still-running
+1.15 annotation service reads every annotation's comment as empty — the same misreading described
+under rollback above, except live and unnoticed. A 1.15 ingestion service against a seeded database
+is the other unsafe combination (#232). An upgraded ingestion service against a not-yet-*started*
+query service is harmless; an upgraded ingestion service against a still-*running* 1.15 query or
+annotation service is not.
 
 **2. Start one service and let it migrate.** The first to start claims the migration and runs v1
 through v5. Expect it to be unavailable for roughly the elapsed time you measured above, doubled —
@@ -215,11 +250,18 @@ A PV legitimately has no `pvStats` document when every one of its buckets lacks 
 has `lastTime` before `firstTime`; such buckets are unreadable on the query path regardless. A
 materially short count otherwise is worth investigating before proceeding.
 
-Also capture the span-class distribution, and send it back with the index inventory. Since #274
-every bucket query partitions its PVs into power-of-two span classes (class 0 for spans up to 1 s,
-class *k* for spans in `(2^(k−1), 2^k]`) and issues one find per class present in the request, so
-this histogram says how many finds a typical multi-PV request will cost and which PVs share a
-class with the outliers:
+Also capture the span-class distribution, and send it back with the index inventory. Since #274 a
+bucket query that names its PVs explicitly — the V1 named-PV path and all three V2 paths —
+partitions them into power-of-two span classes (class 0 for spans up to 1 s, class *k* for spans in
+`(2^(k−1), 2^k]`) and issues one find per class present in the request, so this histogram says how
+many finds a typical multi-PV request will cost and which PVs share a class with the outliers.
+
+The one exception is the **V1 `queryTable` pattern branch**, which has no PV list: it matches the
+pattern against `pvStats._id` and takes a single maximum over the matches, so it issues one find
+bounded by the widest span among the matching PVs. A pattern that happens to match one of the four
+outliers therefore still carries a ~42-day lookback for every PV it matches. Read the histogram as
+describing named-PV and V2 queries; for pattern queries, what matters is whether the pattern can
+reach an outlier.
 
 ```js
 db.pvStats.aggregate([
@@ -256,13 +298,21 @@ fastest way to see whether the time went to the database or to assembly.
 
 ## After the upgrade
 
-**Expect the improvement to be uneven, and that is the point.** Every PV's retrieval is bounded by
-its own span class — seconds to minutes for the well-behaved majority. A request naming one of the
-four outlier PVs still pays a ~42-day lookback **for that PV's find only**: since #274 the request
-is split into one find per span class, so the outlier no longer widens the retrieval of the other
-PVs named alongside it (under #232 alone it did, because the bound was the maximum over the whole
-request). The cost of the outlier's own find is what repairing those buckets (issue #258) would
-remove; it is no longer urgent, since it no longer affects anyone else's queries.
+**Expect the improvement to be uneven, and that is the point.** On a query that names its PVs (the
+V1 named-PV path and all three V2 paths), each PV's retrieval is bounded by its own span class —
+seconds to minutes for the well-behaved majority. A request naming one of the four outlier PVs
+still pays a ~42-day lookback **for that PV's find only**: since #274 the request is split into one
+find per span class, so the outlier no longer widens the retrieval of the other PVs named alongside
+it (under #232 alone it did, because the bound was the maximum over the whole request).
+
+The V1 `queryTable` **pattern** branch is the exception, as noted with the histogram above: it has
+no PV list, so it takes one maximum over every PV the pattern matches and issues a single find at
+that bound. A pattern matching an outlier still widens the lookback for every PV it matches, just
+as #232 alone did.
+
+The cost of the outlier's own find is what repairing those buckets (issue #258) would remove; it is
+no longer urgent for named-PV queries, since it no longer affects anyone else's, but it is still
+what stands between a pattern query and the same improvement.
 
 **Slow streaming clients now occupy a worker instead of the heap.** `queryDataStream`,
 `queryBucketsStream`, and `querySamplesStream` wait for the client to drain each message before

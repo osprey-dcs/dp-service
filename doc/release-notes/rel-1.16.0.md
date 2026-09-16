@@ -14,8 +14,14 @@ startup against an existing database changes stored data. In order:
    migrated database misreads it rather than refusing: it sees every annotation's comment as empty
    (v1 renamed the field) and repeats its hours-long startup bucket scan (v5 dropped the marker
    that skipped it). Restoring the backup is the only way back.
-3. **Stop every service, or upgrade ingestion first.** A 1.15.0 ingestion process writing after
-   migration v5 has seeded `pvStats` produces buckets that queries can silently miss (#232).
+3. **Stop every service.** A 1.15.0 ingestion process writing after migration v5 has seeded
+   `pvStats` produces buckets that queries can silently miss (#232). The migration claim
+   coordinates the *migrating* processes only — it does not hold off a 1.15.0 process that is
+   already running, and such a process keeps serving against the migrated schema: after v1 a
+   1.15.0 annotation service reads every annotation's comment as empty, exactly as it would after
+   a rollback. If a full stop is impossible, upgrade ingestion first and let it migrate, but stop
+   or upgrade query and annotation before it does — leaving them up is a live wrong answer, not
+   just a risk window.
 4. **Start one service and let it migrate.** Five migrations run in the first upgraded process,
    two of them full scans of `buckets`; budget the window from a read-only measurement of the
    archive (the SLAC runbook has the query). Other services started meanwhile exit after a
@@ -67,8 +73,10 @@ service side. Clients built against 1.15.0 protos must be regenerated. The chang
   the runbook has the pre-check.
 - `SaveDataSetRequest` is flat: the dataset's fields are on the request, not on a nested
   `dataSet`.
-- Every query criterion takes **repeated** values (`TextCriterion` alone keeps its single-value
-  shape); a criterion with one value behaves exactly as the old singular one.
+- Every query criterion takes **repeated** values; a criterion with one value behaves exactly as
+  the old singular one. Two keep a singular field: `TextCriterion` is still a single `text`, and
+  `AttributesCriterion` is a single `key` alongside repeated `values` (an empty `values` list is a
+  key-only existence search).
 - `queryAnnotations` returns references only: the `dataSets` field is gone, and
   `Annotation.calculations` is populated by `getAnnotation` alone (below). Callers that read
   embedded dataset or calculations content from query results must fetch it by id.
@@ -220,8 +228,12 @@ keyed by (pvName, timestamp, domain, layer) at nanosecond precision and stored i
 exactly-colliding timestamps out of existing documents before inserting, so no two documents ever
 assert a status for the same key; deleting is exact at the sample axis over `[beginTime, endTime)`;
 querying returns boundary documents whole, ordered by (pvName, domain, layer, firstTime), with
-keyset page tokens that are **rejected** when malformed. Timestamps whose epoch-nanos value would
-overflow a signed 64-bit integer (seconds above 9,223,372,036) are rejected on every path.
+keyset page tokens that are **rejected** when malformed. Timestamps are range-checked on the save,
+query, and delete paths against the epoch-nanos representation the storage and query paths key on:
+`epochSeconds` above 9,223,372,036 (~year 2262) is rejected, because the conversion would wrap
+negative and write a document no overlap query could find. The check is on seconds alone, so at
+exactly 9,223,372,036 s a `nanoseconds` value above 854,775,807 still overflows; tightening that
+boundary is issue #284.
 
 Three new `AnnotationHandler` settings: `sampleStatusQueryDefaultPageSize` (10000),
 `sampleStatusQueryMaxPageSize` (100000, larger requests are clamped), and
@@ -246,6 +258,13 @@ Every one of these queries now applies a default limit of 100 when `limit` is un
 `nextPageToken` when more remain — `queryPvMetadata` in particular previously returned every match
 with an always-blank token when `limit` was unset, so a caller that relied on that unbounded read
 now needs to page.
+
+**`queryDataSets` and `queryAnnotations` changed the same way**, as part of #248 Phase 1 rather
+than #245. Both previously rejected an empty criteria list (`"QueryDataSetsRequest.criteria list
+must not be empty"` and its `queryAnnotations` counterpart); both now treat it as match-all and
+apply the same default limit of 100. So a request that 1.15.0 rejected outright now succeeds and
+returns the first page of the whole collection — worth checking wherever client code relied on
+that rejection to catch an unfilled filter.
 
 ### BEHAVIOR CHANGE: business-rule failures are rejections, not errors (#235)
 
@@ -601,5 +620,10 @@ and several fixes to how it reports failures:
 - `cisd:jhdf5`, which is not on Maven Central, is vendored under `third-party/cisd-jhdf5/` so a
   build no longer depends on `maven.scijava.org` being up (a 503 on that host broke CI in August).
 - GitHub Actions are pinned to commit SHAs; the release image workflow resolves the dp-grpc ref
-  from the pom version on release builds.
+  from the pom version on release builds. Note the fallback: if `rel-<pom dp-grpc.version>` does
+  not exist in dp-grpc and no explicit `dp_grpc_ref` was supplied, the workflow silently builds
+  against dp-grpc `main` rather than failing. **Tag dp-grpc `rel-1.16.0` before building the
+  release image**, or the published image may be built against a different proto revision than the
+  release it is named for. (`release.yml`, which builds the release artifacts, has no such
+  fallback — it fails outright when the matching tag is absent.)
 
