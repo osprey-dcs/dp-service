@@ -1,5 +1,21 @@
 # dp-service #185: Override Database URI and Database Name for Performance Benchmark Applications
 
+> **Archival note.** This plan was written against an earlier revision of issue #185 and was
+> overtaken by it. The issue was later widened to cover two further changes that this document does
+> not plan, and both shipped with the ticket:
+>
+> - `QueryBenchmarkBase` reads the gRPC connect string from configuration
+>   (`QueryBenchmark.grpcConnectString` / `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING`) instead of a
+>   hardcoded constant, matching `IngestionBenchmarkBase`
+>   (`QueryBenchmarkBase.java:50`, `:934`).
+> - The ingestion benchmark clients default to `DOUBLE_COLUMN` rather than the legacy `DATA_COLUMN`
+>   (`BenchmarkIngestDataStream.java:143`, and the same line in `BenchmarkIngestDataBidiStream`).
+>
+> The "Scope" section below is likewise narrower than what shipped: the query benchmark clients
+> call `BenchmarkMongoClient.prepareBenchmarkDatabase()` directly, so the database-name override
+> reaches them too. The document is kept as written, as the record of the plan the first part of
+> the work was executed against; the issue is the authority on the delivered scope.
+
 ## Overview
 
 The performance benchmark server application (`BenchmarkIngestionGrpcServer`) uses a hardwired MongoDB database name `"dp-benchmark"` defined as a constant in `BenchmarkMongoClient`. A customer needs to run the benchmark against their own MongoDB cluster, so the database name must be configurable — consistent with the existing pattern used for the integration test framework in issue #183.
