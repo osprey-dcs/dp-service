@@ -38,7 +38,10 @@ public class BenchmarkQueryBuckets extends QueryBenchmarkBase {
                     for (DataBucket bucket : response.getBucketQueryResult().getDataBucketsList()) {
                         values += QueryV2BenchmarkSupport.countValues(bucket);
                     }
-                    pageToken = response.getBucketQueryResult().getNextPageToken();
+                    final String nextToken = response.getBucketQueryResult().getNextPageToken();
+                    checkPagingProgress("queryBuckets", params.streamNumber(),
+                            pageToken == null ? "" : pageToken, nextToken, pages);
+                    pageToken = nextToken;
                     pages++;
                 } while (!pageToken.isEmpty());
             } catch (RuntimeException ex) {
@@ -46,7 +49,7 @@ public class BenchmarkQueryBuckets extends QueryBenchmarkBase {
                 return new QueryTaskResult(false, 0, 0, 0);
             }
             logger.trace("stream: {} queryBuckets pages: {} values: {}", params.streamNumber(), pages, values);
-            return new QueryTaskResult(true, values, values * Double.BYTES, grpcBytes);
+            return resultRequiringData("queryBuckets", params.streamNumber(), values, grpcBytes);
         }
     }
 

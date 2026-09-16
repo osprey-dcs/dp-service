@@ -37,7 +37,8 @@ public class BenchmarkQueryTable extends QueryBenchmarkBase {
                     values += column.getDataValuesCount();
                 }
                 logger.trace("stream: {} queryTable values: {}", params.streamNumber(), values);
-                return new QueryTaskResult(true, values, values * Double.BYTES, response.getSerializedSize());
+                return resultRequiringData(
+                        "queryTable", params.streamNumber(), values, response.getSerializedSize());
             } catch (RuntimeException ex) {
                 logger.error("stream: {} queryTable exception: {}", params.streamNumber(), ex.getMessage(), ex);
                 return new QueryTaskResult(false, 0, 0, 0);

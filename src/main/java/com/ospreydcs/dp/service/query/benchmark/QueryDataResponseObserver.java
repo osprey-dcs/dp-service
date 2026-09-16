@@ -128,7 +128,7 @@ public class QueryDataResponseObserver implements StreamObserver<QueryDataRespon
 
         if (success) {
 
-            final int numBucketsExpected = params.columnNames().size() * params.numSeconds();
+            final int numBucketsExpected = params.expectedBucketCount();
             final int numBucketsReceivedValue = numBucketsReceived.get();
 
             if  ( numBucketsReceivedValue < numBucketsExpected) {

@@ -44,7 +44,7 @@ public class BenchmarkQuerySamplesStream extends QueryBenchmarkBase {
                 return new QueryTaskResult(false, 0, 0, 0);
             }
             logger.trace("stream: {} querySamplesStream messages: {} values: {}", params.streamNumber(), messages, values);
-            return new QueryTaskResult(true, values, values * Double.BYTES, grpcBytes);
+            return resultRequiringData("querySamplesStream", params.streamNumber(), values, grpcBytes);
         }
     }
 

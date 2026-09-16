@@ -41,7 +41,10 @@ public class BenchmarkQuerySamples extends QueryBenchmarkBase {
                     }
                     grpcBytes += response.getSerializedSize();
                     values += QueryV2BenchmarkSupport.countValues(response.getSampleQueryResult().getColumnTable());
-                    pageToken = response.getSampleQueryResult().getNextPageToken();
+                    final String nextToken = response.getSampleQueryResult().getNextPageToken();
+                    checkPagingProgress("querySamples", params.streamNumber(),
+                            pageToken == null ? "" : pageToken, nextToken, pages);
+                    pageToken = nextToken;
                     pages++;
                 } while (!pageToken.isEmpty());
             } catch (RuntimeException ex) {
@@ -49,7 +52,7 @@ public class BenchmarkQuerySamples extends QueryBenchmarkBase {
                 return new QueryTaskResult(false, 0, 0, 0);
             }
             logger.trace("stream: {} querySamples pages: {} values: {}", params.streamNumber(), pages, values);
-            return new QueryTaskResult(true, values, values * Double.BYTES, grpcBytes);
+            return resultRequiringData("querySamples", params.streamNumber(), values, grpcBytes);
         }
     }
 

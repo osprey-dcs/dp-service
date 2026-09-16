@@ -288,24 +288,37 @@ public abstract class QueryBenchmarkBase {
     }
 
     /** What a load wrote, read back by {@code --skip-load} to place the query window. */
-    public record LoadMarker(long loadStartSeconds, long historySeconds, int numPvs, int longSpanPvs) {
+    /**
+     * What the last load wrote, so a {@code --skip-load} run can place its query window and check
+     * that the stored fixture matches what it is about to query. {@code secondsPerBucket} is part
+     * of the shape because the V1 clients derive their expected bucket count from it.
+     */
+    public record LoadMarker(
+            long loadStartSeconds, long historySeconds, int numPvs, int longSpanPvs,
+            int secondsPerBucket) {
         static final String KEY_START = "loadStartSeconds";
         static final String KEY_HISTORY = "historySeconds";
         static final String KEY_PVS = "numPvs";
         static final String KEY_LONG_SPAN_PVS = "longSpanPvs";
+        static final String KEY_SECONDS_PER_BUCKET = "secondsPerBucket";
 
         Document toDocument() {
             return new Document("_id", MARKER_ID)
                     .append(KEY_START, loadStartSeconds)
                     .append(KEY_HISTORY, historySeconds)
                     .append(KEY_PVS, numPvs)
-                    .append(KEY_LONG_SPAN_PVS, longSpanPvs);
+                    .append(KEY_LONG_SPAN_PVS, longSpanPvs)
+                    .append(KEY_SECONDS_PER_BUCKET, secondsPerBucket);
         }
 
         static LoadMarker fromDocument(Document document) {
+            // A marker written before secondsPerBucket was recorded predates any fixture with
+            // non-one-second buckets, so the historical default is the correct reading.
+            final Integer storedSecondsPerBucket = document.getInteger(KEY_SECONDS_PER_BUCKET);
             return new LoadMarker(
                     document.getLong(KEY_START), document.getLong(KEY_HISTORY),
-                    document.getInteger(KEY_PVS), document.getInteger(KEY_LONG_SPAN_PVS));
+                    document.getInteger(KEY_PVS), document.getInteger(KEY_LONG_SPAN_PVS),
+                    storedSecondsPerBucket == null ? 1 : storedSecondsPerBucket);
         }
 
         /** The query window begins at the last {@link #NUM_SCENARIO_SECONDS} of the history. */
@@ -429,7 +442,8 @@ public abstract class QueryBenchmarkBase {
         }
 
         writeMarker(dbClient, new LoadMarker(
-                loadStartSeconds, params.historySeconds(), numColumns, params.longSpanPvs()));
+                loadStartSeconds, params.historySeconds(), numColumns, params.longSpanPvs(),
+                params.secondsPerBucket()));
 
         // clean up after loading and calculate stats
         dbClient.fini();
@@ -442,12 +456,74 @@ public abstract class QueryBenchmarkBase {
         logger.info("loading time: {} seconds", dtSecondsString);
     }
 
+    /**
+     * One query task's request shape.
+     *
+     * @param columnNames      every PV the request names, regular fixture PVs followed by any
+     *                         long-span PVs
+     * @param longSpanPvCount  how many trailing entries of {@code columnNames} are long-span PVs;
+     *                         they hold one bucket each rather than one per {@code secondsPerBucket}
+     * @param secondsPerBucket the loaded fixture's bucket length, needed by the V1 clients to know
+     *                         how many buckets a window of {@code numSeconds} yields per PV
+     */
     public record QueryTaskParams(
             int streamNumber,
             List<String> columnNames,
             long startSeconds,
-            int numSeconds
+            int numSeconds,
+            int longSpanPvCount,
+            int secondsPerBucket
     ) {
+        /**
+         * How many buckets a correct response to this request contains.
+         *
+         * <p>The V1 clients terminate on reaching this count rather than on {@code onCompleted()}
+         * (the bidi client also uses it to pace its cursor requests), so it must match the fixture
+         * rather than assume one-second buckets and no long-span PVs. It previously did assume
+         * both, which made every V1 client hang for its latch timeout and report a 0.0 rate under
+         * {@code --seconds-per-bucket != 1} or {@code --include-long-span} -- including the
+         * documented example command.
+         */
+        public int expectedBucketCount() {
+            final int regularPvs = columnNames.size() - longSpanPvCount;
+            final int bucketsPerRegularPv =
+                    (int) Math.max(1, Math.ceil((double) numSeconds / Math.max(1, secondsPerBucket)));
+            // a long-span PV holds a single bucket covering the whole history
+            return regularPvs * bucketsPerRegularPv + longSpanPvCount;
+        }
+    }
+
+    /**
+     * The result of a task that completed without an error but may have measured nothing.
+     *
+     * <p>A query whose window holds no data returns a normal empty result, not an exceptional one,
+     * so a task that reported success regardless turned "the fixture does not contain what I asked
+     * for" into a plausible-looking rate over zero work -- which is how a misplaced query window or
+     * a mismatched {@code --skip-load} fixture stays silent. Every client routes its success path
+     * through here so zero values fails the scenario instead.
+     */
+    protected static QueryTaskResult resultRequiringData(
+            String method, int streamNumber, long values, long grpcBytes) {
+        if (values == 0) {
+            logger.error("stream: {} {} returned no data; the query window holds nothing for these"
+                    + " PVs (check the fixture and --skip-load shape)", streamNumber, method);
+            return new QueryTaskResult(false, 0, 0, 0);
+        }
+        return new QueryTaskResult(true, values, values * Double.BYTES, grpcBytes);
+    }
+
+    /**
+     * Guards a unary paging loop against a server that keeps handing back the same token. Without
+     * it such a bug spins until the executor's termination timeout, which reports the scenario as
+     * a pass at 0.0 values/sec rather than as the failure it is.
+     */
+    protected static void checkPagingProgress(
+            String method, int streamNumber, String previousToken, String nextToken, int pages) {
+        if (!previousToken.isEmpty() && previousToken.equals(nextToken)) {
+            throw new IllegalStateException(
+                    method + " stream " + streamNumber + " received the same page token twice after "
+                            + pages + " pages; the server is not advancing the page position");
+        }
     }
 
     protected record QueryTaskResult(
@@ -552,6 +628,13 @@ public abstract class QueryBenchmarkBase {
     /** PV names added to every request when {@code --include-long-span} is set. */
     private List<String> extraPvNames = List.of();
 
+    /**
+     * The loaded fixture's bucket length, so a task can compute how many buckets its window yields
+     * per PV. Set from {@link LoadParams} (or the load marker under {@code --skip-load}) before any
+     * scenario runs; the default matches the historical one-second-bucket fixture.
+     */
+    private int fixtureSecondsPerBucket = 1;
+
     public BenchmarkScenarioResult queryScenario(
             Channel channel,
             int numPvs,
@@ -584,7 +667,9 @@ public abstract class QueryBenchmarkBase {
                                 currentBatchIndex,
                                 currentBatchColumns,
                                 startSeconds,
-                                numSeconds
+                                numSeconds,
+                                extraPvNames.size(),
+                                fixtureSecondsPerBucket
                         );
                 final QueryTask task = newQueryTask(channel, params);
                 taskList.add(task);
@@ -601,7 +686,9 @@ public abstract class QueryBenchmarkBase {
                             currentBatchIndex,
                             currentBatchColumns,
                             startSeconds,
-                            numSeconds);
+                            numSeconds,
+                            extraPvNames.size(),
+                            fixtureSecondsPerBucket);
             final QueryTask task = newQueryTask(channel, params);
             taskList.add(task);
         }
@@ -629,12 +716,17 @@ public abstract class QueryBenchmarkBase {
                     logger.error("thread pool future returned false");
                 }
             } else {
+                // Not a pass. No future was read, so every counter is still zero, and leaving
+                // success set would report this as a successful scenario at 0.0 values/sec --
+                // hiding exactly the hangs this timeout exists to catch.
                 logger.error("timeout reached in executorService.awaitTermination");
+                success = false;
                 executorService.shutdownNow();
             }
         } catch (InterruptedException | ExecutionException ex) {
             executorService.shutdownNow();
             logger.warn("Data transmission interrupted by exception: {}", ex.getMessage());
+            success = false;
             Thread.currentThread().interrupt();
         }
 
@@ -767,15 +859,42 @@ public abstract class QueryBenchmarkBase {
                 throw new IllegalStateException(
                         "--skip-load given but the benchmark database holds no load marker; run once without it");
             }
-            logger.info("reusing loaded fixture: {} PVs, {} s of history from {}, {} long-span PVs",
-                    marker.numPvs(), marker.historySeconds(), marker.loadStartSeconds(), marker.longSpanPvs());
+            logger.info("reusing loaded fixture: {} PVs, {} s of history from {}, {} long-span PVs,"
+                            + " {} s per bucket",
+                    marker.numPvs(), marker.historySeconds(), marker.loadStartSeconds(),
+                    marker.longSpanPvs(), marker.secondsPerBucket());
+
+            // Fail on a fixture that cannot answer the scenarios about to run. The PV counts come
+            // from the client's own scenario array, not from the marker, so a fixture loaded with
+            // fewer PVs leaves the surplus names with no data -- and an empty result is not an
+            // error, so the run would report a plausible rate computed over a fraction of the
+            // intended columns rather than failing.
+            int maxScenarioPvs = 0;
+            for (int scenarioPvs : totalNumPvsArray) {
+                maxScenarioPvs = Math.max(maxScenarioPvs, scenarioPvs);
+            }
+            if (maxScenarioPvs > marker.numPvs()) {
+                throw new IllegalStateException(
+                        "--skip-load fixture holds " + marker.numPvs() + " PVs but this benchmark"
+                                + " queries up to " + maxScenarioPvs
+                                + "; reload with --pvs=" + maxScenarioPvs + " or drop --skip-load");
+            }
+            if (loadParams.includeLongSpanPvs() && marker.longSpanPvs() == 0) {
+                throw new IllegalStateException(
+                        "--include-long-span given but the loaded fixture holds no long-span PVs;"
+                                + " reload with --long-span-pvs=N or drop --include-long-span");
+            }
         } else {
             final long loadStartSeconds = Instant.now().getEpochSecond() - loadParams.historySeconds();
             BenchmarkMongoClient.prepareBenchmarkDatabase(); // override default db name to dp-benchmark and initialize db
             loadBucketData(loadParams, loadStartSeconds);
-            marker = new LoadMarker(loadStartSeconds, loadParams.historySeconds(), loadParams.numPvs(), loadParams.longSpanPvs());
+            marker = new LoadMarker(
+                    loadStartSeconds, loadParams.historySeconds(), loadParams.numPvs(),
+                    loadParams.longSpanPvs(), loadParams.secondsPerBucket());
         }
         final long startSeconds = marker.queryStartSeconds();
+        // the V1 clients derive their expected bucket count from the fixture's bucket length
+        benchmark.fixtureSecondsPerBucket = marker.secondsPerBucket();
 
         if (loadParams.includeLongSpanPvs()) {
             final List<String> names = new ArrayList<>();
