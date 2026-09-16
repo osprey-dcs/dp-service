@@ -121,6 +121,20 @@ public class QueryTelemetry {
         return rpcMethod;
     }
 
+    /**
+     * The outcome recorded so far, for tests that must distinguish the {@code dp.outcome} value a
+     * path lands on from the wire behavior it produces. A refused send and a genuinely empty result
+     * are indistinguishable on the wire (both send nothing further), so a test asserting only on the
+     * observer cannot see the classification -- which is how a refused empty send went on recording
+     * {@code empty} after the completion half of that bug was fixed.
+     *
+     * <p>Read-only, and the only accessor on the outcome: it is set through the {@code mark*}
+     * methods so their precedence rules cannot be bypassed.
+     */
+    public synchronized String getOutcome() {
+        return outcome;
+    }
+
     // ---- stage marks -------------------------------------------------------------------------
 
     /**

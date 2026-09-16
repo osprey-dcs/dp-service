@@ -210,8 +210,27 @@ public abstract class QueryBenchmarkBase {
     ) {
         public static final LoadParams DEFAULTS = new LoadParams(4000, 1000, 1, 60, 0, 0, false, false);
 
+        /**
+         * Buckets loaded per regular PV, counting a trailing partial period as a bucket.
+         *
+         * <p>Must agree with {@link QueryTaskParams#expectedBucketCount()}, which the V1 clients
+         * terminate on: this was a floor against that ceiling, so a history that did not divide
+         * evenly by {@code secondsPerBucket} loaded one bucket fewer than every V1 client waited
+         * for, and each task hung to its latch timeout and reported 0.0 -- the failure #275 exists
+         * to remove, reintroduced one level up. The partial period is loaded rather than dropped so
+         * the fixture covers the whole requested window; truncating it instead would leave the last
+         * seconds of every query window holding no data.
+         */
         public int bucketsPerPv() {
-            return (int) Math.max(1, historySeconds / Math.max(1, secondsPerBucket));
+            final long perBucket = Math.max(1, secondsPerBucket);
+            return (int) Math.max(1, (historySeconds + perBucket - 1) / perBucket);
+        }
+
+        /** Seconds in bucket {@code index}: a full period, or the shorter remainder for the last. */
+        public int secondsInBucket(int index) {
+            final long perBucket = Math.max(1, secondsPerBucket);
+            final long remaining = historySeconds - (long) index * perBucket;
+            return (int) Math.max(1, Math.min(perBucket, remaining));
         }
     }
 
@@ -386,7 +405,8 @@ public abstract class QueryBenchmarkBase {
                     dbClient,
                     loadStartSeconds + (long) bucketIndex * numSecondsPerBucket,
                     numSamplesPerSecond,
-                    numSecondsPerBucket,
+                    // the last bucket is short when the history does not divide evenly
+                    params.secondsInBucket(bucketIndex),
                     numColumns);
             InsertTask task = new InsertTask(taskParams);
             insertTaskList.add(task);

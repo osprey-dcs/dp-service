@@ -917,6 +917,17 @@ invisible in metrics, the same defect `markFailedWithException()` exists to prev
 exceptions. Like that method it does not overwrite an outcome already set. A new gate call site owes
 the same mark.
 
+**Classify the outcome after the send succeeds, not before it is attempted.** `markAbandoned()`
+preserves an outcome already set, so a path that marked its outcome *first* and emitted second
+silently disabled it: the buckets stream dispatcher called `markEmpty()` ahead of `emitChunk()`, and
+a refused empty send therefore recorded `empty` — a cancelled client that received nothing, counted
+as a successful empty query. Both empty branches now emit first and mark only on success, which is
+the order `queryDataStream` already had. The distinction is invisible on the wire (a refused send
+and a genuine empty result both send nothing further), so
+`testEmptyResultDoesNotCompleteWhenTheGateRefuses` asserts `QueryTelemetry.getOutcome()` as well as
+the observer — an observer-only assertion passes against the wrong metric, which is how this
+survived the fix to the `onCompleted()` half of the same two branches.
+
 ## Sample Status API (issue #238)
 
 The Annotation Service implements the Sample Status API (`saveSampleStatuses`, `querySampleStatuses`,
@@ -981,6 +992,16 @@ computed over zero work. Every query client therefore returns its success result
 `QueryBenchmarkBase.resultRequiringData()`, which fails the task when the value count is zero, and
 `queryScenario`'s executor-timeout and exception branches set `success = false` (leaving it true
 reported a hung scenario as a pass at 0.0 values/sec). A new client owes the same.
+
+**What the loader writes and what the clients wait for are one arithmetic contract.**
+`LoadParams.bucketsPerPv()` and `QueryTaskParams.expectedBucketCount()` must agree, and they were a
+floor against a ceiling: any history not dividing evenly by `secondsPerBucket` loaded one bucket
+fewer than every V1 client waited for, so each task hung to its latch timeout and reported 0.0 —
+the failure this ticket exists to remove, one level up. The loader now writes the trailing partial
+period as a short bucket (`secondsInBucket()`) rather than the expectation dropping to a floor: a
+truncated fixture leaves the last seconds of every query window holding no data, which measures a
+narrower window than the one requested. `QueryBenchmarkFixtureShapeTest` pins the agreement across
+bucket lengths and histories; the default one-second bucket divides evenly, so nothing else sees it.
 
 The V1 clients terminate on a **bucket count**, not on `onCompleted()` — the bidi client also paces
 its cursor requests from it — so that count must be derived from the loaded fixture, via

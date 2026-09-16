@@ -61,12 +61,15 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
 
         // A query that resolves to no PVs or no retrieval intervals yields a single empty message.
         if (resolvedQuery.isEmptyResult()) {
-            telemetry.markEmpty();
             // A refused send must not be followed by onCompleted(): the client is gone or not
-            // draining, and completing would report a finished stream it never received.
+            // draining, and completing would report a finished stream it never received. The
+            // outcome is classified only once the send succeeded -- marking empty first left
+            // markAbandoned() with nothing to overwrite, so a cancelled client was recorded as a
+            // successful-but-empty request.
             if (!emitChunk(new ArrayList<>())) {
                 return;
             }
+            telemetry.markEmpty();
             responseObserver.onCompleted();
             return;
         }
@@ -84,10 +87,11 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
 
         try (cursor) {
             if (!cursor.hasNext()) {
-                telemetry.markEmpty();
+                // classified after the send, as above
                 if (!emitChunk(new ArrayList<>())) {
                     return;
                 }
+                telemetry.markEmpty();
                 responseObserver.onCompleted();
                 return;
             }

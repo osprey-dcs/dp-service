@@ -1,6 +1,7 @@
 package com.ospreydcs.dp.service.query.handler.mongo;
 
 import com.mongodb.client.result.InsertManyResult;
+import com.ospreydcs.dp.service.common.telemetry.DpMetrics;
 import org.bson.Document;
 import com.ospreydcs.dp.grpc.v1.common.ColumnMetadata;
 import com.ospreydcs.dp.grpc.v1.common.DataBucket;
@@ -342,6 +343,12 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
 
         assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
         assertFalse("an abandoned stream must not be completed", observer.completed);
+        // The wire behavior above is identical for a genuine empty result and a refused one, so the
+        // outcome is the only thing that distinguishes them. Classifying before the send is known to
+        // have succeeded recorded a cancelled client as a successful-but-empty request, which is the
+        // condition outbound flow control exists to make visible.
+        assertEquals("a refused empty send is abandoned, not empty",
+                DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
     }
 
     private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {
