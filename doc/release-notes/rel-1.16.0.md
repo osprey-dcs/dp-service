@@ -618,6 +618,38 @@ and several fixes to how it reports failures:
 - Column metadata can be attached to ingestion requests built through `IngestionRequestParams`
   (`setColumnMetadata`/`clearColumnMetadata`).
 
+## New configuration settings
+
+Every setting below is new in 1.16.0 and has a working default, so an existing config file needs
+no edit to start. They are collected here because several change behavior an operator may want to
+tune after reading the sections above. Each is documented in-line in
+[`application.yml`](../../src/main/resources/application.yml), in the environment-variable
+reference in [`doc/running.md`](../running.md#service-configuration), and — for the telemetry
+group — in [`doc/metrics.md`](../metrics.md).
+
+| Setting | Environment variable | Default | Section |
+|---|---|---|---|
+| `MongoClient.runSchemaMigrationsOnStartup` | `DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP` | `true` | [Schema migration](#schema-migration-mechanism-issue-254) |
+| `Telemetry.enabled` | `DP_TELEMETRY_ENABLED` | `true` | [Service metrics](#service-metrics-issue-212) |
+| `Telemetry.prometheusHost` | `DP_TELEMETRY_PROMETHEUS_HOST` | `0.0.0.0` | [Service metrics](#service-metrics-issue-212) |
+| `IngestionServer.metricsPort` | `DP_INGESTION_SERVER_METRICS_PORT` | `9464` | [Service metrics](#service-metrics-issue-212) |
+| `QueryServer.metricsPort` | `DP_QUERY_SERVER_METRICS_PORT` | `9465` | [Service metrics](#service-metrics-issue-212) |
+| `AnnotationServer.metricsPort` | `DP_ANNOTATION_SERVER_METRICS_PORT` | `9466` | [Service metrics](#service-metrics-issue-212) |
+| `IngestionStreamServer.metricsPort` | `DP_INGESTION_STREAM_SERVER_METRICS_PORT` | `9467` | [Service metrics](#service-metrics-issue-212) |
+| `QueryHandler.slowQueryLogThresholdMillis` | `DP_QUERY_HANDLER_SLOW_QUERY_LOG_THRESHOLD_MILLIS` | `1000` | [Slow query log](#new-slow-query-log) |
+| `QueryHandler.queryV2SamplesInitialSliceSeconds` | `DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS` | `60` | [querySamples correctness](#querysamples-correctness-and-query-path-hardening-issue-274) |
+| `QueryHandler.streamReadyTimeoutSeconds` | `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` | `300` | [Outbound flow control](#streaming-responses-now-apply-outbound-flow-control) |
+| `AnnotationHandler.sampleStatusQueryDefaultPageSize` | `DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_DEFAULT_PAGE_SIZE` | `10000` | [Sample Status API](#sample-status-api-issues-dp-grpc-121-dp-service-238) |
+| `AnnotationHandler.sampleStatusQueryMaxPageSize` | `DP_ANNOTATION_HANDLER_SAMPLE_STATUS_QUERY_MAX_PAGE_SIZE` | `100000` | [Sample Status API](#sample-status-api-issues-dp-grpc-121-dp-service-238) |
+| `AnnotationHandler.sampleStatusSaveMaxStatuses` | `DP_ANNOTATION_HANDLER_SAMPLE_STATUS_SAVE_MAX_STATUSES` | `1000000` | [Sample Status API](#sample-status-api-issues-dp-grpc-121-dp-service-238) |
+
+The metrics ports are the one group that is not purely advisory: a service **fails to start** if
+its port cannot be bound, so free ports 9464–9467 or set these before upgrading.
+
+`Buckets.maxBucketSpanSeconds` is unchanged in name and default but changed in meaning — it is now
+read by the ingestion service only. See
+[the bucket span section](#behavior-change-bucketsmaxbucketspanseconds-is-now-ingestion-only).
+
 ## Dependencies and build
 
 - log4j 2.25.4 → 2.25.5 (Dependabot alert).
