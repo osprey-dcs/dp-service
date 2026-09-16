@@ -34,17 +34,8 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
     ) {
         super(responseObserver, querySpec, telemetry);
         this.gate = OutboundReadinessGate.forObserver(
-                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
-    }
-
-    /** Waits for the transport to take another message; false means abandon the response. */
-    private boolean awaitReadyOrAbandon() {
-        if (gate.awaitReady()) {
-            return true;
-        }
-        logger.warn("abandoning queryDataStream response id: {}: client cancelled or not draining",
-                getResponseObserver().hashCode());
-        return false;
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds(),
+                "queryDataStream id: " + responseObserver.hashCode());
     }
 
     @Override
@@ -95,7 +86,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
             // send current response and start a new one if bucket size makes us exceed response message size limit
             if (messageSize + bucketSerializedSize > MongoQueryHandler.getOutgoingMessageSizeLimitBytes()) {
-                if (!awaitReadyOrAbandon()) {
+                if (!gate.awaitReady()) {
                     cursor.close();
                     recordCursorTime(cursor);
                     return;
@@ -123,8 +114,8 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
         if ( ! isError) {
 
-            if (!awaitReadyOrAbandon()) {
-                return;
+            if (!gate.awaitReady()) {
+                return; // abandoned: the gate logged why
             }
 
             // send empty response message if cursor is empty

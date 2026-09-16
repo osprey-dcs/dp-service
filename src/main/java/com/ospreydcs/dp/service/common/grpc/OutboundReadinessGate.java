@@ -38,16 +38,19 @@ public class OutboundReadinessGate {
 
     private static final Logger logger = LogManager.getLogger();
 
-    private static final OutboundReadinessGate NO_OP = new OutboundReadinessGate(null, 0);
+    private static final OutboundReadinessGate NO_OP = new OutboundReadinessGate(null, 0, "no-op");
 
     private final ServerCallStreamObserver<?> observer;
     private final long timeoutNanos;
+    /** Names the response in the abandon log line, e.g. {@code "queryBucketsStream id: 12345"}. */
+    private final String label;
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition readyChanged = lock.newCondition();
 
-    private OutboundReadinessGate(ServerCallStreamObserver<?> observer, long timeoutSeconds) {
+    private OutboundReadinessGate(ServerCallStreamObserver<?> observer, long timeoutSeconds, String label) {
         this.observer = observer;
         this.timeoutNanos = TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        this.label = label;
     }
 
     /**
@@ -56,12 +59,15 @@ public class OutboundReadinessGate {
      * gRPC thread), otherwise a shared no-op.
      *
      * @param timeoutSeconds longest a single {@link #awaitReady()} waits before giving up
+     * @param label          names the response in the one log line written when it is abandoned,
+     *                       so the dispatchers need no log of their own
      */
-    public static OutboundReadinessGate forObserver(StreamObserver<?> responseObserver, long timeoutSeconds) {
+    public static OutboundReadinessGate forObserver(
+            StreamObserver<?> responseObserver, long timeoutSeconds, String label) {
         if (!(responseObserver instanceof ServerCallStreamObserver<?> serverCallStreamObserver)) {
             return NO_OP;
         }
-        final OutboundReadinessGate gate = new OutboundReadinessGate(serverCallStreamObserver, timeoutSeconds);
+        final OutboundReadinessGate gate = new OutboundReadinessGate(serverCallStreamObserver, timeoutSeconds, label);
         serverCallStreamObserver.setOnReadyHandler(gate::signal);
         return gate;
     }
@@ -99,21 +105,22 @@ public class OutboundReadinessGate {
         try {
             while (true) {
                 if (observer.isCancelled()) {
-                    logger.debug("stream cancelled by the client while awaiting readiness");
+                    logger.info("abandoning {} response: cancelled by the client", label);
                     return false;
                 }
                 if (observer.isReady()) {
                     return true;
                 }
                 if (remainingNanos <= 0) {
-                    logger.warn("stream not ready for {} s; abandoning the response",
-                            TimeUnit.NANOSECONDS.toSeconds(timeoutNanos));
+                    logger.warn("abandoning {} response: client did not drain the stream for {} s",
+                            label, TimeUnit.NANOSECONDS.toSeconds(timeoutNanos));
                     return false;
                 }
                 try {
                     remainingNanos = readyChanged.awaitNanos(remainingNanos);
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
+                    logger.warn("abandoning {} response: worker interrupted while awaiting readiness", label);
                     return false;
                 }
             }

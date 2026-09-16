@@ -26,7 +26,7 @@ public class OutboundReadinessGateTest {
             @Override public void onError(Throwable t) { }
             @Override public void onCompleted() { }
         };
-        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(plain, 1);
+        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(plain, 1, "test");
         assertTrue(gate.isNoOp());
         assertTrue(gate.awaitReady());
     }
@@ -34,7 +34,7 @@ public class OutboundReadinessGateTest {
     @Test
     public void testReadyObserverPassesImmediately() {
         final FakeServerCallStreamObserver<Object> observer = new FakeServerCallStreamObserver<>();
-        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 1);
+        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 1, "test");
         assertFalse(gate.isNoOp());
         assertNotNull("the ready handler must be registered at construction", observer.onReady.get());
         assertTrue(gate.awaitReady());
@@ -44,7 +44,7 @@ public class OutboundReadinessGateTest {
     public void testNotReadyBlocksUntilTheHandlerFires() throws Exception {
         final FakeServerCallStreamObserver<Object> observer = new FakeServerCallStreamObserver<>();
         observer.ready.set(false);
-        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 10);
+        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 10, "test");
 
         final CountDownLatch entered = new CountDownLatch(1);
         final AtomicBoolean result = new AtomicBoolean(false);
@@ -68,7 +68,7 @@ public class OutboundReadinessGateTest {
         final FakeServerCallStreamObserver<Object> observer = new FakeServerCallStreamObserver<>();
         observer.ready.set(false);
         observer.cancelled.set(true);
-        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 10);
+        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 10, "test");
         assertFalse(gate.awaitReady());
     }
 
@@ -76,7 +76,7 @@ public class OutboundReadinessGateTest {
     public void testTimeoutReturnsFalse() {
         final FakeServerCallStreamObserver<Object> observer = new FakeServerCallStreamObserver<>();
         observer.ready.set(false);
-        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 1);
+        final OutboundReadinessGate gate = OutboundReadinessGate.forObserver(observer, 1, "test");
         final long start = System.nanoTime();
         assertFalse(gate.awaitReady());
         assertTrue("must have waited for the timeout", System.nanoTime() - start >= TimeUnit.MILLISECONDS.toNanos(900));

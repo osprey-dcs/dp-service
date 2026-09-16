@@ -3,7 +3,6 @@ package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.exception.DpException;
-import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
@@ -13,8 +12,6 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import com.ospreydcs.dp.service.query.handler.paging.PageToken;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 
@@ -44,10 +41,6 @@ import java.util.List;
  */
 public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher {
 
-    private static final Logger logger = LogManager.getLogger();
-
-    private final StreamObserver<QuerySamplesResponse> responseObserver;
-
     public QuerySamplesUnaryDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
         this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
@@ -65,8 +58,7 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
     public QuerySamplesUnaryDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
             long initialSliceNanos, QueryTelemetry telemetry) {
-        super(byteBudget, initialSliceNanos, telemetry);
-        this.responseObserver = responseObserver;
+        super(responseObserver, byteBudget, initialSliceNanos, telemetry);
     }
 
     @Override
@@ -118,30 +110,13 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
                         // A single timestamp exceeds the whole byte budget: paging cannot make
                         // progress past it (the next page would re-assemble the same row and hit
                         // the same boundary forever). Error out naming the timestamp.
-                        final String msg = "single querySamples row at timestamp "
-                                + drain.resumeSecs() + "." + drain.resumeNanos()
-                                + " exceeds the outgoing message size limit (" + byteBudget
-                                + " bytes); narrow the PV set";
-                        logger.error(msg);
-                        telemetry.markError();
-                        QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+                        sendOversizedRowError(drain.resumeSecs(), drain.resumeNanos(), byteBudget);
                         return;
                     }
                 }
             }
-        } catch (NonScalarColumnException e) {
-            // Q4: scalar-only. Translate the neutral shared exception into querySamples guidance.
-            final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
-                    + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";
-            logger.debug(msg);
-            telemetry.markReject();
-            QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
-            return;
         } catch (DpException e) {
-            final String msg = "exception building sample result: " + e.getMessage();
-            logger.error(msg + " id: " + responseObserver.hashCode(), e);
-            telemetry.markError();
-            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+            sendDrainFailure(e); // scalar-only reject (Q4), or error
             return;
         }
 

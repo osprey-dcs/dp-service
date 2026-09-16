@@ -4,7 +4,6 @@ import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.exception.DpException;
-import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
@@ -13,8 +12,6 @@ import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Map;
@@ -36,9 +33,6 @@ import java.util.Map;
  */
 public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher {
 
-    private static final Logger logger = LogManager.getLogger();
-
-    private final StreamObserver<QuerySamplesResponse> responseObserver;
     /**
      * Outbound flow control (#274, plan D8), built here because the handler constructs this
      * dispatcher on the gRPC thread, where the ready handler must be registered.
@@ -62,10 +56,10 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
             long initialSliceNanos, QueryTelemetry telemetry) {
-        super(byteBudget, initialSliceNanos, telemetry);
-        this.responseObserver = responseObserver;
+        super(responseObserver, byteBudget, initialSliceNanos, telemetry);
         this.gate = OutboundReadinessGate.forObserver(
-                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds(),
+                "querySamplesStream id: " + responseObserver.hashCode());
     }
 
     @Override
@@ -118,29 +112,13 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
                     case OVERSIZED -> {
                         // a single timestamp larger than the whole budget cannot be chunked; error
                         // out naming it rather than emit an over-limit message gRPC would abort on
-                        final String msg = "single querySamples row at timestamp "
-                                + drain.resumeSecs() + "." + drain.resumeNanos()
-                                + " exceeds the outgoing message size limit (" + byteBudget
-                                + " bytes); narrow the PV set";
-                        logger.error(msg);
-                        telemetry.markError();
-                        QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+                        sendOversizedRowError(drain.resumeSecs(), drain.resumeNanos(), byteBudget);
                         return;
                     }
                 }
             }
-        } catch (NonScalarColumnException e) {
-            final String msg = "querySamples supports scalar PVs only: PV '" + e.getPvName()
-                    + "' has non-scalar column type " + e.getColumnType() + "; use queryBuckets";
-            logger.debug(msg);
-            telemetry.markReject();
-            QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
-            return;
         } catch (DpException e) {
-            final String msg = "exception building sample result: " + e.getMessage();
-            logger.error(msg + " id: " + responseObserver.hashCode(), e);
-            telemetry.markError();
-            QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+            sendDrainFailure(e); // scalar-only reject (Q4), or error
             return;
         }
 
@@ -187,13 +165,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
             // row can still exceed a small budget. Error out naming the timestamp rather than emit
             // an over-limit message that gRPC would abort the whole stream on.
             if (rowsInChunk == 0 && rowBytes > byteBudget) {
-                final String msg = "single querySamples row at timestamp "
-                        + timestamps.get(rowIndex)[0] + "." + timestamps.get(rowIndex)[1]
-                        + " exceeds the outgoing message size limit (" + rowBytes + " > "
-                        + byteBudget + " bytes); narrow the PV set or time range";
-                logger.error(msg);
-                telemetry.markError();
-                QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+                sendOversizedRowError(timestamps.get(rowIndex)[0], timestamps.get(rowIndex)[1], rowBytes);
                 return -1;
             }
 
@@ -291,9 +263,7 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         // Wait before building: the build drains the rows from the map, and a refused send would
         // otherwise lose them (they are not re-queried on the stream path).
         if (!gate.awaitReady()) {
-            logger.warn("abandoning querySamplesStream response id: {}: client cancelled or not draining",
-                    responseObserver.hashCode());
-            return false;
+            return false; // abandoned: the gate logged why
         }
         final ColumnTable columnTable = buildColumnTable(tableValueMap, timestamps, fromRow, toRow, useSerialized);
         emit(columnTable);

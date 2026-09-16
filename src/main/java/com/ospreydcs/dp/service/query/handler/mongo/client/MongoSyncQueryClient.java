@@ -117,6 +117,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     /**
+     * {@link #resolveSpanClasses} for a retrieval method: a failed {@code pvStats} read (a query
+     * error, plan D8 -- never a fallback to the unbounded scan) and an empty PV list (validated
+     * upstream; never an empty result) are both logged under {@code method} and returned as null,
+     * which the caller passes on as the null cursor every dispatcher reports as an error.
+     */
+    private List<SpanClass> resolveSpanClassesOrNull(Collection<String> pvNames, String method) {
+        final List<SpanClass> spanClasses;
+        try {
+            spanClasses = resolveSpanClasses(pvNames);
+        } catch (DpException ex) {
+            logger.error("{} pvStats read error: {}", method, ex.getMessage(), ex);
+            return null;
+        }
+        if (spanClasses.isEmpty()) {
+            logger.error("{} request names no PVs", method);
+            return null;
+        }
+        return spanClasses;
+    }
+
+    /**
      * Reads the {@code pvStats} documents matching {@code pvStatsFilter} into a pvName-to-span
      * map. A negative stored span is logged and clamped to 0 (see the comment inside); a document
      * with no span is absent from the map.
@@ -346,18 +367,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = dataBlock.getEndTime().getSeconds();
         final long endTimeNanos = dataBlock.getEndTime().getNanos();
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274); a failed read is a query error reported through the null cursor (plan D8), never
-        // a fallback to the unbounded scan.
-        final List<SpanClass> spanClasses;
-        try {
-            spanClasses = resolveSpanClasses(dataBlock.getPvNames());
-        } catch (DpException ex) {
-            logger.error("executeDataBlockQuery pvStats read error: {}", ex.getMessage(), ex);
-            return null;
-        }
-        if (spanClasses.isEmpty()) {
-            logger.error("executeDataBlockQuery data block names no PVs");
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274)
+        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(dataBlock.getPvNames(), "executeDataBlockQuery");
+        if (spanClasses == null) {
             return null;
         }
 
@@ -376,19 +388,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         final long endTimeSeconds = querySpec.getEndTime().getEpochSeconds();
         final long endTimeNanos = querySpec.getEndTime().getNanoseconds();
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274); a failed read is a query error reported through the null cursor (plan D8), never
-        // a fallback to the unbounded scan.
-        final List<SpanClass> spanClasses;
-        try {
-            spanClasses = resolveSpanClasses(querySpec.getPvNamesList());
-        } catch (DpException ex) {
-            logger.error("executeQueryData pvStats read error: {}", ex.getMessage(), ex);
-            return null;
-        }
-        if (spanClasses.isEmpty()) {
-            // validated upstream; a null here is reported as an error, not an empty result
-            logger.error("executeQueryData querySpec names no PVs");
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274)
+        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(querySpec.getPvNamesList(), "executeQueryData");
+        if (spanClasses == null) {
             return null;
         }
 
@@ -413,10 +415,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         try {
             switch (request.getPvNameSpecCase()) {
                 case PVNAMELIST -> {
-                    final List<String> pvNames = request.getPvNameList().getPvNamesList();
-                    final List<SpanClass> spanClasses = resolveSpanClasses(pvNames);
-                    if (spanClasses.isEmpty()) {
-                        logger.error("executeQueryTable pvNameList names no PVs");
+                    final List<SpanClass> spanClasses = resolveSpanClassesOrNull(
+                            request.getPvNameList().getPvNamesList(), "executeQueryTable");
+                    if (spanClasses == null) {
                         return null;
                     }
                     return executeBucketDocumentQuery(
@@ -685,14 +686,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274); a failed read is a query error reported through the null cursor (plan D8), never
-        // a fallback to the unbounded scan.
-        final List<SpanClass> spanClasses;
-        try {
-            spanClasses = resolveSpanClasses(resolvedQuery.getPvNames());
-        } catch (DpException ex) {
-            logger.error("executeQueryBucketsV2 pvStats read error: {}", ex.getMessage(), ex);
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274)
+        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQueryBucketsV2");
+        if (spanClasses == null) {
             return null;
         }
 
@@ -743,14 +739,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274); a failed read is a query error reported through the null cursor (plan D8), never
-        // a fallback to the unbounded scan.
-        final List<SpanClass> spanClasses;
-        try {
-            spanClasses = resolveSpanClasses(resolvedQuery.getPvNames());
-        } catch (DpException ex) {
-            logger.error("executeQueryBucketsV2Stream pvStats read error: {}", ex.getMessage(), ex);
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274)
+        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQueryBucketsV2Stream");
+        if (spanClasses == null) {
             return null;
         }
 
@@ -797,14 +788,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274); a failed read is a query error reported through the null cursor (plan D8), never
-        // a fallback to the unbounded scan.
-        final List<SpanClass> spanClasses;
-        try {
-            spanClasses = resolveSpanClasses(resolvedQuery.getPvNames());
-        } catch (DpException ex) {
-            logger.error("executeQuerySamplesV2 pvStats read error: {}", ex.getMessage(), ex);
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274)
+        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2");
+        if (spanClasses == null) {
             return null;
         }
 

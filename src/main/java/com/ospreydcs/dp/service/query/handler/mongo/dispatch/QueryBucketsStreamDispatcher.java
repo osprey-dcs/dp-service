@@ -52,7 +52,8 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         super(byteBudget, telemetry);
         this.responseObserver = responseObserver;
         this.gate = OutboundReadinessGate.forObserver(
-                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds());
+                responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds(),
+                "queryBucketsStream id: " + responseObserver.hashCode());
     }
 
     @Override
@@ -163,9 +164,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
      */
     private boolean emitChunk(List<DataBucket> buckets) {
         if (!gate.awaitReady()) {
-            logger.warn("abandoning queryBucketsStream response id: {}: client cancelled or not draining",
-                    responseObserver.hashCode());
-            return false;
+            return false; // abandoned: the gate logged why
         }
         final QueryBucketsResponse.BucketQueryResult result =
                 QueryBucketsResponse.BucketQueryResult.newBuilder()

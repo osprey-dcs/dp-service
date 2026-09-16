@@ -7,8 +7,10 @@ import com.ospreydcs.dp.grpc.v1.common.SerializedDataColumn;
 import com.ospreydcs.dp.grpc.v1.common.Timestamp;
 import com.ospreydcs.dp.grpc.v1.common.TimestampList;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
+import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
+import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
 import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
@@ -16,6 +18,8 @@ import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.model.TimeInterval;
 import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface;
+import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
+import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,13 +64,58 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
 
     private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
+    protected final StreamObserver<QuerySamplesResponse> responseObserver;
     protected final long byteBudget;
     protected final long initialSliceNanos;
 
-    protected AbstractQuerySamplesDispatcher(long byteBudget, long initialSliceNanos, QueryTelemetry telemetry) {
+    protected AbstractQuerySamplesDispatcher(
+            StreamObserver<QuerySamplesResponse> responseObserver,
+            long byteBudget, long initialSliceNanos, QueryTelemetry telemetry) {
         super(telemetry);
+        this.responseObserver = responseObserver;
         this.byteBudget = byteBudget;
         this.initialSliceNanos = Math.max(1L, initialSliceNanos);
+    }
+
+    // ---- exceptional responses, shared so the two dispatchers cannot drift ----------------------
+
+    /** Sends an error response, recording the outcome; {@code cause} may be null. */
+    protected void sendError(String msg, Throwable cause) {
+        if (cause != null) {
+            logger.error(msg + " id: " + responseObserver.hashCode(), cause);
+        } else {
+            logger.error(msg + " id: " + responseObserver.hashCode());
+        }
+        telemetry.markError();
+        QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
+    }
+
+    /** Sends a reject response (a client mistake, #235), recording the outcome. */
+    protected void sendReject(String msg) {
+        logger.debug(msg);
+        telemetry.markReject();
+        QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
+    }
+
+    /**
+     * The indivisible-oversized error: a single timestamp's row is larger than the whole outgoing
+     * message budget, so neither paging nor chunking can make progress past it. Only reducing the
+     * PV count can help -- the row is one instant, so narrowing the time range cannot.
+     */
+    protected void sendOversizedRowError(long seconds, long nanos, long rowBytes) {
+        sendError("single querySamples row at timestamp " + seconds + "." + nanos
+                + " exceeds the outgoing message size limit (" + rowBytes + " > " + byteBudget
+                + " bytes); narrow the PV set", null);
+    }
+
+    /** Classifies an exception out of the slice drain: scalar-only reject (Q4), otherwise error. */
+    protected void sendDrainFailure(DpException e) {
+        if (e instanceof NonScalarColumnException nonScalar) {
+            sendReject("querySamples supports scalar PVs only: PV '" + nonScalar.getPvName()
+                    + "' has non-scalar column type " + nonScalar.getColumnType() + "; use queryBuckets");
+        } else {
+            sendError("exception building sample result: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -381,30 +430,21 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
         }
 
         /**
-         * Moves the position to the earliest fragment begin at or after {@code (secs, nanos)}.
-         * Returns false when there is none, i.e. every fragment is behind the position.
+         * Moves the position to the next fragment begin at or after {@code (secs, nanos)}, through
+         * the same clamp the retrieval uses (#207: one source for "which fragment is next"). Called
+         * only when no fragment overlaps the slice ending there, so the first surviving fragment's
+         * clamped begin is its own begin; the resolver emits fragments sorted and disjoint
+         * ({@code TimeInterval.union}), which the constructor's window-end lookup relies on too.
+         * Returns false when every fragment is behind the position.
          */
         private boolean jumpToNextFragmentBegin(long secs, long nanos) {
-            long bestSecs = 0;
-            long bestNanos = 0;
-            boolean found = false;
-            for (TimeInterval fragment : resolvedQuery.getRetrievalIntervals()) {
-                if (TimeInterval.compareInstant(
-                        fragment.getBeginSeconds(), fragment.getBeginNanos(), secs, nanos) < 0) {
-                    continue;
-                }
-                if (!found || TimeInterval.compareInstant(
-                        fragment.getBeginSeconds(), fragment.getBeginNanos(), bestSecs, bestNanos) < 0) {
-                    bestSecs = fragment.getBeginSeconds();
-                    bestNanos = fragment.getBeginNanos();
-                    found = true;
-                }
-            }
-            if (!found) {
+            final List<TimeInterval> ahead = TimeInterval.clampToWindowBegin(
+                    resolvedQuery.getRetrievalIntervals(), secs, nanos);
+            if (ahead.isEmpty()) {
                 return false;
             }
-            cursorSecs = bestSecs;
-            cursorNanos = bestNanos;
+            cursorSecs = ahead.get(0).getBeginSeconds();
+            cursorNanos = ahead.get(0).getBeginNanos();
             return true;
         }
 
