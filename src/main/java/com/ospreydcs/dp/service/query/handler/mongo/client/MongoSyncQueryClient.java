@@ -764,6 +764,22 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             ResolvedQuery resolvedQuery,
             long windowBeginSecs, long windowBeginNanos,
             long windowEndSecs, long windowEndNanos) {
+        return executeQuerySamplesV2(
+                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos, null);
+    }
+
+    /**
+     * Slice-drain form carrying the per-page {@link SpanClassHolder}: the {@code pvStats}
+     * span-class partition is resolved on the first slice and reused by the rest, instead of being
+     * re-read once per slice (#274). See the interface javadoc for why the holder is a per-request
+     * scratch slot and not a cache (#232, plan D7).
+     */
+    @Override
+    public MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos,
+            SpanClassHolder spanClassHolder) {
 
         if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
             return null;
@@ -783,18 +799,20 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232, #274).
-        //
-        // Since #274 the samples dispatchers call this method once per time slice rather than once
-        // per page, so this read happens two or three times per page instead of once (more on a
-        // long stream). The partition is invariant across the slices of one request, so it could be
-        // resolved once per request and passed down -- that means widening this method's signature,
-        // which the interface, three test doubles and the plan test all pin, so it is left as a
-        // follow-on rather than folded into #274. It must stay a *per-request* hoist if taken up:
-        // caching spans across requests is forbidden (#232), because a stale span silently drops
-        // the buckets it fails to cover. Each call is one indexed $in against a collection holding
-        // one document per PV.
-        final List<SpanClass> spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2");
+        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
+        // #274). Resolved once per page: the partition depends only on the PV list and the stored
+        // spans, so every slice of one request would otherwise repeat the same read. A failed
+        // resolution is recorded too (as null), so it is reported per slice without being retried.
+        final List<SpanClass> spanClasses;
+        if (spanClassHolder == null) {
+            spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2");
+        } else {
+            if (!spanClassHolder.isResolved()) {
+                spanClassHolder.set(
+                        resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2"));
+            }
+            spanClasses = spanClassHolder.get();
+        }
         if (spanClasses == null) {
             return null;
         }

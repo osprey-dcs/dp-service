@@ -280,6 +280,15 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
         private final long windowEndSecs;
         private final long windowEndNanos;
 
+        /**
+         * The request's span-class partition, resolved on the first slice and reused by the rest
+         * (#274): it depends only on the PV list and the stored pvStats spans, so re-resolving it
+         * per slice re-read pvStats two or three times per page. Created here and dropped with the
+         * drain, which is what keeps it a per-request hoist rather than a cache (#232, plan D7).
+         */
+        private final MongoQueryClientInterface.SpanClassHolder spanClassHolder =
+                new MongoQueryClientInterface.SpanClassHolder();
+
         private long sliceNanos;
         private long cursorSecs;
         private long cursorNanos;
@@ -392,7 +401,7 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             retrievals++;
             final long queryStartNanos = System.nanoTime();
             final MongoCursor<BucketDocument> cursor = mongoClient.executeQuerySamplesV2(
-                    resolvedQuery, beginSecs, beginNanos, endSecs, endNanos);
+                    resolvedQuery, beginSecs, beginNanos, endSecs, endNanos, spanClassHolder);
             telemetry.addDbNanos(System.nanoTime() - queryStartNanos);
 
             // The empty-window case was screened by the clamp above, so null is a retrieval

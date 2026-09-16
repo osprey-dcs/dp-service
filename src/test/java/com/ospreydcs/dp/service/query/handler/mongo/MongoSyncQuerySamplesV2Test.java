@@ -95,11 +95,25 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         /** Number of slice retrievals issued (#274): pins the adaptive slice sizing. */
         int samplesRetrievals = 0;
 
+        /** Number of pvStats span-class resolutions (#274): pins the per-page hoist. */
+        int spanClassResolutions = 0;
+
+        @Override
+        public List<com.ospreydcs.dp.service.query.handler.mongo.client.SpanClass> resolveSpanClasses(
+                java.util.Collection<String> pvNames)
+                throws com.ospreydcs.dp.service.common.exception.DpException {
+            spanClassResolutions++;
+            return super.resolveSpanClasses(pvNames);
+        }
+
+        // Counted on the SpanClassHolder overload, which is what the slice drain calls (#274);
+        // the five-arg form delegates to it, so both routes are counted exactly once.
         @Override
         public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesV2(
-                ResolvedQuery resolvedQuery, long bs, long bn, long es, long en) {
+                ResolvedQuery resolvedQuery, long bs, long bn, long es, long en,
+                com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.SpanClassHolder holder) {
             samplesRetrievals++;
-            return super.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en);
+            return super.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
         }
     }
 
@@ -666,6 +680,29 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         final java.util.Map<String, Integer> values = countSetValues(pages);
         assertEquals(30, values.get(PV_A).intValue());
         assertEquals(15, values.get(PV_B).intValue());
+    }
+
+    /**
+     * The pvStats span-class partition is resolved once per page, not once per slice (#274). It
+     * depends only on the PV list and the stored spans, so it is identical for every slice; before
+     * the SpanClassHolder hoist a multi-slice page re-read pvStats once per retrieval. Uses the
+     * same fixture as the slice-growth test, which is known to take two retrievals.
+     */
+    @Test
+    public void testSpanClassesResolvedOncePerPageNotPerSlice() {
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final int retrievalsBefore = client.samplesRetrievals;
+        final int resolutionsBefore = client.spanClassResolutions;
+
+        final QuerySamplesResponse response = runSamplesWithBudgetAndSlice(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false),
+                Long.MAX_VALUE, ONE_SECOND_NANOS);
+
+        assertFalse(response.hasExceptionalResult());
+        assertEquals("fixture must take more than one slice to make the hoist observable",
+                2, client.samplesRetrievals - retrievalsBefore);
+        assertEquals("pvStats must be read once for the whole page",
+                1, client.spanClassResolutions - resolutionsBefore);
     }
 
     @Test

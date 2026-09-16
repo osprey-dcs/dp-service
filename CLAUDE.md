@@ -848,6 +848,16 @@ Both samples paths therefore retrieve through `AbstractQuerySamplesDispatcher.Sl
   longer materializes the window; do not reintroduce a `null` size limit on a samples path.
 - **The status join is resolved per slice** (`resolveSampleStatusTimestamps` takes the slice end),
   and each slice's retrieval and cursor are timed into the request's `db` stage.
+- **The `pvStats` span-class partition is resolved once per page, not once per slice.** It depends
+  only on the request's PV list and the stored spans, so it is identical for every slice;
+  `SliceDrain` carries a `MongoQueryClientInterface.SpanClassHolder` that `executeQuerySamplesV2`'s
+  six-argument overload fills on the first slice and reuses. The five-arg form delegates with a null
+  holder, and the overload is a `default` method, so no other client or test double knows about it.
+  **This is a per-request hoist and must stay one:** spans must never be held across requests (#232,
+  plan D7) — a stored span only grows, so a stale one is too small, and a too-small `firstTime`
+  bound silently omits buckets instead of failing. A holder created per page cannot go stale within
+  that page; a field, a static, or anything keyed by PV name can.
+  `testSpanClassesResolvedOncePerPageNotPerSlice` pins the count.
 
 The regression guards are the two-PV byte-budget tests in `MongoSyncQuerySamplesV2Test` (unary and
 stream), which count set values per column across every page; the single-PV seam test cannot see

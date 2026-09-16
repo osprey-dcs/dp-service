@@ -117,6 +117,59 @@ public interface MongoQueryClientInterface {
             long windowEndSecs, long windowEndNanos);
 
     /**
+     * Slice-drain form of
+     * {@link #executeQuerySamplesV2(ResolvedQuery, long, long, long, long)}, carrying a scratch
+     * holder that lets the implementation resolve the request's {@code pvStats} span-class
+     * partition once for the whole page instead of once per slice (#274).
+     *
+     * <p>The partition depends only on the request's PV list and the stored spans, so it is the
+     * same for every slice of one request; without the holder a page re-read {@code pvStats} once
+     * per slice. The holder is created by the caller per retrieval loop and discarded with it —
+     * that is what keeps this a <b>per-request</b> hoist. Spans must never be held across requests
+     * (#232, plan D7): a stored span only grows, so a stale one is too small, and a too-small
+     * {@code firstTime} bound silently omits buckets rather than failing.
+     *
+     * <p>Defaulted to the unhoisted call so a test double or an alternate client implementation
+     * need not know about span classes at all; only {@code MongoSyncQueryClient} overrides it.
+     */
+    default MongoCursor<BucketDocument> executeQuerySamplesV2(
+            ResolvedQuery resolvedQuery,
+            long windowBeginSecs, long windowBeginNanos,
+            long windowEndSecs, long windowEndNanos,
+            SpanClassHolder spanClassHolder) {
+        return executeQuerySamplesV2(
+                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
+    }
+
+    /**
+     * A one-request scratch slot for the resolved span-class partition, so the samples slice drain
+     * resolves it once per page rather than once per slice (#274).
+     *
+     * <p>Deliberately a plain mutable holder created and dropped inside a single retrieval loop,
+     * not a cache: it is keyed by nothing, outlives nothing, and cannot be consulted by a later
+     * request. See the #232 "never cache on the read side" invariant — the whole hazard is a span
+     * that has grown since it was read, and a holder scoped to one page cannot go stale within it.
+     */
+    final class SpanClassHolder {
+        private List<SpanClass> spanClasses;
+        private boolean resolved = false;
+
+        public boolean isResolved() {
+            return resolved;
+        }
+
+        public List<SpanClass> get() {
+            return spanClasses;
+        }
+
+        /** Records the partition for the rest of this page; null means resolution failed. */
+        public void set(List<SpanClass> resolvedSpanClasses) {
+            this.spanClasses = resolvedSpanClasses;
+            this.resolved = true;
+        }
+    }
+
+    /**
      * Resolves the query's sampleStatusSelector to the per-PV sets of epoch-nanos timestamps whose
      * statuses match it, over the same clamped page window the sample retrieval uses. Queries the
      * sampleStatusBuckets collection for the resolved PVs and the selector's (domain, layers) with
