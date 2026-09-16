@@ -256,7 +256,10 @@ java ... com.ospreydcs.dp.service.query.benchmark.BenchmarkQuerySamples \
   --pvs=200 --samples-per-second=10 --seconds-per-bucket=10 --history-seconds=86400
 ```
 
-Re-run any client against the same fixture with `--skip-load`. Note that **starting
+Re-run any client against the same fixture with `--skip-load`; it fails fast if the stored fixture
+holds fewer PVs than the client's scenarios query, or if `--include-long-span` is given against a
+fixture loaded without long-span PVs — those requests would otherwise name PVs holding no data and
+report a rate computed over a fraction of the intended columns. Note that **starting
 `BenchmarkQueryGrpcServer` drops the benchmark database**: start the server first, then load.
 The loader records every PV's bucket span in `pvStats` through the production updater, so the
 query-side span bound sees the fixture as it would see ingested data.

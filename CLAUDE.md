@@ -872,6 +872,25 @@ incomplete than given another buffered message. The trade is deliberate — a sl
 occupies one worker instead of the heap. `queryDataBidiStream` is client-paced and ungated.
 `FakeServerCallStreamObserver` (test) drives the gate without a server.
 
+**The gate registers a cancel handler as well as a ready handler, and both signal the same
+condition.** gRPC dispatches cancellation and readiness through separate callbacks — a cancel never
+fires the ready handler, and `isReady()` stays false once the call is closed — so a gate that
+registered only the ready handler could not observe a cancellation that arrived while a worker was
+already parked in `awaitNanos`. It slept out the entire timeout (measured at the full bound) holding
+a worker for a call that already had no reader, then logged it as a drain timeout, which is the
+wrong diagnosis. The bounded-worker property this design trades for rests on a cancel freeing its
+worker promptly, so a future `ServerCallStreamObserver` wrapper owes the same pair of handlers.
+`OutboundReadinessGateTest.testCancelWhileBlockedWakesTheWaiter` pins it; the pre-existing
+cancellation tests only set the flag *before* the wait, so they exercise the pre-check, not this.
+
+**An abandoned response is `dp.outcome=abandoned`, never `success`.** The refusal paths return
+without sending, and `QueryTelemetry.outcome` defaults to `success`, so before `markAbandoned()`
+every stream cut short by a cancellation or a 300 s stall was counted as a successful request with a
+full set of stage histograms — leaving the one condition outbound flow control exists to manage
+invisible in metrics, the same defect `markFailedWithException()` exists to prevent for escaping
+exceptions. Like that method it does not overwrite an outcome already set. A new gate call site owes
+the same mark.
+
 ## Sample Status API (issue #238)
 
 The Annotation Service implements the Sample Status API (`saveSampleStatuses`, `querySampleStatuses`,
@@ -927,6 +946,28 @@ Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
 - **`BenchmarkIngestDataStream`** / **`BenchmarkIngestDataBidiStream`**: compare `DATA_COLUMN` (legacy), `DOUBLE_COLUMN`, and `SERIALIZED_DATA_COLUMN` strategies
 - Use `--double-column` or `--serialized-column` flags; `--help` for usage
 - Key parameters: `numThreads=7`, `numStreams=20`, `numRows=1000`, `numColumns=200` (4000 PVs total), `numSeconds=60`
+
+### A query benchmark must fail when it measures nothing (issue #275)
+
+An empty query result is a normal, non-exceptional response, so a benchmark client that reports
+success regardless turns "the fixture does not hold what I asked for" into a plausible-looking rate
+computed over zero work. Every query client therefore returns its success result through
+`QueryBenchmarkBase.resultRequiringData()`, which fails the task when the value count is zero, and
+`queryScenario`'s executor-timeout and exception branches set `success = false` (leaving it true
+reported a hung scenario as a pass at 0.0 values/sec). A new client owes the same.
+
+The V1 clients terminate on a **bucket count**, not on `onCompleted()` — the bidi client also paces
+its cursor requests from it — so that count must be derived from the loaded fixture, via
+`QueryTaskParams.expectedBucketCount()`. It previously assumed one-second buckets and treated every
+named PV as a regular fixture PV, which made all three V1 clients hang for their latch timeout and
+report 0.0 under `--seconds-per-bucket != 1` or `--include-long-span`, including the documented
+example command. `LoadMarker` records `secondsPerBucket` and `numPvs` for this reason, and
+`--skip-load` rejects a fixture smaller than the scenarios about to run rather than querying PVs
+that hold no data.
+
+Direct bucket writers here are subject to the #232 rule like any other: `BenchmarkDbClient.insertBucketDocuments()`
+records the batch's span through `PvStatsMaxSpanUpdater` **before** `insertMany`, and it is the only
+`insertMany` on `buckets` in the benchmark code — the long-span fixture goes through it too.
 
 ## Testing Strategy
 - **Framework**: JUnit 4 (`@Test`, `@Before`, `@After`)
@@ -1120,7 +1161,9 @@ per message.
 
 The complete set of attributes dp instrumentation may attach is `dp.service`, `dp.job`, `dp.stage`,
 `dp.outcome`, `rpc.method`, `db.operation.name`, `db.collection.name`, `db.namespace`, `error.type`
-— all declared on `DpMetrics` and each bounded by something small and fixed.
+— all declared on `DpMetrics` and each bounded by something small and fixed. `dp.outcome`'s values
+are `success`, `reject`, `error`, `empty`, and `abandoned` (a streaming response cut short by a
+client cancellation or a readiness timeout, #274).
 
 **A PV name, provider id, client request id, page token, or user identity must never become an
 attribute.** A facility with 10^5 PVs would turn one histogram into 10^5 time series; that is how a

@@ -282,7 +282,7 @@ dispatch. They remain visible in `grpc.server.call.duration` and in `db.client.o
 (by collection: `pvMetadata`, `providers`, `pvStats`), which is enough to see them slow down.
 Extending the stage telemetry to them is a follow-on if it is ever needed.
 
-`dp.outcome` has four values, and the distinctions are the ones an alert needs:
+`dp.outcome` has five values, and the distinctions are the ones an alert needs:
 
 - **`success`** — data returned.
 - **`empty`** — succeeded, returned nothing. Separate from `success` because a query returning
@@ -292,6 +292,13 @@ Extending the stage telemetry to them is a follow-on if it is ever needed.
   a streaming request carrying a page token). Per the repo's #235 classification this is a client
   mistake, not a service failure.
 - **`error`** — the service failed to handle a valid request.
+- **`abandoned`** — a server-streaming response (`queryDataStream`, `queryBucketsStream`,
+  `querySamplesStream`) was cut short part-way because the client cancelled or stopped draining the
+  transport for `QueryHandler.streamReadyTimeoutSeconds` (300). The service did nothing wrong and
+  the data it did send was correct, but the response is incomplete — so this is neither `success`
+  nor `error`. A rising rate means clients are disconnecting or reading too slowly to keep up,
+  which is a client or network question, not a service fault; sustained non-zero also means workers
+  are being occupied waiting on those clients.
 
 A rising `reject` rate means clients are sending something wrong; a rising `error` rate means the
 service is failing. **An alert that cannot tell them apart pages the wrong person**, which is why
