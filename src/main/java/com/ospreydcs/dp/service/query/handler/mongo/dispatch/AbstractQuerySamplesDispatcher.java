@@ -432,6 +432,19 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                         (int) Math.min(Integer.MAX_VALUE, byteBudget),
                         retention,
                         statusFilter);
+            } catch (RuntimeException ex) {
+                // The find is issued by executeQuerySamplesV2 above, but the driver fetches the
+                // rest of the batches during iteration -- which happens inside addBucketsToTable.
+                // So a mid-slice failure (a getMore against a failed-over server, a connection
+                // dropped mid-cursor, a decode error) surfaces here as an unchecked MongoException
+                // rather than as the null cursor the open path returns. Only DpException is caught
+                // by the drain loops, so uncaught this escapes the job into QueueHandlerBase's
+                // worker, which logs it and takes the next job: the dispatcher never answers and
+                // the caller's stream stays open until it times out. Wrapping it as DpException
+                // routes it to sendDrainFailure() -> an error response, the same contract the
+                // null-cursor path already has (CLAUDE.md, "every bucket retrieval method owes the
+                // same catch").
+                throw new DpException("querySamples slice retrieval failed: " + ex.getMessage(), ex);
             } finally {
                 // In a finally so the db stage is folded in on the reject and error paths too.
                 recordCursorTime(cursor);

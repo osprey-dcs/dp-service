@@ -323,6 +323,85 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         return responses.get(0);
     }
 
+    /**
+     * A mid-slice cursor failure must reach the caller as an error response, not escape unchecked
+     * (Copilot review on #281). The driver fetches later batches during iteration, which happens
+     * inside addBucketsToTable, so a getMore failure surfaces there rather than as the null cursor
+     * the open path returns. Only DpException is caught by the drain loops, so uncaught this
+     * escapes into QueueHandlerBase's worker and the caller's stream hangs with no response.
+     */
+    @Test
+    public void testMidSliceCursorFailureIsReportedAsAnError() {
+        final QuerySamplesRequest request =
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false);
+        final ResolutionResult resolution = resolve(request);
+        assertFalse(resolution.isError());
+
+        // a client whose samples cursor throws partway through iteration
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface failingClient =
+                new FailingSliceClient((TestSyncClient) clientTestInterface);
+
+        final List<QuerySamplesResponse> responses = new ArrayList<>();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
+            @Override public void onError(Throwable t) { }
+            @Override public void onCompleted() { }
+        };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final QuerySamplesUnaryDispatcher dispatcher =
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry);
+
+        // must not throw out of the job: that is the hang
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, failingClient, telemetry).execute();
+
+        assertEquals("the caller must receive exactly one response", 1, responses.size());
+        assertTrue("a mid-slice cursor failure must be an error response",
+                responses.get(0).hasExceptionalResult());
+    }
+
+    /** Delegates to the real client but hands back a cursor that fails during iteration. */
+    private static final class FailingSliceClient
+            extends com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient {
+        private final TestSyncClient delegate;
+
+        FailingSliceClient(TestSyncClient delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesV2(
+                ResolvedQuery resolvedQuery, long bs, long bn, long es, long en,
+                com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.SpanClassHolder holder) {
+            final com.mongodb.client.MongoCursor<BucketDocument> real =
+                    delegate.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
+            if (real == null) {
+                return null;
+            }
+            return new com.mongodb.client.MongoCursor<>() {
+                private int served = 0;
+                @Override public boolean hasNext() { return true; }
+                @Override public BucketDocument next() {
+                    if (served++ == 0 && real.hasNext()) {
+                        return real.next();
+                    }
+                    throw new com.mongodb.MongoException("simulated getMore failure mid-slice");
+                }
+                @Override public BucketDocument tryNext() { return hasNext() ? next() : null; }
+                @Override public void close() { real.close(); }
+                @Override public int available() { return real.available(); }
+                @Override public com.mongodb.ServerCursor getServerCursor() { return real.getServerCursor(); }
+                @Override public com.mongodb.ServerAddress getServerAddress() { return real.getServerAddress(); }
+            };
+        }
+
+        @Override
+        public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(
+                ResolvedQuery q, long bs, long bn, long es, long en)
+                throws com.ospreydcs.dp.service.common.exception.DpException {
+            return delegate.resolveSampleStatusTimestamps(q, bs, bn, es, en);
+        }
+    }
+
     private static final long ONE_SECOND_NANOS = 1_000_000_000L;
 
     /** Values per column across every message/page, keyed by column name; unset values not counted. */

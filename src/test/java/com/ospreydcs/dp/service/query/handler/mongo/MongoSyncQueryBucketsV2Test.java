@@ -312,6 +312,38 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
         assertFalse("a cancelled call is not completed", observer.completed);
     }
 
+    /**
+     * The empty-result paths must honour a gate refusal like every other send (Copilot review on
+     * #281). Both of them -- the resolved-to-nothing branch and the cursor-with-no-buckets branch
+     * -- previously discarded emitChunk's return and called onCompleted() regardless, so a stream
+     * abandoned because the client was gone was still reported as a completed RPC.
+     */
+    @Test
+    public void testEmptyResultDoesNotCompleteWhenTheGateRefuses() {
+        // a window with no data: the cursor opens and has no buckets (the second empty branch)
+        final QueryBucketsRequest request = bucketsRequest(
+                List.of(COL_1_NAME), startSeconds + 900_000, startSeconds + 900_010, 1, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        // client already gone before the empty message is emitted
+        observer.ready.set(false);
+        observer.cancelled.set(true);
+
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, Long.MAX_VALUE, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("an abandoned stream must not be completed", observer.completed);
+    }
+
     private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {
         final List<DataBucket> all = new ArrayList<>();
         for (QueryBucketsResponse r : outcome.messages) {

@@ -893,6 +893,22 @@ worker promptly, so a future `ServerCallStreamObserver` wrapper owes the same pa
 `OutboundReadinessGateTest.testCancelWhileBlockedWakesTheWaiter` pins it; the pre-existing
 cancellation tests only set the flag *before* the wait, so they exercise the pre-check, not this.
 
+**A gate refusal must not be followed by `onCompleted()`, on any path including the empty ones.**
+The empty-result branches originally discarded `emitChunk()`'s return and completed regardless, so a
+stream abandoned because the client was gone was still reported to gRPC as a finished RPC. Every
+send site owes the same check; `testEmptyResultDoesNotCompleteWhenTheGateRefuses` pins the two empty
+branches, which are the easy ones to miss because they look like they have nothing to send.
+
+**A mid-slice cursor failure on the samples path must be wrapped as `DpException`.** The find is
+issued when the cursor is opened, but the driver fetches later batches *during iteration* — which
+happens inside `TabularDataUtility.addBucketsToTable`, not in the retrieval method. So a `getMore`
+against a failed-over server, or a connection dropped mid-cursor, surfaces as an unchecked
+`MongoException` there rather than as the null cursor the open path returns. The drain loops catch
+only `DpException`, so uncaught it escapes into `QueueHandlerBase`'s worker and the caller's stream
+hangs with no response — the same class of defect as the missing `cursor()` catch, and the reason
+`SliceDrain.retrieveSlice` wraps its assembly block. `testMidSliceCursorFailureIsReportedAsAnError`
+pins it.
+
 **An abandoned response is `dp.outcome=abandoned`, never `success`.** The refusal paths return
 without sending, and `QueryTelemetry.outcome` defaults to `success`, so before `markAbandoned()`
 every stream cut short by a cancellation or a 300 s stall was counted as a successful request with a

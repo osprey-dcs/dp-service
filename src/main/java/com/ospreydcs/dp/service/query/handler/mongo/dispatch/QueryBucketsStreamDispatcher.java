@@ -62,7 +62,11 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         // A query that resolves to no PVs or no retrieval intervals yields a single empty message.
         if (resolvedQuery.isEmptyResult()) {
             telemetry.markEmpty();
-            emitChunk(new ArrayList<>());
+            // A refused send must not be followed by onCompleted(): the client is gone or not
+            // draining, and completing would report a finished stream it never received.
+            if (!emitChunk(new ArrayList<>())) {
+                return;
+            }
             responseObserver.onCompleted();
             return;
         }
@@ -81,7 +85,9 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         try (cursor) {
             if (!cursor.hasNext()) {
                 telemetry.markEmpty();
-                emitChunk(new ArrayList<>());
+                if (!emitChunk(new ArrayList<>())) {
+                    return;
+                }
                 responseObserver.onCompleted();
                 return;
             }
