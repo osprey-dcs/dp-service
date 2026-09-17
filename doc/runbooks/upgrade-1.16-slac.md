@@ -8,9 +8,11 @@ mechanism and what each startup failure means, and to the
 
 This runbook covers the bucket-span work (#232), the span-class partition and outbound flow control
 that build on it (#274), and the deployment changes that land in the same release. The other
-1.16.0 migrations (v1–v4) touch the annotations, calculations, and buckets collections and are
-covered by the general mechanism doc; [schema-migration-rehearsal.md](schema-migration-rehearsal.md)
-describes rehearsing v1–v3 against a restored copy.
+1.16.0 migrations (v1–v4) touch the annotations, calculations, and buckets collections; the general
+mechanism doc explains how they work, and the note below on which of them are no-ops here says what
+to expect from each in this deployment specifically.
+[schema-migration-rehearsal.md](schema-migration-rehearsal.md) describes rehearsing v1–v3 against a
+restored copy.
 
 ## Why this upgrade needs a window
 
@@ -64,6 +66,40 @@ correctly. Take a filesystem or cluster snapshot of `buckets` if one is cheaply 
 
 What a `buckets` backup *would* buy you is recovering post-window ingestion if you roll back — the
 same thing a snapshot of any live collection buys. Decide that on the usual grounds, not on v4.
+
+**Most of these migrations will do nothing on this deployment, but two of them still cost a full
+pass over `buckets`.** The migration runner applies every version below the binary's
+`SCHEMA_VERSION` regardless of whether the collections it targets hold anything, so all five run —
+but four of them should have nothing to find here. Confirm the two collection counts before the
+window (`db.annotations.countDocuments()`, `db.calculations.countDocuments()`); if either is
+non-zero, that migration does real work and the rehearsal in
+[schema-migration-rehearsal.md](schema-migration-rehearsal.md) is worth running first.
+
+| migration | what it targets | expected here |
+|---|---|---|
+| v1 | annotation `comment` → `description` rename, text index | no-op — `annotations` expected to be empty |
+| v2 | normalize stored annotation tags | no-op — `annotations` expected to be empty |
+| v3 | canonicalize annotation reference ids | no-op — `annotations` expected to be empty |
+| v4 | stamp `_t` on legacy columns in `buckets` and `calculations` | `calculations` no-op (expected to be empty); **`buckets` scans every document** |
+| v5 | seed `pvStats`, drop `bucketSpanVerification` | **scans every document** |
+
+So the window's cost is v4's scan plus v5's scan, and nothing else. `sampleStatusBuckets` is not
+touched by any migration — the Sample Status API is new in 1.16.0, so that collection does not yet
+exist here.
+
+**v4's scan may well modify zero documents, and will still take as long.** It stamps only columns
+written *before* rel-1.13.0, which is when `@BsonDiscriminator` was added — the filter keys on the
+discriminator being absent, not on which column type the bucket holds. A bucket written by any
+1.13.0-or-later build already carries its own `_t` (`"dataColumn"` for the legacy `DataColumn`
+type, `"doubleColumn"`, `"doubleArrayColumn"` and so on for the newer column-oriented types) and is
+skipped. If this archive was created on 1.13.0 or later, v4 will report stamping 0 documents.
+
+That is not a reason to expect it to be quick. There is no index on `dataColumn._t`, so determining
+that nothing matches requires reading all 35M+ documents — the same scan either way. Budget for it
+on the measured timing below, not on the modified count. The count appears in the first upgraded
+service's log as `V4StampColumnDiscriminators: stamped _t on N bucket document(s)`, which is worth
+capturing: a non-zero `N` means the archive predates 1.13.0 and those buckets were unreadable
+before this upgrade.
 
 **Measure the seed's cost.** Run the v5 pipeline's grouping stage read-only, through `mongos` with a
 secondary read preference so it runs on each shard's secondaries, to get the PV count and confirm
