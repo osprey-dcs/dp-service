@@ -292,7 +292,9 @@ teardown, and a slow suite should be checked for this first. Add a line to "Test
   Do them first: every later PR, #221's included, then merges behind the integration suite.
 - **Task 4 also has no dependencies, but should land before the next `rel-*` tag.** Otherwise the
   next release depends on SciJava being up. It is a one-step addition to each file, so it rebases
-  easily onto #221's restructure if #221 lands first.
+  easily onto #221's restructure if #221 lands first. #221 Task 7 also edits the `Dockerfile`'s
+  builder stage (it replaces the dp-grpc `git clone … || git clone …` fallback). The two edits are
+  a few lines apart, so whichever lands second rebases by hand.
 - **Task 5 waits for #221.** It edits step bodies inside #221's new job layout.
 - **Suggested PRs:** (a) Tasks 1–3 plus the matching CLAUDE.md changes; (b) Task 4; (c) Task 5
   after #221.
