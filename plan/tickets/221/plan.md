@@ -8,7 +8,8 @@
   numbers are cited as **grpc-D*n***.
 - **Sibling**: [osprey-dcs/dp-desktop-app#24](https://github.com/osprey-dcs/dp-desktop-app/issues/24),
   independent.
-- **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213) — see triage finding 2.
+- **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
+  between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
 - **Status**: triaged and planned 2026-09-23; not implemented.
 
 ## Overview
@@ -56,7 +57,7 @@ The ticket targets `rel-1.16.0`. That release shipped unsigned on 2026-09-16. As
 
 ### 2. "Distinct from #213 … No overlap" is wrong
 
-#213 is still open. Three of its items cover this ticket's work directly:
+When #221 was triaged, #213 was open. Three of its items cover this ticket's work directly:
 
 - **Item 8** proposes a single `SHA256SUMS` and Sigstore signing. That is this ticket.
 - **Item 3**: `release-image.yml` triggers on every tag (`tags: '*'`, `release-image.yml:4-6`), and
@@ -64,9 +65,10 @@ The ticket targets `rel-1.16.0`. That release shipped unsigned on 2026-09-16. As
 - **Item 5**: no `concurrency` group. It asks for `cancel-in-progress: false` on the release
   workflow, which the dp-grpc shape already includes.
 
-**Resolution:** #221 absorbs item 8, item 3, and the release-workflow half of item 5. #213 keeps
-items 2, 4, 6, 7, and the CI half of item 5. #221's body records this; #213 is trimmed when the work lands (Task 9). Item 1 (stale pins) was
-already done by Dependabot (`.github/dependabot.yml`).
+**Resolution:** #221 absorbs item 8, item 3, and the release-workflow half of item 5. #213 was
+then closed as superseded (2026-09-23). Items 4, 6, 7, and the CI half of 5 moved to #250. Item 2
+(skip the suite at tag time) was declined there (#250 plan D4). Item 1 (stale pins) was already done
+by Dependabot (`.github/dependabot.yml`).
 
 ### 3. The published checksum is broken, as it was in dp-grpc
 
@@ -291,7 +293,7 @@ gives `main`, and the rehearsal builds `dp-service-main.jar`, a filename no rele
 On a rehearsal, dp-grpc is checked out at `rel-<dp-grpc.version>` if that tag exists, and at `main`
 if it does not. The fallback is logged. A **release** keeps the strict `rel-${VERSION}` checkout.
 Failing there when dp-grpc has not been tagged is the dependency-order check, so do not soften it.
-An explicit up-front existence check for that ref belongs to #213 item 7.
+An explicit up-front existence check for that ref belongs to #250 (from #213 item 7).
 
 `release-image.yml` does **not** already resolve this way, contrary to this plan's first draft
 (triage finding 6). PR 2 brings its resolver, which moves into `test` (D2), to the same rules:
@@ -569,22 +571,22 @@ fails, rather than falling back, when the matching dp-grpc tag is missing. Finis
 "Releases" update (Task 6) with the source-pinning rule from D2.
 
 **Task 9 — Close out.** After the next release is cut, verify both signatures end to end as a
-consumer would, from the release page and from `ghcr.io`, before announcing it. Then update #213
-to drop items 3 and 8 and the release half of item 5.
+consumer would, from the release page and from `ghcr.io`, before announcing it.
 
 ## Out of scope
 
 - **Maven signing / publishing to a Maven repository.** The ticket's scope note is right, and
   grpc-D1 applies. The distribution-model question it raises (GitHub Packages vs. Central vs.
   build-from-source) needs its own ticket if pursued.
-- **Not re-running the test suite at tag time, CI `packages: write`, the duplicated MongoDB wait,
-  CI concurrency, the dp-grpc tag existence check.** These are #213 items 2, 4, 6, 5 (CI half), and
-  7. Nothing here blocks or conflicts with them. If item 2 lands first, `build` gets shorter and
-  nothing else changes.
+- **CI `packages: write`, the duplicated MongoDB wait, CI concurrency, the dp-grpc tag existence
+  check, and the vendored jhdf5 on the release and image build paths.** All owned by #250 (which
+  absorbed #213). #250 also declines #213 item 2, so `build` keeps `mvn clean verify`, which its
+  poll-timeout fix shortens to minutes. Nothing here blocks or conflicts with them. #250's edits to
+  `release.yml`, `release-image.yml`, and the `Dockerfile` land after or rebase onto this ticket's.
 - **Tag/POM version cross-check.** `release.yml` renames whatever `target/dp-service-*-shaded.jar`
   exists to the tag's version, so a `rel-1.17.0` tag on a 1.16.0 POM publishes a 1.16.0 build as
   1.17.0. A signature binds the jar to a commit, but it does not check the jar's name. This is the
-  same follow-on the dp-grpc plan names. File it with #213 or as a new ticket.
+  same follow-on the dp-grpc plan names. File it as a new ticket.
 - **Making the image carry the release-page jar.** The two builds are separate (triage). Building
   the image from the signed jar would make the two signatures describe one artifact. This is a
   larger change to `Dockerfile` and job ordering.
@@ -612,6 +614,6 @@ to drop items 3 and 8 and the release half of item 5.
   (Task 5), and `README.env` documents only the jar. This is why the hazard fixes moved into PR 1:
   without them, a PR-1-only release would ship signing alongside an image workflow that any tag
   push, or a dispatch against a tag, could use to repoint `:latest`.
-- **Does not block on:** #213, dp-desktop-app#24, or the distribution-model question.
+- **Does not block on:** #250, dp-desktop-app#24, or the distribution-model question.
 - **Never push a tag to rehearse,** before or after this ticket. PR 1 narrows the image trigger only
   for commits that contain it. A tag on an older commit runs that commit's `'*'` trigger (Task 6).
