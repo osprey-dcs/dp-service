@@ -2,8 +2,12 @@ name: release-image
 
 on:
   push:
+    # rel-* only, matching release.yml (#221 plan D4).  This used to be '*', so any tag push --
+    # including a throwaway one -- published an image and moved `latest`.  A push runs the
+    # workflow file at the tagged commit, so a tag on a commit from before this change still
+    # runs the old trigger: never push a tag to rehearse.
     tags:
-      - '*'
+      - 'rel-*'
   workflow_dispatch:
     inputs:
       tag:
@@ -29,6 +33,11 @@ on:
         type: boolean
         default: true
 
+# A publish must never be cancelled halfway through; stated explicitly, as in release.yml.
+concurrency:
+  group: release-image-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write
@@ -39,12 +48,19 @@ jobs:
     env:
       JAVA_VERSION: '21'
       DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
+      # The single definition of "this run is a real release", the same expression as
+      # release.yml's.  It is keyed off the EVENT, not github.ref_type: a workflow_dispatch can
+      # target a tag, and a ref-type check would treat that dispatch as a release and move
+      # `latest` (the defect dp-grpc#137's review found in dp-grpc's workflow).
+      IS_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-') }}
       # IMAGE_TAG resolution priority:
       # 1) explicit inputs.image_tag (manual override)
-      # 2) if workflow is triggered on a tag, use the tag name
+      # 2) on a release (IS_RELEASE), the tag name
       # 3) if inputs.tag was provided (manual dispatch), use that
       # 4) fallback to commit SHA
-      IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || (github.ref_type == 'tag' && github.ref_name) || (inputs.tag != '' && inputs.tag) || github.sha }}
+      # Step 2 spells out IS_RELEASE's expression because an env block cannot read its own
+      # entries; keep the two copies identical.
+      IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-') && github.ref_name) || (inputs.tag != '' && inputs.tag) || github.sha }}
       # A dry run builds and tests the image but never logs in to ghcr.io or pushes it, so
       # the workflow can be exercised without publishing.  A tag push always publishes; a
       # manual dispatch defaults to a dry run and must opt in to pushing.  Defined once
@@ -191,6 +207,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
+        id: build
         # Always builds -- that is what exercises the Dockerfile and this action.  Only the
         # push is conditional, so a dry run still proves the image builds.
         if: success()
@@ -199,12 +216,13 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ env.DRY_RUN != 'true' }}
-          # `latest` is published only from a real tag push.  A manual dispatch builds an
-          # arbitrary ref with an arbitrary image_tag, and moving `latest` to that would
-          # repoint the tag most consumers pull at something that was never released.
+          # `latest` is published only on a release (IS_RELEASE), never from a dispatch -- not
+          # even one whose ref is a tag.  A manual dispatch builds an arbitrary ref with an
+          # arbitrary image_tag, and moving `latest` to that would repoint the tag most
+          # consumers pull at something that was never released.
           tags: |
             ghcr.io/${{ github.repository_owner }}/dp-service:${{ env.IMAGE_TAG }}
-            ${{ github.ref_type == 'tag' && format('ghcr.io/{0}/dp-service:latest', github.repository_owner) || '' }}
+            ${{ env.IS_RELEASE == 'true' && format('ghcr.io/{0}/dp-service:latest', github.repository_owner) || '' }}
           build-args: |
             DP_GRPC_REPO=${{ env.DP_GRPC_REPO }}
             DP_GRPC_REF=${{ steps.grpc.outputs.ref }}
