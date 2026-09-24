@@ -14,8 +14,15 @@ ARG DP_GRPC_REPO
 ARG DP_GRPC_REF
 WORKDIR /build
 
-# Clone dp-grpc and install to local maven repo so this project's dependency resolves
-RUN git clone --depth 1 --branch "${DP_GRPC_REF}" "${DP_GRPC_REPO}" dp-grpc || git clone "${DP_GRPC_REPO}" dp-grpc
+# Fetch dp-grpc at DP_GRPC_REF and install it to the local maven repo so this project's dependency
+# resolves.  DP_GRPC_REF may be a branch, a tag, or a commit SHA (release-image.yml passes the
+# commit its test job built against).  There is deliberately NO fallback: an unresolvable ref fails
+# the build rather than silently building dp-grpc's default branch, which a signed image would then
+# vouch for without knowing it (#221).  `git clone --branch` cannot take a SHA, hence fetch.
+RUN git init -q dp-grpc \
+    && git -C dp-grpc fetch --depth 1 "${DP_GRPC_REPO}" "${DP_GRPC_REF}" \
+    && git -C dp-grpc checkout -q FETCH_HEAD \
+    && echo "dp-grpc ${DP_GRPC_REF} -> $(git -C dp-grpc rev-parse HEAD)"
 RUN mvn -f dp-grpc/pom.xml -B -DskipTests install
 
 # Copy current project sources into the image and build

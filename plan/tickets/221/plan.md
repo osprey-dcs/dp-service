@@ -11,7 +11,7 @@
 - **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
   between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
 - **Status**: triaged and planned 2026-09-23. PR 1 (Tasks 1–6) implemented and rehearsed
-  2026-09-24; PR 2 (Tasks 7–8) not started.
+  2026-09-24, merged as #298. PR 2 (Tasks 7–8) implemented 2026-09-24; rehearsal pending.
 
 ## Overview
 
@@ -610,6 +610,35 @@ exercise it. Confirm:
 Then delete the `rehearsal-221` package version and its signature from ghcr, and say so in the PR.
 
 A dry-run dispatch should also pass unchanged, with no login, no push, and no signing.
+
+**Task 7 as implemented, beyond the above** (2026-09-24):
+
+- **A publishing dispatch against a tag ref is refused** in `test`'s first step, mirroring
+  `release.yml` (D5 amendment); a dry run is allowed, since it signs nothing. So is a dispatch
+  `image_tag` of `latest` or `rel-*`: `IMAGE_TAG` takes the input verbatim, so a dispatch could
+  otherwise overwrite `:latest` or a release's tag with an unreleased build — the D3 hazard by
+  another route, and one the signature cannot undo, since the tag moves whether or not it verifies.
+- **The release resolver also checks the tag against the POM** (`project.version` and
+  `dp-grpc.version`), the check `release.yml` gained in #298's review, so the image cannot publish
+  where the jar would refuse.
+- **On a release, `test` asserts the checked-out commit is `GITHUB_SHA`**, the commit the signing
+  certificate records as its source.
+- **A dispatch `dp_grpc_ref` may be a full commit SHA**, used as-is; the dp-grpc checkout fails if
+  it is unreachable. Before, `ls-remote` only matched tags and heads, so a SHA was rejected.
+- **Both checkouts in `publish-image`'s lineage use `persist-credentials: false`.** There is no
+  `.dockerignore`, so `COPY . /build/app` copies `.git` — including the checkout's persisted token
+  header — into the builder stage of a job whose token can write packages. The builder stage is
+  not pushed, but the token has no reason to be there.
+- **Both signing steps retry once** after 30 s (`release.yml`'s `sign-blob` too), per the PR 1
+  rehearsal's TSA connection reset.
+- The resolver reads `dp-grpc.version` with `mvn help:evaluate`, like `release.yml`, instead of
+  `sed` over `pom.xml`.
+
+Verified locally before the rehearsal: the resolver's peel against dp-grpc for a lightweight tag
+(`rel-1.16.0`), an annotated one (`beta-1.3` → its `^{}` commit, not the tag object), `main`, and
+two nonexistent refs, one a prefix of a real tag (`rel-1.1`); the `Dockerfile` fetch for a SHA and
+a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` failing with
+`fatal: couldn't find remote ref no-such-ref` instead of building `main`.
 
 **Task 8 — Docs.** Add a "Container image" section to `README.env` covering: pull by digest or tag,
 `cosign verify` with the `release-image.yml` identity (D5), and a note that `:latest` moves on every

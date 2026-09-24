@@ -1462,8 +1462,10 @@ Tagged as `rel-<version>`; `release.yml` builds dp-grpc at the matching tag, run
 and `SHA256SUMS.cosign.bundle` — a keyless Sigstore signature (`cosign sign-blob`) binding the JAR
 to the repo, workflow, tag, and source commit. `README.env` has the `cosign verify-blob`
 invocation. Signing landed under #221; releases through 1.16.0 shipped an unsigned `.sha256` whose
-recorded `release/`-prefixed path broke `sha256sum -c`. The container image is not signed yet
-(#221 PR 2).
+recorded `release/`-prefixed path broke `sha256sum -c`. `release-image.yml` signs the container
+image by digest (`cosign sign`, #221 PR 2) under its own identity,
+`release-image.yml@refs/tags/rel-<version>`; README.env gives each command under its own heading,
+and neither verifies the other's artifact.
 
 **`release.yml` is three jobs, and the OIDC token never shares a job with project code.**
 `build` (`contents: read`) runs everything from the repository, the test suite included; `sign`
@@ -1476,6 +1478,21 @@ stop `build` from tampering with the jar before it is checksummed — it confine
 identity to what `build` handed over, for seconds rather than the whole run. `VERSION` crosses
 into `sign` as a job output read through step `env:`, never `${{ }}`-spliced into a script, since
 on a rehearsal it is POM content.
+
+**`release-image.yml` is two jobs, and the second builds commits, not ref names.** `test`
+(`contents: read`) runs the suite and outputs the dp-service commit it checked out and the dp-grpc
+ref it resolved, peeled to a commit; `publish-image` (`packages: write`, `id-token: write` — cosign
+writes the signature to the registry) checks out that commit and passes that dp-grpc commit as the
+`DP_GRPC_REF` build arg, resolving nothing itself. With two checkouts of a ref *name*, a branch or
+dp-grpc `main` moving between the jobs would let `needs: test` gate source other than what is
+pushed and signed. The same reason is why the `Dockerfile` fetches dp-grpc by ref with **no
+fallback** (`git clone --branch` cannot take a SHA, and its old `|| git clone` fallback silently
+built dp-grpc's default branch): do not reintroduce one. `needs: test` proves the source passed
+`mvn test`, not that the image was tested — the image is a separate `-DskipTests` BuildKit build.
+On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
+`release.yml`; a publishing dispatch against a tag ref, or with `image_tag` `latest`/`rel-*`, is
+refused in `test`'s first step. Both signing steps retry `cosign` once: #221 PR 1's rehearsal lost
+a signing step to a connection reset at Sigstore's timestamp authority.
 
 **`IS_RELEASE` is keyed off the event, not the ref type**, in both release workflows:
 `github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-')`. A `workflow_dispatch`
