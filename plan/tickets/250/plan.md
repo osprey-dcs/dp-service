@@ -156,6 +156,14 @@ seconds. The idle cost is 10 wakeups per second per worker: 28 workers across th
 at the default `numWorkers: 7`, which is negligible. Job execution, the capacity-1 queue, and
 `fini()`'s drain order are unchanged.
 
+One existing behavior carries over unchanged: a worker exits its loop as soon as it sees
+`shutdownRequested`, without draining the queue, so a job enqueued but not yet taken when `fini()`
+runs is dropped without a response. That was already true at 1 s. A worker blocked in `poll()`
+still receives a job the moment it is put, whatever the timeout, so the shorter poll changes only
+how soon an *idle* worker notices the flag. It does not widen the window in which a queued job can
+be stranded. The full suite passing at 100 ms (triage 3) is consistent with that. Draining the
+queue on shutdown would be a separate change and is not needed here.
+
 *Rejected:*
 
 - **`shutdownNow()` to interrupt the workers.** It also interrupts in-flight jobs. CLAUDE.md's
@@ -240,7 +248,13 @@ dependency. The install step already works in `ci.yml` and is documented.
 - **Item 4:** `ci.yml` drops `packages: write` and keeps `contents: read`.
 - **Item 6:** `docker compose -f docker-compose.yaml up -d --wait` replaces all three polling loops.
   The existing timeout logic is replaced by the healthcheck's own `retries`/`start_period`, plus
-  `--wait-timeout 120`, so a stuck container still fails in bounded time. On failure,
+  `--wait-timeout 120`, so a stuck container still fails in bounded time. The timeout must stay
+  above the time the healthcheck needs to reach a verdict, `start_period + interval × retries`
+  (10 s + 10 s × 5 = 60 s in `docker-compose.yaml:21-26`). Below that, a slow start that would
+  have turned healthy fails on the timeout instead, and the error reads as a hang rather than as an
+  unhealthy container. Whoever changes the healthcheck should re-check the timeout. The first
+  healthy result arrives about one `interval` (10 s) after start, so a healthy run waits no longer
+  than it does with the current 2 s loop. On failure,
   `docker compose logs mongodb` still runs, because that is what makes the failure diagnosable.
 - **Item 7:** a step before any build that runs
   `git ls-remote --exit-code https://github.com/osprey-dcs/dp-grpc.git refs/tags/<ref>` and fails
