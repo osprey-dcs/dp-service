@@ -10,7 +10,8 @@
   independent.
 - **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
   between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
-- **Status**: triaged and planned 2026-09-23; not implemented.
+- **Status**: triaged and planned 2026-09-23. PR 1 (Tasks 1–6) implemented and rehearsed
+  2026-09-24; PR 2 (Tasks 7–8) not started.
 
 ## Overview
 
@@ -137,6 +138,10 @@ in either log flagging it as an error. D2 and D6 close both gaps.
   default branch's copy. That contradicts GitHub's documentation, which says the run uses the
   target ref's copy. The difference decides whether a pre-merge rehearsal tests the PR's workflow,
   so settle it in the rehearsal (Task 4). Do not carry the claim forward.
+  **Settled 2026-09-24 (Task 4):** the run executes the target ref's copy. The dispatch against
+  the PR 1 branch (run `36067531985`) ran the branch's `build`/`sign`/`publish` jobs, not
+  `main`'s single `build-and-release`. GitHub's documentation is right; dp-grpc's `24372b1`
+  comment is wrong.
 
 ## Design decisions
 
@@ -284,6 +289,25 @@ This is the copy-paste hazard the ticket comment warns about across three repos,
 inside one repo. A wrong pattern either fails every legitimate verification, or, if loosened to
 get past that, proves nothing. `README.env` gives each command under its own heading. Task 4 and
 Task 7 check **both** patterns against real signatures, including the failing case.
+
+**Amended in #298's review (2026-09-24).** The published commands do not use the open-ended
+`rel-` patterns above. Two gaps:
+
+- **Cross-version substitution.** A pattern accepting any `rel-` tag verifies an older release's
+  genuine `SHA256SUMS` and bundle substituted for a newer one's. The published command is therefore
+  an exact `--certificate-identity …/release.yml@refs/tags/rel-<version>`, and the reader fills in
+  the version they downloaded.
+- **Dispatch against a tag.** Every tag from PR 1 on carries the `workflow_dispatch` trigger, so a
+  dispatch whose `--ref` is `rel-<version>` signs under the release's own identity. The only
+  certificate field that differs is the workflow trigger. The published command adds
+  `--certificate-github-workflow-trigger push`, and `release.yml` refuses a dispatch against a tag
+  ref as well. Verified locally with cosign v3.1.3 against the Task 4 rehearsal bundle: with the
+  exact branch identity it passes; adding `--certificate-github-workflow-trigger push` fails with
+  `expected GithubWorkflowTrigger to be "push", got "workflow_dispatch"`.
+
+PR 2 owes the image command the same form: an exact `release-image.yml@refs/tags/rel-<version>`
+identity plus the trigger flag. A non-dry-run dispatch of `release-image.yml` against a tag would
+otherwise produce a signed image that passes the published check (see D3).
 
 ### D6 — Rehearsal version and dp-grpc ref come from the POM
 
@@ -475,8 +499,11 @@ and signing wait for PR 2:
 - `id: build` on the build-push step, so PR 2 can read the digest
 - `concurrency: { group: release-image-${{ github.ref }}, cancel-in-progress: false }`
 
-Leave the dp-grpc resolver's `github.ref_type == 'tag'` alone for now. It picks a dp-grpc ref, not
-a publish decision, and PR 2 rewrites the resolver anyway (D6).
+~~Leave the dp-grpc resolver's `github.ref_type == 'tag'` alone for now.~~ Changed in #298's
+review: the resolver's tag-name candidate keys off `IS_RELEASE` too, and `inputs.dp_grpc_ref` (and
+the diagnostic step's `github.ref_name`) reach their scripts through `env:` instead of being
+spliced in. A dispatch against a tag now falls through to the POM's `rel-<dp-grpc.version>`, which
+is the same ref for a `rel-*` tag. PR 2 may still rewrite the resolver (D6).
 
 Rehearse with a **dry-run** dispatch against the PR branch. That is enough, because every change
 here shows in the run log without a push. Confirm the build-push step's resolved tag list has no
@@ -508,6 +535,28 @@ rehearse (triage finding 4). Confirm:
   what shows the tag anchor matters.
 - `cosign verify-blob` **fails** with the `release-image\.yml` pattern. This is the D5 copy-paste
   case.
+
+**Task 4 result (2026-09-24).** Rehearsal run `36067531985` against `issue-221-release-signing`
+at `e038072`: dispatch accepted (no 422), branch copy executed (see triage "Other facts").
+`build` and `sign` succeeded and `publish` was skipped. `sign` ran only download, `SHA256SUMS`,
+install cosign, sign, upload — no checkout, no `mvn`. `VERSION` was `1.16.0` from the POM and the
+log shows `dp-grpc ref: rel-1.16.0 (rehearsal: POM dp-grpc.version)`. The downloaded
+`SHA256SUMS` records the bare `dp-service-1.16.0.jar` and `sha256sum -c` passes in a flat
+directory. With cosign v3.1.3 locally, `verify-blob` passed with
+`…/release\.yml@refs/heads/issue-221-release-signing$`, and failed with both the published
+`…/release\.yml@refs/tags/rel-` pattern and the `release-image\.yml` pattern, each reporting the
+actual SAN. Task 2's dry-run dispatch (`36067534812`) logged `IS_RELEASE: false`, `IMAGE_TAG` =
+the commit SHA, a single tag in the build-push tag list with no `:latest`, and the registry
+login skipped.
+
+**Re-rehearsal after #298's review (2026-09-24).** Run `36069255215` at `6dd6c17`. `build` passed,
+and the new "Derive version" step logged `Release version: 1.16.0 (release run: false)`. `sign`
+failed on attempt 1 with `connection reset by peer` from `timestamp.sigstore.dev`, a transient
+network error at Sigstore's timestamp service. Re-running only the failed job signed the same
+`build` artifact without rebuilding, which is the recovery path if this happens on a real
+release. `publish` was skipped. `sha256sum -c` passes. `verify-blob` passes with the exact branch
+identity. Adding `--certificate-github-workflow-trigger push` makes it fail with
+`got "workflow_dispatch"`, and the published `rel-1.16.0` form fails on the SAN.
 
 **Task 5 — Adopt `NEXT.md` (D7).** Create `doc/release-notes/NEXT.md` from dp-grpc's, adapted:
 dp-service title, and a "Cutting the release" checklist that keeps dp-grpc's steps and adds the

@@ -413,7 +413,8 @@ The services apply pending database schema migrations at startup and refuse to s
 ## Release Notes
 
 Per-release notes live under [`doc/release-notes/`](doc/release-notes/), one document per release,
-covering what changed since the previous one and what upgrading requires.
+covering what changed since the previous one and what upgrading requires. Notes for the upcoming
+release are drafted in [`NEXT.md`](doc/release-notes/NEXT.md) as tickets land.
 
 | Release | Notes |
 |---|---|

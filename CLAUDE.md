@@ -1458,13 +1458,67 @@ implementation must return its `serviceImpl.init(...)` result rather than swallo
 ## Releases
 
 Tagged as `rel-<version>`; `release.yml` builds dp-grpc at the matching tag, runs the full
-`mvn verify` against a MongoDB container, and attaches the shaded JAR plus its SHA-256 checksum.
+`mvn verify` against a MongoDB container, and attaches the shaded JAR, a `SHA256SUMS` listing it,
+and `SHA256SUMS.cosign.bundle` — a keyless Sigstore signature (`cosign sign-blob`) binding the JAR
+to the repo, workflow, tag, and source commit. `README.env` has the `cosign verify-blob`
+invocation. Signing landed under #221; releases through 1.16.0 shipped an unsigned `.sha256` whose
+recorded `release/`-prefixed path broke `sha256sum -c`. The container image is not signed yet
+(#221 PR 2).
+
+**`release.yml` is three jobs, and the OIDC token never shares a job with project code.**
+`build` (`contents: read`) runs everything from the repository, the test suite included; `sign`
+(`id-token: write`) has no checkout and runs only `sha256sum` and cosign over `build`'s uploaded
+artifact; `publish` (`contents: write`) holds no signing token. dp-grpc uses two jobs because its
+signing job runs only `mvn package`; here the build job runs a half-hour of tests, every Maven
+plugin, and a dp-grpc build from another repo, and `id-token: write` exposes the token-request
+credentials to every step of its job. Do not merge `sign` back into `build`. The split does not
+stop `build` from tampering with the jar before it is checksummed — it confines the signing
+identity to what `build` handed over, for seconds rather than the whole run. `VERSION` crosses
+into `sign` as a job output read through step `env:`, never `${{ }}`-spliced into a script, since
+on a rehearsal it is POM content.
+
+**`IS_RELEASE` is keyed off the event, not the ref type**, in both release workflows:
+`github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-')`. A `workflow_dispatch`
+can target a tag, so `github.ref_type == 'tag'` does not mean "release" — `release-image.yml` used
+exactly that check to move `:latest` (and its dp-grpc ref resolution used it too, until #298's
+review). In `release.yml` the expression appears twice, as `build`'s
+env and literally in `publish.if` (a job `if:` cannot read `env`); passing it as a `build` output
+instead would let the job running project code decide whether publishing happens.
+
+**Rehearse with `gh workflow run release.yml --ref <branch>`, never by pushing a tag.** A
+rehearsal builds, tests and signs, takes its version from the POM, and builds against dp-grpc
+`rel-<dp-grpc.version>` (falling back to `main`, logged); `publish` is skipped. It signs for real,
+leaving a permanent public Rekor entry naming its ref. A dispatch against a **tag** ref is refused
+in `build`'s "Derive version" step: its certificate identity would be
+`release.yml@refs/tags/rel-<version>`, the release's own, differing only in the workflow trigger.
+The published verify command therefore pins both — an exact `--certificate-identity` naming the one
+tag being verified (a pattern over any `rel-` tag accepts an older release's genuine signature
+substituted for a newer one's) and `--certificate-github-workflow-trigger push` — so the refusal is
+defense in depth rather than the only barrier. On a release the same step fails unless the tag
+version equals both `project.version` and `dp-grpc.version`: the jar is renamed to the tag's version
+regardless of the POM, so an unbumped POM would otherwise ship a signed jar whose name, reported
+version, and dp-grpc dependency disagree. Since #221 only a `rel-*` tag push publishes an image — but a push runs the
+workflow file **at the tagged commit**, so a tag of any name on a commit from before #221 still
+runs the old `'*'` trigger, pushes an image, and moves `:latest`. That is why "never push a tag to
+rehearse" is permanent rather than something #221 retired.
 
 Release notes are version-controlled under `doc/release-notes/`, one document per release
 (`rel-<version>.md`). A release note is organized by issue ticket rather than by PR, since a ticket
 often spans several PRs, and a breaking release leads with an "Upgrading from <previous>" checklist
 that calls out silent behavior changes separately from compile errors. Add each new document to the
 table in the `## Release Notes` section of `README.md`.
+
+**Notes accumulate in `doc/release-notes/NEXT.md` during a cycle** (adopted from dp-grpc under
+#221). A PR that lands a user-visible change adds its own ticket-organized section there, so the
+content is written while it is fresh and reviewed in the PR that causes it. At release time
+`NEXT.md` is renamed to `rel-<version>.md` and finished — summary, "Upgrading from <previous>",
+breaking-release framing — because only then is it known what the release contains. `NEXT.md`
+carries its own "Cutting the release" checklist.
+
+**Never name a version before the tag exists.** `release.yml` resolves the notes path strictly from
+`GITHUB_REF_NAME`, so a file committed as `rel-<guess>.md` is both stranded and a failed
+release-notes check on whatever tag does ship. For the same reason a section in `NEXT.md` must not
+assert what *else* the release contains — a sibling ticket merging later falsifies it silently.
 
 `release.yml` publishes `doc/release-notes/rel-<version>.md` as the GitHub release body via
 `body_path`, and **the notes must be on the tagged commit**: write and merge them *before* pushing
