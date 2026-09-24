@@ -1518,9 +1518,17 @@ repository before dp-service builds on **every** build path: a step in `ci.yml`,
 
 Before #250 Task 4 only CI had the step, so a release depended on SciJava being up, and only jhdf5
 was vendored: `cisd:base` had kept resolving during the outage below, so CI still needed SciJava
-for it. A Docker build with `--add-host maven.scijava.org:127.0.0.1` is the test that the build is
-independent of that host; it failed on `cisd:base` until that was vendored too. Re-run it after
-adding any dependency from the `sci-java` repository in `pom.xml`.
+for it. A Docker build with `--add-host maven.scijava.org:127.0.0.1` failed on `cisd:base` until
+that was vendored too.
+
+**CI enforces the independence rather than trusting anyone to re-run that build:** `ci.yml`'s
+"Block maven.scijava.org" step points the host at loopback in `/etc/hosts` for the whole job, so
+`mvn verify` (every plugin included) must resolve without it. The `sci-java` repository stays in
+`pom.xml` — Maven falls through a refused connection to Central, and developers with an empty
+`~/.m2` still resolve — so the block fails exactly one thing: a new SciJava-only dependency, which
+must then be vendored and added to `install-vendored.sh`. Do not remove the block to "fix" such a
+failure. `release-image.yml`'s install step alone is guarded by an existence check, because a manual
+dispatch can build a ref older than the script.
 
 This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
 serving POMs**, making the dependency unresolvable with no Central fallback. The host has since

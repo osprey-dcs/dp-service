@@ -65,6 +65,10 @@ README): `.github/workflows/ci.yml`, `.github/workflows/release.yml` and
 `.github/workflows/release-image.yml` on the runner, and the `Dockerfile` in its builder stage
 (a BuildKit build cannot see the runner's `~/.m2`). A new build path needs the same step.
 
+`ci.yml` also makes `maven.scijava.org` unreachable for the whole job, so a new dependency
+that only SciJava hosts fails CI rather than the next outage. If that step fails a build,
+vendor the dependency here and add it to `install-vendored.sh`; do not remove the block.
+
 Local developer builds need no setup: Maven resolves from `~/.m2` first, and anyone who
 already built this project has the jar cached. A developer starting from an empty `~/.m2`
 can run `third-party/install-vendored.sh` from the repository root.
