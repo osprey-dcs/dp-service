@@ -74,11 +74,13 @@ jobs:
 
       # --wait blocks until the healthcheck in docker-compose.yaml reports healthy, and fails if it
       # reports unhealthy. The timeout must stay above the time the healthcheck needs to reach a
-      # verdict, start_period + interval * retries (60 s today): below that, a slow start that
+      # verdict: Docker starts each probe `interval` after the previous one completes, and a probe
+      # can run for its full `timeout`, so the worst case is about
+      # start_period + retries * (interval + timeout) (110 s today). Below that, a slow start that
       # would have passed fails as a timeout instead. Re-check it when changing the healthcheck.
       - name: Start MongoDB with Docker Compose
         run: |
-          if ! docker compose -f docker-compose.yaml up -d --wait --wait-timeout 120; then
+          if ! docker compose -f docker-compose.yaml up -d --wait --wait-timeout 180; then
             echo "mongodb did not become healthy" >&2
             docker compose -f docker-compose.yaml logs mongodb || true
             exit 1
@@ -116,8 +118,8 @@ jobs:
             docker-ps.txt
             logs.tar.gz
 
-      # With the integration tests gating merges, which test failed and why has to be answerable
-      # from the PR.
+      # With the integration tests in the PR check (and, once it is a required check, gating the
+      # merge), which test failed and why has to be answerable from the PR.
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

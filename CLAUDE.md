@@ -1024,9 +1024,9 @@ records the batch's span through `PvStatsMaxSpanUpdater` **before** `insertMany`
   (`com/ospreydcs/.../**`) or `**/ClassName.java`; dotted wildcards match nothing.
 - **Test Base Classes**: `AnnotationTestBase`, `QueryTestBase`, `IngestionTestBase`
 - **Test Database**: "dp-test" (cleaned between tests via `MongoTestClient.init()`)
-- **Merge gate**: CI runs `mvn verify`, so every integration test gates every merge (see
-  Continuous Integration). A flaky IT blocks every PR — fix it or ticket it, never exclude it from
-  the gate silently.
+- **Merge gate**: CI runs `mvn verify`, so every integration test runs on every PR, and gates the
+  merge once `build-and-test` is a required check (#250 Task 7; see Continuous Integration). A
+  flaky IT then blocks every PR — fix it or ticket it, never exclude it from the gate silently.
 - **Temporary Files**: `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();`
 
 ### Annotation Service Test Framework
@@ -1477,7 +1477,8 @@ release already half-published. Retagging is the only fix once the tag is pushed
 - **Multi-Repository Setup**: builds dp-grpc `main` before dp-service (the release builds against
   the matching dp-grpc tag instead, so a green CI run does not prove a green release build)
 - **Triggers**: PRs to `main`, and pushes to `main`
-- **Gate**: `mvn -B verify` — every unit *and* integration test runs on every PR (#250)
+- **Gate**: `mvn -B verify` — every unit *and* integration test runs on every PR (#250); it blocks
+  the merge only once the ruleset requires `build-and-test` (below)
 - **Services**: MongoDB 8 from `docker-compose.yaml`, started with `docker compose up -d --wait`
 - **Artifacts**: compose logs and `docker ps` output, plus `target/surefire-reports` and
   `target/failsafe-reports`, uploaded on every run including failures
@@ -1490,20 +1491,20 @@ older one even with `cancel-in-progress: false`, which would leave a middle merg
 combined-merge breakage the push trigger exists to catch.
 
 **The job id `build-and-test` is the contract with the `main` ruleset**, whose required status
-check matches it by name (added by #250 Task 7, after the `verify` switch ran green on `main`; until
-then the suite runs on every PR but does not block a merge). Renaming a *step* is safe; renaming the job leaves the rule
-waiting on a check that never reports, and every PR sits pending. Change the ruleset in the same
-change.
+check matches it by name (added by #250 Task 7, after the `verify` switch ran green on `main`;
+until then the suite runs on every PR but does not block a merge). Renaming a *step* is safe;
+renaming the job leaves the rule waiting on a check that never reports, and every PR sits pending.
+Change the ruleset in the same change.
 
 **The worker poll timeout is what bounds integration-test teardown.** Idle `QueueHandlerBase`
 workers check `shutdownRequested` only between polls, and `fini()` waits for all of them, so each
 handler's shutdown takes up to `POLL_TIMEOUT_MILLIS`, four handlers per test. At the former 1 s this
 was ~4 s of every test and most of the suite's run time (26 minutes at `rel-1.16.0`); at 100 ms the
-full `verify` runs in about 5½ minutes locally. **If the suite gets slow, check this first**, before
-reaching for `@BeforeClass` fixtures (which give up per-test database isolation) or a curated IT
-subset (which silently drops coverage from the gate). Do not replace the poll with `shutdownNow()`,
-which interrupts in-flight jobs `fini()` lets finish, or with a sentinel job, which adds a second
-`requestQueue.put` site.
+full `verify` runs in about 5½ minutes locally and 6½ on CI (the `mvn verify` step; about 8 for
+the whole job). **If the suite gets slow, check this first**, before reaching for `@BeforeClass`
+fixtures (which give up per-test database isolation) or a curated IT subset (which silently drops
+coverage from the gate). Do not replace the poll with `shutdownNow()`, which interrupts in-flight
+jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQueue.put` site.
 
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
