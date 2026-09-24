@@ -113,6 +113,10 @@ public class QueueHandlerBaseMetricsTest {
      * measurement these tests assert on, and the assertions would fail intermittently against
      * correct code. A distinct class rather than another {@code TestJob} so the barrier gets its
      * own {@code dp.job} point and cannot inflate the counts under test.
+     *
+     * <p>That separation holds only for the job-attributed histograms. {@code workers.active} is
+     * attributed by service alone, and the barrier is itself inside {@code execute()} when its
+     * latch releases, so it is still counted there; a gauge assertion has to poll past it.
      */
     private static class BarrierJob extends HandlerJob {
 
@@ -284,12 +288,25 @@ public class QueueHandlerBaseMetricsTest {
         afterwards.awaitFinished();
         awaitRecorded();
 
-        final MetricData workersActive = metricNamed(DpMetrics.METRIC_HANDLER_WORKERS_ACTIVE);
-        assertNotNull("workers.active was not recorded", workersActive);
-        final long active = workersActive.getLongSumData().getPoints().stream()
-                .filter(point -> SERVICE_NAME.equals(point.getAttributes().get(DpMetrics.ATTR_SERVICE)))
-                .mapToLong(point -> point.getValue())
-                .sum();
+        // Polled rather than read once. workers.active is attributed by service only, not by job,
+        // so the barrier job awaitRecorded() just started holds the gauge at +1 until its own
+        // finally runs, which races a single collection. A genuine leak is a permanent +1, so the
+        // gauge never reaches 0 and the poll still fails.
+        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long active;
+        while (true) {
+            final MetricData workersActive = metricNamed(DpMetrics.METRIC_HANDLER_WORKERS_ACTIVE);
+            assertNotNull("workers.active was not recorded", workersActive);
+            active = workersActive.getLongSumData().getPoints().stream()
+                    .filter(point -> SERVICE_NAME.equals(
+                            point.getAttributes().get(DpMetrics.ATTR_SERVICE)))
+                    .mapToLong(point -> point.getValue())
+                    .sum();
+            if (active == 0L || System.nanoTime() > deadline) {
+                break;
+            }
+            sleep(10);
+        }
         assertEquals("workers.active leaked after an escaping job", 0L, active);
 
         final HistogramPointData duration =
