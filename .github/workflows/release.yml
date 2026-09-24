@@ -10,6 +10,9 @@ on:
   # for real: it produces a permanent public Rekor entry naming the ref it ran against.
   #
   # Rehearse by dispatching against a branch (`gh workflow run release.yml --ref <branch>`).
+  # The run executes the workflow file AS IT EXISTS AT THAT REF, so a PR branch rehearses the
+  # PR's own copy (observed on #221's rehearsal, run 36067531985: the branch's three jobs ran,
+  # not main's one).  That also means no ref whose copy lacks this trigger can be rehearsed.
   # Never push a tag to rehearse: a rel-* tag starts a real release, and a tag of any name on
   # a commit from before #221 still runs that commit's release-image.yml, which published an
   # image for every tag.  See CLAUDE.md "Releases".

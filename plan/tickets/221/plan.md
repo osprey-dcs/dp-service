@@ -10,7 +10,8 @@
   independent.
 - **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
   between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
-- **Status**: triaged and planned 2026-09-23; not implemented.
+- **Status**: triaged and planned 2026-09-23. PR 1 (Tasks 1–6) implemented and rehearsed
+  2026-09-24; PR 2 (Tasks 7–8) not started.
 
 ## Overview
 
@@ -137,6 +138,10 @@ in either log flagging it as an error. D2 and D6 close both gaps.
   default branch's copy. That contradicts GitHub's documentation, which says the run uses the
   target ref's copy. The difference decides whether a pre-merge rehearsal tests the PR's workflow,
   so settle it in the rehearsal (Task 4). Do not carry the claim forward.
+  **Settled 2026-09-24 (Task 4):** the run executes the target ref's copy. The dispatch against
+  the PR 1 branch (run `36067531985`) ran the branch's `build`/`sign`/`publish` jobs, not
+  `main`'s single `build-and-release`. GitHub's documentation is right; dp-grpc's `24372b1`
+  comment is wrong.
 
 ## Design decisions
 
@@ -508,6 +513,19 @@ rehearse (triage finding 4). Confirm:
   what shows the tag anchor matters.
 - `cosign verify-blob` **fails** with the `release-image\.yml` pattern. This is the D5 copy-paste
   case.
+
+**Task 4 result (2026-09-24).** Rehearsal run `36067531985` against `issue-221-release-signing`
+at `e038072`: dispatch accepted (no 422), branch copy executed (see triage "Other facts").
+`build` and `sign` succeeded and `publish` was skipped. `sign` ran only download, `SHA256SUMS`,
+install cosign, sign, upload — no checkout, no `mvn`. `VERSION` was `1.16.0` from the POM and the
+log shows `dp-grpc ref: rel-1.16.0 (rehearsal: POM dp-grpc.version)`. The downloaded
+`SHA256SUMS` records the bare `dp-service-1.16.0.jar` and `sha256sum -c` passes in a flat
+directory. With cosign v3.1.3 locally, `verify-blob` passed with
+`…/release\.yml@refs/heads/issue-221-release-signing$`, and failed with both the published
+`…/release\.yml@refs/tags/rel-` pattern and the `release-image\.yml` pattern, each reporting the
+actual SAN. Task 2's dry-run dispatch (`36067534812`) logged `IS_RELEASE: false`, `IMAGE_TAG` =
+the commit SHA, a single tag in the build-push tag list with no `:latest`, and the registry
+login skipped.
 
 **Task 5 — Adopt `NEXT.md` (D7).** Create `doc/release-notes/NEXT.md` from dp-grpc's, adapted:
 dp-service title, and a "Cutting the release" checklist that keeps dp-grpc's steps and adds the
