@@ -1480,15 +1480,24 @@ on a rehearsal it is POM content.
 **`IS_RELEASE` is keyed off the event, not the ref type**, in both release workflows:
 `github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-')`. A `workflow_dispatch`
 can target a tag, so `github.ref_type == 'tag'` does not mean "release" — `release-image.yml` used
-exactly that check to move `:latest`. In `release.yml` the expression appears twice, as `build`'s
+exactly that check to move `:latest` (and its dp-grpc ref resolution used it too, until #298's
+review). In `release.yml` the expression appears twice, as `build`'s
 env and literally in `publish.if` (a job `if:` cannot read `env`); passing it as a `build` output
 instead would let the job running project code decide whether publishing happens.
 
 **Rehearse with `gh workflow run release.yml --ref <branch>`, never by pushing a tag.** A
 rehearsal builds, tests and signs, takes its version from the POM, and builds against dp-grpc
 `rel-<dp-grpc.version>` (falling back to `main`, logged); `publish` is skipped. It signs for real,
-leaving a permanent public Rekor entry naming its ref, which fails the published `refs/tags/rel-`
-identity by design. Since #221 only a `rel-*` tag push publishes an image — but a push runs the
+leaving a permanent public Rekor entry naming its ref. A dispatch against a **tag** ref is refused
+in `build`'s "Derive version" step: its certificate identity would be
+`release.yml@refs/tags/rel-<version>`, the release's own, differing only in the workflow trigger.
+The published verify command therefore pins both — an exact `--certificate-identity` naming the one
+tag being verified (a pattern over any `rel-` tag accepts an older release's genuine signature
+substituted for a newer one's) and `--certificate-github-workflow-trigger push` — so the refusal is
+defense in depth rather than the only barrier. On a release the same step fails unless the tag
+version equals both `project.version` and `dp-grpc.version`: the jar is renamed to the tag's version
+regardless of the POM, so an unbumped POM would otherwise ship a signed jar whose name, reported
+version, and dp-grpc dependency disagree. Since #221 only a `rel-*` tag push publishes an image — but a push runs the
 workflow file **at the tagged commit**, so a tag of any name on a commit from before #221 still
 runs the old `'*'` trigger, pushes an image, and moves `:latest`. That is why "never push a tag to
 rehearse" is permanent rather than something #221 retired.

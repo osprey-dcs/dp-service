@@ -63,22 +63,30 @@ about either. What protects them is the signature: `cosign verify-blob` below ch
 against `SHA256SUMS`, and the checksum in turn covers the jar.
 
 To verify the signature, install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
-and run:
+and run, with `<version>` replaced by the release you downloaded:
 
 ```bash
 cosign verify-blob \
   --bundle SHA256SUMS.cosign.bundle \
-  --certificate-identity-regexp '^https://github.com/osprey-dcs/dp-service/\.github/workflows/release\.yml@refs/tags/rel-' \
+  --certificate-identity 'https://github.com/osprey-dcs/dp-service/.github/workflows/release.yml@refs/tags/rel-<version>' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-trigger push \
   SHA256SUMS
 ```
 
 Expect `Verified OK`.
 
-Keep the `--certificate-identity-regexp` exactly as written. It is anchored at the start and
-pinned to this repository, the `release.yml` workflow file, and a `rel-` tag. A loosened or
-unanchored pattern would accept a valid signature made by any workflow in any repository — which
-is the usual way this check ends up passing while proving nothing.
+Keep every identity flag exactly as written:
+
+- `--certificate-identity` is an exact match on this repository, the `release.yml` workflow file,
+  and the one tag being verified. A pattern accepting any `rel-` tag would also accept an older
+  release's genuine `SHA256SUMS` and bundle substituted for this one's. A loosened or unanchored
+  pattern would accept a valid signature made by any workflow in any repository — the usual way
+  this check ends up passing while proving nothing.
+- `--certificate-github-workflow-trigger push` requires the signature to come from the tag push
+  that published the release. A manual run of the same workflow against the tag would carry the
+  same identity; the release workflow refuses such runs, and this flag is what makes a verifier
+  independent of that.
 
 Full instructions, including what the signature proves that the checksum does not, are in
 [`README.env`](https://github.com/osprey-dcs/dp-service/blob/main/README.env).

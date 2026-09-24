@@ -290,6 +290,25 @@ inside one repo. A wrong pattern either fails every legitimate verification, or,
 get past that, proves nothing. `README.env` gives each command under its own heading. Task 4 and
 Task 7 check **both** patterns against real signatures, including the failing case.
 
+**Amended in #298's review (2026-09-24).** The published commands do not use the open-ended
+`rel-` patterns above. Two gaps:
+
+- **Cross-version substitution.** A pattern accepting any `rel-` tag verifies an older release's
+  genuine `SHA256SUMS` and bundle substituted for a newer one's. The published command is therefore
+  an exact `--certificate-identity …/release.yml@refs/tags/rel-<version>`, and the reader fills in
+  the version they downloaded.
+- **Dispatch against a tag.** Every tag from PR 1 on carries the `workflow_dispatch` trigger, so a
+  dispatch whose `--ref` is `rel-<version>` signs under the release's own identity. The only
+  certificate field that differs is the workflow trigger. The published command adds
+  `--certificate-github-workflow-trigger push`, and `release.yml` refuses a dispatch against a tag
+  ref as well. Verified locally with cosign v3.1.3 against the Task 4 rehearsal bundle: with the
+  exact branch identity it passes; adding `--certificate-github-workflow-trigger push` fails with
+  `expected GithubWorkflowTrigger to be "push", got "workflow_dispatch"`.
+
+PR 2 owes the image command the same form: an exact `release-image.yml@refs/tags/rel-<version>`
+identity plus the trigger flag. A non-dry-run dispatch of `release-image.yml` against a tag would
+otherwise produce a signed image that passes the published check (see D3).
+
 ### D6 — Rehearsal version and dp-grpc ref come from the POM
 
 As in dp-grpc, a rehearsal takes `VERSION` from `project.version`. Otherwise `${GITHUB_REF_NAME#rel-}`
@@ -480,8 +499,11 @@ and signing wait for PR 2:
 - `id: build` on the build-push step, so PR 2 can read the digest
 - `concurrency: { group: release-image-${{ github.ref }}, cancel-in-progress: false }`
 
-Leave the dp-grpc resolver's `github.ref_type == 'tag'` alone for now. It picks a dp-grpc ref, not
-a publish decision, and PR 2 rewrites the resolver anyway (D6).
+~~Leave the dp-grpc resolver's `github.ref_type == 'tag'` alone for now.~~ Changed in #298's
+review: the resolver's tag-name candidate keys off `IS_RELEASE` too, and `inputs.dp_grpc_ref` (and
+the diagnostic step's `github.ref_name`) reach their scripts through `env:` instead of being
+spliced in. A dispatch against a tag now falls through to the POM's `rel-<dp-grpc.version>`, which
+is the same ref for a `rel-*` tag. PR 2 may still rewrite the resolver (D6).
 
 Rehearse with a **dry-run** dispatch against the PR branch. That is enough, because every change
 here shows in the run log without a push. Confirm the build-push step's resolved tag list has no

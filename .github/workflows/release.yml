@@ -16,6 +16,10 @@ on:
   # Never push a tag to rehearse: a rel-* tag starts a real release, and a tag of any name on
   # a commit from before #221 still runs that commit's release-image.yml, which published an
   # image for every tag.  See CLAUDE.md "Releases".
+  #
+  # A dispatch against a TAG ref is refused (see "Derive version"): its signing identity would
+  # be release.yml@refs/tags/rel-<version>, the release's own, leaving the workflow trigger as
+  # the only thing in the certificate that tells the two apart.
   workflow_dispatch:
 
 # A publish must never be cancelled halfway through, so unlike CI this pins
@@ -80,16 +84,35 @@ jobs:
       # exercise filenames no release ever uses.  Reading the POM instead means a rehearsal
       # produces the same names a release does.
       #
+      # On a release the tag must agree with the POM on both project.version and
+      # dp-grpc.version.  The jar is renamed to the tag's version whatever the POM says, and
+      # dp-grpc is checked out at rel-<tag version> while Maven resolves the POM's
+      # dp-grpc.version, so a tag pushed on an unbumped POM would otherwise publish and sign a
+      # jar whose name, self-reported version, and dp-grpc dependency disagree.
+      #
+      # A rehearsal against a tag ref is refused outright: it would sign under the release's
+      # own identity (release.yml@refs/tags/rel-...), distinguishable from the real release
+      # only by the workflow trigger.  Rehearse against a branch.
+      #
       # The version becomes a filename and is handed to the sign job, which holds the signing
       # token, so anything outside a plain version alphabet is rejected here.
       - name: Derive version
         id: version
         run: |
           set -euo pipefail
+          POM_VERSION=$(mvn -B -q -DforceStdout help:evaluate -Dexpression=project.version)
           if [ "${IS_RELEASE}" = "true" ]; then
             VERSION="${GITHUB_REF_NAME#rel-}"
+            POM_GRPC_VERSION=$(mvn -B -q -DforceStdout help:evaluate -Dexpression=dp-grpc.version)
+            if [ "$VERSION" != "$POM_VERSION" ] || [ "$VERSION" != "$POM_GRPC_VERSION" ]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} does not match the POM (project.version=${POM_VERSION}, dp-grpc.version=${POM_GRPC_VERSION}). Bump the POM and retag."
+              exit 1
+            fi
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "::error::Refusing to rehearse against tag ${GITHUB_REF_NAME}: its signature would carry the release's own identity. Dispatch against a branch."
+            exit 1
           else
-            VERSION=$(mvn -B -q -DforceStdout help:evaluate -Dexpression=project.version)
+            VERSION="$POM_VERSION"
           fi
           if ! [[ "$VERSION" =~ ^[0-9A-Za-z.+-]+$ ]]; then
             echo "::error::Refusing version '$VERSION': outside [0-9A-Za-z.+-]"
@@ -209,7 +232,8 @@ jobs:
       #
       # Gated on IS_RELEASE rather than GITHUB_REF_TYPE: NOTES_PATH is set only by the
       # release-only step above, so a workflow_dispatch run against a tag would reference it
-      # unset and abort the rehearsal under `set -u` before anything is uploaded.
+      # unset and abort the rehearsal under `set -u` before anything is uploaded.  "Derive
+      # version" now refuses such a run first; this gate should not depend on that.
       - name: Stage release notes
         run: |
           set -euo pipefail
