@@ -91,10 +91,13 @@ given up per-test isolation to save time that was never going to fixtures.
 ### 4. The release and image builds depend on the host the vendored jhdf5 exists to avoid
 
 CLAUDE.md, "Vendored dependency: `cisd:jhdf5`", says deleting the vendored install step "breaks CI
-on every pull request." That step exists only in `ci.yml:62-66`. Two other build paths still
+on every pull request." That step exists only in `ci.yml:62-66`. Three other build paths still
 resolve jhdf5 from `maven.scijava.org`:
 
 - **`release.yml`** has no install step. `rel-1.16.0` succeeded because SciJava happened to be up.
+- **`release-image.yml`** runs `mvn -B test` on the runner (`release-image.yml:160`) before it
+  builds the image, with no install step ahead of it. It fails there, before the Docker build
+  starts.
 - **The `Dockerfile`** runs `mvn -B -DskipTests package` inside BuildKit (`Dockerfile:24`), where no
   runner step can pre-install anything. So `release-image.yml` fails whenever SciJava serves 503 for
   JARs, the exact failure recorded for 2026-08-27. The vendored jar is already in the build context
@@ -123,6 +126,14 @@ reads or writes it. `ci.yml` builds no image, and `build-push-action` has no `ca
 uses a "MongoDB 8.0 service container", and uploads "Surefire and Failsafe test reports". In fact
 it triggers on PRs only, starts MongoDB with `docker compose`, and uploads only the compose logs
 and `docker ps` output. On a test failure, the reports a reviewer needs are not uploaded.
+
+### 8. No check is required to merge, so CI is not a gate today
+
+`main` has no branch protection (`GET /branches/main/protection` returns 404), and its only
+ruleset (`15223477`) carries `deletion`, `non_fast_forward`, and `copilot_code_review` rules, with
+no `required_status_checks`. A PR whose `build-and-test` run fails can be merged. Switching CI to
+`verify` alone would therefore make the integration suite *visible* on every PR without making it
+a gate, which is the thing #250 asks for.
 
 ### Other facts the design depends on
 
@@ -176,10 +187,24 @@ Add `push: branches: [main]` to `ci.yml`. That catches breakage from combined me
 It also creates caches on `main`, which every PR can then restore: Maven dependencies, and the
 dp-grpc build if it is ever cached.
 
-Concurrency (#213 item 5, CI half): `group: ci-${{ github.head_ref || github.ref }}`, with
-`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`. A new push to a PR cancels that
-PR's superseded run. A run on `main` is never cancelled, because each one is the only check of the
-commit it tests.
+Concurrency (#213 item 5, CI half):
+
+```yaml
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+A new push to a PR cancels that PR's superseded run. Two details are load-bearing:
+
+- **PR runs key on `github.ref`** (`refs/pull/<n>/merge`), which is unique per PR. `github.head_ref`
+  is only the source branch name, so two fork PRs from same-named branches would share a group and
+  cancel each other's runs.
+- **Push runs key on the commit SHA, so they never share a group.** `cancel-in-progress: false` is
+  not enough on its own: a group holds one running and one *pending* run, and a newer pending run
+  replaces an older one. Keyed on `github.ref`, three merges landing during one run would leave the
+  middle commit untested, which is exactly the combined-merge breakage this trigger exists to catch.
+  Each `main` run is the only check of the commit it tests.
 
 ### D4 — Keep `mvn verify` at release time (resolves #213 item 2 as "won't do")
 
@@ -200,6 +225,7 @@ here.
 ### D5 — The vendored jhdf5 is installed on every build path
 
 - `release.yml`: add the same `install:install-file` step as `ci.yml`, before the dp-service build.
+- `release-image.yml`: the same step, before the runner-side `mvn -B test`.
 - `Dockerfile`: run `mvn -B install:install-file -Dfile=third-party/cisd-jhdf5/… -DpomFile=…`
   in the builder stage, after `COPY . /build/app` and before `mvn -B -DskipTests package`.
 - CLAUDE.md's jhdf5 section: replace "a CI step" with the full list of places the jar is installed.
@@ -226,6 +252,27 @@ dependency. The install step already works in `ci.yml` and is documented.
   uploaded artifact, `if: always()`. With ITs gating merges, "which IT failed and why" has to be
   answerable from the PR.
 
+### D7 — Make `build-and-test` a required status check on `main`
+
+Add a `required_status_checks` rule to the existing `main` ruleset (`15223477`), requiring the
+`build-and-test` check from the `CI` workflow. Without it, D2 makes the suite run on every PR but
+not gate anything (triage 8). Add it to the existing ruleset rather than creating a second one, so
+the rules governing `main` stay in one place.
+
+- **Enable it only after the `verify` switch has run green on `main`.** Required first, a PR that
+  predates the switch still reports the `mvn test` result under the same check name, and a flaky
+  IT found during Task 2's watch period would block every open PR before it can be fixed.
+- **The job id is the contract.** The rule matches the check by name, which is the job id
+  `build-and-test`. D6 renames the *step*, which is safe; renaming the *job* would leave the rule
+  waiting on a check that never reports, and every PR would sit pending. CLAUDE.md records this
+  (Task 6).
+- **Leave "require branches to be up to date" off.** The `main` push run (D3) already catches
+  combined-merge breakage after the fact, and requiring up-to-date branches would force a rebase
+  and a full re-run of every open PR after each merge.
+
+*Rejected:* classic branch protection. The repo already governs `main` through a ruleset, and
+splitting the rules across two mechanisms makes it harder to see what applies.
+
 ## Implementation tasks
 
 ### Task 1 — Poll timeout (`QueueHandlerBase`)
@@ -233,7 +280,9 @@ dependency. The install step already works in `ci.yml` and is documented.
 Replace `POLL_TIMEOUT_SECONDS = 1` with a millisecond constant (100), and use it at `:125`. Add a
 comment on the constant saying it bounds how long an idle worker delays `fini()`, why that matters
 (per-test shutdown in the ITs, and process shutdown), and why an interrupt or a sentinel is not
-used instead (D1). Check that nothing else reads `POLL_TIMEOUT_SECONDS`.
+used instead (D1). Update the worker excerpt in `README.md:120-122`, which repeats the
+`poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS)` line, and grep the repo for any other reference to
+`POLL_TIMEOUT_SECONDS`.
 
 ### Task 2 — Measure, then make CI run `verify`
 
@@ -253,7 +302,8 @@ Add the `push` trigger and `concurrency` (D3). Drop `packages: write`. Replace t
 
 ### Task 4 — Vendored jhdf5 on every build path (D5)
 
-Add the install step to `release.yml` and the `Dockerfile`. Test the Dockerfile change with a
+Add the install step to `release.yml`, `release-image.yml` (before its runner-side `mvn -B test`),
+and the `Dockerfile`. Test the Dockerfile change with a
 `release-image.yml` dry-run dispatch. To show it no longer depends on SciJava, build the image
 locally once with `maven.scijava.org` unreachable (for example `--add-host maven.scijava.org:127.0.0.1`)
 and confirm it succeeds. Update CLAUDE.md's jhdf5 section.
@@ -270,6 +320,17 @@ Rewrite the "Continuous Integration" section to match reality: triggers (PRs and
 MongoDB via `docker compose up --wait`, the full `verify` gate, the uploaded artifacts, and the
 concurrency rules. Add an invariant paragraph for D1: the poll timeout is what bounds per-test
 teardown, and a slow suite should be checked for this first. Add a line to "Testing Strategy" noting that the ITs gate every merge.
+Record D7's constraint: the ruleset requires the check by the job id `build-and-test`, so
+renaming that job must update the ruleset in the same change.
+
+### Task 7 — Require the check (D7)
+
+After PR (a) has merged and its `main` push run is green, add the `required_status_checks` rule to
+ruleset `15223477` requiring `build-and-test`. This is a repository settings change, made by a
+repo admin in the ruleset UI or with `gh api --method PUT repos/osprey-dcs/dp-service/rulesets/15223477`
+(the PUT replaces the full rule list, so include the three existing rules). Confirm it on the next
+PR: its merge button must be blocked while `build-and-test` is pending. Record the date in #250
+when it is enabled.
 
 ## Out of scope
 
@@ -287,14 +348,18 @@ teardown, and a slow suite should be checked for this first. Add a line to "Test
 
 ## Dependencies and sequencing
 
-- **Tasks 1–3 (the merge gate) have no dependencies.** They touch only `QueueHandlerBase`,
-  `ci.yml`, and CLAUDE.md, none of which #221 edits, so they can land before, during, or after #221.
-  Do them first: every later PR, #221's included, then merges behind the integration suite.
+- **Tasks 1–3 (the suite on every PR) have no dependencies.** They touch only `QueueHandlerBase`,
+  `README.md`, `ci.yml`, and CLAUDE.md, none of which #221 edits, so they can land before, during,
+  or after #221. Do them first, and Task 7 right after: every later PR, #221's included, then
+  merges behind the integration suite.
 - **Task 4 also has no dependencies, but should land before the next `rel-*` tag.** Otherwise the
   next release depends on SciJava being up. It is a one-step addition to each file, so it rebases
   easily onto #221's restructure if #221 lands first. #221 Task 7 also edits the `Dockerfile`'s
   builder stage (it replaces the dp-grpc `git clone … || git clone …` fallback). The two edits are
   a few lines apart, so whichever lands second rebases by hand.
 - **Task 5 waits for #221.** It edits step bodies inside #221's new job layout.
+- **Task 7 waits for PR (a) and one green `main` run**, and for the first few PR runs under
+  `verify` to show no flakiness (Task 2). It does not wait for Tasks 4 or 5, or for #221. Until it
+  lands, the suite is visible on every PR but not enforced.
 - **Suggested PRs:** (a) Tasks 1–3 plus the matching CLAUDE.md changes; (b) Task 4; (c) Task 5
-  after #221.
+  after #221. Task 7 is a settings change, not a PR.
