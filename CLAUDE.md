@@ -1509,12 +1509,18 @@ jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQ
 
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
-`cisd:jhdf5` is **not on Maven Central**; its only public host is `maven.scijava.org`. The jar and
-its POM are committed under `third-party/cisd-jhdf5/` and installed into the local Maven repository
-before dp-service builds on **every** build path: a step in `ci.yml`, `release.yml` and
+`cisd:jhdf5` and its support library `cisd:base` are **not on Maven Central**; their only public
+host is `maven.scijava.org`. Both jars and POMs are committed under `third-party/cisd-jhdf5/` and
+`third-party/cisd-base/`, and `third-party/install-vendored.sh` installs them into the local Maven
+repository before dp-service builds on **every** build path: a step in `ci.yml`, `release.yml` and
 `release-image.yml`, and a `RUN` in the `Dockerfile`'s builder stage, which cannot see the runner's
-`~/.m2` (#250 Task 4; before it, only CI had the step, so a release depended on SciJava being up).
-Deleting the directory breaks all four; a new build path needs the same step.
+`~/.m2`. Deleting either directory breaks all four; a new build path needs the same step.
+
+Before #250 Task 4 only CI had the step, so a release depended on SciJava being up, and only jhdf5
+was vendored: `cisd:base` had kept resolving during the outage below, so CI still needed SciJava
+for it. A Docker build with `--add-host maven.scijava.org:127.0.0.1` is the test that the build is
+independent of that host; it failed on `cisd:base` until that was vendored too. Re-run it after
+adding any dependency from the `sci-java` repository in `pom.xml`.
 
 This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
 serving POMs**, making the dependency unresolvable with no Central fallback. The host has since

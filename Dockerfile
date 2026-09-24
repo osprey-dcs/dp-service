@@ -21,12 +21,10 @@ RUN mvn -f dp-grpc/pom.xml -B -DskipTests install
 # Copy current project sources into the image and build
 COPY . /build/app
 WORKDIR /build/app
-# cisd:jhdf5 is not on Maven Central and its only host, maven.scijava.org, has served 503 for
-# JARs. Install the vendored copy (already in the build context) so the image build does not
-# depend on that host. See third-party/cisd-jhdf5/README.md before removing this.
-RUN mvn -B install:install-file \
-        -Dfile=third-party/cisd-jhdf5/jhdf5-19.04.1.jar \
-        -DpomFile=third-party/cisd-jhdf5/jhdf5-19.04.1.pom
+# cisd:jhdf5 and cisd:base are not on Maven Central and their only host, maven.scijava.org, has
+# served 503 for JARs. Install the vendored copies (already in the build context) so the image
+# build does not depend on that host. See third-party/cisd-jhdf5/README.md before removing this.
+RUN sh third-party/install-vendored.sh
 RUN mvn -B -DskipTests package
 
 # Normalize artifact name: copy first shaded jar or first jar into a known location
