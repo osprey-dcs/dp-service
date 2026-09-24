@@ -1,6 +1,7 @@
 # Vendored dependency: `cisd:jhdf5:19.04.1`
 
-**Do not delete this directory.** Removing it breaks CI on every pull request. Read this
+**Do not delete this directory.** Removing it breaks CI on every pull request, and every
+release and image build. Read this
 first if you are tempted to tidy an 8 MB binary out of the repository.
 
 ## Why this is here
@@ -58,18 +59,19 @@ look before redistributing this artifact outside the project.
 
 ## How it is used
 
-`.github/workflows/ci.yml` installs it into the runner's local Maven repository before any
-build step:
+Every build path installs it into its local Maven repository before building dp-service, by
+running `third-party/install-vendored.sh` (which also installs `../cisd-base/`, see its
+README): `.github/workflows/ci.yml`, `.github/workflows/release.yml` and
+`.github/workflows/release-image.yml` on the runner, and the `Dockerfile` in its builder stage
+(a BuildKit build cannot see the runner's `~/.m2`). A new build path needs the same step.
 
-```
-mvn -B install:install-file \
-  -Dfile=third-party/cisd-jhdf5/jhdf5-19.04.1.jar \
-  -DpomFile=third-party/cisd-jhdf5/jhdf5-19.04.1.pom
-```
+`ci.yml` also makes `maven.scijava.org` unreachable for the whole job, so a new dependency
+that only SciJava hosts fails CI rather than the next outage. If that step fails a build,
+vendor the dependency here and add it to `install-vendored.sh`; do not remove the block.
 
 Local developer builds need no setup: Maven resolves from `~/.m2` first, and anyone who
 already built this project has the jar cached. A developer starting from an empty `~/.m2`
-can run the same command by hand, or simply let CI cover it.
+can run `third-party/install-vendored.sh` from the repository root.
 
 Vendoring was chosen over hosting the jar in GitHub Packages specifically to avoid a
 per-developer credential requirement. A missing token would surface as an HTTP 401 that
@@ -88,5 +90,6 @@ Remove it once **either** of the following is true, and not before:
 single-host dependency with no Central fallback will break CI again the next time that
 host has trouble.
 
-To remove: delete this directory, drop the install step from `ci.yml`, and drop the
+To remove: delete this directory and `../cisd-base/`, drop `install-vendored.sh` and the
+step that runs it from all four build paths listed above, and drop the
 corresponding note from `CLAUDE.md`.

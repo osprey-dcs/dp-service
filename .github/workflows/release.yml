@@ -61,6 +61,12 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      # Same step as ci.yml; see its comment and third-party/cisd-jhdf5/README.md.
+      # Without it this build resolves jhdf5 and cisd:base from maven.scijava.org and
+      # fails whenever that host is down or serves 503 for JARs.
+      - name: Install vendored cisd:jhdf5 and cisd:base to local Maven repo
+        run: third-party/install-vendored.sh
+
       - name: Checkout dp-grpc at matching tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -99,6 +99,22 @@ jobs:
           echo "dp-grpc ref: $REF (candidate '$CANDIDATE', pom requires $WANT)"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
+      # Same step as ci.yml; see its comment and third-party/cisd-jhdf5/README.md.
+      # Without it this build resolves jhdf5 and cisd:base from maven.scijava.org and
+      # fails whenever that host is down or serves 503 for JARs.
+      #
+      # Guarded, unlike ci.yml and release.yml: a manual dispatch runs this workflow file from
+      # the dispatching branch but checks out inputs.ref/inputs.tag, so rebuilding the image of
+      # a release older than the script (rel-1.16.0 and earlier) must still work. Such a build
+      # resolves from SciJava exactly as it did when that release was cut.
+      - name: Install vendored cisd:jhdf5 and cisd:base to local Maven repo
+        run: |
+          if [ -x third-party/install-vendored.sh ]; then
+            third-party/install-vendored.sh
+          else
+            echo "::warning::third-party/install-vendored.sh not in the checked-out ref; this build resolves cisd:jhdf5 and cisd:base from maven.scijava.org"
+          fi
+
       - name: Checkout dp-grpc dependency
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

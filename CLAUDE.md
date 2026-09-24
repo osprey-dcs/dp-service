@@ -1509,10 +1509,26 @@ jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQ
 
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
-`cisd:jhdf5` is **not on Maven Central**; its only public host is `maven.scijava.org`. The jar and
-its POM are committed under `third-party/cisd-jhdf5/` and installed into the runner's local Maven
-repository by a CI step that runs before any build. Deleting either the directory or that step
-breaks CI on every pull request.
+`cisd:jhdf5` and its support library `cisd:base` are **not on Maven Central**; their only public
+host is `maven.scijava.org`. Both jars and POMs are committed under `third-party/cisd-jhdf5/` and
+`third-party/cisd-base/`, and `third-party/install-vendored.sh` installs them into the local Maven
+repository before dp-service builds on **every** build path: a step in `ci.yml`, `release.yml` and
+`release-image.yml`, and a `RUN` in the `Dockerfile`'s builder stage, which cannot see the runner's
+`~/.m2`. Deleting either directory breaks all four; a new build path needs the same step.
+
+Before #250 Task 4 only CI had the step, so a release depended on SciJava being up, and only jhdf5
+was vendored: `cisd:base` had kept resolving during the outage below, so CI still needed SciJava
+for it. A Docker build with `--add-host maven.scijava.org:127.0.0.1` failed on `cisd:base` until
+that was vendored too.
+
+**CI enforces the independence rather than trusting anyone to re-run that build:** `ci.yml`'s
+"Block maven.scijava.org" step points the host at loopback in `/etc/hosts` for the whole job, so
+`mvn verify` (every plugin included) must resolve without it. The `sci-java` repository stays in
+`pom.xml` — Maven falls through a refused connection to Central, and developers with an empty
+`~/.m2` still resolve — so the block fails exactly one thing: a new SciJava-only dependency, which
+must then be vendored and added to `install-vendored.sh`. Do not remove the block to "fix" such a
+failure. `release-image.yml`'s install step alone is guarded by an existence check, because a manual
+dispatch can build a ref older than the script.
 
 This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
 serving POMs**, making the dependency unresolvable with no Central fallback. The host has since

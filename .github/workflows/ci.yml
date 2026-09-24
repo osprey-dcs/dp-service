@@ -46,6 +46,34 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'maven'
 
+      # Make maven.scijava.org unreachable for the whole job, so every build proves it does not
+      # need that host (#250 Task 4). The pom still lists the sci-java repository, and Maven
+      # falls through a refused connection to Central, so only an artifact that SciJava alone
+      # hosts fails -- which is exactly a dependency that must be vendored under third-party/
+      # and added to install-vendored.sh. Without this, CI resolves such a dependency from
+      # SciJava and stays green until the next outage, which is how cisd:base went unnoticed.
+      # A restored Maven cache cannot mask a new dependency: no run with this step can
+      # download from SciJava, and a cache saved before it existed holds only dependencies
+      # the pom already had, which a blocked-host Docker build showed resolve without it.
+      - name: Block maven.scijava.org
+        run: |
+          printf '127.0.0.1 maven.scijava.org\n::1 maven.scijava.org\n' | sudo tee -a /etc/hosts
+          getent hosts maven.scijava.org | grep -Eq '^(127\.0\.0\.1|::1)[[:space:]]' || {
+            echo "::error::maven.scijava.org still resolves to a real address; the block is not effective"
+            exit 1
+          }
+
+      # cisd:jhdf5 is not published to Maven Central, and its only upstream host
+      # (maven.scijava.org) has served 503 for JAR downloads while continuing to serve
+      # POMs, which broke every CI run that could not restore a Maven cache.  Actions
+      # caches are scoped per-ref, so no PR can reuse another PR's cache -- CI had been
+      # relying on downloading this jar fresh each run.  The jar is vendored under
+      # third-party/ (with cisd:base, also SciJava-only) and installed here so the build
+      # no longer depends on that host.
+      # See third-party/cisd-jhdf5/README.md before removing this step.
+      - name: Install vendored cisd:jhdf5 and cisd:base to local Maven repo
+        run: third-party/install-vendored.sh
+
       - name: Checkout dp-grpc dependency
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,19 +81,6 @@ jobs:
           path: dp-grpc
           ref: ${{ env.DP_GRPC_REF }}
           fetch-depth: 0
-
-      # cisd:jhdf5 is not published to Maven Central, and its only upstream host
-      # (maven.scijava.org) has served 503 for JAR downloads while continuing to serve
-      # POMs, which broke every CI run that could not restore a Maven cache.  Actions
-      # caches are scoped per-ref, so no PR can reuse another PR's cache -- CI had been
-      # relying on downloading this jar fresh each run.  The jar is vendored under
-      # third-party/ and installed here so the build no longer depends on that host.
-      # See third-party/cisd-jhdf5/README.md before removing this step.
-      - name: Install vendored cisd:jhdf5 to local Maven repo
-        run: |
-          mvn -B install:install-file \
-            -Dfile=third-party/cisd-jhdf5/jhdf5-19.04.1.jar \
-            -DpomFile=third-party/cisd-jhdf5/jhdf5-19.04.1.pom
 
       - name: Build and install dp-grpc to local Maven repo
         working-directory: dp-grpc

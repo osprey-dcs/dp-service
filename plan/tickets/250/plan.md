@@ -322,6 +322,19 @@ and the `Dockerfile`. Test the Dockerfile change with a
 locally once with `maven.scijava.org` unreachable (for example `--add-host maven.scijava.org:127.0.0.1`)
 and confirm it succeeds. Update CLAUDE.md's jhdf5 section.
 
+*Found during implementation:* that test failed on `cisd:base:18.09.0`, not jhdf5. It is declared
+directly in `pom.xml`, jhdf5's POM depends on it, and it is also SciJava-only (404 on Central). It
+kept resolving during the 2026-08-27 outage, so the original vendoring missed it. It is vendored
+in `third-party/cisd-base/`, and every build path runs `third-party/install-vendored.sh` rather
+than a per-path copy of the install commands.
+
+*Added in review (PR #297):* the blocked-host build is now permanent rather than a one-off check.
+`ci.yml` blocks `maven.scijava.org` in `/etc/hosts` for the whole job, so any future SciJava-only
+dependency fails CI instead of the next outage; this also covers the `verify`-only plugins the
+`-DskipTests package` Docker test did not reach. `release-image.yml`'s install step is guarded by
+an existence check, since a manual dispatch may build a ref that predates the script. The install
+step in `ci.yml` moved ahead of the dp-grpc checkout to match the two release workflows.
+
 ### Task 5 — Release workflow items (#213 items 6, 7)
 
 Apply `--wait` to `release.yml` and `release-image.yml`, and add the dp-grpc tag existence check to
