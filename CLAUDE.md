@@ -1026,7 +1026,8 @@ records the batch's span through `PvStatsMaxSpanUpdater` **before** `insertMany`
 - **Test Database**: "dp-test" (cleaned between tests via `MongoTestClient.init()`)
 - **Merge gate**: CI runs `mvn verify`, so every integration test runs on every PR, and gates the
   merge once `build-and-test` is a required check (#250 Task 7; see Continuous Integration). A
-  flaky IT then blocks every PR — fix it or ticket it, never exclude it from the gate silently.
+  flaky IT then blocks every PR — fix it, in the PR that surfaced it when the fix is small; ticket
+  it only when the fix is large or out of scope, and never exclude it from the gate silently.
 - **Temporary Files**: `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();`
 
 ### Annotation Service Test Framework
