@@ -1024,6 +1024,9 @@ records the batch's span through `PvStatsMaxSpanUpdater` **before** `insertMany`
   (`com/ospreydcs/.../**`) or `**/ClassName.java`; dotted wildcards match nothing.
 - **Test Base Classes**: `AnnotationTestBase`, `QueryTestBase`, `IngestionTestBase`
 - **Test Database**: "dp-test" (cleaned between tests via `MongoTestClient.init()`)
+- **Merge gate**: CI runs `mvn verify`, so every integration test gates every merge (see
+  Continuous Integration). A flaky IT blocks every PR — fix it or ticket it, never exclude it from
+  the gate silently.
 - **Temporary Files**: `@Rule public TemporaryFolder tempFolder = new TemporaryFolder();`
 
 ### Annotation Service Test Framework
@@ -1470,11 +1473,37 @@ so an unchecked missing-notes failure would surface only after several minutes o
 release already half-published. Retagging is the only fix once the tag is pushed.
 
 ## Continuous Integration
-- **GitHub Actions**: `.github/workflows/ci.yml`
-- **Multi-Repository Setup**: builds dp-grpc before dp-service
-- **Triggers**: pushes/PRs to main/master; manual workflow dispatch
-- **Services**: MongoDB 8.0 service container
-- **Artifacts**: Surefire and Failsafe test reports
+- **GitHub Actions**: `.github/workflows/ci.yml`, one job, `build-and-test`
+- **Multi-Repository Setup**: builds dp-grpc `main` before dp-service (the release builds against
+  the matching dp-grpc tag instead, so a green CI run does not prove a green release build)
+- **Triggers**: PRs to `main`, and pushes to `main`
+- **Gate**: `mvn -B verify` — every unit *and* integration test runs on every PR (#250)
+- **Services**: MongoDB 8 from `docker-compose.yaml`, started with `docker compose up -d --wait`
+- **Artifacts**: compose logs and `docker ps` output, plus `target/surefire-reports` and
+  `target/failsafe-reports`, uploaded on every run including failures
+
+**Concurrency is keyed differently for PRs and pushes, and both halves are load-bearing.** PR runs
+group on `github.ref` (`refs/pull/<n>/merge`) and cancel their superseded run; `github.head_ref` is
+only the branch name, which two fork PRs can share. Push runs group on `github.sha`, so they never
+share a group: a group holds one running and one *pending* run and a newer pending run replaces an
+older one even with `cancel-in-progress: false`, which would leave a middle merge untested — the
+combined-merge breakage the push trigger exists to catch.
+
+**The job id `build-and-test` is the contract with the `main` ruleset**, whose required status
+check matches it by name (added by #250 Task 7, after the `verify` switch ran green on `main`; until
+then the suite runs on every PR but does not block a merge). Renaming a *step* is safe; renaming the job leaves the rule
+waiting on a check that never reports, and every PR sits pending. Change the ruleset in the same
+change.
+
+**The worker poll timeout is what bounds integration-test teardown.** Idle `QueueHandlerBase`
+workers check `shutdownRequested` only between polls, and `fini()` waits for all of them, so each
+handler's shutdown takes up to `POLL_TIMEOUT_MILLIS`, four handlers per test. At the former 1 s this
+was ~4 s of every test and most of the suite's run time (26 minutes at `rel-1.16.0`); at 100 ms the
+full `verify` runs in about 5½ minutes locally. **If the suite gets slow, check this first**, before
+reaching for `@BeforeClass` fixtures (which give up per-test database isolation) or a curated IT
+subset (which silently drops coverage from the gate). Do not replace the poll with `shutdownNow()`,
+which interrupts in-flight jobs `fini()` lets finish, or with a sentinel job, which adds a second
+`requestQueue.put` site.
 
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 

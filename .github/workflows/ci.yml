@@ -4,10 +4,22 @@ on:
   pull_request:
     branches: [ main ]
     types: [opened, synchronize, reopened]
+  # Runs on main catch breakage from PRs that each passed alone but conflict once merged, and
+  # create the Maven cache PRs can restore (Actions caches are scoped per ref, and a PR can read
+  # only its own and the default branch's).
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
-  packages: write
+
+# A new push to a PR cancels that PR's superseded run. PR runs key on github.ref
+# (refs/pull/<n>/merge), unique per PR; head_ref is only the branch name, which fork PRs can share.
+# Push runs key on the SHA so they never share a group: a group holds one pending run and a newer
+# one replaces it even without cancel-in-progress, which would leave middle merges untested.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-test:
@@ -15,8 +27,7 @@ jobs:
     env:
       JAVA_VERSION: '21'
       DP_GRPC_REPO: 'https://github.com/osprey-dcs/dp-grpc.git'
-      IMAGE_NAME: 'dp-service-ci'
-      # Use a fixed dp-grpc ref for CI PR runs
+      # Use a fixed dp-grpc ref for CI runs
       DP_GRPC_REF: 'main'
     steps:
       - name: Checkout this repository
@@ -34,15 +45,6 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'maven'
-
-      - name: Cache Docker layers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: docker-cache
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
 
       - name: Checkout dp-grpc dependency
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,29 +72,24 @@ jobs:
         run: |
           mvn -B -DskipTests install
 
+      # --wait blocks until the healthcheck in docker-compose.yaml reports healthy, and fails if it
+      # reports unhealthy. The timeout must stay above the time the healthcheck needs to reach a
+      # verdict, start_period + interval * retries (60 s today): below that, a slow start that
+      # would have passed fails as a timeout instead. Re-check it when changing the healthcheck.
       - name: Start MongoDB with Docker Compose
         run: |
-          # start the needed backends to execute the tests
-          docker compose -f docker-compose.yaml up -d
+          if ! docker compose -f docker-compose.yaml up -d --wait --wait-timeout 120; then
+            echo "mongodb did not become healthy" >&2
+            docker compose -f docker-compose.yaml logs mongodb || true
+            exit 1
+          fi
 
-      - name: Wait for mongodb to be healthy
+      # verify runs the unit tests (Surefire) and the integration tests (Failsafe). The job id
+      # build-and-test is what the main ruleset's required status check matches (#250 Task 7), so
+      # renaming the job must update the ruleset in the same change.
+      - name: Unit and integration tests (mvn verify)
         run: |
-          for i in {1..30}; do
-            STATUS=$(docker inspect dp-mongodb --format '{{json .State.Health.Status}}' 2>/dev/null || echo null)
-            echo "mongodb status: $STATUS"
-            if echo "$STATUS" | grep -iq healthy; then
-              echo "mongodb healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "mongodb did not become healthy" >&2
-          docker compose logs mongodb || true
-          exit 1
-
-      - name: Run Maven tests (integration/unit)
-        run: |
-          mvn -B test
+          mvn -B verify
         env:
           # Align with src/main/resources/application.yml
           DP_MONGO_DB_HOST: localhost
@@ -118,6 +115,18 @@ jobs:
             compose-logs.txt
             docker-ps.txt
             logs.tar.gz
+
+      # With the integration tests gating merges, which test failed and why has to be answerable
+      # from the PR.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+          if-no-files-found: ignore
 
       - name: Tear down services
         if: always()
