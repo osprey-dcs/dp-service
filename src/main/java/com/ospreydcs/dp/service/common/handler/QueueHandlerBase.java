@@ -17,7 +17,21 @@ public abstract class QueueHandlerBase {
     // constants
     protected static final int TIMEOUT_SECONDS = 10;
     protected static final int MAX_QUEUE_SIZE = 1;
-    protected static final int POLL_TIMEOUT_SECONDS = 1;
+
+    /**
+     * How long an idle worker blocks in {@code poll()} before re-checking {@code shutdownRequested}.
+     * This bounds how long each idle worker delays {@code fini()}: the flag is read only between
+     * polls, and {@code awaitTermination} waits for every worker to notice it. At the former 1 s,
+     * each handler's shutdown took a full second, and the integration tests pay that four times per
+     * test method (one handler per service in {@code tearDown()}) -- about 4 s of every test, and
+     * most of the suite's run time (#250). A job put on the queue is still received immediately; the
+     * value affects only how soon an idle worker sees shutdown.
+     *
+     * <p>Not replaced by an interrupt or a sentinel job: {@code shutdownNow()} would also interrupt
+     * in-flight jobs, which {@code fini()} lets finish so their telemetry is recorded, and a
+     * sentinel would add a second {@code requestQueue.put} site besides {@link #enqueueJob}.
+     */
+    protected static final long POLL_TIMEOUT_MILLIS = 100;
 
     // instance variables
     protected ExecutorService executorService = null;
@@ -122,7 +136,7 @@ public abstract class QueueHandlerBase {
 
                     // poll for next queue item with a timeout
                     HandlerJob job =
-                            (HandlerJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                            (HandlerJob) queue.poll(POLL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
 
                     if (job != null) {
                         executeJob(job);

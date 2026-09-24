@@ -119,7 +119,7 @@ QueueHandlerBase is a common base class for each of the service concrete Handler
 
                     // poll for next queue item with a timeout
                     HandlerJob job =
-                            (HandlerJob) queue.poll(POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                            (HandlerJob) queue.poll(POLL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
 
                     if (job != null) {
                         try {
