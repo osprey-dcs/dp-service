@@ -1,6 +1,7 @@
 # Vendored dependency: `cisd:jhdf5:19.04.1`
 
-**Do not delete this directory.** Removing it breaks CI on every pull request. Read this
+**Do not delete this directory.** Removing it breaks CI on every pull request, and every
+release and image build. Read this
 first if you are tempted to tidy an 8 MB binary out of the repository.
 
 ## Why this is here
@@ -58,8 +59,11 @@ look before redistributing this artifact outside the project.
 
 ## How it is used
 
-`.github/workflows/ci.yml` installs it into the runner's local Maven repository before any
-build step:
+Every build path installs it into its local Maven repository before building dp-service:
+`.github/workflows/ci.yml`, `.github/workflows/release.yml` and
+`.github/workflows/release-image.yml` on the runner, and the `Dockerfile` in its builder
+stage (a BuildKit build cannot see the runner's `~/.m2`). A new build path needs the same
+step:
 
 ```
 mvn -B install:install-file \
@@ -88,5 +92,6 @@ Remove it once **either** of the following is true, and not before:
 single-host dependency with no Central fallback will break CI again the next time that
 host has trouble.
 
-To remove: delete this directory, drop the install step from `ci.yml`, and drop the
+To remove: delete this directory, drop the install step from all four build paths listed
+above, and drop the
 corresponding note from `CLAUDE.md`.

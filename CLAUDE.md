@@ -1510,9 +1510,11 @@ jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQ
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
 `cisd:jhdf5` is **not on Maven Central**; its only public host is `maven.scijava.org`. The jar and
-its POM are committed under `third-party/cisd-jhdf5/` and installed into the runner's local Maven
-repository by a CI step that runs before any build. Deleting either the directory or that step
-breaks CI on every pull request.
+its POM are committed under `third-party/cisd-jhdf5/` and installed into the local Maven repository
+before dp-service builds on **every** build path: a step in `ci.yml`, `release.yml` and
+`release-image.yml`, and a `RUN` in the `Dockerfile`'s builder stage, which cannot see the runner's
+`~/.m2` (#250 Task 4; before it, only CI had the step, so a release depended on SciJava being up).
+Deleting the directory breaks all four; a new build path needs the same step.
 
 This exists because on 2026-08-27 SciJava began returning **503 for JAR downloads while still
 serving POMs**, making the dependency unresolvable with no Central fallback. The host has since

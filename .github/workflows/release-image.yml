@@ -99,6 +99,15 @@ jobs:
           echo "dp-grpc ref: $REF (candidate '$CANDIDATE', pom requires $WANT)"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
+      # Same step as ci.yml; see its comment and third-party/cisd-jhdf5/README.md.
+      # Without it this build resolves jhdf5 from maven.scijava.org and fails
+      # whenever that host serves 503 for JARs.
+      - name: Install vendored cisd:jhdf5 to local Maven repo
+        run: |
+          mvn -B install:install-file \
+            -Dfile=third-party/cisd-jhdf5/jhdf5-19.04.1.jar \
+            -DpomFile=third-party/cisd-jhdf5/jhdf5-19.04.1.pom
+
       - name: Checkout dp-grpc dependency
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
