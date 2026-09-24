@@ -549,6 +549,15 @@ actual SAN. Task 2's dry-run dispatch (`36067534812`) logged `IS_RELEASE: false`
 the commit SHA, a single tag in the build-push tag list with no `:latest`, and the registry
 login skipped.
 
+**Re-rehearsal after #298's review (2026-09-24).** Run `36069255215` at `6dd6c17`. `build` passed,
+and the new "Derive version" step logged `Release version: 1.16.0 (release run: false)`. `sign`
+failed on attempt 1 with `connection reset by peer` from `timestamp.sigstore.dev`, a transient
+network error at Sigstore's timestamp service. Re-running only the failed job signed the same
+`build` artifact without rebuilding, which is the recovery path if this happens on a real
+release. `publish` was skipped. `sha256sum -c` passes. `verify-blob` passes with the exact branch
+identity. Adding `--certificate-github-workflow-trigger push` makes it fail with
+`got "workflow_dispatch"`, and the published `rel-1.16.0` form fails on the SAN.
+
 **Task 5 — Adopt `NEXT.md` (D7).** Create `doc/release-notes/NEXT.md` from dp-grpc's, adapted:
 dp-service title, and a "Cutting the release" checklist that keeps dp-grpc's steps and adds the
 `README.md` table row that CLAUDE.md already requires. Seed it with #221's release-page section:
