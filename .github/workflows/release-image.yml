@@ -109,13 +109,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          # On push: github.ref already points to the tag.  On a dispatch: inputs.ref (branch,
-          # tag or commit) if given, else inputs.tag as refs/tags/<tag>, else the dispatch ref.
-          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref != '' && inputs.ref || (inputs.tag != '' && format('refs/tags/{0}', inputs.tag))) || github.ref }}
+          # On a dispatch: inputs.ref (branch, tag or commit) if given, else inputs.tag as
+          # refs/tags/<tag>.  Otherwise github.sha, NOT github.ref: the signing certificate records
+          # github.sha as its source commit, and github.ref is a name that can move after the run
+          # is queued.  The #221 PR 2 rehearsal checked out github.ref, the branch moved first, and
+          # the signature named b169084 for an image built from 6ca6c73.  (With a ref/tag input
+          # the certificate still names the dispatch commit; such a run signs under a branch
+          # identity, which the published verify command already rejects.)
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref != '' && inputs.ref || (inputs.tag != '' && format('refs/tags/{0}', inputs.tag))) || github.sha }}
 
-      # The commit publish-image builds.  On a release it must be the commit the tag push names:
-      # the signing certificate records github.sha as the source commit, so a tag moved between
-      # the push and the checkout would otherwise produce a signature describing the wrong source.
+      # The commit publish-image builds.  On a release it must be the commit the tag push names,
+      # which the signing certificate records as its source.  The checkout above already takes
+      # github.sha on a push; this assertion keeps that true if the ref expression is edited.
       - name: Record source commit
         id: source
         run: |
