@@ -119,7 +119,9 @@ cosign verify \
   ghcr.io/osprey-dcs/dp-service:rel-<version>
 ```
 
-The identity flags carry the same meaning as the jar's above. `:latest` moves on every release, so
+Image verification needs **cosign v3 or later**: the signature is stored as an OCI referrer, and
+cosign v2 reports `no signatures found` against a correctly signed image. The identity flags
+carry the same meaning as the jar's above. `:latest` moves on every release, so
 verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest. The image is a
 separate build of the same tagged source and does not contain the release-page jar. Full
 instructions are in the "Container Image" section of
