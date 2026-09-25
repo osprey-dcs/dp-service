@@ -11,7 +11,7 @@
 - **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
   between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
 - **Status**: triaged and planned 2026-09-23. PR 1 (Tasks 1–6) implemented and rehearsed
-  2026-09-24, merged as #298. PR 2 (Tasks 7–8) implemented 2026-09-24; rehearsal pending.
+  2026-09-24, merged as #298. PR 2 (Tasks 7–8) implemented 2026-09-24 and rehearsed 2026-09-25.
 
 ## Overview
 
@@ -639,6 +639,37 @@ Verified locally before the rehearsal: the resolver's peel against dp-grpc for a
 two nonexistent refs, one a prefix of a real tag (`rel-1.1`); the `Dockerfile` fetch for a SHA and
 a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` failing with
 `fatal: couldn't find remote ref no-such-ref` instead of building `main`.
+
+**Rehearsal results** (2026-09-24/25):
+
+- **Dry runs** (`36072723061` on the PR branch): both jobs pass; login, push, cosign install and
+  signing are skipped. With no `dp_grpc_ref` the resolver logged `rel-1.16.0 -> cc61ec6`, and the
+  `Dockerfile` fetched exactly that commit.
+- **BuildKit does not see the OIDC request token** (scratch branch, run `36072761267`, deleted
+  since): the `publish-image` runner had `ACTIONS_ID_TOKEN_REQUEST_{URL,TOKEN}`, and a `RUN env` in
+  the builder stage printed neither.
+- **Publishing rehearsal** (`36156952591`, `dry_run=false`, `image_tag=rehearsal-221`): pushed and
+  signed `sha256:0d335449…7d93`; `:latest` stayed `sha256:4af258ed…d951c` (= `rel-1.16.0`).
+  `cosign verify` (v3.1.3) **passed** with the exact `release-image.yml@refs/heads/<branch>`
+  identity, and with `--certificate-github-workflow-trigger workflow_dispatch`; it **failed** with
+  the published `release-image.yml@refs/tags/rel-<version>` identity, with the `release.yml`
+  identity (both on the SAN), and with `--certificate-github-workflow-trigger push`.
+- **It found a defect.** `test` checked out `github.ref`, and the branch moved (the empty commit
+  `6ca6c73`) after dispatch but before the checkout. Both jobs agreed on `6ca6c73`, but
+  `--certificate-github-workflow-sha` showed the certificate naming `b169084`, the dispatch-time
+  `github.sha`: the signature described source the image was not built from. On a release the
+  `GITHUB_SHA` assertion would have failed the run; on a dispatch nothing did. Fixed by checking
+  out `github.sha` when no `ref`/`tag` input is given (`4b66a4d`). Re-run as a dry run
+  (`36157677311`) with the branch moved to `670b921` at 15:58:02, three seconds before `test`'s
+  checkout: both jobs built `4b66a4d`.
+- **Signature storage:** cosign v3.0.6 wrote an OCI referrer — a manifest with `artifactType`
+  `application/vnd.dev.sigstore.bundle.v0.3+json` and `subject` = the image — under an OCI image
+  index tagged `sha256-<digest>` (the referrers tag-schema fallback; ghcr's referrers API returns
+  404). No `.sig` tag. cosign v2.4.3 and v2.5.3 report `no signatures found`, with or without
+  `--new-bundle-format`, so `README.env` states cosign v3 as the minimum.
+- **Cleanup:** the `rehearsal-221` image, its `sha256-…` index and the bundle manifest (three ghcr
+  package versions) were deleted. The package was private at rehearsal time; it is being made
+  public so the published pull and verify commands work for outside users.
 
 **Task 8 — Docs.** Add a "Container image" section to `README.env` covering: pull by digest or tag,
 `cosign verify` with the `release-image.yml` identity (D5), and a note that `:latest` moves on every

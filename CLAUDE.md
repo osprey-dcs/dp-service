@@ -1489,6 +1489,12 @@ pushed and signed. The same reason is why the `Dockerfile` fetches dp-grpc by re
 fallback** (`git clone --branch` cannot take a SHA, and its old `|| git clone` fallback silently
 built dp-grpc's default branch): do not reintroduce one. `needs: test` proves the source passed
 `mvn test`, not that the image was tested — the image is a separate `-DskipTests` BuildKit build.
+`test` checks out **`github.sha`, never `github.ref`**, when no `ref`/`tag` input is given: the
+signing certificate records `github.sha` as the source commit, and a ref name can move after the
+run is queued. The #221 PR 2 rehearsal caught exactly that — a certificate naming `b169084` on an
+image built from `6ca6c73`. The image signature is an OCI referrer (cosign v3's bundle format,
+under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), so verifying it
+needs cosign v3: v2 reports "no signatures found".
 On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
 `release.yml`; a publishing dispatch against a tag ref, or with `image_tag` `latest`/`rel-*`, is
 refused in `test`'s first step. Both signing steps retry `cosign` once: #221 PR 1's rehearsal lost
