@@ -84,21 +84,32 @@ jobs:
       # under the identity release-image.yml@<github.ref>; against a TAG ref that is
       # refs/tags/rel-<version>, the release's own identity, differing only in the workflow
       # trigger.  The published verify command pins the trigger too, so this is defense in depth,
-      # as in release.yml.  A dry run signs nothing and is allowed.  A dispatch-supplied image_tag
-      # may not name `latest` or a release tag: pushing either would repoint a tag consumers pull
-      # at something that was never released, whether or not its signature verifies.
+      # as in release.yml.  A publishing dispatch may not use the ref/tag inputs either: the
+      # certificate records the dispatch commit (GITHUB_SHA) as its source, so building anything
+      # else would sign a false source claim.  Nor may its image tag -- image_tag, or tag when
+      # image_tag is empty, exactly as IMAGE_TAG resolves in publish-image -- name `latest` or a
+      # release tag: pushing either would repoint a tag consumers pull at something that was never
+      # released, whether or not its signature verifies.  A dry run signs and pushes nothing and
+      # may use every input.  These are the fast-fail copies; publish-image re-checks the values it
+      # actually uses before logging in, without trusting this job's outputs.
       - name: Refuse a publishing dispatch that could pose as a release
         if: github.event_name == 'workflow_dispatch' && env.DRY_RUN != 'true'
         env:
+          REQUESTED_REF: ${{ inputs.ref }}
+          REQUESTED_TAG: ${{ inputs.tag }}
           REQUESTED_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            echo "::error::Refusing to publish from a dispatch against tag ${GITHUB_REF_NAME}: its signature would carry the release identity. Dispatch against a branch (use the ref/tag inputs to choose the source), or run with dry_run."
+            echo "::error::Refusing to publish from a dispatch against tag ${GITHUB_REF_NAME}: its signature would carry the release identity. Dispatch against a branch, or run with dry_run."
             exit 1
           fi
-          case "$REQUESTED_IMAGE_TAG" in
+          if [ -n "$REQUESTED_REF" ] || [ -n "$REQUESTED_TAG" ]; then
+            echo "::error::Refusing the ref/tag inputs on a publishing dispatch: the signature names the dispatch commit ${GITHUB_SHA} as its source, so only that commit may be built. Dispatch against a branch at the commit to publish, or run with dry_run."
+            exit 1
+          fi
+          case "${REQUESTED_IMAGE_TAG:-$REQUESTED_TAG}" in
             latest|rel-*)
-              echo "::error::Refusing image_tag '$REQUESTED_IMAGE_TAG' on a dispatch: 'latest' and 'rel-*' image tags are published only by a rel-* tag push."
+              echo "::error::Refusing image tag '${REQUESTED_IMAGE_TAG:-$REQUESTED_TAG}' on a dispatch: 'latest' and 'rel-*' image tags are published only by a rel-* tag push."
               exit 1 ;;
           esac
 
@@ -113,20 +124,21 @@ jobs:
           # refs/tags/<tag>.  Otherwise github.sha, NOT github.ref: the signing certificate records
           # github.sha as its source commit, and github.ref is a name that can move after the run
           # is queued.  The #221 PR 2 rehearsal checked out github.ref, the branch moved first, and
-          # the signature named b169084 for an image built from 6ca6c73.  (With a ref/tag input
-          # the certificate still names the dispatch commit; such a run signs under a branch
-          # identity, which the published verify command already rejects.)
+          # the signature named b169084 for an image built from 6ca6c73.  (With a ref/tag input the
+          # certificate would still name the dispatch commit, so a publishing dispatch refuses both
+          # inputs above: they are for dry runs.)
           ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref != '' && inputs.ref || (inputs.tag != '' && format('refs/tags/{0}', inputs.tag))) || github.sha }}
 
-      # The commit publish-image builds.  On a release it must be the commit the tag push names,
-      # which the signing certificate records as its source.  The checkout above already takes
-      # github.sha on a push; this assertion keeps that true if the ref expression is edited.
+      # The commit publish-image builds.  On any run that signs it must be GITHUB_SHA, the commit
+      # the signing certificate records as its source.  The checkout above already takes
+      # github.sha there; this assertion keeps that true if the ref expression is edited.
+      # publish-image makes the same check itself.
       - name: Record source commit
         id: source
         run: |
           COMMIT=$(git rev-parse HEAD)
-          if [ "${IS_RELEASE}" = "true" ] && [ "$COMMIT" != "${GITHUB_SHA}" ]; then
-            echo "::error::Checked-out commit $COMMIT is not the pushed tag's commit ${GITHUB_SHA}."
+          if [ "${DRY_RUN}" != "true" ] && [ "$COMMIT" != "${GITHUB_SHA}" ]; then
+            echo "::error::Checked-out commit $COMMIT is not ${GITHUB_SHA}, the commit the signature would name."
             exit 1
           fi
           echo "dp-service commit: $COMMIT"
@@ -235,9 +247,9 @@ jobs:
           if [ ! -f "$GITHUB_WORKSPACE/docker-compose.yaml" ]; then
             echo "ERROR: docker-compose.yaml not found at $GITHUB_WORKSPACE/docker-compose.yaml"
             echo "This usually means the checked-out ref does not contain the compose file."
-            echo "If you triggered a manual run, set the 'ref' input to a branch or tag that contains the repository files, e.g.:"
-            echo "  gh workflow run release-image.yml --ref feature/your-branch --field tag=v1.11 --field ref=feature/your-branch"
-            echo "Or push a temporary branch based on main that contains .github/workflows/release-image.yml and docker-compose.yaml."
+            echo "If you triggered a dry run with the 'ref' or 'tag' input, choose a ref that contains the repository files, e.g.:"
+            echo "  gh workflow run release-image.yml --ref <branch> --field ref=<branch-tag-or-commit>"
+            echo "A publishing dispatch cannot use those inputs; it builds the dispatch commit (--ref <branch>)."
             exit 1
           fi
 
@@ -260,7 +272,10 @@ jobs:
           docker compose logs mongodb || true
           exit 1
 
-      - name: Run Maven tests (integration/unit)
+      # Unit tests only: the integration tests are a separate source root run by Failsafe under
+      # `mvn verify`, which `test` does not run.  On a release, release.yml runs the full verify
+      # on the same commit; a dispatch gets this gate alone.
+      - name: Run Maven unit tests
         run: |
           mvn -B test
         env:
@@ -286,13 +301,35 @@ jobs:
       # IMAGE_TAG resolution priority:
       # 1) explicit inputs.image_tag (manual override; `latest` and rel-* refused in test)
       # 2) on a release (IS_RELEASE), the tag name
-      # 3) if inputs.tag was provided (manual dispatch), use that
+      # 3) if inputs.tag was provided (manual dispatch; a dry run only, since a publishing
+      #    dispatch refuses the tag input), use that
       # 4) fallback to commit SHA
       # Step 2 spells out IS_RELEASE's expression because an env block cannot read the
       # workflow-level entry; keep the two copies identical.
       IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rel-') && github.ref_name) || (inputs.tag != '' && inputs.tag) || github.sha }}
       IMAGE: ghcr.io/${{ github.repository_owner }}/dp-service
     steps:
+      # The authoritative copies of test's refusals, on the values this job actually uses.  This
+      # job runs no project code, so these hold even if the job that ran Maven handed over
+      # something unexpected: whatever is signed is GITHUB_SHA, the commit the certificate names,
+      # and only a release pushes `latest` or a rel-* tag.
+      - name: Check what is about to be published
+        if: env.DRY_RUN != 'true'
+        env:
+          COMMIT: ${{ needs.test.outputs.commit }}
+        run: |
+          if [ "$COMMIT" != "$GITHUB_SHA" ]; then
+            echo "::error::Refusing to publish commit '$COMMIT': the signature names ${GITHUB_SHA} as its source."
+            exit 1
+          fi
+          if [ "$IS_RELEASE" != "true" ]; then
+            case "$IMAGE_TAG" in
+              latest|rel-*)
+                echo "::error::Refusing to push image tag '$IMAGE_TAG': 'latest' and 'rel-*' are published only by a rel-* tag push."
+                exit 1 ;;
+            esac
+          fi
+
       # The tested commit, never a ref name (see the comment above `jobs:`).  No credentials are
       # persisted: the Dockerfile copies the whole build context, .git included, into its builder
       # stage, and this job's token can write packages.

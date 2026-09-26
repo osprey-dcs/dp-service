@@ -640,6 +640,24 @@ two nonexistent refs, one a prefix of a real tag (`rel-1.1`); the `Dockerfile` f
 a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` failing with
 `fatal: couldn't find remote ref no-such-ref` instead of building `main`.
 
+**#299 review fixes** (2026-09-26), from Copilot's two findings plus our own pass:
+
+- **The image-tag refusal checked `image_tag` only**, but `IMAGE_TAG` falls back to `inputs.tag`,
+  so a publishing dispatch with `tag=rel-1.16.0` (or `tag=latest`) passed the check and overwrote
+  that tag. The check now covers the effective tag.
+- **A publishing dispatch could build a source other than the commit its certificate names**,
+  through the `ref`/`tag` inputs. Such a run signed under a branch identity the release verify
+  command rejects, but anyone checking a looser policy got a false source claim. A publishing
+  dispatch now refuses both inputs, and `test`'s commit assertion applies to every signing run,
+  not only releases. The inputs remain for dry runs.
+- **`publish-image` re-checks both** (commit is `GITHUB_SHA`; a non-release tag is not
+  `latest`/`rel-*`) before logging in. It runs no project code, so the invariant no longer rests on
+  an output from the job that ran Maven; `test`'s copies are only the fast failure.
+- README.env shows the verify-by-digest form; the test step is renamed "Run Maven unit tests" (the
+  ITs run under Failsafe, which `mvn test` does not reach — pre-existing, left for #250); the stale
+  `tag=v1.11` help text in the diagnostic step is replaced; `doc/running.md` says only post-1.16.0
+  images are signed.
+
 **Rehearsal results** (2026-09-24/25):
 
 - **Dry runs** (`36072723061` on the PR branch): both jobs pass; login, push, cosign install and

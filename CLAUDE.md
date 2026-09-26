@@ -1488,8 +1488,10 @@ dp-grpc `main` moving between the jobs would let `needs: test` gate source other
 pushed and signed. The same reason is why the `Dockerfile` fetches dp-grpc by ref with **no
 fallback** (`git clone --branch` cannot take a SHA, and its old `|| git clone` fallback silently
 built dp-grpc's default branch): do not reintroduce one. `needs: test` proves the source passed
-`mvn test`, not that the image was tested — the image is a separate `-DskipTests` BuildKit build.
-`test` checks out **`github.sha`, never `github.ref`**, when no `ref`/`tag` input is given: the
+`mvn test`, not that the image was tested: the image is a separate `-DskipTests` BuildKit build.
+And `mvn test` is unit tests only; the ITs run under Failsafe in `verify`, which `release.yml` runs
+on the same commit at a release, so a dispatch's image is gated on unit tests alone.
+`test` checks out **`github.sha`, never `github.ref`**, unless a dry run gives a `ref`/`tag` input: the
 signing certificate records `github.sha` as the source commit, and a ref name can move after the
 run is queued. The #221 PR 2 rehearsal caught exactly that — a certificate naming `b169084` on an
 image built from `6ca6c73`. The image signature is an OCI referrer (cosign v3's bundle format,
@@ -1497,8 +1499,14 @@ under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), s
 needs cosign v3: v2 reports "no signatures found". The ghcr package is **private** (public packages
 are disabled at the org level), so the documented pull and verify need a `read:packages` login.
 On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
-`release.yml`; a publishing dispatch against a tag ref, or with `image_tag` `latest`/`rel-*`, is
-refused in `test`'s first step. Both signing steps retry `cosign` once: #221 PR 1's rehearsal lost
+`release.yml`. A publishing (non-dry-run) dispatch is refused in `test`'s first step when it
+targets a tag ref, sets the `ref`/`tag` inputs, or resolves its image tag (`image_tag`, else `tag`)
+to `latest`/`rel-*`; `publish-image` then re-checks the values it actually uses — the commit must
+be `GITHUB_SHA` and a non-release tag must not be `latest`/`rel-*` — before logging in. **Every
+signature this workflow makes names the commit it built**: the certificate records `GITHUB_SHA`, so
+building any other source on a signing run is a false provenance claim even under an identity the
+release verify command rejects (#299 review). Keep the authoritative checks in `publish-image`,
+which runs no project code; `test`'s copies only fail fast. Both signing steps retry `cosign` once: #221 PR 1's rehearsal lost
 a signing step to a connection reset at Sigstore's timestamp authority.
 
 **`IS_RELEASE` is keyed off the event, not the ref type**, in both release workflows:

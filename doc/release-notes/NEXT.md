@@ -139,8 +139,12 @@ Changes to how the image is published:
   tag (a `v1.14`-style tag, say) producing an image no longer gets one.
 - **`:latest` moves only on a release.** A manual `workflow_dispatch` of the image workflow never
   moves `:latest`, even when it targets a tag. Previously a non-dry-run dispatch against any tag
-  did. A publishing dispatch against a tag ref, or one whose `image_tag` is `latest` or `rel-*`, is
-  now refused outright.
+  did. A publishing dispatch against a tag ref, or one whose image tag (`image_tag`, else `tag`) is
+  `latest` or `rel-*`, is now refused outright.
+- **A publishing dispatch builds only the commit it was dispatched on.** Its signature names that
+  commit as the source, so the `ref` and `tag` inputs, which build some other source, are now
+  refused unless `dry_run` is set. To publish a test image of a commit, dispatch against a branch
+  at that commit.
 - **The image release fails, rather than falling back, when dp-grpc is not tagged.** An image built
   for `rel-<version>` is built against dp-grpc `rel-<version>` or not at all, as the jar already
   was; the tag must also match the POM's version and `dp-grpc.version`. Previously the image
