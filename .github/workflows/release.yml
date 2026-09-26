@@ -144,16 +144,22 @@ jobs:
       - name: Install vendored cisd:jhdf5 and cisd:base to local Maven repo
         run: third-party/install-vendored.sh
 
-      # A release builds strictly against dp-grpc's matching rel-${VERSION} tag: if dp-grpc
-      # has not been tagged, the checkout below fails, and that failure is the dependency-order
-      # check -- do not soften it.  A rehearsal has no such tag, so it uses the dp-grpc release
-      # the POM depends on, or main if that tag does not exist, and says which.
+      # A release builds strictly against dp-grpc's matching rel-${VERSION} tag, and fails here,
+      # before any build, if dp-grpc has not been tagged: that is the dependency-order check (#250,
+      # from #213 item 7) -- do not soften it into a fallback.  Without it the failure surfaced
+      # only at the dp-grpc checkout, with no hint of the order.  A rehearsal has no
+      # such tag, so it uses the dp-grpc release the POM depends on, or main if that tag does not
+      # exist, and says which.
       - name: Resolve dp-grpc ref
         id: grpc
         run: |
           set -euo pipefail
           if [ "${IS_RELEASE}" = "true" ]; then
             REF="rel-${VERSION}"
+            if ! git ls-remote --exit-code "https://github.com/${DP_GRPC_REPO}.git" "refs/tags/${REF}" >/dev/null; then
+              echo "::error::dp-grpc has no tag ${REF}. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service), and a dp-service release builds only against the matching dp-grpc tag. Push dp-grpc ${REF}, then re-run this workflow."
+              exit 1
+            fi
             echo "dp-grpc ref: $REF (release: strict match to the dp-service tag)"
           else
             WANT=$(mvn -B -q -DforceStdout help:evaluate -Dexpression=dp-grpc.version)
@@ -180,23 +186,15 @@ jobs:
         run: |
           mvn -B -DskipTests install
 
+      # Same wait as ci.yml: compose blocks on the healthcheck, and the timeout must stay above the
+      # time it needs to reach a verdict (start_period + interval x retries in docker-compose.yaml).
       - name: Start MongoDB (for tests)
         run: |
-          docker compose -f docker-compose.yaml up -d
-
-      - name: Wait for MongoDB to be healthy
-        run: |
-          for i in {1..30}; do
-            STATUS=$(docker inspect dp-mongodb --format '{{.State.Health.Status}}' 2>/dev/null || echo "")
-            echo "mongodb status: $STATUS"
-            if [[ "$STATUS" == "healthy" ]]; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "MongoDB did not become healthy"
-          docker compose logs mongodb || true
-          exit 1
+          if ! docker compose -f docker-compose.yaml up -d --wait --wait-timeout 180; then
+            echo "mongodb did not become healthy" >&2
+            docker compose -f docker-compose.yaml logs mongodb || true
+            exit 1
+          fi
 
       - name: Build and test dp-service
         env:

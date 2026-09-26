@@ -54,8 +54,9 @@ permissions:
 # what is built, pushed and signed.  `test` resolves both repositories to commits and
 # `publish-image` builds exactly those, resolving nothing itself.
 #
-# What `needs: test` proves is that the SOURCE passed `mvn test`.  The image is a separate
-# -DskipTests build inside BuildKit; it is gated on its source's tests, not itself tested.
+# What `needs: test` proves is that the SOURCE passed `mvn verify`, unit and integration tests
+# alike.  The image is a separate -DskipTests build inside BuildKit; it is gated on its source's
+# tests, not itself tested.
 env:
   # The single definition of "this run is a real release", the same expression as
   # release.yml's.  It is keyed off the EVENT, not github.ref_type: a workflow_dispatch can
@@ -193,7 +194,11 @@ jobs:
             [ -n "$COMMIT" ] || COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/tags/$REF" '$2 == r { print $1 }')
             [ -n "$COMMIT" ] || COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/heads/$REF" '$2 == r { print $1 }')
             if [ -z "$COMMIT" ]; then
-              echo "::error::dp-grpc ref '$REF' does not exist in $DP_GRPC_REPO"
+              if [ "${IS_RELEASE}" = "true" ]; then
+                echo "::error::dp-grpc has no tag $REF. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service)."
+              else
+                echo "::error::dp-grpc ref '$REF' does not exist in $DP_GRPC_REPO"
+              fi
               exit 1
             fi
           fi
@@ -253,31 +258,23 @@ jobs:
             exit 1
           fi
 
-      - name: Start Docker Compose
+      # Same wait as ci.yml: compose blocks on the healthcheck, and the timeout must stay above the
+      # time it needs to reach a verdict (start_period + interval x retries in docker-compose.yaml).
+      - name: Start MongoDB
         run: |
-          docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" up -d
+          if ! docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" up -d --wait --wait-timeout 180; then
+            echo "mongodb did not become healthy" >&2
+            docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" logs mongodb || true
+            exit 1
+          fi
 
-      - name: Wait for mongodb to be healthy
+      # verify, not test: the integration tests are a separate source root run by Failsafe, which
+      # `mvn test` never reaches, so a test-only gate let a dispatched image ship on unit tests
+      # alone (#250; release.yml already ran verify at a release, on the same commit).  Same gate
+      # and step name as ci.yml.
+      - name: Unit and integration tests (mvn verify)
         run: |
-          for i in {1..30}; do
-            STATUS=$(docker inspect dp-mongodb --format '{{json .State.Health.Status}}' 2>/dev/null || echo null)
-            echo "mongodb status: $STATUS"
-            if echo "$STATUS" | grep -iq healthy; then
-              echo "mongodb healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "mongodb did not become healthy" >&2
-          docker compose logs mongodb || true
-          exit 1
-
-      # Unit tests only: the integration tests are a separate source root run by Failsafe under
-      # `mvn verify`, which `test` does not run.  On a release, release.yml runs the full verify
-      # on the same commit; a dispatch gets this gate alone.
-      - name: Run Maven unit tests
-        run: |
-          mvn -B test
+          mvn -B verify
         env:
           # Align with src/main/resources/application.yml
           DP_MONGO_DB_HOST: localhost

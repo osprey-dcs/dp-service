@@ -6,7 +6,9 @@
 - **Sibling**: [#221](https://github.com/osprey-dcs/dp-service/issues/221) (Sigstore signing) owns
   #213 items 3, 8, and the release-workflow half of item 5, and restructures `release.yml` and
   `release-image.yml`. See Dependencies and sequencing.
-- **Status**: triaged and planned 2026-09-23; not implemented.
+- **Status**: triaged and planned 2026-09-23. PR (a) merged as #296, PR (b) as #297; the
+  `build-and-test` required check (Task 7) is on the `main` ruleset. PR (c) (Task 5) in progress
+  2026-09-26, after #221's two PRs (#298, #299).
 
 ## Overview
 
@@ -340,6 +342,26 @@ step in `ci.yml` moved ahead of the dp-grpc checkout to match the two release wo
 Apply `--wait` to `release.yml` and `release-image.yml`, and add the dp-grpc tag existence check to
 `release.yml` (D6). These edit the workflows #221 is restructuring, so they land **after** #221's
 two PRs and apply to the new job layout.
+
+**As implemented (PR (c)):**
+
+- **`--wait`** replaces the polling loop in `release.yml`'s `build` and `release-image.yml`'s
+  `test`, in the form `ci.yml` already uses: `--wait-timeout 180` (above the healthcheck's 60 s
+  verdict time, per D6) and `docker compose logs mongodb` on failure. It also retires a latent bug
+  in `release-image.yml`'s loop, which matched `grep -iq healthy` and so accepted `"unhealthy"` as
+  healthy.
+- **The dp-grpc tag check** runs in `release.yml`'s "Resolve dp-grpc ref" step, releases only,
+  before any build: `git ls-remote --exit-code … refs/tags/rel-<version>`, failing with a message
+  naming the dependency order and the recovery (push dp-grpc's tag, then re-run the failed
+  workflow; nothing was built or published). Before it the failure surfaced at the dp-grpc checkout as a checkout error with no
+  dependency-order hint. `release-image.yml` already failed in its resolve step when the ref did
+  not exist (#221); on a release its message now names the dependency order too.
+- **Added: `release-image.yml`'s `test` job runs `mvn verify`, not `mvn test`.** Found in #299's
+  review and left for this ticket: the ITs run under Failsafe, which `test` never reaches, so a
+  dispatched image was gated on unit tests alone. At a release `release.yml` ran `verify` on the
+  same commit, so only dispatches were affected. The step takes `ci.yml`'s name. The cost is D1's
+  few minutes; a dry-run dispatch of a ref from before D1 (rel-1.16.0 and earlier) instead takes
+  the old ~26 minutes, which is acceptable for a rebuild of an old image.
 
 ### Task 6 — CLAUDE.md
 

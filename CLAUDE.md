@@ -1488,9 +1488,9 @@ dp-grpc `main` moving between the jobs would let `needs: test` gate source other
 pushed and signed. The same reason is why the `Dockerfile` fetches dp-grpc by ref with **no
 fallback** (`git clone --branch` cannot take a SHA, and its old `|| git clone` fallback silently
 built dp-grpc's default branch): do not reintroduce one. `needs: test` proves the source passed
-`mvn test`, not that the image was tested: the image is a separate `-DskipTests` BuildKit build.
-And `mvn test` is unit tests only; the ITs run under Failsafe in `verify`, which `release.yml` runs
-on the same commit at a release, so a dispatch's image is gated on unit tests alone.
+`mvn verify`, not that the image was tested: the image is a separate `-DskipTests` BuildKit build.
+The gate is `verify` rather than `test` (#250) because the ITs run under Failsafe, which `test`
+never reaches — under `test` a dispatched image shipped on unit tests alone.
 `test` checks out **`github.sha`, never `github.ref`**, unless a dry run gives a `ref`/`tag` input: the
 signing certificate records `github.sha` as the source commit, and a ref name can move after the
 run is queued. The #221 PR 2 rehearsal caught exactly that — a certificate naming `b169084` on an
@@ -1499,7 +1499,8 @@ under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), s
 needs cosign v3: v2 reports "no signatures found". The ghcr package is **private** (public packages
 are disabled at the org level), so the documented pull and verify need a `read:packages` login.
 On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
-`release.yml`. A publishing (non-dry-run) dispatch is refused in `test`'s first step when it
+`release.yml`, and both workflows fail before any build when dp-grpc lacks that tag, naming the
+dependency order (dp-grpc is tagged first; #250, from #213 item 7). A publishing (non-dry-run) dispatch is refused in `test`'s first step when it
 targets a tag ref, sets the `ref`/`tag` inputs, or resolves its image tag (`image_tag`, else `tag`)
 to `latest`/`rel-*`; `publish-image` then re-checks the values it actually uses — the commit must
 be `GITHUB_SHA` and a non-release tag must not be `latest`/`rel-*` — before logging in. **Every
