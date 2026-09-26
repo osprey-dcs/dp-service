@@ -109,7 +109,12 @@ artifact directory and records bare filenames, so it verifies where the files ac
 
 The container image `ghcr.io/osprey-dcs/dp-service` is now signed the same way, by digest, by the
 `release-image.yml` workflow. Its identity names that workflow file, not `release.yml`, so the
-jar's verify command does not apply to the image. Pull the release tag and verify it:
+jar's verify command does not apply to the image.
+
+The image package is private to the osprey-dcs organization, so pulling or verifying it needs
+`docker login ghcr.io` with a GitHub account that has read access to it (a token with the
+`read:packages` scope); cosign uses the same credentials. Without it both fail with a 401, which
+is an access error, not a signature failure. Then pull the release tag and verify it:
 
 ```bash
 cosign verify \

@@ -668,8 +668,10 @@ a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` f
   404). No `.sig` tag. cosign v2.4.3 and v2.5.3 report `no signatures found`, with or without
   `--new-bundle-format`, so `README.env` states cosign v3 as the minimum.
 - **Cleanup:** the `rehearsal-221` image, its `sha256-…` index and the bundle manifest (three ghcr
-  package versions) were deleted. The package was private at rehearsal time; it is being made
-  public so the published pull and verify commands work for outside users.
+  package versions) were deleted. The package is private, and making it public is disabled by the osprey-dcs org
+  administrators (found 2026-09-26), so `README.env` and `NEXT.md` say pulling or verifying needs
+  `docker login ghcr.io` with `read:packages` access. If the org allows public packages later,
+  that note is the only doc change.
 
 **Task 8 — Docs.** Add a "Container image" section to `README.env` covering: pull by digest or tag,
 `cosign verify` with the `release-image.yml` identity (D5), and a note that `:latest` moves on every

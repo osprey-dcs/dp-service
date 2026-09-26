@@ -1494,7 +1494,8 @@ signing certificate records `github.sha` as the source commit, and a ref name ca
 run is queued. The #221 PR 2 rehearsal caught exactly that — a certificate naming `b169084` on an
 image built from `6ca6c73`. The image signature is an OCI referrer (cosign v3's bundle format,
 under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), so verifying it
-needs cosign v3: v2 reports "no signatures found".
+needs cosign v3: v2 reports "no signatures found". The ghcr package is **private** (public packages
+are disabled at the org level), so the documented pull and verify need a `read:packages` login.
 On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
 `release.yml`; a publishing dispatch against a tag ref, or with `image_tag` `latest`/`rel-*`, is
 refused in `test`'s first step. Both signing steps retry `cosign` once: #221 PR 1's rehearsal lost
