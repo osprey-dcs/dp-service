@@ -11,7 +11,7 @@
 - **Overlaps**: [#213](https://github.com/osprey-dcs/dp-service/issues/213), now closed and split
   between this ticket and [#250](https://github.com/osprey-dcs/dp-service/issues/250). See triage finding 2.
 - **Status**: triaged and planned 2026-09-23. PR 1 (Tasks 1–6) implemented and rehearsed
-  2026-09-24; PR 2 (Tasks 7–8) not started.
+  2026-09-24, merged as #298. PR 2 (Tasks 7–8) implemented 2026-09-24 and rehearsed 2026-09-25.
 
 ## Overview
 
@@ -610,6 +610,90 @@ exercise it. Confirm:
 Then delete the `rehearsal-221` package version and its signature from ghcr, and say so in the PR.
 
 A dry-run dispatch should also pass unchanged, with no login, no push, and no signing.
+
+**Task 7 as implemented, beyond the above** (2026-09-24):
+
+- **A publishing dispatch against a tag ref is refused** in `test`'s first step, mirroring
+  `release.yml` (D5 amendment); a dry run is allowed, since it signs nothing. So is a dispatch
+  `image_tag` of `latest` or `rel-*`: `IMAGE_TAG` takes the input verbatim, so a dispatch could
+  otherwise overwrite `:latest` or a release's tag with an unreleased build — the D3 hazard by
+  another route, and one the signature cannot undo, since the tag moves whether or not it verifies.
+- **The release resolver also checks the tag against the POM** (`project.version` and
+  `dp-grpc.version`), the check `release.yml` gained in #298's review, so the image cannot publish
+  where the jar would refuse.
+- **On a release, `test` asserts the checked-out commit is `GITHUB_SHA`**, the commit the signing
+  certificate records as its source.
+- **A dispatch `dp_grpc_ref` may be a full commit SHA**, used as-is; the dp-grpc checkout fails if
+  it is unreachable. Before, `ls-remote` only matched tags and heads, so a SHA was rejected.
+- **Both checkouts in `publish-image`'s lineage use `persist-credentials: false`.** There is no
+  `.dockerignore`, so `COPY . /build/app` copies `.git` — including the checkout's persisted token
+  header — into the builder stage of a job whose token can write packages. The builder stage is
+  not pushed, but the token has no reason to be there.
+- **Both signing steps retry once** after 30 s (`release.yml`'s `sign-blob` too), per the PR 1
+  rehearsal's TSA connection reset.
+- The resolver reads `dp-grpc.version` with `mvn help:evaluate`, like `release.yml`, instead of
+  `sed` over `pom.xml`.
+
+Verified locally before the rehearsal: the resolver's peel against dp-grpc for a lightweight tag
+(`rel-1.16.0`), an annotated one (`beta-1.3` → its `^{}` commit, not the tag object), `main`, and
+two nonexistent refs, one a prefix of a real tag (`rel-1.1`); the `Dockerfile` fetch for a SHA and
+a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` failing with
+`fatal: couldn't find remote ref no-such-ref` instead of building `main`.
+
+**#299 review fixes** (2026-09-26), from Copilot's two findings plus our own pass:
+
+- **The image-tag refusal checked `image_tag` only**, but `IMAGE_TAG` falls back to `inputs.tag`,
+  so a publishing dispatch with `tag=rel-1.16.0` (or `tag=latest`) passed the check and overwrote
+  that tag. The check now covers the effective tag.
+- **A publishing dispatch could build a source other than the commit its certificate names**,
+  through the `ref`/`tag` inputs. Such a run signed under a branch identity the release verify
+  command rejects, but anyone checking a looser policy got a false source claim. A publishing
+  dispatch now refuses both inputs, and `test`'s commit assertion applies to every signing run,
+  not only releases. The inputs remain for dry runs.
+- **`publish-image` re-checks both** (commit is `GITHUB_SHA`; a non-release tag is not
+  `latest`/`rel-*`) before logging in. It runs no project code, so the invariant no longer rests on
+  an output from the job that ran Maven; `test`'s copies are only the fast failure.
+- README.env shows the verify-by-digest form; the test step is renamed "Run Maven unit tests" (the
+  ITs run under Failsafe, which `mvn test` does not reach — pre-existing, left for #250); the stale
+  `tag=v1.11` help text in the diagnostic step is replaced; `doc/running.md` says only post-1.16.0
+  images are signed.
+- **Verified on GitHub:** a publishing dispatch with `tag=rel-1.16.0` (run 36260508383, at
+  `e851c67`) failed in `test`'s first step with the ref/tag-input refusal; `publish-image` was
+  skipped, so nothing was logged in, pushed or signed. `publish-image`'s own re-check is
+  unreachable by dispatch (the same inputs are refused first) and was exercised locally only.
+
+**Rehearsal results** (2026-09-24/25):
+
+- **Dry runs** (`36072723061` on the PR branch): both jobs pass; login, push, cosign install and
+  signing are skipped. With no `dp_grpc_ref` the resolver logged `rel-1.16.0 -> cc61ec6`, and the
+  `Dockerfile` fetched exactly that commit.
+- **BuildKit does not see the OIDC request token** (scratch branch, run `36072761267`, deleted
+  since): the `publish-image` runner had `ACTIONS_ID_TOKEN_REQUEST_{URL,TOKEN}`, and a `RUN env` in
+  the builder stage printed neither.
+- **Publishing rehearsal** (`36156952591`, `dry_run=false`, `image_tag=rehearsal-221`): pushed and
+  signed `sha256:0d335449…7d93`; `:latest` stayed `sha256:4af258ed…d951c` (= `rel-1.16.0`).
+  `cosign verify` (v3.1.3) **passed** with the exact `release-image.yml@refs/heads/<branch>`
+  identity, and with `--certificate-github-workflow-trigger workflow_dispatch`; it **failed** with
+  the published `release-image.yml@refs/tags/rel-<version>` identity, with the `release.yml`
+  identity (both on the SAN), and with `--certificate-github-workflow-trigger push`.
+- **It found a defect.** `test` checked out `github.ref`, and the branch moved (the empty commit
+  `6ca6c73`) after dispatch but before the checkout. Both jobs agreed on `6ca6c73`, but
+  `--certificate-github-workflow-sha` showed the certificate naming `b169084`, the dispatch-time
+  `github.sha`: the signature described source the image was not built from. On a release the
+  `GITHUB_SHA` assertion would have failed the run; on a dispatch nothing did. Fixed by checking
+  out `github.sha` when no `ref`/`tag` input is given (`4b66a4d`). Re-run as a dry run
+  (`36157677311`) with the branch moved to `670b921` at 15:58:02, three seconds before `test`'s
+  checkout: both jobs built `4b66a4d`.
+- **Signature storage:** cosign v3.0.6 wrote an OCI referrer — a manifest with `artifactType`
+  `application/vnd.dev.sigstore.bundle.v0.3+json` and `subject` = the image — under an OCI image
+  index tagged `sha256-<digest>` (the referrers tag-schema fallback; ghcr's referrers API returns
+  404). No `.sig` tag. cosign v2.4.3 and v2.5.3 report `no signatures found`, with or without
+  `--new-bundle-format`, so `README.env` states cosign v3 as the minimum.
+- **Cleanup:** the `rehearsal-221` image, its `sha256-…` index and the bundle manifest (three ghcr
+  package versions) were deleted. The package is private, and making it public is disabled by the osprey-dcs org
+  administrators (found 2026-09-26), so `README.env` and `NEXT.md` say pulling or verifying needs
+  `docker login ghcr.io` with `read:packages` access. If the org allows public packages later,
+  that note is the only doc change.
 
 **Task 8 — Docs.** Add a "Container image" section to `README.env` covering: pull by digest or tag,
 `cosign verify` with the `release-image.yml` identity (D5), and a note that `:latest` moves on every

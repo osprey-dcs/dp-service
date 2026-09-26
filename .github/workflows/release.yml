@@ -293,13 +293,19 @@ jobs:
           cosign-release: 'v3.0.6'
 
       # One signature over the consolidated checksum file covers every artifact it lists.
+      # One retry: #221 PR 1's rehearsal lost this step to a connection reset at the Sigstore
+      # timestamp authority.  The retry rewrites the bundle whole, so a failed first attempt
+      # leaves nothing behind but an orphaned transparency-log entry.
       - name: Sign checksums
         working-directory: release
         run: |
           set -euo pipefail
-          cosign sign-blob --yes \
-            --bundle SHA256SUMS.cosign.bundle \
-            SHA256SUMS
+          sign() { cosign sign-blob --yes --bundle SHA256SUMS.cosign.bundle SHA256SUMS; }
+          sign || {
+            echo "::warning::cosign sign-blob failed; retrying once in 30s"
+            sleep 30
+            sign
+          }
 
       - name: Upload signatures
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

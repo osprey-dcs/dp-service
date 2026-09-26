@@ -51,7 +51,8 @@ being scraped, set `OTEL_METRICS_EXPORTER=otlp` and `OTEL_EXPORTER_OTLP_ENDPOINT
 
 On Kubernetes the metrics port is an ordinary container port; `doc/metrics.md` has the
 `containerPort`, `ServiceMonitor`, and pod-annotation forms, and the released image
-(`ghcr.io/osprey-dcs/dp-service`) declares all eight ports.
+(`ghcr.io/osprey-dcs/dp-service`) declares all eight ports. Images released after 1.16.0 are signed
+(earlier ones are not); the "Container Image" section of [`README.env`](../README.env) has the `cosign verify` command.
 
 See [`doc/metrics.md`](metrics.md) for what is measured, the query stage breakdown, the slow-query
 log, and the PromQL for diagnosing a slow query.

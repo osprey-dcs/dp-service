@@ -30,8 +30,9 @@ The checksum published with previous releases established integrity but not orig
 written by the same job, with the same token, to the same release page as the jar it described —
 so anyone able to replace the jar could replace the checksum sitting next to it.
 
-This release adds a keyless Sigstore signature over `SHA256SUMS`, which binds the jar to the
-repository, workflow file, tag, and source commit that produced it. There is no key to distribute,
+This release adds a keyless Sigstore signature over `SHA256SUMS`, and one over the container
+image (below). The first binds the jar to the repository, workflow file, tag, and source commit
+that produced it. There is no key to distribute,
 rotate, or leak: the signing identity is a short-lived certificate issued to the GitHub Actions
 run itself and recorded in the public Rekor transparency log.
 
@@ -104,18 +105,56 @@ sha256sum: release/dp-service-<version>.jar: No such file or directory
 unless they first recreated a `release/` subdirectory. `SHA256SUMS` is generated from inside the
 artifact directory and records bare filenames, so it verifies where the files actually land.
 
-### Container image: published only from releases, and not yet signed
+### Container image: signed, and published only from releases
 
-The container image `ghcr.io/osprey-dcs/dp-service` is **not signed** in this release.
+The container image `ghcr.io/osprey-dcs/dp-service` is now signed the same way, by digest, by the
+`release-image.yml` workflow. Its identity names that workflow file, not `release.yml`, so the
+jar's verify command does not apply to the image.
 
-Two changes to how it is published:
+The image package is private to the osprey-dcs organization, so pulling or verifying it needs
+`docker login ghcr.io` with a GitHub account that has read access to it (a token with the
+`read:packages` scope); cosign uses the same credentials. Without it both fail with a 401, which
+is an access error, not a signature failure. Then pull the release tag and verify it:
+
+```bash
+cosign verify \
+  --certificate-identity 'https://github.com/osprey-dcs/dp-service/.github/workflows/release-image.yml@refs/tags/rel-<version>' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-trigger push \
+  ghcr.io/osprey-dcs/dp-service:rel-<version>
+```
+
+Image verification needs **cosign v3 or later**: the signature is stored as an OCI referrer, and
+cosign v2 reports `no signatures found` against a correctly signed image. The identity flags
+carry the same meaning as the jar's above. `:latest` moves on every release, so
+verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest. The image is a
+separate build of the same tagged source and does not contain the release-page jar. Full
+instructions are in the "Container Image" section of
+[`README.env`](https://github.com/osprey-dcs/dp-service/blob/main/README.env).
+
+Changes to how the image is published:
 
 - **BEHAVIOR CHANGE: only a `rel-*` tag publishes an image.** Previously a push of *any* tag built
   and pushed an image under that tag's name and moved `:latest` to it. Anyone who relied on another
   tag (a `v1.14`-style tag, say) producing an image no longer gets one.
 - **`:latest` moves only on a release.** A manual `workflow_dispatch` of the image workflow never
   moves `:latest`, even when it targets a tag. Previously a non-dry-run dispatch against any tag
-  did.
+  did. A publishing dispatch against a tag ref, or one whose image tag (`image_tag`, else `tag`) is
+  `latest` or `rel-*`, is now refused outright.
+- **A publishing dispatch builds only the commit it was dispatched on.** Its signature names that
+  commit as the source, so the `ref` and `tag` inputs, which build some other source, are now
+  refused unless `dry_run` is set. To publish a test image of a commit, dispatch against a branch
+  at that commit.
+- **The image release fails, rather than falling back, when dp-grpc is not tagged.** An image built
+  for `rel-<version>` is built against dp-grpc `rel-<version>` or not at all, as the jar already
+  was; the tag must also match the POM's version and `dp-grpc.version`. Previously the image
+  workflow fell back to another dp-grpc tag or to `main` and published anyway, and the `Dockerfile`
+  fell back to dp-grpc's default branch whenever its clone failed. Both fallbacks are gone.
+- **The image is built from the exact source that passed the tests.** The test run and the
+  push-and-sign run are now separate jobs, and the second builds the dp-service and dp-grpc
+  commits the first tested rather than re-resolving a branch or tag name.
+- **A manual image dispatch now defaults to dp-grpc `rel-<dp-grpc.version>`**, falling back to
+  `main` with a warning, instead of always `main`. Set `dp_grpc_ref` explicitly to override.
 
 ### Upgrade items
 
@@ -125,7 +164,11 @@ Two changes to how it is published:
    to make `sha256sum -c` succeed, remove it.
 3. **Stop relying on non-`rel-*` tags for images.** Only release tags publish to
    `ghcr.io/osprey-dcs/dp-service`.
-4. **Optionally, start verifying the signature.** It is a new capability, not a new requirement.
+4. **Optionally, start verifying the signatures**, on the jar and on the image. It is a new
+   capability, not a new requirement.
+5. **Rebuilding the image with `docker build` passes `DP_GRPC_REF` to a fetch with no fallback.**
+   A branch, tag, or commit SHA works; a ref dp-grpc does not have now fails the build instead of
+   building dp-grpc's default branch.
 
 ---
 
