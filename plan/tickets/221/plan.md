@@ -657,6 +657,10 @@ a tag; and `docker build --target builder --build-arg DP_GRPC_REF=no-such-ref` f
   ITs run under Failsafe, which `mvn test` does not reach — pre-existing, left for #250); the stale
   `tag=v1.11` help text in the diagnostic step is replaced; `doc/running.md` says only post-1.16.0
   images are signed.
+- **Verified on GitHub:** a publishing dispatch with `tag=rel-1.16.0` (run 36260508383, at
+  `e851c67`) failed in `test`'s first step with the ref/tag-input refusal; `publish-image` was
+  skipped, so nothing was logged in, pushed or signed. `publish-image`'s own re-check is
+  unreachable by dispatch (the same inputs are refused first) and was exercised locally only.
 
 **Rehearsal results** (2026-09-24/25):
 
