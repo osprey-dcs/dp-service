@@ -195,7 +195,7 @@ jobs:
             [ -n "$COMMIT" ] || COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/heads/$REF" '$2 == r { print $1 }')
             if [ -z "$COMMIT" ]; then
               if [ "${IS_RELEASE}" = "true" ]; then
-                echo "::error::dp-grpc has no tag $REF. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service)."
+                echo "::error::dp-grpc has no tag $REF. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service), and the image builds only against the matching dp-grpc tag. Push dp-grpc $REF, then re-run this workflow."
               else
                 echo "::error::dp-grpc ref '$REF' does not exist in $DP_GRPC_REPO"
               fi
@@ -258,8 +258,9 @@ jobs:
             exit 1
           fi
 
-      # Same wait as ci.yml: compose blocks on the healthcheck, and the timeout must stay above the
-      # time it needs to reach a verdict (start_period + interval x retries in docker-compose.yaml).
+      # Same wait as ci.yml, and see its comment: the timeout must stay above the time the
+      # healthcheck in docker-compose.yaml needs to reach a verdict, about
+      # start_period + retries * (interval + timeout) (110 s today).
       - name: Start MongoDB
         run: |
           if ! docker compose -f "$GITHUB_WORKSPACE/docker-compose.yaml" up -d --wait --wait-timeout 180; then
@@ -281,6 +282,17 @@ jobs:
           DP_MONGO_DB_PORT: "27017"
           DP_MONGO_DB_USER: admin
           DP_MONGO_DB_PASSWORD: admin
+
+      # As in ci.yml: now that this gate runs the ITs, a failed run has to say which test failed.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+          if-no-files-found: ignore
 
       - name: Tear down services
         if: always()

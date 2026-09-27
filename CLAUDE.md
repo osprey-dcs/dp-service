@@ -1500,8 +1500,12 @@ needs cosign v3: v2 reports "no signatures found". The ghcr package is **private
 are disabled at the org level), so the documented pull and verify need a `read:packages` login.
 On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
 `release.yml`, and both workflows fail before any build when dp-grpc lacks that tag, naming the
-dependency order (dp-grpc is tagged first; #250, from #213 item 7). A publishing (non-dry-run) dispatch is refused in `test`'s first step when it
-targets a tag ref, sets the `ref`/`tag` inputs, or resolves its image tag (`image_tag`, else `tag`)
+dependency order (dp-grpc is tagged first; #250, from #213 item 7). `release.yml`'s check gives
+that message only for `git ls-remote`'s exit 2; any other failure is reported as a failure to
+reach dp-grpc, never as a missing tag. Since both workflows run the full `verify` independently
+on a release, a flaky IT can publish the jar and fail the image (or the reverse): re-run the
+failed jobs, and use the `test-reports` artifact each uploads to see what failed. A publishing
+(non-dry-run) dispatch is refused in `test`'s first step when it targets a tag ref, sets the `ref`/`tag` inputs, or resolves its image tag (`image_tag`, else `tag`)
 to `latest`/`rel-*`; `publish-image` then re-checks the values it actually uses — the commit must
 be `GITHUB_SHA` and a non-release tag must not be `latest`/`rel-*` — before logging in. **Every
 signature this workflow makes names the commit it built**: the certificate records `GITHUB_SHA`, so

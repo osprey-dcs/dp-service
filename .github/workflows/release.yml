@@ -156,8 +156,15 @@ jobs:
           set -euo pipefail
           if [ "${IS_RELEASE}" = "true" ]; then
             REF="rel-${VERSION}"
-            if ! git ls-remote --exit-code "https://github.com/${DP_GRPC_REPO}.git" "refs/tags/${REF}" >/dev/null; then
+            # --exit-code returns 2 only for "no such ref"; anything else (128) is a failure to
+            # reach dp-grpc, which must not be reported as a missing tag.
+            RC=0
+            git ls-remote --exit-code "https://github.com/${DP_GRPC_REPO}.git" "refs/tags/${REF}" >/dev/null || RC=$?
+            if [ "$RC" -eq 2 ]; then
               echo "::error::dp-grpc has no tag ${REF}. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service), and a dp-service release builds only against the matching dp-grpc tag. Push dp-grpc ${REF}, then re-run this workflow."
+              exit 1
+            elif [ "$RC" -ne 0 ]; then
+              echo "::error::Could not query ${DP_GRPC_REPO} for tag ${REF} (git ls-remote exit ${RC}). This is not a missing tag; re-run the workflow."
               exit 1
             fi
             echo "dp-grpc ref: $REF (release: strict match to the dp-service tag)"
@@ -186,8 +193,9 @@ jobs:
         run: |
           mvn -B -DskipTests install
 
-      # Same wait as ci.yml: compose blocks on the healthcheck, and the timeout must stay above the
-      # time it needs to reach a verdict (start_period + interval x retries in docker-compose.yaml).
+      # Same wait as ci.yml, and see its comment: the timeout must stay above the time the
+      # healthcheck in docker-compose.yaml needs to reach a verdict, about
+      # start_period + retries * (interval + timeout) (110 s today).
       - name: Start MongoDB (for tests)
         run: |
           if ! docker compose -f docker-compose.yaml up -d --wait --wait-timeout 180; then
@@ -204,6 +212,18 @@ jobs:
           DP_MONGO_DB_PASSWORD: admin
         run: |
           mvn -B clean verify
+
+      # As in ci.yml: a failed release has to say which test failed.  A separate artifact from
+      # build-outputs, which is the only one sign and publish download.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+          if-no-files-found: ignore
 
       - name: Tear down services
         if: always()
