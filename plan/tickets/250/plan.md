@@ -6,9 +6,11 @@
 - **Sibling**: [#221](https://github.com/osprey-dcs/dp-service/issues/221) (Sigstore signing) owns
   #213 items 3, 8, and the release-workflow half of item 5, and restructures `release.yml` and
   `release-image.yml`. See Dependencies and sequencing.
-- **Status**: triaged and planned 2026-09-23. PR (a) merged as #296, PR (b) as #297; the
-  `build-and-test` required check (Task 7) is on the `main` ruleset. PR (c) (Task 5) is #300,
-  after #221's two PRs (#298, #299).
+- **Status**: complete; issue closed 2026-09-28. PR (a) merged as #296, PR (b) as #297, PR (c)
+  (Task 5) as #300, after #221's two PRs (#298, #299); the `build-and-test` required check
+  (Task 7) is on the `main` ruleset. The release-only paths PR (c) added (dp-grpc tag check,
+  tags-only resolution in `release-image.yml`, test-report upload in `release.yml`) first run at
+  the next `rel-*` push, which #221 Task 9 watches.
 
 ## Overview
 
