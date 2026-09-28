@@ -188,11 +188,20 @@ jobs:
             COMMIT="$REF"   # already a commit; the dp-grpc checkout below fails if it is unreachable
           else
             # Tag first, then branch.  An annotated tag's own line is the tag object; its peeled
-            # ^{} line is the commit, so prefer that when present.
-            LINES=$(git ls-remote "$DP_GRPC_REPO" "refs/tags/$REF" "refs/tags/$REF^{}" "refs/heads/$REF")
+            # ^{} line is the commit, so prefer that when present.  A release resolves TAGS ONLY:
+            # a dp-grpc branch named rel-<version> must never stand in for the missing tag, or the
+            # image would be built and signed against an untagged dp-grpc commit that release.yml
+            # (which checks for the tag) would refuse.
+            if [ "${IS_RELEASE}" = "true" ]; then
+              LINES=$(git ls-remote "$DP_GRPC_REPO" "refs/tags/$REF" "refs/tags/$REF^{}")
+            else
+              LINES=$(git ls-remote "$DP_GRPC_REPO" "refs/tags/$REF" "refs/tags/$REF^{}" "refs/heads/$REF")
+            fi
             COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/tags/$REF^{}" '$2 == r { print $1 }')
             [ -n "$COMMIT" ] || COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/tags/$REF" '$2 == r { print $1 }')
-            [ -n "$COMMIT" ] || COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/heads/$REF" '$2 == r { print $1 }')
+            if [ -z "$COMMIT" ] && [ "${IS_RELEASE}" != "true" ]; then
+              COMMIT=$(printf '%s\n' "$LINES" | awk -v r="refs/heads/$REF" '$2 == r { print $1 }')
+            fi
             if [ -z "$COMMIT" ]; then
               if [ "${IS_RELEASE}" = "true" ]; then
                 echo "::error::dp-grpc has no tag $REF. Tag dp-grpc first: releases are tagged in dependency order (dp-grpc, then dp-service), and the image builds only against the matching dp-grpc tag. Push dp-grpc $REF, then re-run this workflow."

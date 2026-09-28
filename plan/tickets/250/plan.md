@@ -250,7 +250,8 @@ dependency. The install step already works in `ci.yml` and is documented.
 - **Item 4:** `ci.yml` drops `packages: write` and keeps `contents: read`.
 - **Item 6:** `docker compose -f docker-compose.yaml up -d --wait` replaces all three polling loops.
   The existing timeout logic is replaced by the healthcheck's own `retries`/`start_period`, plus
-  `--wait-timeout 120`, so a stuck container still fails in bounded time. The timeout must stay
+  `--wait-timeout 180` (as implemented in all three workflows; an earlier draft said 120), so a
+  stuck container still fails in bounded time. The timeout must stay
   above the time the healthcheck needs to reach a verdict. Docker starts each probe `interval`
   after the previous one completes and a probe can run its full `timeout`, so the worst case is
   about `start_period + retries × (interval + timeout)` (10 s + 5 × 20 s = 110 s in

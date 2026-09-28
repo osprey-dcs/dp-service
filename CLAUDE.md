@@ -1498,8 +1498,9 @@ image built from `6ca6c73`. The image signature is an OCI referrer (cosign v3's 
 under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), so verifying it
 needs cosign v3: v2 reports "no signatures found". The ghcr package is **private** (public packages
 are disabled at the org level), so the documented pull and verify need a `read:packages` login.
-On a release the dp-grpc ref is strictly `rel-<version>`, with the same tag-vs-POM check as
-`release.yml`, and both workflows fail before any build when dp-grpc lacks that tag, naming the
+On a release the dp-grpc ref is strictly the `rel-<version>` **tag** — `release-image.yml`
+resolves tags only there, never a same-named branch, which would otherwise build and sign against
+an untagged dp-grpc commit — with the same tag-vs-POM check as `release.yml`, and both workflows fail before any build when dp-grpc lacks that tag, naming the
 dependency order (dp-grpc is tagged first; #250, from #213 item 7). `release.yml`'s check gives
 that message only for `git ls-remote`'s exit 2; any other failure is reported as a failure to
 reach dp-grpc, never as a missing tag. Since both workflows run the full `verify` independently
