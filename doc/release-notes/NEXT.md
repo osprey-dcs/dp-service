@@ -199,4 +199,9 @@ When the version is known and the release is being cut:
 8. **Merge the notes before pushing the tag.** `release.yml` reads them from the tagged commit.
    Push tags in dependency order — dp-grpc first, since a dp-service release builds strictly
    against dp-grpc's matching `rel-<version>` tag.
+   **Then check both release workflows.** `release.yml` (jar) and `release-image.yml` (image) each
+   run the full `verify` independently, so a flaky integration test can fail one while the other
+   publishes. Re-run the failed jobs (the `test-reports` artifact shows what failed); do not
+   retag. A `release.yml` error "Could not query … for tag" is a network failure, not a missing
+   dp-grpc tag — re-run it.
 9. **Start a fresh `NEXT.md`** for the following cycle.

@@ -6,7 +6,9 @@
 - **Sibling**: [#221](https://github.com/osprey-dcs/dp-service/issues/221) (Sigstore signing) owns
   #213 items 3, 8, and the release-workflow half of item 5, and restructures `release.yml` and
   `release-image.yml`. See Dependencies and sequencing.
-- **Status**: triaged and planned 2026-09-23; not implemented.
+- **Status**: triaged and planned 2026-09-23. PR (a) merged as #296, PR (b) as #297; the
+  `build-and-test` required check (Task 7) is on the `main` ruleset. PR (c) (Task 5) is #300,
+  after #221's two PRs (#298, #299).
 
 ## Overview
 
@@ -248,9 +250,13 @@ dependency. The install step already works in `ci.yml` and is documented.
 - **Item 4:** `ci.yml` drops `packages: write` and keeps `contents: read`.
 - **Item 6:** `docker compose -f docker-compose.yaml up -d --wait` replaces all three polling loops.
   The existing timeout logic is replaced by the healthcheck's own `retries`/`start_period`, plus
-  `--wait-timeout 120`, so a stuck container still fails in bounded time. The timeout must stay
-  above the time the healthcheck needs to reach a verdict, `start_period + interval × retries`
-  (10 s + 10 s × 5 = 60 s in `docker-compose.yaml:21-26`). Below that, a slow start that would
+  `--wait-timeout 180` (as implemented in all three workflows; an earlier draft said 120), so a
+  stuck container still fails in bounded time. The timeout must stay
+  above the time the healthcheck needs to reach a verdict. Docker starts each probe `interval`
+  after the previous one completes and a probe can run its full `timeout`, so the worst case is
+  about `start_period + retries × (interval + timeout)` (10 s + 5 × 20 s = 110 s in
+  `docker-compose.yaml:21-26`; an earlier draft of this plan gave `start_period + interval ×
+  retries`, 60 s, which `ci.yml`'s comment corrected). Below that, a slow start that would
   have turned healthy fails on the timeout instead, and the error reads as a hang rather than as an
   unhealthy container. Whoever changes the healthcheck should re-check the timeout. The first
   healthy result arrives about one `interval` (10 s) after start, so a healthy run waits no longer
@@ -340,6 +346,37 @@ step in `ci.yml` moved ahead of the dp-grpc checkout to match the two release wo
 Apply `--wait` to `release.yml` and `release-image.yml`, and add the dp-grpc tag existence check to
 `release.yml` (D6). These edit the workflows #221 is restructuring, so they land **after** #221's
 two PRs and apply to the new job layout.
+
+**As implemented (PR (c)):**
+
+- **`--wait`** replaces the polling loop in `release.yml`'s `build` and `release-image.yml`'s
+  `test`, in the form `ci.yml` already uses: `--wait-timeout 180` (above the healthcheck's ~110 s
+  worst-case verdict time, per D6) and `docker compose logs mongodb` on failure. It also retires a latent bug
+  in `release-image.yml`'s loop, which matched `grep -iq healthy` and so accepted `"unhealthy"` as
+  healthy.
+- **The dp-grpc tag check** runs in `release.yml`'s "Resolve dp-grpc ref" step, releases only,
+  before any build: `git ls-remote --exit-code … refs/tags/rel-<version>`, failing with a message
+  naming the dependency order and the recovery (push dp-grpc's tag, then re-run the failed
+  workflow; nothing was built or published). Only `ls-remote`'s exit 2 ("no such ref") gets that
+  message; any other failure (128: network or auth) is reported as a failure to reach dp-grpc, so
+  a transient GitHub error cannot send the operator to push a tag that already exists. Before
+  this check the failure surfaced at the dp-grpc checkout as a checkout error with no
+  dependency-order hint. `release-image.yml` already failed in its resolve step when the ref did
+  not exist (#221); on a release its message now names the dependency order too.
+- **Added: `release-image.yml`'s `test` job runs `mvn verify`, not `mvn test`.** Found in #299's
+  review and left for this ticket: the ITs run under Failsafe, which `test` never reaches, so a
+  dispatched image was gated on unit tests alone. At a release `release.yml` ran `verify` on the
+  same commit, so only dispatches were affected. The step takes `ci.yml`'s name. The cost is D1's
+  few minutes; a dry-run dispatch of a ref from before D1 (rel-1.16.0 and earlier) instead takes
+  the old ~26 minutes, which is acceptable for a rebuild of an old image.
+- **Added: test reports are uploaded** (`test-reports`, `if: always()`) from `release.yml`'s
+  `build` and `release-image.yml`'s `test`, as `ci.yml` does, so a failed release or dispatch
+  says which test failed. In `release.yml` it is a separate artifact from `build-outputs`, which
+  `sign` and `publish` download by name.
+- **Consequence recorded, not changed: a flaky IT can split a release.** On a `rel-*` push both
+  workflows now run the full `verify` independently, so one flake can publish the jar and fail
+  the image, or the reverse. Recovery is re-running the failed jobs; it is in `NEXT.md`'s
+  "Cutting the release" checklist and CLAUDE.md (Releases).
 
 ### Task 6 — CLAUDE.md
 
