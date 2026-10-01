@@ -124,18 +124,31 @@ jobs:
 
       # Checked before the build rather than left to action-gh-release, which fails the job on
       # a missing body_path only after the multi-minute build, test, and upload steps have run.
-      # Every release from 1.16.0 on ships notes; see CLAUDE.md "Releases".  Skipped on a
-      # rehearsal, which publishes nothing and so has no release body to look for.
+      # Every release from 1.16.0 on ships notes; see CLAUDE.md "Releases".
+      #
+      # The file is then run through .github/scripts/check-release-notes.py (#305), the same
+      # check ci.yml runs on every PR, as a backstop: the notes are published verbatim as the
+      # release body, so a relative or main-pinned link, a leftover rel-<version>, or a signing
+      # identity or image tag naming another release would otherwise ship.
+      #
+      # A rehearsal has no tag and so no notes file of its own; it checks every notes file
+      # instead, so a dry run still shows the backstop and its self-test running.  It sets no
+      # NOTES_PATH, which "Stage release notes" reads only on a release.
       - name: Verify release notes exist
-        if: env.IS_RELEASE == 'true'
         run: |
           set -euo pipefail
+          if [ "${IS_RELEASE}" != "true" ]; then
+            echo "Rehearsal run -- no tag, so checking every notes file rather than one."
+            python3 .github/scripts/check-release-notes.py
+            exit 0
+          fi
           NOTES="doc/release-notes/${GITHUB_REF_NAME}.md"
           if [ ! -f "$NOTES" ]; then
             echo "::error::Release notes not found at $NOTES."
             echo "::error::Add the notes for ${VERSION} and re-run, or retag once they are on the tagged commit."
             exit 1
           fi
+          python3 .github/scripts/check-release-notes.py "$NOTES"
           echo "NOTES_PATH=$NOTES" >> "$GITHUB_ENV"
 
       # Same step as ci.yml; see its comment and third-party/cisd-jhdf5/README.md.
@@ -248,8 +261,8 @@ jobs:
       # instead: the upload below treats a missing path as an error, and a rehearsal should fail
       # on a real problem, not on the absence of something it was never going to publish.
       #
-      # Gated on IS_RELEASE rather than GITHUB_REF_TYPE: NOTES_PATH is set only by the
-      # release-only step above, so a workflow_dispatch run against a tag would reference it
+      # Gated on IS_RELEASE rather than GITHUB_REF_TYPE: "Verify release notes exist" sets
+      # NOTES_PATH only on a release, so a workflow_dispatch run against a tag would reference it
       # unset and abort the rehearsal under `set -u` before anything is uploaded.  "Derive
       # version" now refuses such a run first; this gate should not depend on that.
       - name: Stage release notes
