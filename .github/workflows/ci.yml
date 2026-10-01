@@ -39,6 +39,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Every rel-*.md and NEXT.md under doc/release-notes/, against the rules in
+      # osprey-dcs/data-platform#98 (#305): links must survive publication as a release body, the
+      # signing identities and image tag in a rel-*.md must name its own tag, and NEXT.md's links
+      # and anchors must still resolve in this tree, so a PR renaming a heading they point at fails
+      # here. A step of this job rather than a job of its own because build-and-test is the
+      # required check (see the comment on `mvn verify` below). Runs first: it needs nothing but
+      # the runner's python3 (stdlib only) and takes about a second. Starts with a self-test.
+      - name: Check release notes
+        run: python3 .github/scripts/check-release-notes.py
+
       - name: Set up JDK
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
