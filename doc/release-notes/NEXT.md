@@ -190,13 +190,12 @@ When the version is known and the release is being cut:
    the repo root, not `doc/release-notes/`, and 404. Links here are already absolute for that
    reason, but one pinned to `main` drifts as the repo moves on; pinned to the tag it keeps
    describing the content this release actually shipped. Fill in every `rel-<version>` in the
-   verify commands the same way. **You do not have to find them by reading:**
+   verify commands and the image tag the same way. **You do not have to find them by reading:**
    `python3 .github/scripts/check-release-notes.py` lists every link still on `main` (or on another
-   tag), every leftover `rel-<version>`, `<version>` or `<previous>` (prose ones such as
-   `dp-service-<version>.jar` included: name the release, or the one meant), and every
-   `--certificate-identity` or `ghcr.io/osprey-dcs/dp-service:` image tag that does not name this
-   release, with line numbers. It flags this checklist's own placeholders too, until step 5 deletes
-   it. CI runs it on the cut PR, and `release.yml` runs it again on the tagged file.
+   tag), every leftover `rel-<version>` or `<previous>`, and every `--certificate-identity` or
+   `ghcr.io/osprey-dcs/dp-service:` image tag that does not name this release, with line numbers.
+   It flags this checklist's own placeholders too, until step 5 deletes it. CI runs it on the cut
+   PR, and `release.yml` runs it again on the tagged file.
 5. **Delete this "Cutting the release" section** and update Contents.
 6. **Add the row to `README.md`'s `## Release Notes` table**, newest first, with a one-line
    summary and **Breaking.** if it is.
