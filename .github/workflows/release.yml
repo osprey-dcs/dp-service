@@ -135,9 +135,10 @@ jobs:
       # instead, so a dry run still shows the backstop and its self-test running.  On a rehearsal
       # a checker failure is a warning, not an error: an exception, for this step only, to this
       # file's "a rehearsal should fail on a real problem" (see "Stage release notes"), so that
-      # notes still being drafted do not block rehearsing the build and signing.  All five repos
-      # do the same; ci.yml still fails the PR, and a real release still fails here.  A rehearsal
-      # sets no NOTES_PATH, which "Stage release notes" reads only on a release.
+      # notes still being drafted do not block rehearsing the build and signing.  The other repos
+      # carrying this checker do the same, except dp-python-lib, which skips it on a dispatch;
+      # ci.yml still fails the PR, and a real release still fails here.  A rehearsal sets no
+      # NOTES_PATH, which "Stage release notes" reads only on a release.
       - name: Verify release notes exist
         run: |
           set -euo pipefail

@@ -1575,7 +1575,7 @@ and no `rel-<version>` or `<previous>` placeholder (a bare `<version>` in prose 
 an identity is checked where present but not required, since 1.16.0 and earlier are unsigned.
 `NEXT.md`'s links stay on `main`, and their paths and anchors must exist in the tree, so renaming a
 heading one points at fails that PR. Every `rel-*.md` except the highest version is already released
-and gets only the form rules. The rules are osprey-dcs/data-platform#98 and the script's docstring.
+and skips the path and anchor checks. The rules are osprey-dcs/data-platform#98 and the script's docstring.
 The script is a verbatim copy of dp-python-lib's: change only its configuration block, and port rule
 changes by copying the file from there. It lives at the same path in all five repos.
 
