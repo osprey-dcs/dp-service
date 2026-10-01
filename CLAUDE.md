@@ -1565,6 +1565,20 @@ leaving it to `action-gh-release` — here the build runs a MongoDB container an
 so an unchecked missing-notes failure would surface only after several minutes of work, with the
 release already half-published. Retagging is the only fix once the tag is pushed.
 
+**The notes are checked, not just reviewed** (#305): `.github/scripts/check-release-notes.py`
+runs in CI on every PR over every `rel-*.md` and `NEXT.md`, and again in `release.yml`'s "Verify
+release notes exist" step on the tagged file (on a rehearsal, over all of them). A `rel-*.md` may
+have no relative links and no `rel-<version>`/`<version>`/`<previous>` placeholder, its
+`osprey-dcs` blob/tree links must be pinned to its own tag (or a full commit SHA), and each
+`--certificate-identity` and `ghcr.io/osprey-dcs/dp-service:rel-…` reference must name its own tag;
+an identity is checked where present but not required, since 1.16.0 and earlier are unsigned.
+`NEXT.md`'s links stay on `main`, and their paths and anchors must exist in the tree, so renaming a
+heading one points at fails that PR. Every `rel-*.md` except the highest version is already
+released and gets only the form rules. The rules are osprey-dcs/data-platform#98 and the script's
+docstring. The script is a verbatim copy of dp-python-lib's: change only its configuration block,
+and port rule changes by copying the file from there. It lives in `.github/scripts/` because
+`.dev/` is gitignored here; its own usage line still says `.dev/tools/`.
+
 ## Continuous Integration
 - **GitHub Actions**: `.github/workflows/ci.yml`, one job, `build-and-test`
 - **Multi-Repository Setup**: builds dp-grpc `main` before dp-service (the release builds against
