@@ -128,10 +128,10 @@ cosign verify \
 ```
 
 Image verification needs **cosign v3.1.3 or later**, the same minimum as the jar. The signature is
-stored as an OCI referrer, and cosign v2 reports `no signatures found` against a correctly signed image. The identity flags
-carry the same meaning as the jar's above. `:latest` moves on every release, so
-verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest. The image is a
-separate build of the same tagged source and does not contain the release-page jar. Full
+stored as an OCI referrer, and cosign v2 reports `no signatures found` against a correctly signed
+image. The identity flags carry the same meaning as the jar's above. `:latest` moves on every
+release, so verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest.
+The image is a separate build of the same tagged source and does not contain the release-page jar. Full
 instructions are in the "Container Image" section of
 [`README.env`](https://github.com/osprey-dcs/dp-service/blob/main/README.env).
 

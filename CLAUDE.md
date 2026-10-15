@@ -1502,8 +1502,9 @@ signing certificate records `github.sha` as the source commit, and a ref name ca
 run is queued. The #221 PR 2 rehearsal caught exactly that — a certificate naming `b169084` on an
 image built from `6ca6c73`. The image signature is an OCI referrer (cosign v3's bundle format,
 under ghcr's `sha256-<digest>` fallback tag, since ghcr has no referrers API), so verifying it
-needs cosign v3: v2 reports "no signatures found". The ghcr package is **private** (public packages
-are disabled at the org level), so the documented pull and verify need a `read:packages` login.
+needs cosign v3 (v3.1.3 minimum, see above): v2 reports "no signatures found". The ghcr package
+is **private** (public packages are disabled at the org level), so the documented pull and verify
+need a `read:packages` login.
 On a release the dp-grpc ref is strictly the `rel-<version>` **tag** — `release-image.yml`
 resolves tags only there, never a same-named branch, which would otherwise build and sign against
 an untagged dp-grpc commit — with the same tag-vs-POM check as `release.yml`, and both workflows fail before any build when dp-grpc lacks that tag, naming the
