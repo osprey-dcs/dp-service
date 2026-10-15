@@ -45,3 +45,6 @@ build/
 
 ### Dev notes ###
 .dev/
+
+# Python bytecode (e.g. from running .github/scripts/check-release-notes.py)
+__pycache__/

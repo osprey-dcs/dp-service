@@ -64,7 +64,10 @@ about either. What protects them is the signature: `cosign verify-blob` below ch
 against `SHA256SUMS`, and the checksum in turn covers the jar.
 
 To verify the signature, install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
-and run, with `<version>` replaced by the release you downloaded:
+**v3.1.3 or later** — v3.1.2 and earlier (and v2 releases before v2.6.5) have a verification flaw
+([GHSA-fx35-mq7g-6g98](https://github.com/sigstore/cosign/security/advisories/GHSA-fx35-mq7g-6g98))
+that lets a substituted bundle skip the identity checks. Then run, with `<version>` replaced by the
+release you downloaded:
 
 ```bash
 cosign verify-blob \
@@ -124,11 +127,11 @@ cosign verify \
   ghcr.io/osprey-dcs/dp-service:rel-<version>
 ```
 
-Image verification needs **cosign v3 or later**: the signature is stored as an OCI referrer, and
-cosign v2 reports `no signatures found` against a correctly signed image. The identity flags
-carry the same meaning as the jar's above. `:latest` moves on every release, so
-verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest. The image is a
-separate build of the same tagged source and does not contain the release-page jar. Full
+Image verification needs **cosign v3.1.3 or later**, the same minimum as the jar. The signature is
+stored as an OCI referrer, and cosign v2 reports `no signatures found` against a correctly signed
+image. The identity flags carry the same meaning as the jar's above. `:latest` moves on every
+release, so verifying `:latest` verifies whatever it points at *now*: verify and deploy by digest.
+The image is a separate build of the same tagged source and does not contain the release-page jar. Full
 instructions are in the "Container Image" section of
 [`README.env`](https://github.com/osprey-dcs/dp-service/blob/main/README.env).
 
