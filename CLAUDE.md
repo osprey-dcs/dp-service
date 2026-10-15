@@ -1467,6 +1467,12 @@ image by digest (`cosign sign`, #221 PR 2) under its own identity,
 `release-image.yml@refs/tags/rel-<version>`; README.env gives each command under its own heading,
 and neither verifies the other's artifact.
 
+**cosign is pinned to v3.1.3 in both release workflows and documented as the minimum verifier**
+(#303): v3.1.2 and earlier, and v2 before the v2.6.5 backport, have a verify-side identity bypass
+(GHSA-fx35-mq7g-6g98), and only the version users verify with protects them, so `README.env` names
+a minimum. Dependabot does not track the `cosign-release` input, so bumping the pin is a manual
+decision; keep it in step with dp-grpc's and dp-desktop-app's.
+
 **`release.yml` is three jobs, and the OIDC token never shares a job with project code.**
 `build` (`contents: read`) runs everything from the repository, the test suite included; `sign`
 (`id-token: write`) has no checkout and runs only `sha256sum` and cosign over `build`'s uploaded
