@@ -1620,13 +1620,18 @@ fixtures (which give up per-test database isolation) or a curated IT subset (whi
 coverage from the gate). Do not replace the poll with `shutdownNow()`, which interrupts in-flight
 jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQueue.put` site.
 
-**The three jobs that start MongoDB are pinned to `ubuntu-24.04`, not `ubuntu-latest`:** `ci.yml`'s
-`build-and-test`, `release.yml`'s `build`, and `release-image.yml`'s `test`. `mongo:8` exits at
-startup on Linux kernel 6.19 and newer (SERVER-121912), and `ubuntu-latest` moved to `ubuntu-26.04`,
-whose kernel triggers that. It surfaces as `container dp-mongodb is unhealthy`, which reads like a
-slow start, but re-running cannot help; the fatal line is in the compose logs the step prints. Lift
-the pin only once a MongoDB release resolves that issue. The other release jobs do not start
-MongoDB and stay on `ubuntu-latest`.
+**The three jobs that start MongoDB are pinned to `ubuntu-22.04`, not `ubuntu-latest`:** `ci.yml`'s
+`build-and-test`, `release.yml`'s `build`, and `release-image.yml`'s `test`. MongoDB refuses to start
+on kernels it treats as affected by the 6.19 `rseq` change (SERVER-121912). The check was narrowed to
+6.19 through 7.0.13 (SERVER-125742, 8.0.30), but it reads the base version, and Ubuntu's runner
+kernels report `7.0.0-*-azure` whatever their patch level (SERVER-136848), so both `ubuntu-24.04`
+and `ubuntu-26.04` are blocked; `ubuntu-22.04` is on 6.8. **Check a runner image's current kernel
+before moving to it** (the `Ubuntu*-Readme.md` on `actions/runner-images` `main`, not a dated tag):
+pinning `ubuntu-24.04` looked right from an October image and failed, because GitHub updates the
+kernel within a release label. The failure surfaces as `container dp-mongodb is unhealthy`, which
+reads like a slow start, but re-running cannot help; the fatal line is in the compose logs the step
+prints. Lift the pin once MongoDB accepts the newer runner kernels. The other release jobs do not
+start MongoDB and stay on `ubuntu-latest`.
 
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
