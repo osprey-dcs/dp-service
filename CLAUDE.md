@@ -1620,6 +1620,29 @@ fixtures (which give up per-test database isolation) or a curated IT subset (whi
 coverage from the gate). Do not replace the poll with `shutdownNow()`, which interrupts in-flight
 jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQueue.put` site.
 
+**The three jobs that start MongoDB are pinned to `ubuntu-22.04`, not `ubuntu-latest`:** `ci.yml`'s
+`build-and-test`, `release.yml`'s `build`, and `release-image.yml`'s `test`. MongoDB refuses to start
+on kernels it treats as affected by the 6.19 `rseq` change (SERVER-121912). The check was narrowed to
+6.19 through 7.0.13 (SERVER-125742, 8.0.30), but it reads the base version, and Ubuntu's runner
+kernels report `7.0.0-*-azure` whatever their patch level (SERVER-136848), so both `ubuntu-24.04`
+and `ubuntu-26.04` are blocked; `ubuntu-22.04` is on 6.8. **Check a runner image's current kernel
+before moving to it** (the `Ubuntu*-Readme.md` on `actions/runner-images` `main`, not a dated tag):
+pinning `ubuntu-24.04` looked right from an October image and failed, because GitHub updates the
+kernel within a release label. The failure surfaces as `container dp-mongodb is unhealthy`, which
+reads like a slow start, but re-running cannot help; the fatal line is in the compose logs the step
+prints. Lift the pin once MongoDB accepts the newer runner kernels. The other release jobs do not
+start MongoDB and stay on `ubuntu-latest`.
+
+**This pin has a deadline.** `ubuntu-22.04` is deprecated (actions/runner-images#14254): brownouts
+fail its jobs on 2027-03-23, 03-30, 04-06 and 04-13, and it is retired on 2027-04-17, after which
+the required `build-and-test` check cannot run and every merge blocks. CI stays on MongoDB 8.0
+deliberately, because that is the tested version and the one the primary deployment runs, so
+swapping the image to get off the pin is a decision about the server version, not a CI cleanup. An
+8.0 release that reads Ubuntu's real kernel version would lift the pin with no version change.
+Failing that, 8.2 is the candidate: the 8.2.7 and 8.2.12 binaries do not contain the startup block,
+but that does not show they are unaffected, since the known failure is a crash about 60 seconds in,
+so it must pass the full suite on the unpinned runner first.
+
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
 `cisd:jhdf5` and its support library `cisd:base` are **not on Maven Central**; their only public
