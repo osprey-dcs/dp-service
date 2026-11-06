@@ -1620,6 +1620,14 @@ fixtures (which give up per-test database isolation) or a curated IT subset (whi
 coverage from the gate). Do not replace the poll with `shutdownNow()`, which interrupts in-flight
 jobs `fini()` lets finish, or with a sentinel job, which adds a second `requestQueue.put` site.
 
+**The three jobs that start MongoDB are pinned to `ubuntu-24.04`, not `ubuntu-latest`:** `ci.yml`'s
+`build-and-test`, `release.yml`'s `build`, and `release-image.yml`'s `test`. `mongo:8` exits at
+startup on Linux kernel 6.19 and newer (SERVER-121912), and `ubuntu-latest` moved to `ubuntu-26.04`,
+whose kernel triggers that. It surfaces as `container dp-mongodb is unhealthy`, which reads like a
+slow start, but re-running cannot help; the fatal line is in the compose logs the step prints. Lift
+the pin only once a MongoDB release resolves that issue. The other release jobs do not start
+MongoDB and stay on `ubuntu-latest`.
+
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
 `cisd:jhdf5` and its support library `cisd:base` are **not on Maven Central**; their only public

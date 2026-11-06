@@ -41,7 +41,8 @@ permissions:
 # to the artifacts `build` handed over, for the seconds `sign` takes.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: mongo:8 refuses to start on kernel 6.19+ (SERVER-121912).
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
