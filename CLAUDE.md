@@ -1633,6 +1633,16 @@ reads like a slow start, but re-running cannot help; the fatal line is in the co
 prints. Lift the pin once MongoDB accepts the newer runner kernels. The other release jobs do not
 start MongoDB and stay on `ubuntu-latest`.
 
+**This pin has a deadline.** `ubuntu-22.04` is deprecated (actions/runner-images#14254): brownouts
+fail its jobs on 2027-03-23, 03-30, 04-06 and 04-13, and it is retired on 2027-04-17, after which
+the required `build-and-test` check cannot run and every merge blocks. CI stays on MongoDB 8.0
+deliberately, because that is the tested version and the one the primary deployment runs, so
+swapping the image to get off the pin is a decision about the server version, not a CI cleanup. An
+8.0 release that reads Ubuntu's real kernel version would lift the pin with no version change.
+Failing that, 8.2 is the candidate: the 8.2.7 and 8.2.12 binaries do not contain the startup block,
+but that does not show they are unaffected, since the known failure is a crash about 60 seconds in,
+so it must pass the full suite on the unpinned runner first.
+
 ### Vendored dependency: `cisd:jhdf5` (do not remove)
 
 `cisd:jhdf5` and its support library `cisd:base` are **not on Maven Central**; their only public
