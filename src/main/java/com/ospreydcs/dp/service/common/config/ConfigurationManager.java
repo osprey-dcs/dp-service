@@ -81,7 +81,9 @@ public class ConfigurationManager {
         Yaml yaml = new Yaml();
         Map<String, Object> yamlMap = yaml.load(inputStream);
         Map<String, Object> resultMap = getFlattenedMap(yamlMap);
-        LOGGER.debug("initialize config file properties: {}", resultMap);
+        // Every value logged from here on goes through SecretRedactor (#316): the map holds the MongoDB
+        // connection string, credentials included, and so can the system properties.
+        LOGGER.debug("initialize config file properties: {}", SecretRedactor.redactedCopy(resultMap));
 
         // Resolve ${VAR:default} placeholders in values using system properties then environment variables then default
         resolvePlaceholders(resultMap);
@@ -94,7 +96,7 @@ public class ConfigurationManager {
         // is selected.  Then enter the override e.g., "-Ddp.GrpcServer.port=50052" in the VM options box that appears
         // BEFORE the java main class name.  The box after is for program args and will not override the config
         // resource.
-        LOGGER.debug("initialize property overrides: {}", systemProperties);
+        LOGGER.debug("initialize property overrides: {}", SecretRedactor.redactedCopy(systemProperties));
         for (var entry : systemProperties.entrySet()) {
             final String propertyKey = (String) entry.getKey();
             if (propertyKey.startsWith(DP_PROPERTY_PREFIX) && !propertyKey.equals(CONFIG_PROPERTY_NAME)) {
@@ -103,12 +105,12 @@ public class ConfigurationManager {
                     final String dpKey = propertyKey.substring(DP_PROPERTY_PREFIX.length());
                     resultMap.put(dpKey, propertyValue);
                     LOGGER.info("initialize overriding property from command line: {} value: {}",
-                            dpKey, propertyValue);
+                            dpKey, SecretRedactor.redact(dpKey, propertyValue));
                 }
             }
         }
 
-        LOGGER.info("initialize dp configuration: {}", resultMap);
+        LOGGER.info("initialize dp configuration: {}", SecretRedactor.redactedCopy(resultMap));
         configMap = resultMap;
     }
 

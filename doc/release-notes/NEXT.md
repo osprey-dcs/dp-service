@@ -20,6 +20,7 @@ person cutting the release has any reason to re-read.
 ## Contents
 
 - [Signed release artifacts (Issue #221)](#signed-release-artifacts-issue-221)
+- [Database credentials removed from the startup log (Issue #316)](#database-credentials-removed-from-the-startup-log-issue-316)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -172,6 +173,32 @@ Changes to how the image is published:
 5. **Rebuilding the image with `docker build` passes `DP_GRPC_REF` to a fetch with no fallback.**
    A branch, tag, or commit SHA works; a ref dp-grpc does not have now fails the build instead of
    building dp-grpc's default branch.
+
+---
+
+## Database credentials removed from the startup log (Issue #316)
+
+Every service logged its MongoDB connection string at startup, username and password included, in
+two `info` lines:
+
+```
+ConfigurationManager - initialize dp configuration: {MongoClient.uri=mongodb://<user>:<password>@...}
+MongoClientBase - mongo client init connectString: mongodb://<user>:<password>@...
+```
+
+Both lines now show the connection string with its credentials replaced by `<redacted>`; the hosts
+and options are still logged. The same redaction applies to the `debug` lines that print the
+configuration file's properties and the JVM system properties, to the line that reports a `-Ddp.*`
+command-line override, and to any configuration value whose key names a secret (for example a key
+containing `password`, `secret` or `token`).
+
+**Recommended action: rotate the database password.** Logs written by earlier versions contain it.
+Anyone with read access to those logs, or to wherever they are shipped and retained, has been able
+to read it, and upgrading does not remove it from logs already written. After upgrading, change the
+password of the MongoDB user in `MongoClient.uri` (`DP_MONGO_DB_URI`), and consider purging or
+restricting the retained logs of earlier versions.
+
+This affects every release that has these log lines, 1.16.0 included.
 
 ---
 

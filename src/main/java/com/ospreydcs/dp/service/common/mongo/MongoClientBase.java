@@ -14,6 +14,7 @@ import com.ospreydcs.dp.service.common.bson.dataset.DataBlockDocument;
 import com.ospreydcs.dp.service.common.bson.dataset.DataSetDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.*;
 import com.ospreydcs.dp.service.common.config.ConfigurationManager;
+import com.ospreydcs.dp.service.common.config.SecretRedactor;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.migration.SchemaVersionMarker;
 import com.ospreydcs.dp.service.common.bson.*;
@@ -468,7 +469,9 @@ public abstract class MongoClientBase {
         String collectionNameDataSets = getCollectionNameDataSets();
         String collectionNameAnnotations = getCollectionNameAnnotations();
         String collectionNameCalculations = getCollectionNameCalculations();
-        logger.info("mongo client init connectString: {} databaseName: {}", connectString, databaseName);
+        // Never log the raw connect string: it carries the database credentials (#316).
+        logger.info("mongo client init connectString: {} databaseName: {}",
+                SecretRedactor.redact(connectString), databaseName);
         logger.info(
                 "mongo client init collection names "
                         + "annotations: {} buckets: {} calculations: {} datasets: {} providers: {} "

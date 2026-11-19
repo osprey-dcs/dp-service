@@ -647,6 +647,12 @@ The record being updated is excluded from the check via `Filters.ne(clientActiva
 - Jobs named as `<APIMethod>Job`, Dispatchers as `<APIMethod>Dispatcher`
 - Error handling uses DpException and structured logging
 - **Exception logging convention (new as of #191):** when logging a caught exception, pass the exception object as the final `logger` argument so the stack trace is captured — e.g. `logger.error("methodName database error: {}", ex.getMessage(), ex)`. Older code logs `ex.getMessage()` only (no trace); migrate those to include `ex` as you touch them.
+- **Never log a configuration value, system property, or connection string unredacted (#316).**
+  `MongoClient.uri` carries the database password, and both `ConfigurationManager` and
+  `MongoClientBase` logged it at `info` on every startup. Pass anything of that kind through
+  `SecretRedactor` (`common/config`): it strips URI userinfo from any value and blanks values under
+  secret-named keys. `SecretRedactorTest` captures the configuration manager's real log output at
+  debug level, so a new log line there that skips the redactor fails it.
 - Integration tests located in `integration.<service>` packages
 - Follow existing patterns for protobuf ↔ MongoDB document conversion
 - Result objects use `ResultStatus` class with `isError` (Boolean) and `msg` (String) fields
