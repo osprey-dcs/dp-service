@@ -7,9 +7,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -33,8 +38,16 @@ public class QueueHandlerBaseWorkerSurvivalTest {
         @Override protected int getNumWorkers_() { return NUM_WORKERS; }
         @Override protected String getServiceName_() { return DpMetrics.SERVICE_QUERY; }
 
+        final List<Throwable> fatalErrors = new CopyOnWriteArrayList<>();
+
         void submit(HandlerJob job) {
             enqueueJob(job, 1);
+        }
+
+        /** Records the call instead of halting, so the test JVM survives to assert on it. */
+        @Override
+        protected void exitOnFatalError(Throwable error) {
+            fatalErrors.add(error);
         }
     }
 
@@ -101,5 +114,40 @@ public class QueueHandlerBaseWorkerSurvivalTest {
     @Test
     public void testWorkerSurvivesAnError() throws InterruptedException {
         assertNextJobRunsAfter(new Error("simulated non-fatal Error"));
+        assertTrue("a plain Error must not end the process", handler.fatalErrors.isEmpty());
+    }
+
+    /**
+     * A stack overflow is local to the job's thread and unwound by the time it is caught, so it is
+     * handled like any other escaped throwable rather than as a reason to exit.
+     */
+    @Test
+    public void testStackOverflowDoesNotExitTheProcess() throws InterruptedException {
+        assertNextJobRunsAfter(new StackOverflowError("simulated"));
+        assertTrue("StackOverflowError must not end the process", handler.fatalErrors.isEmpty());
+    }
+
+    /**
+     * The incident itself: an {@code OutOfMemoryError} out of a job ends the process through the
+     * exit hook. The marker job that follows is a barrier -- with one worker it starts only after
+     * the throwing job has been fully handled, so the hook has been called by then. (It runs at
+     * all only because this handler's hook returns; the production hook halts.)
+     */
+    @Test
+    public void testOutOfMemoryErrorExitsTheProcess() throws InterruptedException {
+        final OutOfMemoryError oom = new OutOfMemoryError("simulated");
+        assertNextJobRunsAfter(oom);
+        assertEquals(1, handler.fatalErrors.size());
+        assertSame(oom, handler.fatalErrors.get(0));
+    }
+
+    @Test
+    public void testFatalErrorClassification() {
+        assertTrue(QueueHandlerBase.isFatal(new OutOfMemoryError()));
+        assertTrue(QueueHandlerBase.isFatal(new InternalError()));
+        assertFalse(QueueHandlerBase.isFatal(new StackOverflowError()));
+        assertFalse(QueueHandlerBase.isFatal(new NoClassDefFoundError()));
+        assertFalse(QueueHandlerBase.isFatal(new Error()));
+        assertFalse(QueueHandlerBase.isFatal(new IllegalStateException()));
     }
 }
