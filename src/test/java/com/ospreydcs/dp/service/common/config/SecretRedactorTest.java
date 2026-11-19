@@ -9,8 +9,13 @@ import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.config.Property;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -30,6 +35,12 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
 
     private static final String PASSWORD = "S3ntinel-Pw";
 
+    /** Appears only as the default of an unresolved placeholder in the test's config file. */
+    private static final String FILE_PASSWORD = "F1le-Default-Pw";
+
+    @Rule
+    public TemporaryFolder tempFolder = new TemporaryFolder();
+
     @Test
     public void testUriUserinfoIsRemovedAndTheRestIsKept() {
         assertEquals(
@@ -44,6 +55,21 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
     public void testPasswordContainingAnAtSignIsRemovedWhole() {
         final String redacted = SecretRedactor.redact("mongodb://u:p@ss@" + PASSWORD + "@host:27017/");
         assertEquals("mongodb://<redacted>@host:27017/", redacted);
+    }
+
+    /**
+     * A password the operator forgot to percent-encode. Base64-generated passwords routinely contain
+     * {@code /} and {@code +}; the driver rejects such a URI, but only after the connect string has
+     * been logged, so the redactor must not stop at the first {@code /} or {@code ?}.
+     */
+    @Test
+    public void testUnescapedSlashOrQuestionMarkInPasswordIsRemovedWhole() {
+        assertEquals("mongodb://<redacted>@host:27017/?authSource=admin",
+                SecretRedactor.redact("mongodb://u:ab/" + PASSWORD + "+Ef==@host:27017/?authSource=admin"));
+        assertEquals("mongodb://<redacted>@host:27017/",
+                SecretRedactor.redact("mongodb://u:ab?" + PASSWORD + "@host:27017/"));
+        assertEquals("mongodb://<redacted>@host/",
+                SecretRedactor.redact("mongodb://u:" + PASSWORD + "/#@host/"));
     }
 
     @Test
@@ -79,11 +105,28 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
 
     /**
      * The whole configuration manager, logging at debug: no line may contain a credential from a
-     * command-line override, from a secret-named key, or from the config file's own default URI,
-     * while the value handed to callers stays intact.
+     * command-line override, from a secret-named key, or from a placeholder default in the config
+     * file, while the value handed to callers stays intact.
+     *
+     * <p>The config file is written here rather than taken from the classpath: the test
+     * {@code application.yml} shadows the main one and carries no {@code MongoClient.uri}, so the
+     * main file's {@code ${DP_MONGO_DB_URI:mongodb://admin:admin@...}} default never reaches this
+     * test. The file's {@code MongoClient.uri} placeholder is logged unresolved by the first debug
+     * line and then overridden from the command line; {@code Other.archiveUri} is left to resolve to
+     * its default, so the resolved form reaches the final info line.
      */
     @Test
-    public void testConfigurationManagerLogsNoCredentials() {
+    public void testConfigurationManagerLogsNoCredentials() throws Exception {
+        final File configFile = tempFolder.newFile("secret-redactor-test.yml");
+        Files.writeString(configFile.toPath(), String.join("\n",
+                "MongoClient:",
+                "  uri: \"${SECRET_REDACTOR_TEST_UNSET_URI:mongodb://fileUser:" + FILE_PASSWORD
+                        + "@file-db.example.net:27017/}\"",
+                "Other:",
+                "  archiveUri: \"${SECRET_REDACTOR_TEST_UNSET_ARCHIVE:mongodb://fileUser:" + FILE_PASSWORD
+                        + "@archive.example.net:27017/}\"",
+                ""), StandardCharsets.UTF_8);
+
         final String uri = "mongodb://dbAdmin:" + PASSWORD + "@db.example.net:27017/?authSource=admin";
         final Properties properties = new Properties();
         properties.setProperty("dp.MongoClient.uri", uri);
@@ -107,7 +150,7 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
         configuration.addLogger(loggerName, loggerConfig);
         context.updateLoggers();
         try {
-            ConfigurationManagerDerived.setInstance(null, properties);
+            ConfigurationManagerDerived.setInstance(configFile.getAbsolutePath(), properties);
             assertEquals("callers must still get the real value",
                     uri, ConfigurationManager.getInstance().getConfigString("MongoClient.uri"));
         } finally {
@@ -119,13 +162,21 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
 
         assertTrue("expected the debug and info configuration lines to be captured", messages.size() >= 4);
         boolean sawHost = false;
+        boolean sawPlaceholder = false;
+        boolean sawResolvedDefault = false;
         for (String message : messages) {
             assertFalse("log line contains the password: " + message, message.contains(PASSWORD));
             assertFalse("log line contains the config file's default credentials: " + message,
-                    message.contains("admin:admin"));
-            sawHost |= message.contains("db.example.net:27017");
+                    message.contains(FILE_PASSWORD));
+            sawHost |= message.contains("@db.example.net:27017");
+            sawPlaceholder |= message.contains("@file-db.example.net:27017");
+            sawResolvedDefault |= message.contains("Other.archiveUri=mongodb://<redacted>@archive.example.net");
         }
-        assertTrue("the redacted URI should still show the host", sawHost);
+        assertTrue("the redacted override URI should still show the host", sawHost);
+        // Guards against the test passing vacuously: the file's credentials must have been logged
+        // (redacted) in both forms, or the assertions above checked nothing.
+        assertTrue("expected the unresolved placeholder to be logged", sawPlaceholder);
+        assertTrue("expected the resolved placeholder default to be logged", sawResolvedDefault);
     }
 
     /**

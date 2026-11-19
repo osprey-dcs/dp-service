@@ -15,11 +15,14 @@ import java.util.regex.Pattern;
  * <p>Two rules, applied together:
  * <ul>
  *   <li><b>URI userinfo.</b> In any value, the {@code user:password@} part of a URI authority is
- *       replaced, whatever the key is called. The match runs to the <em>last</em> {@code @} before
- *       the first {@code /}, {@code ?} or whitespace, which is how the MongoDB driver delimits
- *       userinfo, so a password containing an unescaped {@code @} is still removed whole. It also
- *       covers an unresolved {@code ${VAR:mongodb://user:password@host}} placeholder, whose default
- *       is as much a credential as a resolved value.</li>
+ *       replaced, whatever the key is called. The match runs from {@code ://} to the <em>last</em>
+ *       {@code @} before whitespace, deliberately not stopping at {@code /} or {@code ?}: a password
+ *       an operator forgot to percent-encode (base64-generated passwords routinely contain
+ *       {@code /} and {@code +}) would otherwise end the match early and be logged whole, moments
+ *       before the driver rejects the URI. The cost is that an {@code @} in a path or query option
+ *       also hides the host, which errs the safe way. It also covers an unresolved
+ *       {@code ${VAR:mongodb://user:password@host}} placeholder, whose default is as much a
+ *       credential as a resolved value.</li>
  *   <li><b>Secret-named keys.</b> A value whose key names a secret is replaced entirely, since it
  *       has no structure to preserve.</li>
  * </ul>
@@ -28,7 +31,7 @@ public final class SecretRedactor {
 
     public static final String REDACTED = "<redacted>";
 
-    private static final Pattern URI_USERINFO = Pattern.compile("(://)[^/?\\s]*@");
+    private static final Pattern URI_USERINFO = Pattern.compile("(://)\\S*@");
 
     private static final Pattern SECRET_KEY =
             Pattern.compile("password|passwd|secret|token|credential|apikey|api[-_.]key", Pattern.CASE_INSENSITIVE);
