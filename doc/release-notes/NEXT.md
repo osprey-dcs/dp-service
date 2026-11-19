@@ -21,6 +21,7 @@ person cutting the release has any reason to re-read.
 
 - [Signed release artifacts (Issue #221)](#signed-release-artifacts-issue-221)
 - [Database credentials removed from the startup log (Issue #316)](#database-credentials-removed-from-the-startup-log-issue-316)
+- [Services exit when they run out of memory (Issue #314)](#services-exit-when-they-run-out-of-memory-issue-314)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -201,6 +202,40 @@ password of the MongoDB user in `MongoClient.uri` (`DP_MONGO_DB_URI`), and consi
 restricting the retained logs of earlier versions.
 
 This affects every release that has these log lines, 1.16.0 included.
+
+---
+
+## Services exit when they run out of memory (Issue #314)
+
+**Behavior change: a service that runs out of heap now exits with status 3 instead of staying
+up.** Run each service under a supervisor that restarts it on a non-zero exit.
+
+Previously an `OutOfMemoryError` inside a request permanently ended the worker thread that hit it.
+The service kept running and kept accepting requests, but with fewer workers each time, and once
+the last one was gone every request waited until the client gave up. Nothing in the service's
+health or metrics showed it, and only a restart recovered it.
+
+What changed:
+
+- A handler worker now survives anything a request throws, so a failing request can no longer
+  reduce the service's capacity.
+- An `OutOfMemoryError` or other JVM-level failure during a request halts the process. A JVM that
+  has run out of memory on one thread has usually failed on others too (in the reported incident
+  the MongoDB driver's monitoring thread died at the same moment), so a restart is the only state
+  that can be trusted. `StackOverflowError` is the exception: it is confined to one request, and
+  the service continues.
+- The container image sets `-XX:+ExitOnOutOfMemoryError` through `JAVA_TOOL_OPTIONS`, so an
+  `OutOfMemoryError` on a non-worker thread exits the same way. **If your deployment sets
+  `JAVA_TOOL_OPTIONS` itself, your value replaces the image's: add the flag to it.** If you start
+  the services with your own `java` command, add the flag there.
+- A `querySamples` request that failed this way reported `Self-suppression not permitted` in its
+  error response and in the log. That message hid the real cause and no longer appears.
+
+Details, including how to capture a heap dump, are in
+[Running: out-of-memory behavior](https://github.com/osprey-dcs/dp-service/blob/main/doc/running.md#out-of-memory-behavior).
+
+This applies to all services, since they share the worker pool. For ingestion, an exit loses
+requests that were acknowledged but not yet written, as any other crash does.
 
 ---
 

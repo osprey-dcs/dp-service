@@ -129,7 +129,14 @@ task is the plan-shape test that pins it.
 
 `executeJob()` catches `Throwable`. For anything except a fatal error the worker logs and takes the
 next job, as it does for exceptions today. A `VirtualMachineError` other than `StackOverflowError`
-is fatal: the handler logs it and calls `Runtime.halt()` with a non-zero status.
+is fatal: the handler logs it and calls `Runtime.halt(3)`, the status HotSpot uses for
+`-XX:+ExitOnOutOfMemoryError` (checked on the JDK 21 runtime), so a supervisor sees one value for
+either mechanism. The halt is in a `finally` after the log call, so a second OOM while logging
+cannot prevent it.
+
+`QueueHandlerBase` is shared, so this applies to ingestion and annotation as well as query (agreed
+2026-11-19). For ingestion an exit loses requests acked on enqueue and not yet written, as the JVM
+flag in D2 or any other crash would; a service that keeps acking after an OOM is worse.
 
 - *Why exit:* the incident's OOM also killed the Mongo driver's cluster-monitor thread. A JVM that
   has thrown `OutOfMemoryError` on arbitrary threads cannot be assumed to be working, and the
@@ -208,8 +215,10 @@ abandons through the existing `markAbandoned()` path.
 
 ### D7. The cursor is closed in a guarded `finally`
 
-Replaces the try-with-resources so a failing `close()` is logged and the original throwable
-propagates (finding 2). Applies to the new merge loop.
+Replaces the try-with-resources (finding 2). A `RuntimeException` from `close()` is logged and
+dropped, so it cannot replace the throwable in flight. An `Error` from `close()` propagates: it is
+either the same pre-allocated instance already in flight or a fatal error that should supersede it,
+and with no `addSuppressed` call there is nothing to fail. Applies to the new merge loop.
 
 ## Implementation tasks
 
@@ -222,7 +231,12 @@ propagates (finding 2). Applies to the new merge loop.
   before the slice code is removed.
 - `QueueHandlerBaseWorkerSurvivalTest`: already on the branch; add a case asserting the fatal hook
   fires for `OutOfMemoryError` and does not for `StackOverflowError`.
-- `doc/`: operator note on the exit behaviour and `JAVA_TOOL_OPTIONS`; `NEXT.md` section.
+- `MongoSyncQuerySamplesV2Test`: a cursor that throws one `OutOfMemoryError` instance from `next()`
+  and again from `close()` must surface that instance, not "Self-suppression not permitted". The
+  two leading-gap tests written during triage fail until PR 2, so they are kept on the
+  `issue-314-merge` branch and are not part of PR 1.
+- `doc/running.md`: operator section on the exit behaviour and `JAVA_TOOL_OPTIONS`, written for
+  both image and non-image launches; `NEXT.md` section.
 - `CLAUDE.md`: the worker-survival invariant.
 
 ### PR 2 — time-ordered merge
@@ -268,7 +282,9 @@ agreed, with #314 linked as a sub-issue.
 
 ## Dependencies and sequencing
 
-- PR 1 has no dependencies and ships first.
+- PR 1 has no dependencies and merges first. There is one release, after PR 2 (agreed 2026-11-19):
+  the reporter already runs with `-XX:+ExitOnOutOfMemoryError`, so PR 1 alone changes little for
+  them.
 - PR 2 does not depend on PR 1 and does not need a dp-grpc change or a schema migration.
 - PR 2 task 1 blocks tasks 2–8.
 - Neither PR blocks on the reporter's answers. They affect only the shape of the benchmark fixture

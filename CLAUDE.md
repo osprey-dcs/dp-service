@@ -32,6 +32,41 @@ Each service follows a consistent architecture:
 - **Query**: `query.server.QueryGrpcServer` → `query.service.QueryServiceImpl` → `query.handler.mongo.MongoQueryHandler`
 - **Annotation**: `annotation.server.AnnotationGrpcServer` → `annotation.service.AnnotationServiceImpl` → `annotation.handler.mongo.MongoAnnotationHandler`
 
+### Handler Workers Must Outlive Their Jobs (issue #314)
+
+`QueueHandlerBase`'s workers are long-running `Runnable`s submitted once to a fixed pool. If one
+ends, the pool starts a replacement *thread*, but that thread waits on the pool's own empty task
+queue, not on `requestQueue`, so it never runs a job. A handler that loses its workers this way
+keeps accepting requests and executes none: no error, no log after the first, and `workers.active`
+reads idle. Before #314 `executeJob` caught only `Exception`, so every `Error` out of a job cost a
+worker permanently. The invariants:
+
+- **The worker loop catches `Throwable`, around the poll as well as the job.** Do not narrow it,
+  and do not move work a job can make fail (attribute building, telemetry) outside that catch.
+- **A fatal error halts the process; it is not survived.** `QueueHandlerBase.isFatal()` is any
+  `VirtualMachineError` except `StackOverflowError`. An `OutOfMemoryError` is not local to the
+  thread that reports it (the incident's also killed the Mongo driver's cluster monitor), so the
+  process exits with status 3, the status `-XX:+ExitOnOutOfMemoryError` uses, and the supervisor
+  restarts it. This is the #254 rule: a service that cannot do its job must not appear to serve.
+- **`Runtime.halt()`, not `System.exit()`.** `exit` runs the shutdown hooks, and `fini()` waits for
+  every worker, one of which is the caller. The halt is in a `finally` after the log call so a
+  second OOM while logging cannot prevent it. `exitOnFatalError()` is overridable for the test
+  only.
+- **The image sets `-XX:+ExitOnOutOfMemoryError` through `ENV JAVA_TOOL_OPTIONS`**, not the
+  `ENTRYPOINT`, because three services are started by overriding the command. It covers an OOM on
+  a gRPC or driver thread, which the worker catch cannot see.
+- **Do not close a cursor with try-with-resources on a path an `OutOfMemoryError` can cross.** The
+  JVM reuses one pre-allocated OOM instance, so `close()` can rethrow the object already
+  propagating; the implicit `addSuppressed(self)` then throws `IllegalArgumentException`
+  ("Self-suppression not permitted"), which is a `RuntimeException`, gets caught and reported as
+  the failure, and keeps the real error from the worker that must exit on it.
+  `AbstractQuerySamplesDispatcher.closeQuietly()` closes in a `finally`, logging a
+  `RuntimeException` and letting an `Error` propagate.
+
+A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
+keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival and the classification;
+`testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close.
+
 ## Multi-Project Structure
 The Data Platform consists of two related projects:
 - **dp-grpc** (`~/dp.fork/dp-java/dp-grpc`): Contains protobuf definitions for all service APIs

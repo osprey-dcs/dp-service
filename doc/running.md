@@ -57,6 +57,39 @@ On Kubernetes the metrics port is an ordinary container port; `doc/metrics.md` h
 See [`doc/metrics.md`](metrics.md) for what is measured, the query stage breakdown, the slow-query
 log, and the PromQL for diagnosing a slow query.
 
+## out-of-memory behavior
+
+A service that runs out of heap exits instead of continuing in an undefined state, so that its
+supervisor (Kubernetes, systemd, a wrapper script) restarts it. Before this, an `OutOfMemoryError`
+inside a request ended the worker thread that hit it, permanently; once every worker was gone the
+service still accepted requests and answered none of them
+([#314](https://github.com/osprey-dcs/dp-service/issues/314)).
+
+There are two mechanisms, and a deployment should have both:
+
+- **Built in, always on.** An `OutOfMemoryError` (or other JVM-level failure) thrown while a
+  handler worker is running a request halts the process with **exit status 3**. Requests in flight
+  on the other workers are cut off; clients see the connection drop and should retry.
+- **A JVM flag, `-XX:+ExitOnOutOfMemoryError`.** This covers an `OutOfMemoryError` on any other
+  thread, such as a gRPC or MongoDB driver thread. It also exits with status 3.
+
+The container image sets the flag for every service through the `JAVA_TOOL_OPTIONS` environment
+variable. Two cases need action from the operator:
+
+- **You set `JAVA_TOOL_OPTIONS` yourself** (for example to set `-Xmx`). Your value replaces the
+  image's, so include the flag: `JAVA_TOOL_OPTIONS="-Xmx3g -XX:+ExitOnOutOfMemoryError"`.
+- **You start the services with your own `java` command**, outside the image. Add
+  `-XX:+ExitOnOutOfMemoryError` to that command.
+
+The JVM logs `Picked up JAVA_TOOL_OPTIONS: ...` to stderr at startup, which is the quick way to
+confirm what is in effect.
+
+Run the services under a supervisor that restarts on a non-zero exit, and alert on restarts with
+status 3: each one is a request the heap could not hold. To capture a heap dump for diagnosis, add
+`-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=<a volume with room for the whole heap>`. The
+image does not set this, because a dump is as large as the heap and would be written to the
+container's filesystem.
+
 ## performance benchmark applications
 
 The Data Platform includes tools for measuring performance of the Ingestion and Query Services.  There are special versions of the server applications that override the standard network port number and database, using the MongoDB database "dp-benchmark".  To run a benchmark for either service you must run both the server and client application.  Java command lines are given below.
