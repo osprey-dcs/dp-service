@@ -190,7 +190,9 @@ Both lines now show the connection string with its credentials replaced by `<red
 and options are still logged. The same redaction applies to the `debug` lines that print the
 configuration file's properties and the JVM system properties, to the line that reports a `-Ddp.*`
 command-line override, and to any configuration value whose key names a secret (for example a key
-containing `password`, `secret` or `token`).
+containing `password`, `secret` or `token`). Connection-string options that carry a secret are
+redacted too: the whole `authMechanismProperties` value (which holds `AWS_SESSION_TOKEN` under
+MONGODB-AWS authentication) and any option whose name names a secret.
 
 **Recommended action: rotate the database password.** Logs written by earlier versions contain it.
 Anyone with read access to those logs, or to wherever they are shipped and retained, has been able

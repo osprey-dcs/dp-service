@@ -72,6 +72,40 @@ public class SecretRedactorTest extends ConfigurationManagerTestBase {
                 SecretRedactor.redact("mongodb://u:" + PASSWORD + "/#@host/"));
     }
 
+    /** An unescaped space in the password must not end the match early either. */
+    @Test
+    public void testUnescapedWhitespaceInPasswordIsRemovedWhole() {
+        assertEquals("mongodb://<redacted>@host:27017/",
+                SecretRedactor.redact("mongodb://u:ab " + PASSWORD + "@host:27017/"));
+        assertEquals("mongodb://<redacted>@host:27017/",
+                SecretRedactor.redact("mongodb://u:ab\t" + PASSWORD + "\n@host:27017/"));
+    }
+
+    /**
+     * MONGODB-AWS carries a session token in a URI option, under the {@code MongoClient.uri} key,
+     * so the secret-named-key rule cannot catch it. Ordinary options must survive.
+     */
+    @Test
+    public void testSecretBearingUriOptionsAreRedacted() {
+        assertEquals(
+                "mongodb://<redacted>@cluster.example.net/?authMechanism=MONGODB-AWS"
+                        + "&authMechanismProperties=<redacted>&replicaSet=rs0&authSource=$external",
+                SecretRedactor.redact("mongodb://AKIAEXAMPLE:" + PASSWORD
+                        + "@cluster.example.net/?authMechanism=MONGODB-AWS"
+                        + "&authMechanismProperties=AWS_SESSION_TOKEN:" + PASSWORD + "/+Tk=="
+                        + "&replicaSet=rs0&authSource=$external"));
+        // Without userinfo (credentials from the environment), and as the first option.
+        assertEquals("mongodb://host/?authMechanismProperties=<redacted>",
+                SecretRedactor.redact("mongodb://host/?authMechanismProperties=SERVICE_NAME:mongodb,"
+                        + "AWS_SESSION_TOKEN:" + PASSWORD));
+        // Any option whose name names a secret.
+        assertEquals("mongodb://host/?tls=true&tlsCertificateKeyFilePassword=<redacted>",
+                SecretRedactor.redact("mongodb://host/?tls=true&tlsCertificateKeyFilePassword=" + PASSWORD));
+        // Options carrying no secret are untouched.
+        assertEquals("mongodb://host:27017/?replicaSet=rs0&authSource=admin&w=majority",
+                SecretRedactor.redact("mongodb://host:27017/?replicaSet=rs0&authSource=admin&w=majority"));
+    }
+
     @Test
     public void testUnresolvedPlaceholderDefaultIsRedacted() {
         final String redacted = SecretRedactor.redact("${DP_MONGO_DB_URI:mongodb://admin:" + PASSWORD + "@localhost:27017/}");
