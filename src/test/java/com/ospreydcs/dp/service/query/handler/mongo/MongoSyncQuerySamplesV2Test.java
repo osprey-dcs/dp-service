@@ -113,7 +113,25 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 ResolvedQuery resolvedQuery, long bs, long bn, long es, long en,
                 com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.SpanClassHolder holder) {
             samplesRetrievals++;
-            return super.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
+            final com.mongodb.client.MongoCursor<BucketDocument> cursor =
+                    super.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
+            return (cursor == null) ? null : new CountingCursor(cursor);
+        }
+
+        /** Number of bucket documents the slice drains have pulled from their cursors (#314). */
+        long bucketsRead = 0;
+
+        /** Counts documents as the drain reads them; otherwise a transparent delegate. */
+        private final class CountingCursor implements com.mongodb.client.MongoCursor<BucketDocument> {
+            private final com.mongodb.client.MongoCursor<BucketDocument> delegate;
+            CountingCursor(com.mongodb.client.MongoCursor<BucketDocument> delegate) { this.delegate = delegate; }
+            @Override public void close() { delegate.close(); }
+            @Override public boolean hasNext() { return delegate.hasNext(); }
+            @Override public BucketDocument next() { bucketsRead++; return delegate.next(); }
+            @Override public int available() { return delegate.available(); }
+            @Override public BucketDocument tryNext() { return delegate.tryNext(); }
+            @Override public com.mongodb.ServerCursor getServerCursor() { return delegate.getServerCursor(); }
+            @Override public com.mongodb.ServerAddress getServerAddress() { return delegate.getServerAddress(); }
         }
     }
 
@@ -1388,5 +1406,108 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
         final ColumnTable table = runStatusUnary(resolution.getResolvedQuery());
         assertEquals(List.of(2L, 5L), statusOffsets(table));
+    }
+
+    // -----------------------------------------------------------------------
+    // #314: a leading stretch with no data must not unbound the stream's buffering
+    // -----------------------------------------------------------------------
+
+    private static final String PV_GAP = "gappv";
+    /** Data begins two years into the queried window, as in the #314 incident's request shape. */
+    private static final long GAP_LEAD_SECONDS = 2L * 365 * 24 * 3600;
+    private static final long GAP_WINDOW_B = startSeconds + 1_000_000L;
+    private static final long GAP_DATA_B = GAP_WINDOW_B + GAP_LEAD_SECONDS;
+    private static final int GAP_BUCKETS = 200;
+    private static final int GAP_SAMPLES_PER_BUCKET = 100; // 1 Hz, 100 s per bucket
+    private static final int GAP_PAGE_SIZE = 100;
+    private static boolean gapFixtureInserted = false;
+
+    private static void insertGapFixture() {
+        if (gapFixtureInserted) {
+            return;
+        }
+        final List<BucketDocument> buckets = new ArrayList<>();
+        for (int i = 0; i < GAP_BUCKETS; i++) {
+            buckets.add(scalarBucket(
+                    PV_GAP, GAP_DATA_B + (long) i * GAP_SAMPLES_PER_BUCKET, ONE_SECOND_NANOS, GAP_SAMPLES_PER_BUCKET));
+        }
+        assertEquals(buckets.size(), ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
+        gapFixtureInserted = true;
+    }
+
+    /** Runs the gap-fixture stream, recording how many buckets had been read at the first message. */
+    private long[] runGapStream(long byteBudget) {
+        insertGapFixture();
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+        final int retrievalsBefore = client.samplesRetrievals;
+
+        final QuerySamplesRequest request = samplesRequest(
+                List.of(PV_GAP), GAP_WINDOW_B, 0, GAP_DATA_B + (long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, 0,
+                GAP_PAGE_SIZE, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertFalse(resolution.isError());
+
+        final long[] bucketsAtFirstMessage = {-1};
+        final long[] rows = {0};
+        final int[] messages = {0};
+        final boolean[] failed = {false};
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) {
+                if (r.hasExceptionalResult()) {
+                    failed[0] = true;
+                }
+                if (bucketsAtFirstMessage[0] < 0) {
+                    bucketsAtFirstMessage[0] = client.bucketsRead - bucketsBefore;
+                }
+                messages[0]++;
+                rows[0] += r.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsCount();
+            }
+            @Override public void onError(Throwable t) { failed[0] = true; }
+            @Override public void onCompleted() { }
+        };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, byteBudget, 60 * ONE_SECOND_NANOS, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+
+        assertFalse(failed[0]);
+        assertEquals((long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, rows[0]);
+        final long totalBuckets = client.bucketsRead - bucketsBefore;
+        final int retrievals = client.samplesRetrievals - retrievalsBefore;
+        System.out.println("#314 gap stream budget=" + byteBudget
+                + " bucketsAtFirstMessage=" + bucketsAtFirstMessage[0]
+                + " totalBucketsRead=" + totalBuckets + " (fixture holds " + GAP_BUCKETS + ")"
+                + " retrievals=" + retrievals + " messages=" + messages[0]);
+        return new long[]{bucketsAtFirstMessage[0], totalBuckets, retrievals};
+    }
+
+    /**
+     * With the production message budget, a chunk limit of 100 rows should mean the first message
+     * goes out after about one chunk's worth of data has been read. The empty leading stretch
+     * instead grows the slice to span the whole window, so everything is buffered first.
+     */
+    @Test
+    public void testLeadingGapDoesNotBufferTheWholeWindowBeforeTheFirstChunk() {
+        final long[] result = runGapStream(4_096_000L);
+        // 100 rows is one bucket; allow ten chunks' worth of read-ahead
+        assertTrue("read " + result[0] + " buckets (" + result[0] * GAP_SAMPLES_PER_BUCKET
+                        + " rows) before emitting the first " + GAP_PAGE_SIZE + "-row chunk",
+                result[0] <= 10);
+    }
+
+    /**
+     * When the oversized slice trips the byte budget, it is discarded and halved, and every attempt
+     * re-reads up to a budget's worth of buckets. The total read must stay near the fixture size.
+     */
+    @Test
+    public void testLeadingGapDoesNotRereadBucketsOnBudgetTrips() {
+        // ~9 bytes per double value: a 40,000-byte budget holds ~4,400 of the 20,000 samples
+        final long[] result = runGapStream(40_000L);
+        assertTrue("read " + result[1] + " buckets to return a fixture of " + GAP_BUCKETS,
+                result[1] <= 2L * GAP_BUCKETS);
     }
 }
