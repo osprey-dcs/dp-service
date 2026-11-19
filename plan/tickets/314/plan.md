@@ -277,8 +277,10 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
 - **Separate outgoing message-size key.** `MongoQueryHandler.java:30` reuses the incoming key. Not a
   cause here. Epic.
 
-The epic does not exist yet; it is to be created in `osprey-dcs/data-platform` once this plan is
-agreed, with #314 linked as a sub-issue.
+The epic is osprey-dcs/data-platform#121, with #314 as a sub-issue. Its other children are
+#319 (admission control), #320 (error response for an escaped throwable), #321 (tabular export),
+#322 (outgoing size key), and osprey-dcs/dp-grpc#176–#178 (packed columns, per-PV series,
+reduction). The gRPC health service is the existing #293, which stays under its own epic.
 
 ## Dependencies and sequencing
 
