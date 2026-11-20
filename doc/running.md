@@ -65,13 +65,17 @@ inside a request ended the worker thread that hit it, permanently; once every wo
 service still accepted requests and answered none of them
 ([#314](https://github.com/osprey-dcs/dp-service/issues/314)).
 
-There are two mechanisms, and a deployment should have both:
+There are two mechanisms, and a deployment should have both. Each exits with **status 3**.
+Requests in flight on other threads are cut off; clients see the connection drop and should retry.
 
-- **Built in, always on.** An `OutOfMemoryError` (or other JVM-level failure) thrown while a
-  handler worker is running a request halts the process with **exit status 3**. Requests in flight
-  on the other workers are cut off; clients see the connection drop and should retry.
-- **A JVM flag, `-XX:+ExitOnOutOfMemoryError`.** This covers an `OutOfMemoryError` on any other
-  thread, such as a gRPC or MongoDB driver thread. It also exits with status 3.
+- **A JVM flag, `-XX:+ExitOnOutOfMemoryError`: the primary mechanism.** The JVM exits the moment
+  it runs out of heap (or metaspace, or another JVM-managed area), on whatever thread that happens:
+  a request worker, a gRPC thread, the MongoDB driver.
+- **Built in, always on: the backstop.** An `OutOfMemoryError` or other JVM-level failure that
+  reaches a handler worker halts the process. This covers a launch without the flag, and the one
+  case the flag does not: an `OutOfMemoryError` that library code throws itself, such as a buffer
+  asked to grow past the largest array the JVM allows, which the JVM does not see as running out
+  of memory.
 
 The container image sets the flag for every service through the `JAVA_TOOL_OPTIONS` environment
 variable. Two cases need action from the operator:

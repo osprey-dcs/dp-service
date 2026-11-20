@@ -34,7 +34,10 @@ pool's own empty task queue, not on `requestQueue`, so it never runs a job.
 incident's `Exception in thread "pool-N-thread-1"` signature; the `RuntimeException` twin passes.
 
 Nothing exits the JVM or fails a probe. The image runs a bare `java -jar` (`Dockerfile:64`) with no
-heap or OOM flags.
+heap or OOM flags, and the reporter ran without `-XX:+ExitOnOutOfMemoryError` at the time of the
+incident; they added it afterwards. That is consistent with the evidence: with the flag, the first
+JVM-raised OOM would have exited the process, and neither the one-by-one worker loss nor the
+shared-instance self-suppression in finding 2 could have occurred.
 
 ### 2. "Self-suppression not permitted" hides the real cause — confirmed
 
@@ -127,8 +130,8 @@ task is the plan-shape test that pins it.
 
 ### D1. Workers catch `Throwable`; a fatal `Error` exits the process
 
-`executeJob()` catches `Throwable`. For anything except a fatal error the worker logs and takes the
-next job, as it does for exceptions today. A `VirtualMachineError` other than `StackOverflowError`
+The worker loop (`QueueWorker.run()`) catches `Throwable`, around the queue poll as well as
+`executeJob()`. For anything except a fatal error the worker logs and takes the next job, as it does for exceptions today. A `VirtualMachineError` other than `StackOverflowError`
 is fatal: the handler logs it and calls `Runtime.halt(3)`, the status HotSpot uses for
 `-XX:+ExitOnOutOfMemoryError` (checked on the JDK 21 runtime), so a supervisor sees one value for
 either mechanism. The halt is in a `finally` after the log call, so a second OOM while logging
@@ -285,8 +288,8 @@ reduction). The gRPC health service is the existing #293, which stays under its 
 ## Dependencies and sequencing
 
 - PR 1 has no dependencies and merges first. There is one release, after PR 2 (agreed 2026-11-19):
-  the reporter already runs with `-XX:+ExitOnOutOfMemoryError`, so PR 1 alone changes little for
-  them.
+  the reporter has run with `-XX:+ExitOnOutOfMemoryError` since the incident, so PR 1 alone changes
+  little for them.
 - PR 2 does not depend on PR 1 and does not need a dp-grpc change or a schema migration.
 - PR 2 task 1 blocks tasks 2–8.
 - Neither PR blocks on the reporter's answers. They affect only the shape of the benchmark fixture

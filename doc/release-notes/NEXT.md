@@ -224,8 +224,9 @@ What changed:
   the MongoDB driver's monitoring thread died at the same moment), so a restart is the only state
   that can be trusted. `StackOverflowError` is the exception: it is confined to one request, and
   the service continues.
-- The container image sets `-XX:+ExitOnOutOfMemoryError` through `JAVA_TOOL_OPTIONS`, so an
-  `OutOfMemoryError` on a non-worker thread exits the same way. **If your deployment sets
+- The container image sets `-XX:+ExitOnOutOfMemoryError` through `JAVA_TOOL_OPTIONS`. That flag
+  is the primary mechanism: it exits the moment the JVM runs out of memory, on any thread, and the
+  built-in exit above is the backstop for a launch without it. **If your deployment sets
   `JAVA_TOOL_OPTIONS` itself, your value replaces the image's: add the flag to it.** If you start
   the services with your own `java` command, add the flag there.
 - A `querySamples` request that failed this way reported `Self-suppression not permitted` in its

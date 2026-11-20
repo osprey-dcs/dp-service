@@ -62,9 +62,11 @@ COPY --from=builder /build/artifact/app.jar /app/app.jar
 #   ingestion 50051/9464   query 50052/9465   annotation 50053/9466   ingestion-stream 50054/9467
 EXPOSE 50051 50052 50053 50054 9464 9465 9466 9467
 
-# End the process on any OutOfMemoryError so the supervisor restarts it (issue #314). The handler
-# workers already exit on one thrown inside a job; this covers one thrown on a gRPC or MongoDB
-# driver thread, after which the JVM keeps running but cannot be assumed to work. Set through the
+# End the process on any OutOfMemoryError so the supervisor restarts it (issue #314). This is the
+# primary mechanism: the JVM exits the moment it runs out of memory, on any thread (a handler
+# worker, gRPC, the MongoDB driver). The handler workers' own exit is the backstop for a launch
+# without this flag and for an OutOfMemoryError thrown by library code, which the flag does not
+# cover. Set through the
 # environment rather than the ENTRYPOINT because three of the four services are started by
 # overriding the command (above), which would drop a flag written there. A deployment that sets
 # JAVA_TOOL_OPTIONS itself REPLACES this value and must repeat the flag. See doc/running.md.

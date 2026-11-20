@@ -52,20 +52,37 @@ worker permanently. The invariants:
   every worker, one of which is the caller. The halt is in a `finally` after the log call so a
   second OOM while logging cannot prevent it. `exitOnFatalError()` is overridable for the test
   only.
-- **The image sets `-XX:+ExitOnOutOfMemoryError` through `ENV JAVA_TOOL_OPTIONS`**, not the
-  `ENTRYPOINT`, because three services are started by overriding the command. It covers an OOM on
-  a gRPC or driver thread, which the worker catch cannot see.
-- **Do not close a cursor with try-with-resources on a path an `OutOfMemoryError` can cross.** The
-  JVM reuses one pre-allocated OOM instance, so `close()` can rethrow the object already
-  propagating; the implicit `addSuppressed(self)` then throws `IllegalArgumentException`
-  ("Self-suppression not permitted"), which is a `RuntimeException`, gets caught and reported as
-  the failure, and keeps the real error from the worker that must exit on it.
-  `AbstractQuerySamplesDispatcher.closeQuietly()` closes in a `finally`, logging a
-  `RuntimeException` and letting an `Error` propagate.
+- **The JVM flag is the primary defense; the worker exit is the backstop.** The image sets
+  `-XX:+ExitOnOutOfMemoryError` through `ENV JAVA_TOOL_OPTIONS`, not the `ENTRYPOINT`, because
+  three services are started by overriding the command. The flag exits at the moment the JVM
+  *raises* an OOM, on any thread, before any catch runs — so in the image a heap exhaustion never
+  reaches the worker catch at all, and no `catch (Exception)` anywhere can mask it. What the flag
+  does not cover is an `OutOfMemoryError` *constructed in Java code* (e.g. "Required array length
+  too large" from JDK array growth): that is an ordinary throw, and on a worker only the
+  `isFatal()` exit ends the process. The worker exit also covers a launch without the flag, which
+  is how the reporter ran at the time of the incident.
+- **Without the flag, an OOM can be masked before it reaches the worker, and the code does not
+  try to prevent that everywhere.** The JVM reuses one pre-allocated OOM instance once its
+  backtrace-carrying ones are spent, so a try-with-resources `close()` can rethrow the object
+  already propagating; the implicit `addSuppressed(self)` then throws `IllegalArgumentException`
+  ("Self-suppression not permitted", with the OOM as its cause), and any `catch (Exception)` or
+  `catch (RuntimeException)` on the way turns that into an error response. About ten cursor sites
+  still use try-with-resources (the V2 bucket dispatchers, the `pvStats` and sample-status reads in
+  `MongoSyncQueryClient`, others), and converting them would not close the gap, since every catch
+  that turns an exception into a response does the same. `AbstractQuerySamplesDispatcher.closeQuietly()`
+  exists for **diagnosis**: on the samples slice, the path of the incident, the error response and
+  log name the real cause instead of the self-suppression. Do not read it as the mechanism that
+  guarantees an exit; that is the flag.
+- **A query job's catch classifies `Error` as well as `RuntimeException`.** `QueryV2Job`,
+  `QueryDataJob` and `QueryTableJob` catch `RuntimeException | Error` to call
+  `markFailedWithException()` before `complete()`. Once the worker survives a non-fatal `Error`,
+  the same one can recur on every request, and a `RuntimeException`-only catch recorded each as a
+  success.
 
 A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
 keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival and the classification;
-`testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close.
+`testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close;
+`QueryJobThrowableClassificationTest` pins the job outcome.
 
 ## Multi-Project Structure
 The Data Platform consists of two related projects:
