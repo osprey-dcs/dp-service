@@ -247,6 +247,22 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
     }
 
     /**
+     * Closes a slice cursor from a {@code finally} without the suppression bookkeeping of
+     * try-with-resources (#314). A {@code RuntimeException} from {@code close()} is logged and
+     * dropped, so it cannot replace a throwable already propagating, and after a clean drain the
+     * rows are already assembled. An {@code Error} is left to propagate: it supersedes whatever
+     * was in flight, which is correct for the {@code OutOfMemoryError} this exists for, and
+     * nothing here calls {@code addSuppressed}.
+     */
+    static void closeQuietly(MongoCursor<?> cursor) {
+        try {
+            cursor.close();
+        } catch (RuntimeException ex) {
+            logger.error("error closing querySamples slice cursor: {}", ex.getMessage(), ex);
+        }
+    }
+
+    /**
      * The retrieval loop for one page or stream (issue #274, plan D1–D4): consecutive time slices
      * over every resolved PV, each intersected with the resolved fragments through
      * {@link TimeInterval#clampToWindow}, drained into the shared map and either accepted whole or
@@ -411,7 +427,11 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                 throw new DpException("executeQuerySamplesV2 returned null cursor");
             }
 
-            try (cursor) {
+            // Not try-with-resources (#314): when close() rethrows the throwable already
+            // propagating -- the JVM reuses one pre-allocated OutOfMemoryError instance -- the
+            // implicit addSuppressed(self) throws IllegalArgumentException("Self-suppression not
+            // permitted"), which replaces the real cause in the error response and the log.
+            try {
                 // The status filter is its own query against sampleStatusBuckets, invisible to the
                 // bucket cursor, so it is timed separately -- and in a finally, so a failed read
                 // still contributes the time it took to fail rather than landing in "process".
@@ -446,6 +466,7 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                 // same catch").
                 throw new DpException("querySamples slice retrieval failed: " + ex.getMessage(), ex);
             } finally {
+                closeQuietly(cursor);
                 // In a finally so the db stage is folded in on the reject and error paths too.
                 recordCursorTime(cursor);
             }

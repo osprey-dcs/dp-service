@@ -51,10 +51,12 @@ public class QueryV2Job extends HandlerJob {
         telemetry.markJobStarted(this);
         try {
             dispatcher.executeAndDispatch(resolvedQuery, mongoClient);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             // Classify before completing. The worker swallows whatever escapes here, so without
             // this the request -- which never sent a response and left the caller's stream hanging
-            // -- would be recorded with the telemetry's default outcome of success.
+            // -- would be recorded with the telemetry's default outcome of success. Error too
+            // (#314): the worker now survives a non-fatal one, so a recurring StackOverflowError
+            // or NoClassDefFoundError would otherwise be counted as a stream of successes.
             telemetry.markFailedWithException();
             throw e;
         } finally {

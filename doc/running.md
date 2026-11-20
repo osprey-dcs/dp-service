@@ -57,6 +57,48 @@ On Kubernetes the metrics port is an ordinary container port; `doc/metrics.md` h
 See [`doc/metrics.md`](metrics.md) for what is measured, the query stage breakdown, the slow-query
 log, and the PromQL for diagnosing a slow query.
 
+## out-of-memory behavior
+
+A service that runs out of heap exits instead of continuing in an undefined state, so that its
+supervisor (Kubernetes, systemd, a wrapper script) restarts it. Before this, an `OutOfMemoryError`
+inside a request ended the worker thread that hit it, permanently; once every worker was gone the
+service still accepted requests and answered none of them
+([#314](https://github.com/osprey-dcs/dp-service/issues/314)).
+
+There are two mechanisms, and a deployment should have both. Each exits with **status 3**.
+Requests in flight on other threads are cut off; clients see the connection drop and should retry.
+
+- **A JVM flag, `-XX:+ExitOnOutOfMemoryError`: the primary mechanism.** The JVM exits the moment
+  it runs out of heap (or metaspace, or another JVM-managed area), on whatever thread that happens:
+  a request worker, a gRPC thread, the MongoDB driver.
+- **Built in, always on: the backstop.** An `OutOfMemoryError` or other JVM-level failure that
+  reaches a handler worker halts the process. This covers a launch without the flag. It also
+  covers, on a worker, the case the flag does not: an `OutOfMemoryError` that library code throws
+  itself, which the JVM does not see as running out of memory. Examples are a buffer asked to grow
+  past the largest array the JVM allows, and direct (off-heap) buffer memory running out.
+
+**Neither mechanism covers a library-thrown `OutOfMemoryError` on a thread that is not a handler
+worker**, such as a gRPC or MongoDB driver thread. The flag does not see it and no worker catches
+it, so the process keeps running. It is logged as an exception on that thread. Checked on JDK 21:
+with the flag set, exhausting `-XX:MaxDirectMemorySize` throws and the process continues.
+
+The container image sets the flag for every service through the `JAVA_TOOL_OPTIONS` environment
+variable. Two cases need action from the operator:
+
+- **You set `JAVA_TOOL_OPTIONS` yourself** (for example to set `-Xmx`). Your value replaces the
+  image's, so include the flag: `JAVA_TOOL_OPTIONS="-Xmx3g -XX:+ExitOnOutOfMemoryError"`.
+- **You start the services with your own `java` command**, outside the image. Add
+  `-XX:+ExitOnOutOfMemoryError` to that command.
+
+The JVM logs `Picked up JAVA_TOOL_OPTIONS: ...` to stderr at startup, which is the quick way to
+confirm what is in effect.
+
+Run the services under a supervisor that restarts on a non-zero exit, and alert on restarts with
+status 3: each one is a request the heap could not hold. To capture a heap dump for diagnosis, add
+`-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=<a volume with room for the whole heap>`. The
+image does not set this, because a dump is as large as the heap and would be written to the
+container's filesystem.
+
 ## performance benchmark applications
 
 The Data Platform includes tools for measuring performance of the Ingestion and Query Services.  There are special versions of the server applications that override the standard network port number and database, using the MongoDB database "dp-benchmark".  To run a benchmark for either service you must run both the server and client application.  Java command lines are given below.

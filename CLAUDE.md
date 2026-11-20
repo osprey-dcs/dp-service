@@ -32,6 +32,73 @@ Each service follows a consistent architecture:
 - **Query**: `query.server.QueryGrpcServer` → `query.service.QueryServiceImpl` → `query.handler.mongo.MongoQueryHandler`
 - **Annotation**: `annotation.server.AnnotationGrpcServer` → `annotation.service.AnnotationServiceImpl` → `annotation.handler.mongo.MongoAnnotationHandler`
 
+### Handler Workers Must Outlive Their Jobs (issue #314)
+
+`QueueHandlerBase`'s workers are long-running `Runnable`s submitted once to a fixed pool. If one
+ends, the pool starts a replacement *thread*, but that thread waits on the pool's own empty task
+queue, not on `requestQueue`, so it never runs a job. A handler that loses its workers this way
+keeps accepting requests and executes none: no error, no log after the first, and `workers.active`
+reads idle. Before #314 `executeJob` caught only `Exception`, so every `Error` out of a job cost a
+worker permanently. The invariants:
+
+- **The worker loop catches `Throwable`, around the poll as well as the job.** Do not narrow it,
+  and do not move work a job can make fail (attribute building, telemetry) outside that catch.
+  **The handler that catch calls must never throw** either: reporting runs arbitrary
+  `toString()` code and allocates, and before the PR #318 review a throw while logging escaped
+  `run()` and ended the worker anyway. Every reporting step in `handleWorkerThrowable()` is under
+  its own `catch (Throwable)`; a fatal error raised while reporting goes to the exit hook, and the
+  fatal path calls the hook from a `finally`.
+- **A fatal error halts the process; it is not survived.** `QueueHandlerBase.isFatal()` is any
+  `VirtualMachineError` except `StackOverflowError`. An `OutOfMemoryError` is not local to the
+  thread that reports it (the incident's also killed the Mongo driver's cluster monitor), so the
+  process exits with status 3, the status `-XX:+ExitOnOutOfMemoryError` uses, and the supervisor
+  restarts it. This is the #254 rule: a service that cannot do its job must not appear to serve.
+- **`Runtime.halt()`, not `System.exit()`.** `exit` runs the shutdown hooks, and `fini()` waits for
+  every worker, one of which is the caller. The halt is in a `finally` after the log call so a
+  second OOM while logging cannot prevent it. `exitOnFatalError()` is overridable for the test
+  only.
+- **The JVM flag is the primary defense; the worker exit is the backstop.** The image sets
+  `-XX:+ExitOnOutOfMemoryError` through `ENV JAVA_TOOL_OPTIONS`, not the `ENTRYPOINT`, because
+  three services are started by overriding the command. The flag exits at the moment the JVM
+  *raises* an OOM, on any thread, before any catch runs — so in the image a heap exhaustion never
+  reaches the worker catch at all, and no `catch (Exception)` anywhere can mask it. What the flag
+  does not cover is an `OutOfMemoryError` *constructed in Java code* (e.g. "Required array length
+  too large" from JDK array growth): that is an ordinary throw, and on a worker only the
+  `isFatal()` exit ends the process. The worker exit also covers a launch without the flag, which
+  is how the reporter ran at the time of the incident. **A Java-constructed OOM off the worker
+  threads is covered by neither, and for gRPC direct memory that is acceptable.** Direct buffer
+  exhaustion ("Cannot reserve ... direct buffer memory") is thrown by `java.nio`, so the flag does
+  not fire. Measured on this classpath (grpc-netty-shaded 1.65.1, JDK 21, flag set,
+  `-XX:MaxDirectMemorySize=16m`): outbound, the error is thrown from `onNext` on the calling
+  thread, which here is a handler worker, so the `isFatal()` exit halts; inbound, it is raised on
+  a transport thread, gRPC logs "Transport failed" and closes that one connection, the client gets
+  `UNAVAILABLE` naming the cause, and the process continues with the memory released. gRPC catches
+  the inbound error itself, so a default uncaught-exception handler would not see it; do not add
+  one for this. Not measured: the MongoDB driver's threads.
+- **Without the flag, an OOM can be masked before it reaches the worker, and the code does not
+  try to prevent that everywhere.** The JVM reuses one pre-allocated OOM instance once its
+  backtrace-carrying ones are spent, so a try-with-resources `close()` can rethrow the object
+  already propagating; the implicit `addSuppressed(self)` then throws `IllegalArgumentException`
+  ("Self-suppression not permitted", with the OOM as its cause), and any `catch (Exception)` or
+  `catch (RuntimeException)` on the way turns that into an error response. About ten cursor sites
+  still use try-with-resources (the V2 bucket dispatchers, the `pvStats` and sample-status reads in
+  `MongoSyncQueryClient`, others), and converting them would not close the gap, since every catch
+  that turns an exception into a response does the same. `AbstractQuerySamplesDispatcher.closeQuietly()`
+  exists for **diagnosis**: on the samples slice, the path of the incident, the error response and
+  log name the real cause instead of the self-suppression. Do not read it as the mechanism that
+  guarantees an exit; that is the flag.
+- **A query job's catch classifies `Error` as well as `RuntimeException`.** `QueryV2Job`,
+  `QueryDataJob` and `QueryTableJob` catch `RuntimeException | Error` to call
+  `markFailedWithException()` before `complete()`. Once the worker survives a non-fatal `Error`,
+  the same one can recur on every request, and a `RuntimeException`-only catch recorded each as a
+  success.
+
+A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
+keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival (including a throw while
+reporting) and the classification;
+`testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close;
+`QueryJobThrowableClassificationTest` pins the job outcome.
+
 ## Multi-Project Structure
 The Data Platform consists of two related projects:
 - **dp-grpc** (`~/dp.fork/dp-java/dp-grpc`): Contains protobuf definitions for all service APIs

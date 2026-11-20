@@ -359,13 +359,62 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 responses.get(0).hasExceptionalResult());
     }
 
+    /**
+     * An {@code OutOfMemoryError} during a slice must leave the dispatcher as itself (#314). The
+     * JVM reuses one pre-allocated instance when the heap is exhausted, so the cursor's
+     * {@code close()} can throw the very object already propagating. Under try-with-resources that
+     * made the implicit {@code addSuppressed} throw {@code IllegalArgumentException}
+     * ("Self-suppression not permitted"), which the slice's {@code RuntimeException} catch then
+     * reported to the caller as the failure -- hiding the real cause in the incident's response
+     * and log, and keeping the error from the worker that must exit the process on it.
+     */
+    @Test
+    public void testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression() {
+        final QuerySamplesRequest request =
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false);
+        final ResolutionResult resolution = resolve(request);
+        assertFalse(resolution.isError());
+
+        final OutOfMemoryError oom = new OutOfMemoryError("simulated");
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface failingClient =
+                new FailingSliceClient((TestSyncClient) clientTestInterface, oom);
+
+        final List<QuerySamplesResponse> responses = new ArrayList<>();
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
+            @Override public void onError(Throwable t) { }
+            @Override public void onCompleted() { }
+        };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final QuerySamplesUnaryDispatcher dispatcher =
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry);
+
+        Throwable thrown = null;
+        try {
+            new QueryV2Job(resolution.getResolvedQuery(), dispatcher, failingClient, telemetry).execute();
+        } catch (Throwable t) {
+            thrown = t;
+        }
+        assertSame("the original error must propagate to the worker", oom, thrown);
+        assertTrue("no response may report a self-suppression failure: " + responses,
+                responses.isEmpty());
+    }
+
     /** Delegates to the real client but hands back a cursor that fails during iteration. */
     private static final class FailingSliceClient
             extends com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient {
         private final TestSyncClient delegate;
 
+        /** When set, thrown from iteration in place of the MongoException and again from close(). */
+        private final Error errorAlsoThrownOnClose;
+
         FailingSliceClient(TestSyncClient delegate) {
+            this(delegate, null);
+        }
+
+        FailingSliceClient(TestSyncClient delegate, Error errorAlsoThrownOnClose) {
             this.delegate = delegate;
+            this.errorAlsoThrownOnClose = errorAlsoThrownOnClose;
         }
 
         @Override
@@ -384,10 +433,18 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                     if (served++ == 0 && real.hasNext()) {
                         return real.next();
                     }
+                    if (errorAlsoThrownOnClose != null) {
+                        throw errorAlsoThrownOnClose;
+                    }
                     throw new com.mongodb.MongoException("simulated getMore failure mid-slice");
                 }
                 @Override public BucketDocument tryNext() { return hasNext() ? next() : null; }
-                @Override public void close() { real.close(); }
+                @Override public void close() {
+                    real.close();
+                    if (errorAlsoThrownOnClose != null) {
+                        throw errorAlsoThrownOnClose;
+                    }
+                }
                 @Override public int available() { return real.available(); }
                 @Override public com.mongodb.ServerCursor getServerCursor() { return real.getServerCursor(); }
                 @Override public com.mongodb.ServerAddress getServerAddress() { return real.getServerAddress(); }
