@@ -23,7 +23,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +35,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Plan-shape tests for the bucket retrieval queries (#232 plan Task 10, extended by #271): the
@@ -117,12 +120,22 @@ public class MongoBucketQueryPlanTest {
     private static final TimeInterval FRAGMENT_1 = new TimeInterval(BEGIN_SECONDS, 0L, BASE_SECONDS + 292, 0L);
     private static final TimeInterval FRAGMENT_2 = new TimeInterval(BASE_SECONDS + 293, 0L, END_SECONDS, 0L);
 
+    // time-ordered samples fixture (#314): one more PV than the server will merge-sort, each
+    // with twenty one-second, one-sample buckets
+    private static final String PV_MERGE_BASE = "mergepv_";
+    private static final int MERGE_PVS = 201;
+    private static final int MERGE_BUCKETS = 20;
+    private static final TimeInterval MERGE_WINDOW = new TimeInterval(BASE_SECONDS + 5, 0L, BASE_SECONDS + 15, 0L);
+    private static final TimeInterval MERGE_FRAGMENT_1 = new TimeInterval(BASE_SECONDS + 5, 0L, BASE_SECONDS + 8, 0L);
+    private static final TimeInterval MERGE_FRAGMENT_2 = new TimeInterval(BASE_SECONDS + 10, 0L, BASE_SECONDS + 15, 0L);
+
     private static final String KEY_STAGE = "stage";
     private static final String KEY_KEY_PATTERN = "keyPattern";
     private static final String KEY_INDEX_BOUNDS = "indexBounds";
     private static final String STAGE_COLLSCAN = "COLLSCAN";
     private static final String STAGE_IXSCAN = "IXSCAN";
     private static final String STAGE_SORT = "SORT";
+    private static final String STAGE_SORT_MERGE = "SORT_MERGE";
 
     /** The shipped compound index's key order, as explain renders {@code keyPattern}. */
     private static final List<String> SHIPPED_INDEX_KEYS = List.of(
@@ -163,6 +176,16 @@ public class MongoBucketQueryPlanTest {
 
         List<Document> listBucketIndexes() {
             return mongoCollectionBuckets.listIndexes().into(new ArrayList<>());
+        }
+
+        /** A hinted find in the time-ordered sort with an arbitrary filter, for counterfactuals. */
+        FindIterable<BucketDocument> timeOrderedFind(Bson filter) {
+            return mongoCollectionBuckets
+                    .find(filter)
+                    .sort(ascending(
+                            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                            BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS))
+                    .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
         }
 
         /** The V1 query as issued before #271: same filter and sort, no hint. */
@@ -216,6 +239,10 @@ public class MongoBucketQueryPlanTest {
             client.insertBuckets(deep.subList(from, Math.min(deep.size(), from + INSERT_BATCH)));
         }
         client.recordSpan(PV_DEEP, 0L);
+
+        // explained with explicit spans, so no pvStats documents are needed for these
+        client.insertBuckets(BucketUtility.createBucketDocuments(
+                BASE_SECONDS, 1, 1, PV_MERGE_BASE, MERGE_PVS, MERGE_BUCKETS));
     }
 
     @AfterClass
@@ -389,6 +416,168 @@ public class MongoBucketQueryPlanTest {
             assertShippedIndexPlan(explanation);
             assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS);
             assertEquals(4, executionStat(explanation, "nReturned"));
+        }
+    }
+
+    // ---- time-ordered samples retrieval (#314) ------------------------------------------------
+
+    private static List<String> mergePvNames(int count) {
+        final List<String> pvNames = new ArrayList<>();
+        for (int i = 1; i <= count; i++) {
+            pvNames.add(PV_MERGE_BASE + i);
+        }
+        return pvNames;
+    }
+
+    private static boolean hasStage(Document plan, String stageName) {
+        final List<Document> stages = new ArrayList<>();
+        collectStages(plan, stages);
+        return stages.stream().anyMatch(stage -> stageName.equals(stage.getString(KEY_STAGE)));
+    }
+
+    /**
+     * The gate for the #314 merge redesign: the samples paths read buckets in {@code firstTime}
+     * order across PVs, which is only usable if the server streams that order from the index
+     * instead of sorting the result. For one PV that is a plain scan; for several it is one scan
+     * per PV under a {@code SORT_MERGE}. The planner must also have no alternative: a plan chosen
+     * by trial was measured picking a blocking {@code SORT} for small results (see
+     * {@link #testTimeOrderedCounterfactuals}), so "no rejected plans" is part of the shape.
+     */
+    @Test
+    public void testTimeOrderedSamplesQueryHasExactlyOneStreamingPlan() {
+        final int groupSize = MongoSyncQueryClient.SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND;
+        for (int pvCount : new int[] {1, 2, groupSize}) {
+            for (List<TimeInterval> intervals : List.of(List.of(MERGE_WINDOW), List.of(MERGE_FRAGMENT_1, MERGE_FRAGMENT_2))) {
+                for (long span : new long[] {0L, 7L, 300L}) {
+                    final String label = pvCount + " PVs, " + intervals.size() + " fragment(s), span " + span + ": ";
+                    final Document explanation = client
+                            .bucketSamplesTimeOrderedQuery(mergePvNames(pvCount), intervals, span)
+                            .explain(ExplainVerbosity.EXECUTION_STATS);
+                    final Document plan = winningPlan(explanation);
+
+                    assertTrue(label + "the planner has alternatives: " + explanation.toJson(),
+                            rejectedPlans(explanation).isEmpty());
+                    assertShippedIndexPlan(explanation);
+                    // indexScans() fails on a SORT or COLLSCAN stage
+                    assertEquals(label + "one index scan per PV: " + plan.toJson(), pvCount, indexScans(plan).size());
+                    assertEquals(label + plan.toJson(), pvCount > 1, hasStage(plan, STAGE_SORT_MERGE));
+                    assertIndexScansWithin(plan, BASE_SECONDS + 5 - span, BASE_SECONDS + 15);
+
+                    final int bucketsPerPv = intervals.size() == 1 ? 10 : 8;
+                    assertEquals(label, (long) pvCount * bucketsPerPv, executionStat(explanation, "nReturned"));
+                    assertEquals(label + "the overlap residual runs after the fetch",
+                            executionStat(explanation, "totalKeysExamined"),
+                            executionStat(explanation, "totalDocsExamined"));
+                }
+            }
+        }
+    }
+
+    /** Each span class's find carries its own bound, as on the PV-major path (#274). */
+    @Test
+    public void testTimeOrderedSamplesQueryBoundsEachSpanClassSeparately() throws DpException {
+        final List<TimeInterval> intervals = List.of(FRAGMENT_1, FRAGMENT_2);
+        final List<SpanClass> spanClasses = client.resolveSpanClasses(List.of(PV_1, PV_2));
+        assertEquals(2, spanClasses.size());
+        for (SpanClass spanClass : spanClasses) {
+            final Document explanation = client
+                    .bucketSamplesTimeOrderedQuery(spanClass.pvNames(), intervals, spanClass.maxSpanSeconds())
+                    .explain(ExplainVerbosity.EXECUTION_STATS);
+            assertTrue(rejectedPlans(explanation).isEmpty());
+            assertShippedIndexPlan(explanation);
+            assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS);
+            assertEquals(4, executionStat(explanation, "nReturned"));
+        }
+    }
+
+    /**
+     * The double {@code $nor} must not change what matches. Compares against the PV-major samples
+     * query on windows that cut through buckets at nanosecond boundaries (the fixture's buckets
+     * hold ten samples, at .0 through .9 of their second), and checks the order.
+     */
+    @Test
+    public void testTimeOrderedSamplesQueryReturnsTheSameBucketsInTimeOrder() {
+        final List<String> pvNames = List.of(PV_1, PV_2);
+        final List<List<TimeInterval>> cases = List.of(
+                // begin after bucket 290's last sample, end one nanosecond into bucket 295
+                List.of(new TimeInterval(BASE_SECONDS + 290, 950_000_000L, BASE_SECONDS + 295, 1L)),
+                // begin on bucket 290's last sample, end exactly at bucket 295's first (exclusive)
+                List.of(new TimeInterval(BASE_SECONDS + 290, 900_000_000L, BASE_SECONDS + 295, 0L)),
+                List.of(FRAGMENT_1, FRAGMENT_2),
+                List.of(new TimeInterval(BASE_SECONDS + 280, 950_000_000L, BASE_SECONDS + 282, 1L),
+                        new TimeInterval(BASE_SECONDS + 290, 900_000_000L, BASE_SECONDS + 291, 0L)));
+        final int[] expectedPerPv = {5, 5, 4, 3};
+
+        for (int i = 0; i < cases.size(); i++) {
+            final List<TimeInterval> intervals = cases.get(i);
+            for (long span : new long[] {0L, SPAN_PV_1_SECONDS}) {
+                final SpanClass spanClass = new SpanClass(pvNames, span);
+                final Set<Object> expectedIds = new HashSet<>();
+                for (BucketDocument bucket : client.bucketSamplesQueryV2(null, intervals, spanClass)) {
+                    expectedIds.add(bucket.getId());
+                }
+                assertEquals("case " + i, 2 * expectedPerPv[i], expectedIds.size());
+
+                final Set<Object> ids = new HashSet<>();
+                long previousSeconds = Long.MIN_VALUE;
+                long previousNanos = Long.MIN_VALUE;
+                for (BucketDocument bucket : client.bucketSamplesTimeOrderedQuery(pvNames, intervals, span)) {
+                    ids.add(bucket.getId());
+                    final long seconds = bucket.getDataTimestamps().getFirstTime().getSeconds();
+                    final long nanos = bucket.getDataTimestamps().getFirstTime().getNanos();
+                    assertTrue("case " + i + ": buckets out of firstTime order",
+                            seconds > previousSeconds || (seconds == previousSeconds && nanos >= previousNanos));
+                    previousSeconds = seconds;
+                    previousNanos = nanos;
+                }
+                assertEquals("case " + i + ", span " + span, expectedIds, ids);
+            }
+        }
+    }
+
+    /**
+     * Why the query is built the way it is. Both halves keep the fixture honest: if either stops
+     * producing a blocking sort, the limit or the wrap it justifies is no longer doing anything.
+     */
+    @Test
+    public void testTimeOrderedCounterfactuals() {
+        final Bson overlap = MongoQueryFilterBuilder.bucketOverlapsRangeFilter(
+                BASE_SECONDS + 5, 0L, BASE_SECONDS + 15, 0L, 7L);
+
+        // without the double $nor the (seconds, nanos) $ors are indexable, and the planner
+        // enumerates index-union plans that need a blocking SORT beside the streaming one
+        final Document unwrapped = client.timeOrderedFind(
+                Filters.and(Filters.in(BsonConstants.BSON_KEY_PV_NAME, mergePvNames(5)), overlap))
+                .explain(ExplainVerbosity.QUERY_PLANNER);
+        final List<Document> candidates = new ArrayList<>(rejectedPlans(unwrapped));
+        candidates.add(winningPlan(unwrapped));
+        assertTrue("expected several candidate plans: " + unwrapped.toJson(), candidates.size() > 1);
+        assertTrue("expected a blocking-sort candidate: " + unwrapped.toJson(),
+                candidates.stream().anyMatch(plan -> hasStage(plan, STAGE_SORT)));
+
+        // one PV more than the server will merge (internalQueryMaxScansToExplode, 200): the
+        // production filter shape, and the whole result is sorted in memory
+        final List<Bson> parts = new ArrayList<>();
+        parts.add(Filters.in(BsonConstants.BSON_KEY_PV_NAME, mergePvNames(MERGE_PVS)));
+        parts.addAll(MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds(
+                BASE_SECONDS + 5, BASE_SECONDS + 15, 7L));
+        parts.add(Filters.nor(Filters.nor(overlap)));
+        final Document tooManyPvs = client.timeOrderedFind(Filters.and(parts)).explain(ExplainVerbosity.QUERY_PLANNER);
+        assertTrue("expected a blocking sort above the scan limit: " + tooManyPvs.toJson(),
+                hasStage(winningPlan(tooManyPvs), STAGE_SORT));
+        final Document atTheLimit = client.timeOrderedFind(Filters.and(
+                Filters.in(BsonConstants.BSON_KEY_PV_NAME, mergePvNames(MERGE_PVS - 1)),
+                parts.get(1), parts.get(2), parts.get(3))).explain(ExplainVerbosity.QUERY_PLANNER);
+        assertFalse("expected the merge plan at 200 PVs: " + atTheLimit.toJson(),
+                hasStage(winningPlan(atTheLimit), STAGE_SORT));
+
+        // which is why the builder refuses a group over its limit
+        final int overLimit = MongoSyncQueryClient.SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND + 1;
+        try {
+            client.bucketSamplesTimeOrderedQuery(mergePvNames(overLimit), List.of(MERGE_WINDOW), 0L);
+            fail("expected a group over the limit to be refused");
+        } catch (IllegalArgumentException expected) {
+            // refused before any query is issued
         }
     }
 

@@ -334,10 +334,83 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * {@code MongoBucketQueryPlanTest} pins the resulting plan shape against an adversarial index set.
      */
     FindIterable<BucketDocument> bucketFind(Bson filter) {
+        return bucketFind(filter, bucketSort());
+    }
+
+    private FindIterable<BucketDocument> bucketFind(Bson filter, Bson sort) {
         return mongoCollectionBuckets
                 .find(filter)
-                .sort(bucketSort())
+                .sort(sort)
                 .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
+    }
+
+    /**
+     * Sort by bucket start time alone, for the time-ordered samples retrieval (#314). Deliberately
+     * without a trailing {@code pvName}: measured, adding it defeats the merge plan and the server
+     * falls back to a blocking {@code SORT}. Ties between PVs are broken in the service.
+     */
+    private static Bson bucketTimeSort() {
+        return ascending(
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
+    }
+
+    /**
+     * The most PVs one time-ordered samples find may name (#314). The server streams this query
+     * by scanning the index once per PV and merging the scans ({@code SORT_MERGE}); above
+     * {@code internalQueryMaxScansToExplode} scans (200 by default, measured as the limit on
+     * MongoDB 8.0) it sorts the whole result in memory instead. 50 leaves a factor of four for a
+     * server parameter set lower or a planner that counts differently.
+     */
+    static final int SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND = 50;
+
+    /**
+     * Builds the time-ordered samples retrieval query for one group of PVs sharing a span bound
+     * (#314), without opening a cursor, so {@code MongoBucketQueryPlanTest} can {@code explain()}
+     * it. Buckets come back ordered by {@code firstTime} across the group's PVs, which is what
+     * lets the samples paths merge them into rows as they arrive instead of buffering a window.
+     *
+     * <p>The filter is the same predicate as {@link #bucketSamplesQueryV2}'s, arranged so the
+     * planner has exactly one plan:
+     * <ul>
+     * <li>The {@code firstTime.seconds} bounds are top-level, over the fragments' earliest begin
+     *     and latest end, so every per-PV scan is the interval {@code [minBegin - span, maxEnd]}
+     *     (the #271 hoist, applied here to a single fragment too).</li>
+     * <li>The overlap predicate is wrapped in a double {@code $nor}, which leaves its meaning
+     *     unchanged and keeps the planner from indexing its {@code $or}s. Unwrapped, each
+     *     {@code (seconds, nanos)} {@code $or} is a candidate for an index-union plan, and a union
+     *     cannot stream the sort: measured on the plan test's fixture, the planner enumerated up
+     *     to nine such plans with a blocking {@code SORT} beside the streaming one, chose by
+     *     trial, and picked a blocking one for small results. A plan chosen by trial can also be
+     *     cached and reused for a long range. With the wrap there is one candidate and no trial.</li>
+     * </ul>
+     * The overlap predicate still comes from {@link #fragmentsOverlapFilter}, so it cannot drift
+     * from the other bucket queries (#207).
+     *
+     * @param pvNames at most {@link #SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND} names
+     */
+    FindIterable<BucketDocument> bucketSamplesTimeOrderedQuery(
+            List<String> pvNames, List<TimeInterval> clampedIntervals, long maxSpanSeconds) {
+
+        if (pvNames.size() > SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
+            throw new IllegalArgumentException(
+                    "time-ordered samples query names " + pvNames.size() + " PVs, limit "
+                            + SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND);
+        }
+        final Bson overlapFilter = fragmentsOverlapFilter(clampedIntervals, maxSpanSeconds);
+
+        long minBeginSeconds = Long.MAX_VALUE;
+        long maxEndSeconds = Long.MIN_VALUE;
+        for (TimeInterval interval : clampedIntervals) {
+            minBeginSeconds = Math.min(minBeginSeconds, interval.getBeginSeconds());
+            maxEndSeconds = Math.max(maxEndSeconds, interval.getEndSeconds());
+        }
+        final List<Bson> parts = new ArrayList<>();
+        parts.add(in(BsonConstants.BSON_KEY_PV_NAME, pvNames));
+        parts.addAll(MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds(
+                minBeginSeconds, maxEndSeconds, maxSpanSeconds));
+        parts.add(nor(nor(overlapFilter)));
+        return bucketFind(and(parts), bucketTimeSort());
     }
 
     /**

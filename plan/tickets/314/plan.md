@@ -118,8 +118,22 @@ Keys examined equalled documents returned in every streaming case. The threshold
 `pvName` as a trailing sort key defeats the plan (blocking `SORT`), so the tie-break must be done in
 the service.
 
-Not yet checked: the same plan with a multi-fragment `$or` (configuration selector). PR 2's first
-task is the plan-shape test that pins it.
+**PR 2 task 1 result (2026-11-20), which supersedes the table's thresholds.** The plan above was
+the planner's *choice among several*, not the only plan. With the production overlap filter the
+planner also enumerates index-union plans over the filter's `(seconds, nanos)` `$or`s (three
+candidates for one fragment, ten for two), every one of which needs a blocking `SORT`, and it
+picks by trial. On the plan test's fixture it picked a blocking sort for 2 to 5 PVs with one
+fragment and a span of 7 s or more. A trial winner can also be cached and reused for a long range.
+
+Wrapping the overlap predicate in a double `$nor`, with the `firstTime.seconds` bounds hoisted to
+the top level, leaves the predicate's meaning unchanged and makes it non-indexable. *Measured:*
+every case then has exactly one candidate plan and no rejected plans: a plain `IXSCAN` for one PV,
+`FETCH < SORT_MERGE < IXSCAN × N` for N PVs, for one, two and three fragments, spans 0 to 300 s,
+with keys examined equal to documents examined. The merge holds up to **200** PVs per find and
+becomes a blocking `SORT` at 201 (one scan per PV against `internalQueryMaxScansToExplode`; the
+earlier figure of 100 was for the unwrapped filter, which costs two scans per PV).
+
+Not re-measured with the wrapped filter: the two sharded layouts in the table.
 
 ### 8. Cancellation is noticed only at emit — confirmed
 
@@ -166,8 +180,10 @@ default; the runbook says so.
 
 - **Retrieval.** One `find` per (span class, PV group), sorted `(firstTime.seconds, firstTime.nanos)`
   over the whole remaining window of every fragment, merged in the service into one time-ordered
-  bucket stream. A PV group holds at most 50 PVs — half the measured threshold, since the limit is a
-  server parameter and a planner detail.
+  bucket stream. A PV group holds at most 50 PVs, a quarter of the measured threshold of 200, since
+  the limit is a server parameter and a planner detail. The filter hoists the `firstTime.seconds`
+  bounds and wraps the overlap predicate in a double `$nor` so the planner has one plan (finding 7,
+  task 1 result); `MongoSyncQueryClient.bucketSamplesTimeOrderedQuery()` builds it.
 - **Merge.** Each bucket read becomes an *open bucket*: its decoded column plus a position, advanced
   past samples before the window begin. A min-heap over the open buckets yields samples in timestamp
   order. The **watermark** is the `firstTime` of the next unread bucket. Every sample strictly before
@@ -247,6 +263,8 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
 1. `MongoBucketQueryPlanTest`: pin the time-ordered plan (no `SORT` stage, one `IXSCAN` per PV) for
    a single fragment, a multi-fragment `$or`, and a mixed span-class request, at the group size.
    **This gates the rest:** if the multi-fragment case does not stream, D3's retrieval changes.
+   *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* Still to do
+   before the PR: re-check the two sharded layouts with the wrapped filter.
 2. `MongoSyncQueryClient.java`: time-ordered samples query builder and cursor open, per span class
    and PV group, with `batchSize` (D5); a time-ordered merging cursor beside `MergedBucketCursor`.
    `MongoQueryClientInterface`: the new method, replacing the six-argument slice overload.
