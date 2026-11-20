@@ -7,6 +7,7 @@ import com.ospreydcs.dp.service.common.bson.TimestampDocument;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -33,10 +34,20 @@ public class MergedBucketCursor implements MongoCursor<BucketDocument> {
 
     private final List<MongoCursor<BucketDocument>> cursors;
     private final BucketDocument[] heads;
+    private final Comparator<BucketDocument> order;
     private boolean primed = false;
     private boolean closed = false;
 
     public MergedBucketCursor(List<MongoCursor<BucketDocument>> cursors) {
+        this(cursors, MergedBucketCursor::compare);
+    }
+
+    /**
+     * Merges cursors that are each sorted by {@code order}. The time-ordered samples retrieval
+     * (#314) passes {@link #TIME_ORDER}; its inputs are one cursor per PV group and span class.
+     */
+    public MergedBucketCursor(List<MongoCursor<BucketDocument>> cursors, Comparator<BucketDocument> order) {
+        this.order = order;
         if (cursors == null || cursors.isEmpty()) {
             throw new IllegalArgumentException("MergedBucketCursor requires at least one cursor");
         }
@@ -66,7 +77,7 @@ public class MergedBucketCursor implements MongoCursor<BucketDocument> {
             if (heads[i] == null) {
                 continue;
             }
-            if (best < 0 || compare(heads[i], heads[best]) < 0) {
+            if (best < 0 || order.compare(heads[i], heads[best]) < 0) {
                 best = i;
             }
         }
@@ -88,6 +99,16 @@ public class MergedBucketCursor implements MongoCursor<BucketDocument> {
         if (byName != 0) {
             return byName;
         }
+        return compareFirstTime(a, b);
+    }
+
+    /**
+     * Order by bucket start time alone, the sort of the time-ordered samples query (#314). Ties
+     * between PVs are left in input order; the consumer does not depend on it.
+     */
+    public static final Comparator<BucketDocument> TIME_ORDER = MergedBucketCursor::compareFirstTime;
+
+    static int compareFirstTime(BucketDocument a, BucketDocument b) {
         final TimestampDocument firstA = a.getDataTimestamps() == null ? null : a.getDataTimestamps().getFirstTime();
         final TimestampDocument firstB = b.getDataTimestamps() == null ? null : b.getDataTimestamps().getFirstTime();
         final long secsA = firstA == null ? Long.MIN_VALUE : firstA.getSeconds();

@@ -63,7 +63,7 @@ public class QuerySamplesDispatcherNullCursorTest {
         @Override public List<TimeInterval> resolveConfigurationIntervals(List<Bson> f) { return List.of(); }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery q) { return null; }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery q) { return null; }
-        @Override public MongoCursor<BucketDocument> executeQuerySamplesV2(ResolvedQuery q, long bs, long bn, long es, long en) {
+        @Override public MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(ResolvedQuery q, long bs, long bn) {
             samplesCalls++;
             return null;
         }

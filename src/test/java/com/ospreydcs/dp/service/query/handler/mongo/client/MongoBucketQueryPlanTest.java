@@ -401,24 +401,6 @@ public class MongoBucketQueryPlanTest {
         }
     }
 
-    @Test
-    public void testV2SamplesFragmentOrStaysOnTheShippedIndex() throws DpException {
-        // executeQuerySamplesV2 builds its own fragment $or over the clamped intervals (#207)
-        final List<String> pvNames = List.of(PV_1, PV_2);
-        final ResolvedQuery resolvedQuery = resolvedQuery(pvNames, null, true);
-        final List<TimeInterval> clamped = TimeInterval.clampToWindow(
-                resolvedQuery.getRetrievalIntervals(), BEGIN_SECONDS, 0L, END_SECONDS, 0L);
-        assertEquals(2, clamped.size());
-
-        for (SpanClass spanClass : client.resolveSpanClasses(pvNames)) {
-            final Document explanation = client.bucketSamplesQueryV2(resolvedQuery, clamped, spanClass)
-                    .explain(ExplainVerbosity.EXECUTION_STATS);
-            assertShippedIndexPlan(explanation);
-            assertIndexScansWithin(winningPlan(explanation), BEGIN_SECONDS - spanClass.maxSpanSeconds(), END_SECONDS);
-            assertEquals(4, executionStat(explanation, "nReturned"));
-        }
-    }
-
     // ---- time-ordered samples retrieval (#314) ------------------------------------------------
 
     private static List<String> mergePvNames(int count) {
@@ -491,8 +473,8 @@ public class MongoBucketQueryPlanTest {
     }
 
     /**
-     * The double {@code $nor} must not change what matches. Compares against the PV-major samples
-     * query on windows that cut through buckets at nanosecond boundaries (the fixture's buckets
+     * The double {@code $nor} must not change what matches. Compares against the PV-major V2
+     * stream query, which carries the unwrapped predicate, on windows that cut through buckets at nanosecond boundaries (the fixture's buckets
      * hold ten samples, at .0 through .9 of their second), and checks the order.
      */
     @Test
@@ -512,8 +494,10 @@ public class MongoBucketQueryPlanTest {
             final List<TimeInterval> intervals = cases.get(i);
             for (long span : new long[] {0L, SPAN_PV_1_SECONDS}) {
                 final SpanClass spanClass = new SpanClass(pvNames, span);
+                final ResolvedQuery pvMajorQuery = new ResolvedQuery(
+                        pvNames, intervals, 100, null, false, false, ResolvedQuery.ResultMode.SAMPLE, true);
                 final Set<Object> expectedIds = new HashSet<>();
-                for (BucketDocument bucket : client.bucketSamplesQueryV2(null, intervals, spanClass)) {
+                for (BucketDocument bucket : client.bucketStreamQueryV2(pvMajorQuery, spanClass)) {
                     expectedIds.add(bucket.getId());
                 }
                 assertEquals("case " + i, 2 * expectedPerPv[i], expectedIds.size());

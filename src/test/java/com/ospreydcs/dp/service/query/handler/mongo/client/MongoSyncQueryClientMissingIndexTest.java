@@ -181,11 +181,11 @@ public class MongoSyncQueryClientMissingIndexTest {
                 () -> client.executeQueryBucketsV2Stream(resolvedQuery(false)));
     }
 
-    /** The V2 samples path, whose fragment $or is built separately. */
+    /** The V2 samples path: the time-ordered find, whose filter and sort are built separately. */
     @Test
     public void testV2SamplesQueryReportsMissingIndexAsNullCursor() {
         assertQueryReturnsBucketsThenNullWithoutTheIndex(
-                () -> client.executeQuerySamplesV2(resolvedQuery(true), BEGIN_SECONDS, 0L, END_SECONDS, 0L));
+                () -> client.executeQuerySamplesTimeOrdered(resolvedQuery(true), BEGIN_SECONDS, 0L));
     }
 
     /**
@@ -196,12 +196,9 @@ public class MongoSyncQueryClientMissingIndexTest {
      */
     @Test
     public void testEmptyRetrievalIntervalsIsRejected() {
-        final ResolvedQuery resolvedQuery = new ResolvedQuery(
-                List.of(PV_NAME), List.of(FRAGMENT_1, FRAGMENT_2), 100, null, false, false,
-                ResolvedQuery.ResultMode.SAMPLE, false);
         final IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> client.bucketSamplesQueryV2(resolvedQuery, List.of(), new SpanClass(List.of(PV_NAME), 1L)));
+                () -> client.bucketSamplesTimeOrderedQuery(List.of(PV_NAME), List.of(), 1L));
         assertTrue(ex.getMessage(), ex.getMessage().contains("at least one retrieval interval"));
     }
 

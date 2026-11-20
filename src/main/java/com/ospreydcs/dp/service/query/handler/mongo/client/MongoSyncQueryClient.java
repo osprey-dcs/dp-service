@@ -196,7 +196,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * dispatcher turns into an error response. Cursors already opened when a later one fails are
      * closed first.
      */
-    // Package-private (like bucketSamplesQueryV2) so the cleanup-on-partial-open path can be
+    // Package-private (like the query builders) so the cleanup-on-partial-open path can be
     // tested directly: a leak there is invisible from the outside, since the caller sees the same
     // null cursor either way.
     MongoCursor<BucketDocument> openSpanClassCursors(
@@ -370,7 +370,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * it. Buckets come back ordered by {@code firstTime} across the group's PVs, which is what
      * lets the samples paths merge them into rows as they arrive instead of buffering a window.
      *
-     * <p>The filter is the same predicate as {@link #bucketSamplesQueryV2}'s, arranged so the
+     * <p>The filter is the same predicate as the other V2 bucket queries', arranged so the
      * planner has exactly one plan:
      * <ul>
      * <li>The {@code firstTime.seconds} bounds are top-level, over the fragments' earliest begin
@@ -832,84 +832,97 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         return bucketFind(bucketBaseFilterV2(resolvedQuery, spanClass));
     }
 
-    @Override
-    public MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery,
-            long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) {
-        return executeQuerySamplesV2(
-                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos, null);
+    /**
+     * The documents a samples request may hold in open cursor batches, across all its cursors
+     * (#314, plan D5). The driver's default is 101 documents on the first batch and then as many
+     * as fit in 16 MiB, per cursor, and a request over many PVs opens one cursor per PV group; a
+     * command listener also makes the driver copy every reply. Buckets are consumed one at a
+     * time, so a small batch costs round trips, not correctness.
+     */
+    static final int SAMPLES_OPEN_BATCH_DOCUMENTS = 256;
+    static final int SAMPLES_MIN_BATCH_SIZE = 4;
+    static final int SAMPLES_MAX_BATCH_SIZE = 64;
+
+    static int samplesBatchSize(int cursorCount) {
+        return Math.max(SAMPLES_MIN_BATCH_SIZE,
+                Math.min(SAMPLES_MAX_BATCH_SIZE, SAMPLES_OPEN_BATCH_DOCUMENTS / Math.max(1, cursorCount)));
     }
 
-    /**
-     * Slice-drain form carrying the per-page {@link SpanClassHolder}: the {@code pvStats}
-     * span-class partition is resolved on the first slice and reused by the rest, instead of being
-     * re-read once per slice (#274). See the interface javadoc for why the holder is a per-request
-     * scratch slot and not a cache (#232, plan D7).
-     */
     @Override
-    public MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery,
-            long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos,
-            SpanClassHolder spanClassHolder) {
+    public MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
 
         if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
             return null;
         }
-
-        // Each fragment is intersected with the slice window [windowBegin, windowEnd) (#274): the
-        // begin is the resume timestamp on a continuation page or the previous slice's end, the
-        // end is the slice end. The clamp lives on TimeInterval so this filter and the
-        // dispatcher's sample-level retention trim are derived from the same interval set (#207)
-        // — see clampToWindow.
-        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindow(
-                resolvedQuery.getRetrievalIntervals(),
-                windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
+        // The same clamp the dispatcher's sample retention uses (#207).
+        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
         if (clampedIntervals.isEmpty()) {
-            // nothing overlaps the slice. The samples dispatchers screen this same condition, from
-            // the same clamp, before calling — so a null they receive is one of the failures below.
+            // nothing at or after the window begin; the dispatchers screen this before calling
             return null;
         }
-
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274). Resolved once per page: the partition depends only on the PV list and the stored
-        // spans, so every slice of one request would otherwise repeat the same read. A failed
-        // resolution is recorded too (as null), so it is reported per slice without being retried.
-        final List<SpanClass> spanClasses;
-        if (spanClassHolder == null) {
-            spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2");
-        } else {
-            if (!spanClassHolder.isResolved()) {
-                spanClassHolder.set(
-                        resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2"));
-            }
-            spanClasses = spanClassHolder.get();
-        }
+        final List<SpanClass> spanClasses =
+                resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesTimeOrdered");
         if (spanClasses == null) {
             return null;
         }
-
+        // cursor() issues the find, so a database failure (an outage, a missing hinted index)
+        // is thrown here; report it as the null cursor the dispatchers turn into an error.
         try {
-            return openSpanClassCursors(spanClasses, spanClass ->
-                    bucketSamplesQueryV2(resolvedQuery, clampedIntervals, spanClass));
+            return openTimeOrderedCursors(timeOrderedFinds(spanClasses, clampedIntervals));
         } catch (Exception ex) {
-            logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
+            logger.error("executeQuerySamplesTimeOrdered database error: {}", ex.getMessage(), ex);
             return null;
         }
     }
 
     /**
-     * Builds the V2 samples retrieval query for one span class over {@code clampedIntervals} (the
-     * output of {@code TimeInterval.clampToWindow}, non-empty) without opening a cursor, so that
-     * {@code MongoBucketQueryPlanTest} can {@code explain()} the exact fragment {@code $or}
-     * {@link #executeQuerySamplesV2} issues per class (#274, plan D11). Package-private on purpose.
+     * One find per span class and PV group: each class carries its own span bound (#274), and
+     * each group stays within what the server merges without sorting. Package-private for tests.
      */
-    FindIterable<BucketDocument> bucketSamplesQueryV2(
-            ResolvedQuery resolvedQuery, List<TimeInterval> clampedIntervals, SpanClass spanClass) {
+    List<FindIterable<BucketDocument>> timeOrderedFinds(
+            List<SpanClass> spanClasses, List<TimeInterval> clampedIntervals) {
 
-        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, spanClass.pvNames());
-        return bucketFind(and(pvNameFilter, fragmentsOverlapFilter(clampedIntervals, spanClass.maxSpanSeconds())));
+        final List<FindIterable<BucketDocument>> finds = new ArrayList<>();
+        for (SpanClass spanClass : spanClasses) {
+            final List<String> pvNames = spanClass.pvNames();
+            for (int from = 0; from < pvNames.size(); from += SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
+                final int to = Math.min(pvNames.size(), from + SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND);
+                finds.add(bucketSamplesTimeOrderedQuery(
+                        pvNames.subList(from, to), clampedIntervals, spanClass.maxSpanSeconds()));
+            }
+        }
+        final int batchSize = samplesBatchSize(finds.size());
+        finds.replaceAll(find -> find.batchSize(batchSize));
+        return finds;
+    }
+
+    /**
+     * Opens every find eagerly and merges them by bucket start time. Eager for the reason
+     * {@link #openSpanClassCursors} is: a find that fails to open must fail the retrieval method,
+     * not surface mid-iteration. Cursors already opened when a later one fails are closed.
+     */
+    MongoCursor<BucketDocument> openTimeOrderedCursors(List<FindIterable<BucketDocument>> finds) {
+        if (finds.size() == 1) {
+            return timedCursor(finds.get(0));
+        }
+        final List<MongoCursor<BucketDocument>> cursors = new ArrayList<>(finds.size());
+        try {
+            for (FindIterable<BucketDocument> find : finds) {
+                cursors.add(find.cursor());
+            }
+        } catch (RuntimeException ex) {
+            for (MongoCursor<BucketDocument> opened : cursors) {
+                try {
+                    opened.close();
+                } catch (RuntimeException closeEx) {
+                    ex.addSuppressed(closeEx);
+                }
+            }
+            throw ex;
+        }
+        return new TimedMongoCursor<>(new MergedBucketCursor(cursors, MergedBucketCursor.TIME_ORDER));
     }
 
     /**
@@ -928,7 +941,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      *
      * <p>Rejects an empty interval list rather than building a filter for it. Both callers already
      * screen the case -- {@code ResolvedQuery.isEmptyResult()} for the base filter, and
-     * {@code clampedIntervals.isEmpty()} on the samples path -- so arriving here with no intervals
+     * the empty clamp on the samples path -- so arriving here with no intervals
      * is a caller bug, and both ways of "handling" it fail in the silent direction: an empty
      * {@code $or} is a driver error at query time, while the hoisted bounds would be built from
      * the {@code Long.MAX_VALUE}/{@code MIN_VALUE} loop sentinels, giving an impossible interval
