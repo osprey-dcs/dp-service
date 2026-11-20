@@ -141,6 +141,67 @@ public class QueueHandlerBaseWorkerSurvivalTest {
         assertSame(oom, handler.fatalErrors.get(0));
     }
 
+    /** A throwable whose {@code toString()} itself throws, to fail the worker's reporting step. */
+    private static class UnprintableException extends RuntimeException {
+        private final RuntimeException fromToString;
+        private final Error errorFromToString;
+
+        UnprintableException(RuntimeException fromToString, Error errorFromToString) {
+            super("unprintable");
+            this.fromToString = fromToString;
+            this.errorFromToString = errorFromToString;
+        }
+
+        @Override
+        public String toString() {
+            if (errorFromToString != null) {
+                throw errorFromToString;
+            }
+            throw fromToString;
+        }
+    }
+
+    /**
+     * Reporting the failure must not cost the worker either (PR #318 review): a throw out of the
+     * logging in the worker's catch escaped {@code run()} and ended the worker, the #314 failure
+     * one step later.
+     */
+    @Test
+    public void testWorkerSurvivesAThrowWhileReportingAFailure() throws InterruptedException {
+        assertNextJobRunsAfter(
+                new UnprintableException(new IllegalStateException("toString failed"), null));
+        assertTrue("a non-fatal reporting failure must not end the process", handler.fatalErrors.isEmpty());
+    }
+
+    /**
+     * An {@code OutOfMemoryError} raised while reporting a non-fatal failure is itself fatal: it
+     * must reach the exit hook, not escape the worker without exiting.
+     */
+    @Test
+    public void testOutOfMemoryWhileReportingAFailureExitsTheProcess() throws InterruptedException {
+        final OutOfMemoryError oom = new OutOfMemoryError("simulated, while reporting");
+        assertNextJobRunsAfter(new UnprintableException(null, oom));
+        assertEquals(1, handler.fatalErrors.size());
+        assertSame(oom, handler.fatalErrors.get(0));
+    }
+
+    /**
+     * A throw while reporting a fatal error must not escape either. In production the exit hook
+     * halts, so this matters for the test hook only, but the handler should not depend on that.
+     */
+    @Test
+    public void testThrowWhileReportingAFatalErrorStillCallsTheExitHookOnce() throws InterruptedException {
+        final OutOfMemoryError oom = new OutOfMemoryError("simulated") {
+            @Override
+            public String toString() {
+                throw new IllegalStateException("toString failed");
+            }
+        };
+        assertNextJobRunsAfter(oom);
+        assertEquals(1, handler.fatalErrors.size());
+        assertSame(oom, handler.fatalErrors.get(0));
+    }
+
     @Test
     public void testFatalErrorClassification() {
         assertTrue(QueueHandlerBase.isFatal(new OutOfMemoryError()));

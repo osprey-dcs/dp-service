@@ -43,6 +43,11 @@ worker permanently. The invariants:
 
 - **The worker loop catches `Throwable`, around the poll as well as the job.** Do not narrow it,
   and do not move work a job can make fail (attribute building, telemetry) outside that catch.
+  **The handler that catch calls must never throw** either: reporting runs arbitrary
+  `toString()` code and allocates, and before the PR #318 review a throw while logging escaped
+  `run()` and ended the worker anyway. Every reporting step in `handleWorkerThrowable()` is under
+  its own `catch (Throwable)`; a fatal error raised while reporting goes to the exit hook, and the
+  fatal path calls the hook from a `finally`.
 - **A fatal error halts the process; it is not survived.** `QueueHandlerBase.isFatal()` is any
   `VirtualMachineError` except `StackOverflowError`. An `OutOfMemoryError` is not local to the
   thread that reports it (the incident's also killed the Mongo driver's cluster monitor), so the
@@ -80,7 +85,7 @@ worker permanently. The invariants:
   success.
 
 A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
-keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival and the classification;
+keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival (including a throw while reporting) and the classification;
 `testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close;
 `QueryJobThrowableClassificationTest` pins the job outcome.
 

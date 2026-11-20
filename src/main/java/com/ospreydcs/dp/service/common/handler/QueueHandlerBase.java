@@ -143,28 +143,52 @@ public abstract class QueueHandlerBase {
      *
      * <p>A non-fatal throwable is logged and the worker continues. The job never dispatched, so
      * its caller's stream gets no response -- the failure mode documented throughout CLAUDE.md --
-     * but the worker is not lost with it. A fatal error ({@link #isFatal}) ends the process: the
-     * call to {@link #exitOnFatalError} is in a {@code finally} so that a second
-     * {@code OutOfMemoryError} raised while logging the first cannot prevent it.
+     * but the worker is not lost with it. A fatal error ({@link #isFatal}) ends the process.
+     *
+     * <p><b>This method must never throw</b> (PR #318 review): it runs inside the worker's
+     * {@code catch}, so anything escaping it ends the worker -- the #314 failure one step later.
+     * Reporting can fail: a throwable's {@code toString()} is arbitrary code, and logging or even
+     * the first {@code getSimpleName()} for a class allocates on an exhausted heap. So every
+     * reporting step is inside a {@code catch (Throwable)}: a fatal error raised while reporting
+     * goes to the exit hook like any other, and a non-fatal one is dropped, since there is nothing
+     * left to report it with. On the fatal path the exit hook is in a {@code finally}, so no
+     * reporting failure can prevent it.
      *
      * @param job the job that was running, or null if the throw came from the queue poll
      */
     private void handleWorkerThrowable(HandlerJob job, Throwable throwable) {
-        final String jobName = (job == null) ? "queue poll" : job.getClass().getSimpleName();
         if (isFatal(throwable)) {
-            try {
-                System.err.println(FATAL_ERROR_MESSAGE);
-                logger.fatal(
-                        "{} threw a fatal error, exiting with status {}: {}",
-                        jobName, FATAL_ERROR_EXIT_STATUS, throwable.toString(), throwable);
-            } finally {
-                exitOnFatalError(throwable);
-            }
+            reportFatalAndExit(job, throwable);
             return;
         }
-        logger.error(
-                "{} threw out of execute(), job dropped without dispatching: {}",
-                jobName, throwable.toString(), throwable);
+        try {
+            logger.error(
+                    "{} threw out of execute(), job dropped without dispatching: {}",
+                    jobName(job), throwable.toString(), throwable);
+        } catch (Throwable reportingFailure) {
+            if (isFatal(reportingFailure)) {
+                reportFatalAndExit(job, reportingFailure);
+            }
+            // non-fatal: dropped, the worker continues
+        }
+    }
+
+    /** Reports a fatal error as far as the heap allows, then always calls the exit hook. */
+    private void reportFatalAndExit(HandlerJob job, Throwable fatal) {
+        try {
+            System.err.println(FATAL_ERROR_MESSAGE);
+            logger.fatal(
+                    "{} threw a fatal error, exiting with status {}: {}",
+                    jobName(job), FATAL_ERROR_EXIT_STATUS, fatal.toString(), fatal);
+        } catch (Throwable reportingFailure) {
+            // nothing more can be reported; the exit below is what matters
+        } finally {
+            exitOnFatalError(fatal);
+        }
+    }
+
+    private static String jobName(HandlerJob job) {
+        return (job == null) ? "queue poll" : job.getClass().getSimpleName();
     }
 
     /**
