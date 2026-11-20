@@ -520,6 +520,54 @@ public class MongoBucketQueryPlanTest {
     }
 
     /**
+     * A request is split into one find per span class and group of PVs, each a query the server
+     * can stream, and the cursors merge back into one read ordered by bucket start time.
+     */
+    @Test
+    public void testTimeOrderedFindsSplitIntoPvGroupsAndMergeInTimeOrder() {
+        final int groupSize = MongoSyncQueryClient.SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND;
+        final List<SpanClass> spanClasses = List.of(
+                new SpanClass(mergePvNames(2 * groupSize + 20), 0L),
+                new SpanClass(List.of(PV_1), SPAN_PV_1_SECONDS));
+        // the merge fixture's 20 seconds and PV_1's first 20 one-second buckets share a time base
+        final List<TimeInterval> intervals = List.of(MERGE_WINDOW);
+
+        final List<FindIterable<BucketDocument>> finds = client.timeOrderedFinds(spanClasses, intervals);
+        assertEquals("50 + 50 + 20 PVs, and one find for the other span class", 4, finds.size());
+        for (FindIterable<BucketDocument> find : finds) {
+            final Document explanation = find.explain(ExplainVerbosity.QUERY_PLANNER);
+            assertTrue(rejectedPlans(explanation).isEmpty());
+            assertFalse(hasStage(winningPlan(explanation), STAGE_SORT));
+        }
+
+        int buckets = 0;
+        long previousSeconds = Long.MIN_VALUE;
+        final Set<String> pvsSeen = new HashSet<>();
+        try (com.mongodb.client.MongoCursor<BucketDocument> cursor =
+                     client.openTimeOrderedCursors(client.timeOrderedFinds(spanClasses, intervals))) {
+            while (cursor.hasNext()) {
+                final BucketDocument bucket = cursor.next();
+                final long seconds = bucket.getDataTimestamps().getFirstTime().getSeconds();
+                assertTrue("buckets out of firstTime order across finds", seconds >= previousSeconds);
+                previousSeconds = seconds;
+                pvsSeen.add(bucket.getPvName());
+                buckets++;
+            }
+        }
+        assertEquals(2 * groupSize + 21, pvsSeen.size());
+        assertEquals((2 * groupSize + 21) * 10, buckets);
+    }
+
+    @Test
+    public void testSamplesBatchSizeBoundsTheOpenDocumentsOfARequest() {
+        assertEquals(MongoSyncQueryClient.SAMPLES_MAX_BATCH_SIZE, MongoSyncQueryClient.samplesBatchSize(1));
+        assertEquals(64, MongoSyncQueryClient.samplesBatchSize(4));
+        assertEquals(32, MongoSyncQueryClient.samplesBatchSize(8));
+        // 200 finds is the most a request can open: 10,000 resolved PVs in groups of 50
+        assertEquals(MongoSyncQueryClient.SAMPLES_MIN_BATCH_SIZE, MongoSyncQueryClient.samplesBatchSize(200));
+    }
+
+    /**
      * Why the query is built the way it is. Both halves keep the fixture honest: if either stops
      * producing a blocking sort, the limit or the wrap it justifies is no longer doing anything.
      */

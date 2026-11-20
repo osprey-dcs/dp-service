@@ -1563,4 +1563,122 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertEquals("one retrieval for the stream", 1, result[2]);
     }
 
+    // -----------------------------------------------------------------------
+    // #314: cancellation is noticed while reading, not only when sending
+    // -----------------------------------------------------------------------
+
+    private ResolvedQuery gapQuery(boolean streaming) {
+        insertGapFixture();
+        final QuerySamplesRequest request = samplesRequest(
+                List.of(PV_GAP), GAP_WINDOW_B, 0, GAP_DATA_B + (long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, 0,
+                GAP_PAGE_SIZE, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, streaming);
+        assertFalse(resolution.isError());
+        return resolution.getResolvedQuery();
+    }
+
+    /**
+     * A unary call cancelled before its job runs reads nothing and sends nothing. Before #314 the
+     * unary path never looked: the job assembled the whole page for a caller that had gone.
+     */
+    @Test
+    public void testCancelledUnaryCallReadsNothing() {
+        final ResolvedQuery resolvedQuery = gapQuery(false);
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.cancelled.set(true);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(resolvedQuery, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertTrue("nothing may be sent to a cancelled call", observer.messages.isEmpty());
+        assertEquals(0, client.bucketsRead - bucketsBefore);
+        assertEquals(com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    /**
+     * A stream cancelled after its first message stops reading: of the fixture's 200 buckets it
+     * reads only the few behind that message, does not complete, and is recorded as abandoned.
+     */
+    @Test
+    public void testStreamCancelledMidwayStopsReading() {
+        final ResolvedQuery resolvedQuery = gapQuery(true);
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.setAfterNext(observer::cancel);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(
+                resolvedQuery,
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, 4_096_000L, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertEquals(1, observer.messages.size());
+        assertFalse("an abandoned stream must not be completed", observer.completed);
+        assertTrue("read " + (client.bucketsRead - bucketsBefore) + " of " + GAP_BUCKETS + " buckets",
+                client.bucketsRead - bucketsBefore <= 3);
+        assertEquals(com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    // -----------------------------------------------------------------------
+    // #314: more PVs than one find may name, across two span classes
+    // -----------------------------------------------------------------------
+
+    /**
+     * 120 PVs is three finds of at most 50, plus a fourth for a PV in another span class; the
+     * client merges them into one time-ordered read. Every row must still hold every PV, in
+     * order, whichever find a PV's buckets came from.
+     */
+    @Test
+    public void testManyPvsAcrossSeveralFindsAndSpanClasses() {
+        final long groupB = startSeconds + 400_000L;
+        final int pvCount = 120;
+        final int seconds = 4;
+        final String widePv = "grp_wide";
+        final List<BucketDocument> buckets = new ArrayList<>();
+        final List<String> pvNames = new ArrayList<>();
+        for (int pv = 0; pv < pvCount; pv++) {
+            final String pvName = String.format("grp_%03d", pv);
+            pvNames.add(pvName);
+            for (int second = 0; second < seconds; second++) {
+                buckets.add(scalarBucket(pvName, groupB + second, ONE_SECOND_NANOS, 1));
+            }
+        }
+        // one bucket spanning all four seconds: a different span class from the one-second PVs
+        buckets.add(spanningBucket(widePv, groupB, seconds));
+        pvNames.add(widePv);
+        assertEquals(buckets.size(), ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
+
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final int before = client.samplesRetrievals;
+        final QuerySamplesResponse response = runSamples(
+                samplesRequest(pvNames, groupB, 0, groupB + seconds, 0, 10_000, null, false));
+        assertFalse(response.hasExceptionalResult() ? response.getExceptionalResult().getMessage() : "",
+                response.hasExceptionalResult());
+        assertEquals(1, client.samplesRetrievals - before);
+
+        final ColumnTable table = response.getSampleQueryResult().getColumnTable();
+        assertEquals(seconds, table.getTimestampList().getTimestampsCount());
+        for (int row = 0; row < seconds; row++) {
+            assertEquals(groupB + row, table.getTimestampList().getTimestamps(row).getEpochSeconds());
+        }
+        assertEquals(pvCount + 1, table.getDataColumnsCount());
+        for (DataColumn column : table.getDataColumnsList()) {
+            assertEquals(seconds, column.getDataValuesCount());
+            for (int row = 0; row < seconds; row++) {
+                assertTrue(column.getName() + " has no value at row " + row,
+                        column.getDataValues(row).getValueCase() != DataValue.ValueCase.VALUE_NOT_SET);
+                final double expected = column.getName().equals(widePv) ? row : (groupB + row) * 1000.0;
+                assertEquals(column.getName() + " row " + row, expected, column.getDataValues(row).getDoubleValue(), 0);
+            }
+        }
+    }
 }
