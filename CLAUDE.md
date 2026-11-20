@@ -66,10 +66,15 @@ worker permanently. The invariants:
   too large" from JDK array growth): that is an ordinary throw, and on a worker only the
   `isFatal()` exit ends the process. The worker exit also covers a launch without the flag, which
   is how the reporter ran at the time of the incident. **A Java-constructed OOM off the worker
-  threads is covered by neither**: direct buffer memory exhaustion ("Cannot reserve ... direct
-  buffer memory") is thrown by `java.nio`, so on a gRPC or driver thread the flag does not fire
-  (checked on JDK 21 with `-XX:MaxDirectMemorySize`) and no worker catch sees it. Known gap, not
-  closed by #314; do not describe the two mechanisms as complete.
+  threads is covered by neither, and for gRPC direct memory that is acceptable.** Direct buffer
+  exhaustion ("Cannot reserve ... direct buffer memory") is thrown by `java.nio`, so the flag does
+  not fire. Measured on this classpath (grpc-netty-shaded 1.65.1, JDK 21, flag set,
+  `-XX:MaxDirectMemorySize=16m`): outbound, the error is thrown from `onNext` on the calling
+  thread, which here is a handler worker, so the `isFatal()` exit halts; inbound, it is raised on
+  a transport thread, gRPC logs "Transport failed" and closes that one connection, the client gets
+  `UNAVAILABLE` naming the cause, and the process continues with the memory released. gRPC catches
+  the inbound error itself, so a default uncaught-exception handler would not see it; do not add
+  one for this. Not measured: the MongoDB driver's threads.
 - **Without the flag, an OOM can be masked before it reaches the worker, and the code does not
   try to prevent that everywhere.** The JVM reuses one pre-allocated OOM instance once its
   backtrace-carrying ones are spent, so a try-with-resources `close()` can rethrow the object
