@@ -133,7 +133,12 @@ with keys examined equal to documents examined. The merge holds up to **200** PV
 becomes a blocking `SORT` at 201 (one scan per PV against `internalQueryMaxScansToExplode`; the
 earlier figure of 100 was for the unwrapped filter, which costs two scans per PV).
 
-Not re-measured with the wrapped filter: the two sharded layouts in the table.
+The two sharded layouts in the table were re-measured with the wrapped filter on a two-shard
+MongoDB 8.0.6 cluster (2026-11-20): hashed `pvName` with 1, 12 and 50 PVs, and ranged
+`(pvName, firstTime.seconds)` with every PV's history split across both shards, with 1 and 12 PVs;
+one and two fragments; spans 0, 7 and 300 s. Every case was `SHARD_MERGE_SORT` over a per-shard
+`SORT_MERGE` (a plain `IXSCAN` for one PV), with no `SORT` stage, no rejected plans on mongos or
+either shard, keys examined equal to documents examined, and results returned in order.
 
 ### 8. Cancellation is noticed only at emit — confirmed
 
@@ -280,10 +285,9 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
 1. `MongoBucketQueryPlanTest`: pin the time-ordered plan (no `SORT` stage, one `IXSCAN` per PV) for
    a single fragment, a multi-fragment `$or`, and a mixed span-class request, at the group size.
    **This gates the rest:** if the multi-fragment case does not stream, D3's retrieval changes.
-   *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* Still to do
-   before the PR: re-check the two sharded layouts with the wrapped filter.
-   *Tasks 2 to 6 and 8 done 2026-11-20 on `issue-314-pr2`; task 7 and the sharded re-check are
-   open.*
+   *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* The two sharded
+   layouts were re-checked with the wrapped filter (finding 7).
+   *Tasks 2 to 6 and 8 done 2026-11-20 on `issue-314-pr2`; task 7 is open.*
 2. `MongoSyncQueryClient.java`: time-ordered samples query builder and cursor open, per span class
    and PV group, with `batchSize` (D5); a time-ordered merging cursor beside `MergedBucketCursor`.
    `MongoQueryClientInterface`: the new method, replacing the six-argument slice overload.

@@ -353,6 +353,24 @@ public abstract class QueryBenchmarkBase {
         return document == null ? null : LoadMarker.fromDocument(document);
     }
 
+    /**
+     * Reads the marker of the fixture currently loaded, or null when there is none. Points the
+     * clients at the benchmark database first, without dropping it, as {@code --skip-load} does.
+     */
+    static LoadMarker readLoadMarker() {
+        BenchmarkDbClient.useBenchmarkDatabase(configMgr().getConfigString(
+                BenchmarkMongoClient.CFG_KEY_BENCHMARK_DATABASE_NAME, BenchmarkMongoClient.BENCHMARK_DATABASE_NAME));
+        final BenchmarkDbClient dbClient = new BenchmarkDbClient();
+        if (!dbClient.init()) {
+            return null;
+        }
+        try {
+            return readMarker(dbClient);
+        } finally {
+            dbClient.fini();
+        }
+    }
+
     private static void writeMarker(BenchmarkDbClient dbClient, LoadMarker marker) {
         dbClient.writeLoadMarker(
                 COLLECTION_BENCHMARK_METADATA, new Document("_id", MARKER_ID), marker.toDocument());

@@ -212,7 +212,7 @@ Unlike the ingestion benchmark clients, the query benchmark clients connect to M
 
 If the benchmark server is not running on `localhost:60052`, override the connect string via the `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING` environment variable or the `-Ddp.QueryBenchmark.grpcConnectString` VM option.
 
-There are eight query benchmark client applications, each exercising a different query API:
+There are nine query benchmark client applications. Eight exercise a query API over the same short window:
 
 | Class | API |
 |---|---|
@@ -225,8 +225,29 @@ There are eight query benchmark client applications, each exercising a different
 | `BenchmarkQueryBuckets` | `queryBuckets` — unary V2 buckets, each task paging one query to completion |
 | `BenchmarkQueryBucketsStream` | `queryBucketsStream` — server-streaming V2 buckets; same default scenario as `BenchmarkQueryDataStream` for a direct V1/V2 comparison |
 
-None of the query benchmark clients accept column type arguments. All of them accept the loader
+None of the query benchmark clients accept column type arguments. These eight accept the loader
 options below.
+
+The ninth, `BenchmarkQuerySamplesStreamLongRange`, measures a different thing: several concurrent
+`querySamplesStream` requests over the **whole** history of one PV, with a small chunk limit and a
+requested range that begins long before the first sample. That is the request shape that
+exhausted the query service's heap in [#314](https://github.com/osprey-dcs/dp-service/issues/314).
+It loads its own one-PV fixture and has its own options:
+
+```
+--buckets=N              buckets to load for the PV (default 40000)
+--seconds-per-bucket=N   seconds per bucket (default 100)
+--samples-per-second=N   samples per second (default 1)
+--lead-seconds=N         empty range requested before the first sample (default 63072000, two years)
+--streams=N              concurrent streams over the same PV and range (default 4)
+--limit=N                rows per streamed message (default 100)
+--skip-load              query the fixture already loaded with the same options
+--help                   print the options and exit
+```
+
+It prints each stream's time to the first message and to completion, and exits non-zero unless
+every stream returned the whole fixture. Server memory is not visible to the client; start the
+benchmark server with a small heap (for example `-Xmx512m`) and watch it with `jstat -gc <pid>`.
 
 ### Loader options
 
