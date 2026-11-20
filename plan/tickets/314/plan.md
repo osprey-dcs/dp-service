@@ -217,6 +217,23 @@ It narrows the bad cases but keeps the guess, the discard, and the per-slice re-
 - **Status selector.** Matching timestamps are resolved in bounded windows as the merge position
   advances, replacing the per-slice resolution. A failed read stays an error.
 
+### D8. Decisions made during PR 2 (2026-11-20)
+
+- **One byte estimate for both paths.** The unary page used to be bounded by the sum of value
+  bytes; it now uses the stream's conservative per-row estimate (`RowChunk.rowBytes()`), which
+  includes timestamp and framing. Byte-limited unary pages hold fewer rows, and a response can no
+  longer exceed the configured message size. *Rejected:* keeping two accountings.
+- **The old slice query is deleted, not kept beside the new one.** `executeQuerySamplesV2`, its
+  span-class holder and `bucketSamplesQueryV2` had no caller left.
+- **Ordering violations are errors.** The watermark rule assumes a bucket's `firstTime` is its
+  earliest sample and that timestamps within a bucket do not decrease. Ingestion guarantees both,
+  but the merger checks, because a violation would emit rows out of order with no other symptom.
+  This is stricter than the pivot map, which sorted whatever it was given; an archive written by
+  another tool could hold such buckets, and the release notes say so.
+- **Status windows adapt by count.** A window starts at the row that needs it, 60 s long, and the
+  next one doubles when it held fewer than 10,000 matching timestamps or halves above 100,000.
+- **Batch size:** 256 documents across a request's cursors, 4 to 64 per cursor.
+
 ### D5. Bucket cursors set a batch size; the command listener stays
 
 With several cursors open per request, the driver default (101 documents, then up to 16 MiB per
@@ -265,6 +282,8 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
    **This gates the rest:** if the multi-fragment case does not stream, D3's retrieval changes.
    *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* Still to do
    before the PR: re-check the two sharded layouts with the wrapped filter.
+   *Tasks 2 to 6 and 8 done 2026-11-20 on `issue-314-pr2`; task 7 and the sharded re-check are
+   open.*
 2. `MongoSyncQueryClient.java`: time-ordered samples query builder and cursor open, per span class
    and PV group, with `batchSize` (D5); a time-ordered merging cursor beside `MergedBucketCursor`.
    `MongoQueryClientInterface`: the new method, replacing the six-argument slice overload.
