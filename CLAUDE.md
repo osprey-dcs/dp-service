@@ -65,7 +65,11 @@ worker permanently. The invariants:
   does not cover is an `OutOfMemoryError` *constructed in Java code* (e.g. "Required array length
   too large" from JDK array growth): that is an ordinary throw, and on a worker only the
   `isFatal()` exit ends the process. The worker exit also covers a launch without the flag, which
-  is how the reporter ran at the time of the incident.
+  is how the reporter ran at the time of the incident. **A Java-constructed OOM off the worker
+  threads is covered by neither**: direct buffer memory exhaustion ("Cannot reserve ... direct
+  buffer memory") is thrown by `java.nio`, so on a gRPC or driver thread the flag does not fire
+  (checked on JDK 21 with `-XX:MaxDirectMemorySize`) and no worker catch sees it. Known gap, not
+  closed by #314; do not describe the two mechanisms as complete.
 - **Without the flag, an OOM can be masked before it reaches the worker, and the code does not
   try to prevent that everywhere.** The JVM reuses one pre-allocated OOM instance once its
   backtrace-carrying ones are spent, so a try-with-resources `close()` can rethrow the object
@@ -85,7 +89,8 @@ worker permanently. The invariants:
   success.
 
 A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
-keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival (including a throw while reporting) and the classification;
+keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival (including a throw while
+reporting) and the classification;
 `testErrorRethrownByCursorCloseIsNotMaskedAsSelfSuppression` pins the close;
 `QueryJobThrowableClassificationTest` pins the job outcome.
 

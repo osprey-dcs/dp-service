@@ -72,10 +72,15 @@ Requests in flight on other threads are cut off; clients see the connection drop
   it runs out of heap (or metaspace, or another JVM-managed area), on whatever thread that happens:
   a request worker, a gRPC thread, the MongoDB driver.
 - **Built in, always on: the backstop.** An `OutOfMemoryError` or other JVM-level failure that
-  reaches a handler worker halts the process. This covers a launch without the flag, and the one
-  case the flag does not: an `OutOfMemoryError` that library code throws itself, such as a buffer
-  asked to grow past the largest array the JVM allows, which the JVM does not see as running out
-  of memory.
+  reaches a handler worker halts the process. This covers a launch without the flag. It also
+  covers, on a worker, the case the flag does not: an `OutOfMemoryError` that library code throws
+  itself, which the JVM does not see as running out of memory. Examples are a buffer asked to grow
+  past the largest array the JVM allows, and direct (off-heap) buffer memory running out.
+
+**Neither mechanism covers a library-thrown `OutOfMemoryError` on a thread that is not a handler
+worker**, such as a gRPC or MongoDB driver thread. The flag does not see it and no worker catches
+it, so the process keeps running. It is logged as an exception on that thread. Checked on JDK 21:
+with the flag set, exhausting `-XX:MaxDirectMemorySize` throws and the process continues.
 
 The container image sets the flag for every service through the `JAVA_TOOL_OPTIONS` environment
 variable. Two cases need action from the operator:
