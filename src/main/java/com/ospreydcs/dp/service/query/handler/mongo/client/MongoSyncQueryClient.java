@@ -997,9 +997,9 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return Map.of();
         }
 
-        // Bound the fetch by the same clamped slice the sample retrieval uses (#207, #274): a
-        // status can only affect samples inside some clamped fragment. The bounds here are the
-        // slice's extremes [first fragment begin, last fragment end) — statuses in the gaps between
+        // Bound the fetch by the window the samples merge asked for, clamped to the fragments
+        // (#207, #314): a status can only affect samples inside some clamped fragment. The bounds
+        // here are the window's extremes [first fragment begin, last fragment end) — statuses in the gaps between
         // fragments are harmless to include (their samples are dropped by the fragment retention
         // test regardless of mode), so per-fragment precision is not required for correctness.
         final List<TimeInterval> clampedFragments = TimeInterval.clampToWindow(

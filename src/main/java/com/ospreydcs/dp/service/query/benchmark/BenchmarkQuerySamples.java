@@ -9,9 +9,9 @@ import org.apache.logging.log4j.Logger;
 /**
  * Benchmark client for unary {@code querySamples} (issue #275): each task pages one logical query
  * to completion, following {@code nextPageToken}, so a task measures a whole result rather than one
- * page. The cost it exercises is server-side assembly (per-sample table insertion, #274 D9) and the
- * time-sliced page retrieval (#274 D1–D3), which is why the default scenario also runs a wide
- * request: assembly cost is per column.
+ * page. The cost it exercises is the server-side merge of buckets into rows (#314) and the read
+ * each page opens, which is why the default scenario also runs a wide request: the merge's cost is
+ * per column.
  */
 public class BenchmarkQuerySamples extends QueryBenchmarkBase {
 

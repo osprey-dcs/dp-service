@@ -253,9 +253,20 @@ long-range streams were enough to exhaust the heap.
 
 They now read each PV's stored buckets once, in time order, and send each row as soon as it is
 complete. What a request holds in memory is the buckets overlapping its current position and one
-outgoing message, however long the range. On the test fixture modelled on the reported request
-(data beginning two years into the range, 100 rows per message), the first message is sent after
-reading 2 buckets where it used to read all 200, and no bucket is read twice.
+outgoing message, however long the range.
+
+Measured with a benchmark modelled on the reported request (four concurrent streams over 4,000,000
+samples of one PV, the range beginning two years before the first sample, 100 rows per message),
+on a development machine with a local MongoDB:
+
+| Query service heap | Before | After |
+|---|---|---|
+| 512 MB | out of memory; no stream received a message | all streams complete in 2.2 s; first message after 0.13 s |
+| 4 GB | all streams complete in 10.8 s; first message after 5.9 s | all streams complete in 2.2 s; first message after 0.12 s |
+
+Your figures will depend on your data and deployment. The benchmark is
+`BenchmarkQuerySamplesStreamLongRange`, described in
+[`doc/benchmark-overview.md`](https://github.com/osprey-dcs/dp-service/blob/main/doc/benchmark-overview.md).
 
 What you may notice:
 

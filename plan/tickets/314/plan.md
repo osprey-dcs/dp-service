@@ -287,7 +287,7 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
    **This gates the rest:** if the multi-fragment case does not stream, D3's retrieval changes.
    *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* The two sharded
    layouts were re-checked with the wrapped filter (finding 7).
-   *Tasks 2 to 6 and 8 done 2026-11-20 on `issue-314-pr2`; task 7 is open.*
+   *Tasks 2 to 8 done 2026-11-20 on `issue-314-pr2`; the measurement is below.*
 2. `MongoSyncQueryClient.java`: time-ordered samples query builder and cursor open, per span class
    and PV group, with `batchSize` (D5); a time-ordered merging cursor beside `MergedBucketCursor`.
    `MongoQueryClientInterface`: the new method, replacing the six-argument slice overload.
@@ -307,6 +307,33 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
    heap and time to completion recorded in the PR.
 8. `CLAUDE.md`: replace "querySamples Retrieval Is Time-Sliced" with the merge invariants;
    `NEXT.md`.
+
+### Measurement (PR 2 task 7, 2026-11-20)
+
+`BenchmarkQuerySamplesStreamLongRange`, default options: one PV, 40,000 buckets of 100 one-hertz
+samples (4,000,000 samples, 46 days), four concurrent `querySamplesStream` requests over a range
+beginning two years before the first sample, `limit` 100. Benchmark server and client on one
+development machine against a local standalone MongoDB 8.0.6, the server with
+`-XX:+ExitOnOutOfMemoryError`. "Before" is `main` at `ccffc66` (PR 1 merged); "after" is this
+branch. Peak heap is the largest used figure in `jstat -gc` samples taken every 250 ms, so it
+includes garbage not yet collected and is an upper bound on what was live. One run each.
+
+| Server heap | Build | Outcome | First message | Stream completes | Peak heap used |
+|---|---|---|---|---|---|
+| 512 MB | before | server out of memory, exit status 3; no stream received a message | — | — | 511 MB |
+| 512 MB | after | all four streams complete | 0.13 s | 2.2 s | 130 MB |
+| 4 GB | before | all four streams complete | 5.7–5.9 s | 10.6–10.8 s | 1,466 MB |
+| 4 GB | after | all four streams complete | 0.12 s | 2.2 s | 603 MB |
+
+The 4 GB "after" figure is higher than the 512 MB one because the collector lets garbage
+accumulate in a larger heap; the 512 MB run shows the workload fits in 130 MB.
+
+On the unit fixture (`MongoSyncQuerySamplesV2Test`, 200 buckets after a two-year empty lead,
+`limit` 100): 2 buckets read before the first message (was 200), and 200 buckets read in total at
+a 40,000-byte budget (was 2,454).
+
+Not measured: the customer's data. Their bucket shape, PV count per request and heap limit are
+still unanswered on the issue.
 
 ## Out of scope
 
