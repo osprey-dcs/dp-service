@@ -187,7 +187,8 @@ becomes **ingestion-only** — see step 5. Two query-service settings are new an
 this upgrade; know they exist for the tuning notes after the window:
 `DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS` (60) and
 `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` (300), both described in
-[running.md](../running.md).
+[running.md](../running.md). (The first applies to 1.16.0 only: the release after it removes the
+setting, see [#314](https://github.com/osprey-dcs/dp-service/issues/314).)
 
 **Free up a metrics port for every service you run, or that service will not start.** This is
 unrelated to the bucket-span work but lands in the same release, and it is the one 1.16.0 change
