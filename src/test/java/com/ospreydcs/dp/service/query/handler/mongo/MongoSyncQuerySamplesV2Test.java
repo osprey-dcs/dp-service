@@ -462,10 +462,10 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         }
 
         @Override
-        public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(
-                ResolvedQuery q, long bs, long bn, long es, long en)
+        public StatusTimestamps resolveSampleStatusTimestamps(
+                ResolvedQuery q, long bs, long bn, long es, long en, int max)
                 throws com.ospreydcs.dp.service.common.exception.DpException {
-            return delegate.resolveSampleStatusTimestamps(q, bs, bn, es, en);
+            return delegate.resolveSampleStatusTimestamps(q, bs, bn, es, en, max);
         }
     }
 
@@ -816,11 +816,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
     @Test
     public void testByteBudgetEndsPageWithTokenAtTheNextRow() throws Exception {
-        // Two columns: a row with both values is estimated at 80 bytes and one with only spv_a at
-        // 71, so a 200-byte budget admits two rows (151) and not a third. Nothing is discarded:
-        // each page ends at the row that would not fit, and the token is that row's timestamp.
+        // Two columns: the empty table is estimated at 42 bytes (the two names, charged once per
+        // page), a row with both values at 54 and one with only spv_a at 45. A 150-byte budget
+        // admits two rows (141) and not a third. Nothing is discarded: each page ends at the row
+        // that would not fit, and the token is that row's timestamp.
         final List<String> tokens = new ArrayList<>();
-        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 200, 10_000, tokens);
+        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 150, 10_000, tokens);
         assertEquals(15, pages.size());
         for (ColumnTable page : pages) {
             assertEquals(2, page.getTimestampList().getTimestampsCount());
@@ -920,6 +921,35 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertEquals(List.of(0L, 1L, 8L, 9L), collected);
         assertEquals(4, pages);
         assertEquals("one retrieval per page", 4, client.samplesRetrievals - before);
+    }
+
+    /**
+     * The client stops and keeps nothing once a window holds more matching timestamps than the
+     * caller's limit (PR #323 review): the limit, not the window length, is what bounds the
+     * status join's memory. The fixture labels sspv four times on layer l1.
+     */
+    @Test
+    public void testStatusTimestampsOverTheLimitAreRefusedNotTruncated() throws Exception {
+        final ResolvedQuery rq = new ResolvedQuery(
+                List.of(PV_STATUS), wholeStatusRange(), 100, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, false,
+                statusFilter(false, List.of(STATUS_LAYER_1)));
+
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps atLimit = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + STATUS_SECONDS, 0, 4);
+        assertFalse(atLimit.overLimit());
+        assertEquals(4, atLimit.matchingTimestampsByPv().get(PV_STATUS).size());
+
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps over = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + STATUS_SECONDS, 0, 3);
+        assertTrue(over.overLimit());
+        assertTrue("a refused window must not hand back a partial map", over.matchingTimestampsByPv().isEmpty());
+
+        // a shorter window under the same limit succeeds, which is how the merger proceeds
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps shorter = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + 4, 0, 3);
+        assertFalse(shorter.overLimit());
+        assertEquals(2, shorter.matchingTimestampsByPv().get(PV_STATUS).size());
     }
 
     @Test
@@ -1086,10 +1116,11 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     @Test
     public void testStreamByteBudgetChunkFlush() {
         // small budget forces multiple chunks even though limit is huge; verify every row delivered
-        // once. The budget must clear the conservative single-row estimate (timestamp + one labeled
-        // double column + framing, ~52 bytes) but not two rows, so each chunk carries ~one row.
+        // once. The budget must clear the conservative estimate of a one-row table (29 bytes for
+        // the empty table with its column name, 39 for the row) but not two rows (107), so each
+        // chunk carries one row.
         final StreamOutcome outcome = runSamplesStream(
-                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 60);
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 80);
         assertTrue(outcome.completed);
         assertTrue("byte budget should force multiple chunks", outcome.messages.size() > 1);
         int totalRows = 0;

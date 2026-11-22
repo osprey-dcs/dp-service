@@ -73,8 +73,8 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
                 // A single row larger than the whole budget cannot be chunked. Error out naming
                 // the timestamp rather than emit an over-limit message gRPC would abort on.
-                if (rowBytes > byteBudget) {
-                    sendOversizedRowError(row.seconds, row.nanos, rowBytes);
+                if (chunk.emptyBytes() + rowBytes > byteBudget) {
+                    sendOversizedRowError(row.seconds, row.nanos, chunk.emptyBytes() + rowBytes);
                     return;
                 }
                 // byte flush: this row would take the chunk over the budget

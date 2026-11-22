@@ -25,8 +25,6 @@ import org.apache.logging.log4j.Logger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -135,10 +133,11 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      * Resolves the query's sampleStatusSelector to a {@link TabularDataUtility.SampleStatusFilter}
      * for per-sample filtering over one window, or {@code null} when the request carries no
      * selector. The per-PV matching-timestamp sets come from the sampleStatusBuckets collection;
-     * {@link SampleRowMerger} asks for consecutive windows as it advances, so the join input is
-     * bounded by the labeled samples in one window. Composition with the configurationSelector is
-     * by intersection: this filter and the fragment retention test are both applied to each
-     * sample.
+     * {@link SampleRowMerger} asks for consecutive windows as it advances. Returns null as well
+     * when the window holds more than {@code maxTimestamps} matching timestamps, which is what
+     * bounds the join input; the merger then asks for a shorter window. Composition with the
+     * configurationSelector is by intersection: this filter and the fragment retention test are
+     * both applied to each sample.
      *
      * @throws DpException on a database error or malformed stored status document — never silently
      *     degraded to "no statuses", which in EXCLUDE mode would return filtered-out samples
@@ -147,18 +146,22 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             ResolvedQuery resolvedQuery,
             MongoQueryClientInterface mongoClient,
             long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) throws DpException {
+            long windowEndSecs, long windowEndNanos,
+            int maxTimestamps) throws DpException {
 
         if (resolvedQuery.getStatusFilter() == null) {
             return null;
         }
-        final Map<String, Set<Long>> matchingTimestampsByPv = mongoClient.resolveSampleStatusTimestamps(
-                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
-        if (matchingTimestampsByPv == null) {
+        final MongoQueryClientInterface.StatusTimestamps resolved = mongoClient.resolveSampleStatusTimestamps(
+                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos, maxTimestamps);
+        if (resolved == null) {
             throw new DpException("sample status selector resolution failed (database error)");
         }
+        if (resolved.overLimit()) {
+            return null;
+        }
         return new TabularDataUtility.SampleStatusFilter(
-                resolvedQuery.getStatusFilter().includeMode(), matchingTimestampsByPv);
+                resolvedQuery.getStatusFilter().includeMode(), resolved.matchingTimestampsByPv());
     }
 
     // ---- time-ordered retrieval and merge (issue #314) -------------------------------------------
@@ -192,7 +195,7 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      *
      * <p>The caller must pass the result to {@link #closeMerger} in a {@code finally}.
      *
-     * @param cancelled asked before each bucket read (plan D6)
+     * @param cancelled asked before each bucket read and each row (plan D6, D9)
      */
     protected SampleRowMerger openMerger(
             ResolvedQuery resolvedQuery,
@@ -218,11 +221,12 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
         // contributes the time it took to fail rather than landing in "process".
         final SampleRowMerger.StatusWindowLoader statusWindowLoader = (resolvedQuery.getStatusFilter() == null)
                 ? null
-                : (beginSecs, beginNanos, endSecs, endNanos) -> {
+                : (beginSecs, beginNanos, endSecs, endNanos, maxTimestamps) -> {
                     final long statusStartNanos = System.nanoTime();
                     try {
                         return statusRetentionFilter(
-                                resolvedQuery, mongoClient, beginSecs, beginNanos, endSecs, endNanos);
+                                resolvedQuery, mongoClient, beginSecs, beginNanos, endSecs, endNanos,
+                                maxTimestamps);
                     } finally {
                         telemetry.addDbNanos(System.nanoTime() - statusStartNanos);
                     }
@@ -251,11 +255,22 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      * order, filled a row at a time. The byte figure is a conservative <b>upper bound</b> on the
      * serialized size of the table built so far, so a dispatcher can stop before a row that would
      * take the message over the wire limit; it must not under-count.
+     *
+     * <p>It has two parts. What a table costs however many rows it holds (every column's name and
+     * framing) is charged once, to the empty chunk: {@link #emptyBytes()}. What a row adds (its
+     * timestamp and one value per column) is {@link #rowBytes}. Charging the names to every row,
+     * as this did before the PR #323 review, counted a 20-character name and a double at about 43
+     * bytes against 11 on the wire, so a wide byte-limited message went out about a quarter full
+     * and the oversized-row error fired at about a quarter of the PV count that really overflows.
+     *
+     * <p>The bound covers the {@code ColumnTable} only. The response around it adds the
+     * {@code responseTime}, the page token and message framing, on the order of 100 bytes, which
+     * the default limit's margin below gRPC's 4 MiB maximum absorbs.
      */
     protected static final class RowChunk {
 
         private final List<String> columnNames;
-        private final long perColumnOverhead;
+        private final long emptyBytes;
         private TimestampList.Builder timestamps;
         private List<DataColumn.Builder> columns;
         private int rowCount;
@@ -265,9 +280,9 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             this.columnNames = columnNames;
             // Each emitted column carries its UTF-8 name and repeated-field framing however many
             // rows it holds; serialized columns pay it twice (the inner DataColumn name and the
-            // outer SerializedDataColumn name and payload). Charged to every row, so a chunk of N
-            // rows is charged N times the one copy actually sent, never less.
-            long overhead = 0;
+            // outer SerializedDataColumn name and payload). The 16 is the timestamp list's own
+            // tag and length, with room to spare.
+            long overhead = 16;
             for (String name : columnNames) {
                 final long nameBytes = name.getBytes(StandardCharsets.UTF_8).length;
                 overhead += nameBytes + 8;
@@ -275,7 +290,7 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                     overhead += nameBytes + 8;
                 }
             }
-            this.perColumnOverhead = overhead;
+            this.emptyBytes = overhead;
             reset();
         }
 
@@ -286,15 +301,21 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                 columns.add(DataColumn.newBuilder().setName(name));
             }
             rowCount = 0;
-            bytes = 0;
+            bytes = emptyBytes;
         }
 
         int rowCount() {
             return rowCount;
         }
 
+        /** Upper bound on the table built so far; {@link #emptyBytes()} when it has no rows. */
         long bytes() {
             return bytes;
+        }
+
+        /** Upper bound on a table of these columns with no rows. */
+        long emptyBytes() {
+            return emptyBytes;
         }
 
         /** Upper bound on what {@code row} adds to the table: see the class comment. */
@@ -305,7 +326,7 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
                 // the value plus its repeated-field tag and length; an unset value still costs framing
                 rowBytes += ((value != null) ? value.getSerializedSize() : 0) + 6;
             }
-            return rowBytes + perColumnOverhead;
+            return rowBytes;
         }
 
         /** Appends {@code row}; {@code rowBytes} is the figure {@link #rowBytes} returned for it. */

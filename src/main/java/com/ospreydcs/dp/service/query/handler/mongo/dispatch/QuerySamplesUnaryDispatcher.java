@@ -22,7 +22,8 @@ import io.grpc.stub.StreamObserver;
  *
  * <p><b>Paging (issue #314):</b> rows come from the shared {@link SampleRowMerger} in timestamp
  * order, each complete across every PV, and are added to the page until it holds {@code pageSize}
- * rows or the next row would take it over the outgoing byte budget. The token is the timestamp of
+ * rows or the next row would take it over the outgoing byte budget (which bounds the
+ * {@code ColumnTable}; see {@code RowChunk}). The token is the timestamp of
  * the first row not included, so one row is read past the page to learn whether there is one. A
  * page that ends because the result is exhausted has no token.
  *
@@ -72,11 +73,11 @@ public class QuerySamplesUnaryDispatcher extends AbstractQuerySamplesDispatcher 
             SampleRowMerger.Row row;
             while ((row = merger.nextRow()) != null) {
                 final long rowBytes = page.rowBytes(row);
-                if (page.rowCount() == 0 && rowBytes > byteBudget) {
+                if (page.rowCount() == 0 && page.emptyBytes() + rowBytes > byteBudget) {
                     // A single timestamp exceeds the whole byte budget: paging cannot make
                     // progress past it (the next page would meet the same row). Error out naming
                     // the timestamp.
-                    sendOversizedRowError(row.seconds, row.nanos, rowBytes);
+                    sendOversizedRowError(row.seconds, row.nanos, page.emptyBytes() + rowBytes);
                     return;
                 }
                 if (page.rowCount() >= pageSize || page.bytes() + rowBytes > byteBudget) {

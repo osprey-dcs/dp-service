@@ -298,7 +298,7 @@ public class SampleRowMergerTest {
                 PV_A, Set.of((B + 1) * SECOND, (B + 3) * SECOND, (B + 150) * SECOND),
                 PV_B, Set.of((B + 3) * SECOND));
         final List<long[]> windows = new ArrayList<>();
-        final SampleRowMerger.StatusWindowLoader loader = (beginSecs, beginNanos, endSecs, endNanos) -> {
+        final SampleRowMerger.StatusWindowLoader loader = (beginSecs, beginNanos, endSecs, endNanos, maxTimestamps) -> {
             windows.add(new long[]{beginSecs, endSecs});
             final Map<String, Set<Long>> inWindow = new java.util.HashMap<>();
             labeled.forEach((pv, timestamps) -> {
@@ -337,6 +337,87 @@ public class SampleRowMergerTest {
         assertEquals("the last window is capped at the range end", B + 200, windows.get(windows.size() - 1)[1]);
     }
 
+    /**
+     * The window length is a guess from the previous window, and a long sparsely labeled stretch
+     * inflates it without limit. The densely labeled stretch after it must not be loaded at that
+     * length: the loader refuses a window over the limit, and the merger halves it until it fits
+     * (PR #323 review; the #314 defect in the status join).
+     */
+    @Test
+    public void testDenseLabelsAfterASparseStretchNeverLoadMoreThanTheLimit() throws DpException {
+        final long day = 86_400L;
+        final int sparseRows = 400;
+        final long denseStart = sparseRows * day;
+        final long denseSeconds = 2_000_000L; // every second labeled: five times the limit
+        final long rangeEnd = denseStart + denseSeconds;
+
+        // one unlabeled row a day, then a row every 100,000 s inside the labeled stretch
+        final List<BucketDocument> buckets = new ArrayList<>();
+        for (int i = 0; i < sparseRows; i++) {
+            buckets.add(listBucket(PV_A, i, i * day));
+        }
+        int denseRows = 0;
+        for (long offset = denseStart; offset < rangeEnd; offset += 100_000L) {
+            buckets.add(listBucket(PV_A, offset, offset));
+            denseRows++;
+        }
+
+        final List<Long> heldPerLoad = new ArrayList<>();
+        final int[] refused = {0};
+        final SampleRowMerger.StatusWindowLoader loader = (beginSecs, beginNanos, endSecs, endNanos, maxTimestamps) -> {
+            // labels at every whole second in [denseStart, rangeEnd), counted without building them
+            final long from = Math.max(beginSecs + (beginNanos > 0 ? 1 : 0), B + denseStart);
+            final long to = Math.min(endSecs + (endNanos > 0 ? 1 : 0), B + rangeEnd);
+            final long count = Math.max(0, to - from);
+            if (count > maxTimestamps) {
+                refused[0]++;
+                return null;
+            }
+            final Set<Long> timestamps = new HashSet<>();
+            for (long second = from; second < to; second++) {
+                timestamps.add(second * SECOND);
+            }
+            heldPerLoad.add(count);
+            return new TabularDataUtility.SampleStatusFilter(true, Map.of(PV_A, timestamps));
+        };
+        final SampleRowMerger merger = new SampleRowMerger(
+                new ListCursor(buckets), List.of(PV_A),
+                List.of(new TimeInterval(B, 0L, B + rangeEnd, 0L)), loader, () -> false);
+
+        final List<CollectedRow> rows = drain(merger);
+        assertEquals("INCLUDE keeps exactly the labeled rows", denseRows, rows.size());
+        assertEquals(denseStart, rows.get(0).offsetSeconds());
+
+        assertTrue("the inflated window must have been refused at least once", refused[0] > 0);
+        for (long held : heldPerLoad) {
+            assertTrue("a window held " + held + " timestamps",
+                    held <= SampleRowMerger.STATUS_WINDOW_MAX_TIMESTAMPS);
+        }
+        // halving converges: far fewer loads than rows in the labeled stretch would need at 60 s
+        assertTrue("loads: " + merger.statusWindowLoads(), merger.statusWindowLoads() < 600);
+    }
+
+    /** A window that cannot be divided is loaded without the limit, and a refusal there is an error. */
+    @Test
+    public void testAOneNanosecondWindowIsLoadedWithoutTheLimit() {
+        final List<Integer> limits = new ArrayList<>();
+        final SampleRowMerger.StatusWindowLoader alwaysOver = (beginSecs, beginNanos, endSecs, endNanos, maxTimestamps) -> {
+            limits.add(maxTimestamps);
+            return null;
+        };
+        final SampleRowMerger merger = new SampleRowMerger(
+                new ListCursor(List.of(listBucket(PV_A, 0, 0))), List.of(PV_A),
+                List.of(new TimeInterval(B, 0L, B + 1000, 0L)), alwaysOver, () -> false);
+
+        final DpException failure = expectFailure(merger);
+        assertTrue(failure.getMessage(), failure.getMessage().contains("returned no filter"));
+        assertEquals("the last attempt carries no limit",
+                Integer.MAX_VALUE, (int) limits.get(limits.size() - 1));
+        for (int i = 0; i < limits.size() - 1; i++) {
+            assertEquals(SampleRowMerger.STATUS_WINDOW_MAX_TIMESTAMPS, (int) limits.get(i));
+        }
+    }
+
     // ---- cancellation and the empty merger -----------------------------------------------------------
 
     @Test
@@ -362,6 +443,26 @@ public class SampleRowMergerTest {
         assertTrue(merger.wasCancelled());
         assertTrue("rows after cancel: " + rowsAfterCancel, rowsAfterCancel <= 1);
         assertEquals("no bucket read after the cancel", servedBeforeCancel, cursor.served);
+    }
+
+    /**
+     * Once the cursor is exhausted there is no read left to hang the check on, but the open
+     * buckets may still hold many rows (PR #323 review).
+     */
+    @Test
+    public void testCancellationIsNoticedWhileDrainingOpenBucketsAfterTheLastRead() throws DpException {
+        final ListCursor cursor = new ListCursor(List.of(clockBucket(PV_A, B, SECOND, 1000, 0)));
+        final boolean[] cancelled = {false};
+        final SampleRowMerger merger =
+                new SampleRowMerger(cursor, List.of(PV_A), EVERYTHING, null, () -> cancelled[0]);
+
+        assertEquals(B, merger.nextRow().seconds);
+        assertEquals(B + 1, merger.nextRow().seconds);
+        assertEquals("the only bucket is read and the cursor is exhausted", 1, cursor.served);
+        cancelled[0] = true;
+
+        assertNull(merger.nextRow());
+        assertTrue(merger.wasCancelled());
     }
 
     @Test
@@ -420,7 +521,8 @@ public class SampleRowMergerTest {
 
     /**
      * The completeness rule trusts each bucket's stored firstTime. A bucket whose firstTime is
-     * later than its first sample would put a row out of order; that must be an error.
+     * later than its first sample would put a row out of order; that must be an error naming
+     * the PV.
      */
     @Test
     public void testFirstTimeLaterThanFirstSampleIsAnError() {
@@ -432,7 +534,42 @@ public class SampleRowMergerTest {
         lying.getDataTimestamps().setFirstTime(wrongFirstTime);
 
         final DpException failure = expectFailure(merger(new ListCursor(List.of(honest, lying)), List.of(PV_A, PV_B)));
-        assertTrue(failure.getMessage(), failure.getMessage().contains("firstTime is later than its first sample"));
+        assertTrue(failure.getMessage(), failure.getMessage().contains("later than its first sample"));
+        assertTrue(failure.getMessage(), failure.getMessage().contains(PV_B));
+    }
+
+    /**
+     * The same bucket met by unary paging (PR #323 review). pv_a has samples at +10, +15 and +30;
+     * pv_b's bucket is stored with firstTime +20 but holds samples at +10 and +25. A page of one
+     * row returns +10 without pv_b and resumes at +15, and the next page's retrieval trims pv_b's
+     * +10 as before its window. A check made on row order sees nothing wrong there, and pv_b's
+     * value at +10 is silently lost; the check on the stored first timestamp does not depend on
+     * where the page began.
+     */
+    @Test
+    public void testFirstTimeLaterThanFirstSampleIsAnErrorOnAContinuationPage() throws DpException {
+        final TimestampDocument wrongFirstTime = new TimestampDocument();
+        wrongFirstTime.setSeconds(B + 20);
+        wrongFirstTime.setNanos(0);
+
+        // page 1: one row, and the one read past it for the token; pv_b's bucket is not yet due
+        final BucketDocument lying = listBucket(PV_B, 200, 10, 25);
+        lying.getDataTimestamps().setFirstTime(wrongFirstTime);
+        final SampleRowMerger firstPage = merger(
+                new ListCursor(List.of(listBucket(PV_A, 100, 10, 15, 30), lying)), List.of(PV_A, PV_B));
+        assertEquals(B + 10, firstPage.nextRow().seconds);
+        assertEquals("the next page starts here", B + 15, firstPage.nextRow().seconds);
+
+        // page 2: the retrieval from +15 on
+        final BucketDocument lyingAgain = listBucket(PV_B, 200, 10, 25);
+        lyingAgain.getDataTimestamps().setFirstTime(wrongFirstTime);
+        final SampleRowMerger secondPage = new SampleRowMerger(
+                new ListCursor(List.of(listBucket(PV_A, 100, 10, 15, 30), lyingAgain)),
+                List.of(PV_A, PV_B),
+                List.of(new TimeInterval(B + 15, 0L, Long.MAX_VALUE, 0L)), null, () -> false);
+        final DpException failure = expectFailure(secondPage);
+        assertTrue(failure.getMessage(), failure.getMessage().contains("later than its first sample"));
+        assertTrue(failure.getMessage(), failure.getMessage().contains(PV_B));
     }
 
     @Test

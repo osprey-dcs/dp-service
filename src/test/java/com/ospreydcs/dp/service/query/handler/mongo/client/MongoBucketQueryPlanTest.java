@@ -178,6 +178,26 @@ public class MongoBucketQueryPlanTest {
             return mongoCollectionBuckets.listIndexes().into(new ArrayList<>());
         }
 
+        /**
+         * The server's idle cursors on the buckets collection that were opened by a time-ordered
+         * samples find (the only bucket find whose sort has no pvName).
+         */
+        List<Document> idleTimeOrderedCursors() {
+            final List<Document> idle = new ArrayList<>();
+            final List<Document> pipeline = List.of(
+                    new Document("$currentOp", new Document("idleCursors", true).append("allUsers", true)),
+                    new Document("$match", new Document("type", "idleCursor")
+                            .append("ns", mongoCollectionBuckets.getNamespace().getFullName())));
+            for (Document operation : mongoClient.getDatabase("admin").aggregate(pipeline)) {
+                final Document sort = operation.get("cursor", Document.class)
+                        .get("originatingCommand", Document.class).get("sort", Document.class);
+                if (sort != null && !sort.containsKey(BsonConstants.BSON_KEY_PV_NAME)) {
+                    idle.add(operation);
+                }
+            }
+            return idle;
+        }
+
         /** A hinted find in the time-ordered sort with an arbitrary filter, for counterfactuals. */
         FindIterable<BucketDocument> timeOrderedFind(Bson filter) {
             return mongoCollectionBuckets
@@ -556,6 +576,41 @@ public class MongoBucketQueryPlanTest {
         }
         assertEquals(2 * groupSize + 21, pvsSeen.size());
         assertEquals((2 * groupSize + 21) * 10, buckets);
+    }
+
+    /**
+     * Every cursor of one retrieval is opened in the same server session (PR #323 review). The
+     * server kills a cursor when its session has gone unused for the session timeout, and each
+     * driver cursor otherwise gets its own, so a cursor the merge does not reach for that long
+     * (a slow PV group beside fast ones) would be killed mid-stream. In one session, a read on
+     * any cursor keeps all of them. Measured on 8.0.6; see {@code SessionBoundCursor}.
+     */
+    @Test
+    public void testOneRetrievalsCursorsShareOneSession() {
+        final int groupSize = MongoSyncQueryClient.SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND;
+        final ResolvedQuery resolvedQuery = new ResolvedQuery(
+                mergePvNames(2 * groupSize + 20), List.of(MERGE_WINDOW), 100, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertTrue("fixture: another test left a samples cursor open", client.idleTimeOrderedCursors().isEmpty());
+
+        final com.mongodb.client.MongoCursor<BucketDocument> cursor = client.executeQuerySamplesTimeOrdered(
+                resolvedQuery, MERGE_WINDOW.getBeginSeconds(), MERGE_WINDOW.getBeginNanos());
+        assertNotNull(cursor);
+        try {
+            assertTrue(cursor.hasNext());
+            cursor.next();
+            // three finds, each with more buckets than one batch, so each holds a server cursor
+            final List<Document> idle = client.idleTimeOrderedCursors();
+            assertEquals("one open server cursor per PV group", 3, idle.size());
+            final Set<Object> sessions = new HashSet<>();
+            for (Document operation : idle) {
+                sessions.add(operation.get("lsid", Document.class).get("id"));
+            }
+            assertEquals("the cursors must share one session", 1, sessions.size());
+        } finally {
+            cursor.close();
+        }
+        assertTrue("closing the retrieval closes its server cursors", client.idleTimeOrderedCursors().isEmpty());
     }
 
     @Test

@@ -67,7 +67,7 @@ public class QuerySamplesDispatcherNullCursorTest {
             samplesCalls++;
             return null;
         }
-        @Override public Map<String, Set<Long>> resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn, long es, long en) { return Map.of(); }
+        @Override public StatusTimestamps resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn, long es, long en, int max) { return StatusTimestamps.of(Map.of()); }
         @Override public MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id) { return null; }

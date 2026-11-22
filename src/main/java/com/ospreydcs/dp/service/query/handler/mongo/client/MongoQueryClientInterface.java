@@ -122,17 +122,38 @@ public interface MongoQueryClientInterface {
      * sampleStatusBuckets collection for the resolved PVs and the selector's (domain, layers) with
      * the standard span-overlap predicate, expands the matching documents, and keeps a timestamp
      * when its status code is in the selector's statusCodes (empty = any code). PVs with no
-     * matching statuses are absent from the map. The map is the merge-time join input: memory
-     * is bounded by the number of labeled samples in the window, and the samples merge asks for
-     * one bounded window {@code [windowBegin, windowEnd)} at a time (#314). Returns an empty map when
-     * the clamped window is empty, or null on database error.
+     * matching statuses are absent from the map. The map is the merge-time join input, and the
+     * samples merge asks for one window {@code [windowBegin, windowEnd)} at a time (#314).
+     *
+     * <p><b>{@code maxTimestamps} is what bounds the memory</b>, not the window: how many labeled
+     * samples a window holds is not known until it is read. Once more than {@code maxTimestamps}
+     * matching timestamps have been collected the read stops, what was collected is dropped, and
+     * {@link StatusTimestamps#OVER_LIMIT} is returned; the caller asks again for a shorter
+     * window. An implementation must not return a map larger than the limit.
+     *
+     * <p>Returns an empty map when the clamped window is empty, or null on database error.
      *
      * @throws DpException when a stored sample status document is malformed
      */
-    Map<String, Set<Long>> resolveSampleStatusTimestamps(
+    StatusTimestamps resolveSampleStatusTimestamps(
             ResolvedQuery resolvedQuery,
             long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) throws DpException;
+            long windowEndSecs, long windowEndNanos,
+            int maxTimestamps) throws DpException;
+
+    /**
+     * The result of {@link #resolveSampleStatusTimestamps}: the matching timestamps per PV, or
+     * {@link #OVER_LIMIT} (an empty map with {@code overLimit} set) when the window held more
+     * than the caller's limit.
+     */
+    record StatusTimestamps(Map<String, Set<Long>> matchingTimestampsByPv, boolean overLimit) {
+
+        public static final StatusTimestamps OVER_LIMIT = new StatusTimestamps(Map.of(), true);
+
+        public static StatusTimestamps of(Map<String, Set<Long>> matchingTimestampsByPv) {
+            return new StatusTimestamps(matchingTimestampsByPv, false);
+        }
+    }
 
     MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest request);
 

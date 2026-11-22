@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
+import com.mongodb.client.ClientSession;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoIterable;
@@ -334,12 +335,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * {@code MongoBucketQueryPlanTest} pins the resulting plan shape against an adversarial index set.
      */
     FindIterable<BucketDocument> bucketFind(Bson filter) {
-        return bucketFind(filter, bucketSort());
+        return bucketFind(null, filter, bucketSort());
     }
 
-    private FindIterable<BucketDocument> bucketFind(Bson filter, Bson sort) {
-        return mongoCollectionBuckets
-                .find(filter)
+    /** {@code session} is null except on the time-ordered samples retrieval (#314). */
+    private FindIterable<BucketDocument> bucketFind(ClientSession session, Bson filter, Bson sort) {
+        final FindIterable<BucketDocument> find = (session == null)
+                ? mongoCollectionBuckets.find(filter)
+                : mongoCollectionBuckets.find(session, filter);
+        return find
                 .sort(sort)
                 .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
     }
@@ -391,6 +395,16 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      */
     FindIterable<BucketDocument> bucketSamplesTimeOrderedQuery(
             List<String> pvNames, List<TimeInterval> clampedIntervals, long maxSpanSeconds) {
+        return bucketSamplesTimeOrderedQuery(null, pvNames, clampedIntervals, maxSpanSeconds);
+    }
+
+    /**
+     * As above, issued in {@code session} when it is not null. Production passes the retrieval's
+     * one session so its cursors keep each other alive (see {@link SessionBoundCursor}).
+     */
+    FindIterable<BucketDocument> bucketSamplesTimeOrderedQuery(
+            ClientSession session,
+            List<String> pvNames, List<TimeInterval> clampedIntervals, long maxSpanSeconds) {
 
         if (pvNames.size() > SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
             throw new IllegalArgumentException(
@@ -410,7 +424,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         parts.addAll(MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds(
                 minBeginSeconds, maxEndSeconds, maxSpanSeconds));
         parts.add(nor(nor(overlapFilter)));
-        return bucketFind(and(parts), bucketTimeSort());
+        return bucketFind(session, and(parts), bucketTimeSort());
     }
 
     /**
@@ -869,11 +883,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         }
         // cursor() issues the find, so a database failure (an outage, a missing hinted index)
         // is thrown here; report it as the null cursor the dispatchers turn into an error.
+        // Every find is issued in one session, which the returned cursor ends when it is closed:
+        // see SessionBoundCursor for why.
+        ClientSession session = null;
         try {
-            return openTimeOrderedCursors(timeOrderedFinds(spanClasses, clampedIntervals));
+            session = mongoClient.startSession();
+            return openTimeOrderedCursors(timeOrderedFinds(session, spanClasses, clampedIntervals), session);
         } catch (Exception ex) {
             logger.error("executeQuerySamplesTimeOrdered database error: {}", ex.getMessage(), ex);
+            closeSessionQuietly(session);
             return null;
+        }
+    }
+
+    private static void closeSessionQuietly(ClientSession session) {
+        if (session == null) {
+            return;
+        }
+        try {
+            session.close();
+        } catch (RuntimeException ex) {
+            logger.error("error closing querySamples session: {}", ex.getMessage(), ex);
         }
     }
 
@@ -883,6 +913,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      */
     List<FindIterable<BucketDocument>> timeOrderedFinds(
             List<SpanClass> spanClasses, List<TimeInterval> clampedIntervals) {
+        return timeOrderedFinds(null, spanClasses, clampedIntervals);
+    }
+
+    List<FindIterable<BucketDocument>> timeOrderedFinds(
+            ClientSession session, List<SpanClass> spanClasses, List<TimeInterval> clampedIntervals) {
 
         final List<FindIterable<BucketDocument>> finds = new ArrayList<>();
         for (SpanClass spanClass : spanClasses) {
@@ -890,7 +925,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             for (int from = 0; from < pvNames.size(); from += SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
                 final int to = Math.min(pvNames.size(), from + SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND);
                 finds.add(bucketSamplesTimeOrderedQuery(
-                        pvNames.subList(from, to), clampedIntervals, spanClass.maxSpanSeconds()));
+                        session, pvNames.subList(from, to), clampedIntervals, spanClass.maxSpanSeconds()));
             }
         }
         final int batchSize = samplesBatchSize(finds.size());
@@ -904,8 +939,23 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * not surface mid-iteration. Cursors already opened when a later one fails are closed.
      */
     MongoCursor<BucketDocument> openTimeOrderedCursors(List<FindIterable<BucketDocument>> finds) {
+        return openTimeOrderedCursors(finds, null);
+    }
+
+    /**
+     * As above; when {@code session} is not null the finds were issued in it, and the returned
+     * cursor ends it on close. On a failure to open, the caller still owns the session.
+     */
+    MongoCursor<BucketDocument> openTimeOrderedCursors(
+            List<FindIterable<BucketDocument>> finds, ClientSession session) {
+        final MongoCursor<BucketDocument> merged = openTimeOrderedCursorsUntimed(finds);
+        return new TimedMongoCursor<>(session == null ? merged : new SessionBoundCursor<>(merged, session));
+    }
+
+    private static MongoCursor<BucketDocument> openTimeOrderedCursorsUntimed(
+            List<FindIterable<BucketDocument>> finds) {
         if (finds.size() == 1) {
-            return timedCursor(finds.get(0));
+            return finds.get(0).cursor();
         }
         final List<MongoCursor<BucketDocument>> cursors = new ArrayList<>(finds.size());
         try {
@@ -922,7 +972,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             }
             throw ex;
         }
-        return new TimedMongoCursor<>(new MergedBucketCursor(cursors, MergedBucketCursor.TIME_ORDER));
+        return new MergedBucketCursor(cursors, MergedBucketCursor.TIME_ORDER);
     }
 
     /**
@@ -987,14 +1037,15 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public Map<String, Set<Long>> resolveSampleStatusTimestamps(
+    public StatusTimestamps resolveSampleStatusTimestamps(
             ResolvedQuery resolvedQuery,
             long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) throws DpException {
+            long windowEndSecs, long windowEndNanos,
+            int maxTimestamps) throws DpException {
 
         final ResolvedStatusFilter statusFilter = resolvedQuery.getStatusFilter();
         if (statusFilter == null) {
-            return Map.of();
+            return StatusTimestamps.of(Map.of());
         }
 
         // Bound the fetch by the window the samples merge asked for, clamped to the fragments
@@ -1006,7 +1057,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 resolvedQuery.getRetrievalIntervals(),
                 windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
         if (clampedFragments.isEmpty()) {
-            return Map.of();
+            return StatusTimestamps.of(Map.of());
         }
         final TimeInterval firstFragment = clampedFragments.get(0);
         final TimeInterval lastFragment = clampedFragments.get(clampedFragments.size() - 1);
@@ -1028,22 +1079,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         filters.add(gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, windowBeginTotalNanos));
 
         final Map<String, Set<Long>> matchingTimestampsByPv = new HashMap<>();
+        long collected = 0;
         try (MongoCursor<SampleStatusBucketDocument> cursor =
                      mongoCollectionSampleStatusBuckets.find(and(filters)).cursor()) {
             while (cursor.hasNext()) {
                 final SampleStatusBucketDocument document = cursor.next();
                 for (SampleStatusDocumentUtility.StatusPoint point :
                         SampleStatusDocumentUtility.expandDocument(document)) {
-                    // keep only in-window matching timestamps: memory stays bounded by the number
-                    // of labeled samples in the window
+                    // keep only in-window matching timestamps
                     if (point.timestampNanos() < windowBeginTotalNanos
                             || point.timestampNanos() >= windowEndTotalNanos) {
                         continue;
                     }
-                    if (statusFilter.matchesCode(point.statusCode())) {
-                        matchingTimestampsByPv
-                                .computeIfAbsent(document.getPvName(), k -> new HashSet<>())
-                                .add(point.timestampNanos());
+                    if (statusFilter.matchesCode(point.statusCode())
+                            && matchingTimestampsByPv
+                                    .computeIfAbsent(document.getPvName(), k -> new HashSet<>())
+                                    .add(point.timestampNanos())
+                            && ++collected > maxTimestamps) {
+                        // The window holds more labeled samples than the caller will hold
+                        // (#314): stop here and keep nothing. Documents arrive in no useful
+                        // order, so a partial map says nothing about any sub-window.
+                        return StatusTimestamps.OVER_LIMIT;
                     }
                 }
             }
@@ -1056,7 +1112,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        return matchingTimestampsByPv;
+        return StatusTimestamps.of(matchingTimestampsByPv);
     }
 
     /**

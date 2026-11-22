@@ -10,6 +10,7 @@ import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.grpc.v1.query.QuerySpec;
 import com.ospreydcs.dp.grpc.v1.common.TimeRange;
 import com.ospreydcs.dp.service.common.benchmark.BenchmarkMongoClient;
+import com.ospreydcs.dp.service.common.config.ConfigurationManager;
 import com.ospreydcs.dp.service.ingest.benchmark.IngestionBenchmarkBase;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -148,8 +149,15 @@ public class BenchmarkQuerySamplesStreamLongRange {
         final long loadStartSeconds;
         if (options.skipLoad()) {
             final QueryBenchmarkBase.LoadMarker marker = QueryBenchmarkBase.readLoadMarker();
-            if (marker == null || marker.historySeconds() != historySeconds) {
-                System.err.println("--skip-load: no fixture with a history of " + historySeconds + " s is loaded");
+            // The bucket shape as well as the history: two fixtures of the same length in
+            // different bucket sizes hold the same values, so the run would report success and
+            // print bucket counts for a shape it did not read.
+            if (marker == null || marker.historySeconds() != historySeconds
+                    || marker.secondsPerBucket() != options.secondsPerBucket()) {
+                System.err.println("--skip-load: no fixture with a history of " + historySeconds + " s in "
+                        + options.secondsPerBucket() + " s buckets is loaded"
+                        + (marker == null ? "" : " (found " + marker.historySeconds() + " s in "
+                        + marker.secondsPerBucket() + " s buckets)"));
                 System.exit(1);
                 return;
             }
@@ -175,8 +183,12 @@ public class BenchmarkQuerySamplesStreamLongRange {
                 .setExecutionOptions(ExecutionOptions.newBuilder().setLimit(options.limit()))
                 .build();
 
+        // the same setting the other query benchmarks read (doc/benchmark-overview.md)
+        final String connectString = ConfigurationManager.getInstance().getConfigString(
+                QueryBenchmarkBase.CFG_KEY_GRPC_CONNECT_STRING, QueryBenchmarkBase.DEFAULT_GRPC_CONNECT_STRING);
+        System.out.println("connecting to " + connectString);
         final ManagedChannel channel = Grpc.newChannelBuilder(
-                QueryBenchmarkBase.DEFAULT_GRPC_CONNECT_STRING, InsecureChannelCredentials.create()).build();
+                connectString, InsecureChannelCredentials.create()).build();
         final ExecutorService executor = Executors.newFixedThreadPool(options.streams());
         final long startNanos = System.nanoTime();
         final List<Future<StreamResult>> futures = new ArrayList<>();
