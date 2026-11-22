@@ -927,9 +927,12 @@ A few concurrent long-range `querySamplesStream` requests ran the query service 
   gets its own implicit session. In one shared session a `getMore` on any cursor keeps all of
   them, so do not reach for `noCursorTimeout`, and do not let a find on this path fall back to an
   implicit session. A retrieval that reads nothing at all for the session timeout still fails,
-  as an error response. `testOneRetrievalsCursorsShareOneSession` reads the session ids from
-  `$currentOp`. The span-class merge on the bucket paths (#274) has the same exposure and is not
-  changed here.
+  as an error response. The span-class merge on the bucket paths (#274) does the same through
+  `openSpanClassCursorsInSession()` whenever a request has more than one class: that merge is
+  PV-major, so a class's cursor goes unread while other classes' PVs are streamed. A single-class
+  request keeps its one cursor's implicit session. `testOneRetrievalsCursorsShareOneSession` and
+  `testSpanClassCursorsShareOneSession` read the session ids from `$currentOp`. A new path that
+  holds more than one bucket cursor open owes the same session.
 - **A row is complete when the next unread bucket starts after it.** `SampleRowMerger` keeps each
   bucket read as an open bucket with a position, a min-heap over them yields the earliest pending
   sample, and one bucket is read ahead; its `firstTime` is the watermark. That rests on a bucket's

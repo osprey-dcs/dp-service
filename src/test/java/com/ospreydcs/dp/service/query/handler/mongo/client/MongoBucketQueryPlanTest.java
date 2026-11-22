@@ -183,6 +183,15 @@ public class MongoBucketQueryPlanTest {
          * samples find (the only bucket find whose sort has no pvName).
          */
         List<Document> idleTimeOrderedCursors() {
+            return idleBucketCursors(true);
+        }
+
+        /** The same for the {@code (pvName, firstTime)} sort of every other bucket query. */
+        List<Document> idlePvOrderedCursors() {
+            return idleBucketCursors(false);
+        }
+
+        private List<Document> idleBucketCursors(boolean timeOrdered) {
             final List<Document> idle = new ArrayList<>();
             final List<Document> pipeline = List.of(
                     new Document("$currentOp", new Document("idleCursors", true).append("allUsers", true)),
@@ -191,7 +200,7 @@ public class MongoBucketQueryPlanTest {
             for (Document operation : mongoClient.getDatabase("admin").aggregate(pipeline)) {
                 final Document sort = operation.get("cursor", Document.class)
                         .get("originatingCommand", Document.class).get("sort", Document.class);
-                if (sort != null && !sort.containsKey(BsonConstants.BSON_KEY_PV_NAME)) {
+                if (sort != null && sort.containsKey(BsonConstants.BSON_KEY_PV_NAME) != timeOrdered) {
                     idle.add(operation);
                 }
             }
@@ -422,6 +431,38 @@ public class MongoBucketQueryPlanTest {
     }
 
     // ---- time-ordered samples retrieval (#314) ------------------------------------------------
+
+    /**
+     * The span-class merge of the bucket paths shares one session the same way (PR #323 review).
+     * It is PV-major, so a class's cursor goes unread while other classes' PVs are streamed.
+     */
+    @Test
+    public void testSpanClassCursorsShareOneSession() {
+        // three span classes (spans 300, 7 and 0), each with 300 buckets in the window: more
+        // than the driver's first batch, so each find holds a server cursor
+        final ResolvedQuery resolvedQuery = new ResolvedQuery(
+                List.of(PV_1, PV_2, PV_DEEP),
+                List.of(new TimeInterval(BASE_SECONDS, 0L, BASE_SECONDS + NUM_BUCKETS_PER_PV, 0L)),
+                100, null, false, false, ResolvedQuery.ResultMode.BUCKET, true);
+        assertTrue("fixture: another test left a bucket cursor open", client.idlePvOrderedCursors().isEmpty());
+
+        final com.mongodb.client.MongoCursor<BucketDocument> cursor = client.executeQueryBucketsV2Stream(resolvedQuery);
+        assertNotNull(cursor);
+        try {
+            assertTrue(cursor.hasNext());
+            cursor.next();
+            final List<Document> idle = client.idlePvOrderedCursors();
+            assertEquals("one open server cursor per span class", 3, idle.size());
+            final Set<Object> sessions = new HashSet<>();
+            for (Document operation : idle) {
+                sessions.add(operation.get("lsid", Document.class).get("id"));
+            }
+            assertEquals("the cursors must share one session", 1, sessions.size());
+        } finally {
+            cursor.close();
+        }
+        assertTrue("closing the retrieval closes its server cursors", client.idlePvOrderedCursors().isEmpty());
+    }
 
     private static List<String> mergePvNames(int count) {
         final List<String> pvNames = new ArrayList<>();

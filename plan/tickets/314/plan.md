@@ -262,6 +262,8 @@ It narrows the bad cases but keeps the guess, the discard, and the per-slice re-
   240 s. *Rejected:* `noCursorTimeout` (no effect on session expiry), and reopening a killed find
   from the last bucket read (ties in `firstTime` across PVs need per-PV resume state, and the
   filter change would need its own single-plan proof).
+  The span-class merge of `queryData`, `queryTable`, `queryBuckets` and `queryBucketsStream`
+  (#274) had the same exposure and gets the same session when a request has more than one class.
 - **Column names are charged once per message**, not once per row; `RowChunkSizeBoundTest` pins
   the estimate as an upper bound on the serialized table.
 - **Cancellation is checked on every pass of the merge loop**, not only before a bucket read.

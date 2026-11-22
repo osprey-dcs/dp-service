@@ -43,6 +43,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -209,6 +210,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (classes.size() == 1) {
             return timedCursor(finder.apply(classes.get(0)));
         }
+        return new TimedMongoCursor<>(mergedSpanClassCursors(classes, finder));
+    }
+
+    private static MongoCursor<BucketDocument> mergedSpanClassCursors(
+            List<SpanClass> classes, Function<SpanClass, FindIterable<BucketDocument>> finder) {
         final List<MongoCursor<BucketDocument>> cursors = new ArrayList<>(classes.size());
         try {
             for (SpanClass spanClass : classes) {
@@ -224,7 +230,33 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             }
             throw ex;
         }
-        return new TimedMongoCursor<>(new MergedBucketCursor(cursors));
+        return new MergedBucketCursor(cursors);
+    }
+
+    /**
+     * {@link #openSpanClassCursors} for the production paths: when the request has more than one
+     * span class, every class's find is issued in one explicit session that the returned cursor
+     * ends on close (PR #323 review). The merge is PV-major, so a class's cursor goes unread
+     * while the PVs of the other classes that sort before its next PV are streamed, and the
+     * server kills a cursor whose session has gone unused for the session timeout; in one
+     * session a read on any class keeps them all. See {@link SessionBoundCursor} for the
+     * measurement. A single class has one cursor and keeps its implicit session: {@code finder}
+     * is then given a null session.
+     */
+    private MongoCursor<BucketDocument> openSpanClassCursorsInSession(
+            List<SpanClass> classes, BiFunction<ClientSession, SpanClass, FindIterable<BucketDocument>> finder) {
+
+        if (classes.size() <= 1) {
+            return openSpanClassCursors(classes, spanClass -> finder.apply(null, spanClass));
+        }
+        final ClientSession session = mongoClient.startSession();
+        try {
+            return new TimedMongoCursor<>(new SessionBoundCursor<>(
+                    mergedSpanClassCursors(classes, spanClass -> finder.apply(session, spanClass)), session));
+        } catch (RuntimeException | Error ex) {
+            closeSessionQuietly(session);
+            throw ex;
+        }
     }
 
     /**
@@ -274,7 +306,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos
     ) {
         try {
-            return openSpanClassCursors(spanClasses, spanClass -> bucketDocumentQuery(
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) -> bucketDocumentQuery(
+                    session,
                     in(BsonConstants.BSON_KEY_PV_NAME, spanClass.pvNames()),
                     startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
                     spanClass.maxSpanSeconds()));
@@ -300,6 +333,21 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos,
             long maxBucketSpanSeconds
     ) {
+        return bucketDocumentQuery(
+                null, columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds);
+    }
+
+    /** As above, issued in {@code session} when it is not null (a multi-class request). */
+    private FindIterable<BucketDocument> bucketDocumentQuery(
+            ClientSession session,
+            Bson columnNameFilter,
+            long startTimeSeconds,
+            long startTimeNanos,
+            long endTimeSeconds,
+            long endTimeNanos,
+            long maxBucketSpanSeconds
+    ) {
         // Bucket overlap predicate (firstTime < end AND lastTime >= begin) built from the shared
         // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift. The
         // span is the per-query pvStats maximum resolved by the caller (#232).
@@ -312,7 +360,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 + " endSeconds: " + endTimeSeconds
                 + " maxBucketSpanSeconds: " + maxBucketSpanSeconds);
 
-        return bucketFind(filter);
+        return bucketFind(session, filter, bucketSort());
     }
 
     /**
@@ -785,8 +833,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         try {
             // +1 probe row per class to detect a following page; the merged consumer stops after
             // pageSize + 1 documents, so the extra rows of the other classes are never read.
-            return openSpanClassCursors(spanClasses, spanClass ->
-                    bucketQueryV2(resolvedQuery, spanClass).limit(resolvedQuery.getPageSize() + 1));
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) ->
+                    bucketQueryV2(session, resolvedQuery, spanClass).limit(resolvedQuery.getPageSize() + 1));
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
             return null;
@@ -801,6 +849,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * {@link #bucketDocumentQuery} makes for V1). Package-private on purpose.
      */
     FindIterable<BucketDocument> bucketQueryV2(ResolvedQuery resolvedQuery, SpanClass spanClass) {
+        return bucketQueryV2(null, resolvedQuery, spanClass);
+    }
+
+    private FindIterable<BucketDocument> bucketQueryV2(
+            ClientSession session, ResolvedQuery resolvedQuery, SpanClass spanClass) {
         // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
         final List<Bson> andParts = new ArrayList<>();
         andParts.add(bucketBaseFilterV2(resolvedQuery, spanClass));
@@ -811,7 +864,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (pageStart != null) {
             andParts.add(bucketKeysetSeekFilter(pageStart));
         }
-        return bucketFind(and(andParts));
+        return bucketFind(session, and(andParts), bucketSort());
     }
 
     @Override
@@ -830,7 +883,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
         // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
         try {
-            return openSpanClassCursors(spanClasses, spanClass -> bucketStreamQueryV2(resolvedQuery, spanClass));
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) ->
+                    bucketStreamQueryV2(session, resolvedQuery, spanClass));
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
             return null;
@@ -843,7 +897,12 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * Package-private for the plan test.
      */
     FindIterable<BucketDocument> bucketStreamQueryV2(ResolvedQuery resolvedQuery, SpanClass spanClass) {
-        return bucketFind(bucketBaseFilterV2(resolvedQuery, spanClass));
+        return bucketStreamQueryV2(null, resolvedQuery, spanClass);
+    }
+
+    private FindIterable<BucketDocument> bucketStreamQueryV2(
+            ClientSession session, ResolvedQuery resolvedQuery, SpanClass spanClass) {
+        return bucketFind(session, bucketBaseFilterV2(resolvedQuery, spanClass), bucketSort());
     }
 
     /**
