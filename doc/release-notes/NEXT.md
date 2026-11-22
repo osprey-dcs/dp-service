@@ -275,6 +275,16 @@ What you may notice:
   bound `querySamplesStream` already used. The previous check counted value bytes only and could
   produce a response larger than the configured message size. Paging with `nextPageToken` returns
   the same rows in total. A page limited by `limit` is unchanged.
+- **A `querySamplesStream` message limited by message size holds more rows over many PVs.** The
+  size bound counted every column's name once per row; it now counts it once per message. For
+  20-character PV names and numeric values that is roughly three times as many rows per message,
+  and the "single row exceeds the outgoing message size limit" error is reached at a
+  correspondingly larger PV count.
+- **A sample status selector no longer loads an unbounded number of statuses at once.** The
+  statuses are joined in windows that lengthen while few samples are labeled. A long sparsely
+  labeled range followed by a densely labeled one could load the whole dense range in one
+  window. A window is now limited to 400,000 matching statuses and is shortened until it fits.
+  Results are unchanged.
 - **A cancelled request stops.** The service checks for cancellation while reading, not only when
   it sends, so a client that gives up no longer keeps a worker busy to the end of its range.
 - **`QueryHandler.queryV2SamplesInitialSliceSeconds` is removed**, with its environment variable
@@ -282,7 +292,7 @@ What you may notice:
   deployment that sets either can delete the setting; leaving it has no effect.
 - **Two kinds of malformed stored bucket are now reported as an error on these two methods:** a
   bucket whose timestamps decrease, and a bucket whose recorded first time is later than its
-  first sample, when that puts rows out of order. Ingestion cannot write either. Data written to
+  first sample. Ingestion cannot write either. Data written to
   the `buckets` collection by another tool could contain them, and a query that reaches such a
   bucket now fails with a message naming the PV where it previously returned the samples.
   `queryBuckets` and `queryBucketsStream` are not affected and can be used to inspect the bucket.

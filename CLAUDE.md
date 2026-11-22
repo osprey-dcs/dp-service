@@ -918,19 +918,42 @@ A few concurrent long-range `querySamplesStream` requests ran the query service 
   above it. The builder refuses a larger group. A request of 10,000 PVs is 200 cursors, which is
   why each sets a `batchSize` (`samplesBatchSize()`, 256 documents across the request, 4 to 64 per
   cursor): the driver default is 101 documents and then 16 MiB per cursor.
+- **Every find of one retrieval is issued in one explicit session** (`SessionBoundCursor`, PR #323
+  review). The merge reads a cursor only when it reaches that cursor's next bucket, so a slow PV
+  group beside fast ones can go unread for a long time. Measured on 8.0.6 with the timeouts
+  shortened: the server does not apply `cursorTimeoutMillis` to a cursor that belongs to a
+  session; it kills the cursor when the *session* has gone unused for the session timeout (30
+  minutes by default), and `noCursorTimeout` does not prevent that. Each driver cursor otherwise
+  gets its own implicit session. In one shared session a `getMore` on any cursor keeps all of
+  them, so do not reach for `noCursorTimeout`, and do not let a find on this path fall back to an
+  implicit session. A retrieval that reads nothing at all for the session timeout still fails,
+  as an error response. `testOneRetrievalsCursorsShareOneSession` reads the session ids from
+  `$currentOp`. The span-class merge on the bucket paths (#274) has the same exposure and is not
+  changed here.
 - **A row is complete when the next unread bucket starts after it.** `SampleRowMerger` keeps each
   bucket read as an open bucket with a position, a min-heap over them yields the earliest pending
   sample, and one bucket is read ahead; its `firstTime` is the watermark. That rests on a bucket's
   `firstTime` being its earliest sample, on timestamps not decreasing within a bucket, and on the
   cursor order. A violation would emit rows out of order, a silent wrong answer, so the merger
-  checks each and throws `DpException`. Do not remove those checks as unreachable.
+  checks each and throws `DpException`. Do not remove those checks as unreachable. **The
+  `firstTime` check is made when a bucket is opened, against its first stored timestamp before
+  any trimming**, not left to the row-order check: on unary paging a page can end before the late
+  bucket is opened, and the next page starts after the missed row, where its retrieval trims the
+  early sample and row order shows nothing wrong (PR #323 review). The pages before the bucket is
+  read have already gone out without the value; the page that reads it is the error.
 - **Memory is the open buckets, one cursor batch per find, and one outgoing chunk.** Rows go
   straight into the `ColumnTable` builders (`AbstractQuerySamplesDispatcher.RowChunk`); there is no
   pivot map on these paths. A bucket whose remaining samples lie past the last fragment is closed.
 - **The byte budget and the row limit are checked per row, against what is being built.** The
-  estimate (`RowChunk.rowBytes()`) is a conservative upper bound on the serialized size and is the
-  same on both paths; before #314 the unary path counted value bytes only. A row that alone
-  exceeds the budget is the indivisible-oversized error. Nothing is discarded.
+  estimate is a conservative upper bound on the serialized `ColumnTable` and is the same on both
+  paths; before #314 the unary path counted value bytes only. It has two parts: the column names
+  and framing, charged once to the empty chunk (`RowChunk.emptyBytes()`), and what each row adds
+  (`rowBytes()`). Charging the names to every row made a wide message go out about a quarter full
+  (PR #323 review). `RowChunkSizeBoundTest` pins the bound against the real serialized size; the
+  estimate has little slack left, so change it only with that test. The response envelope (token,
+  `responseTime`, framing, about 100 bytes) is outside the bound and inside the default limit's
+  margin under gRPC's 4 MiB. A row that with the empty table exceeds the budget is the
+  indivisible-oversized error. Nothing is discarded.
 - **The unary token is the next row's timestamp**, read from the merge, so one row is read past a
   full page. An exactly filled last page has no token; `testExactlyFilledLastPageHasNoToken` pins
   both sides.
@@ -941,10 +964,19 @@ A few concurrent long-range `querySamplesStream` requests ran the query service 
   Read order within a PV is index order.
 - **The status join is loaded in windows as the merge advances.** Rows come in time order, so the
   windows only move forward; the test is made when a row is emitted, and a row with nothing left
-  is not produced. Window length adapts to how many matching timestamps a window held. A failed
-  load is a `DpException`.
-- **Cancellation is checked before each bucket read**, on both paths: the stream's gate, and for
-  unary `OutboundReadinessGate.isCancelled(observer)`. A cancelled request stops reading, sends
+  is not produced. A failed load is a `DpException`. **The window length is a guess and does not
+  bound memory; the count limit does** (PR #323 review). The length adapts to how many matching
+  timestamps the previous window held, so a long sparsely labeled stretch doubles it without
+  limit and the dense stretch after it would be loaded whole, the #314 defect over again.
+  `resolveSampleStatusTimestamps()` therefore takes `STATUS_WINDOW_MAX_TIMESTAMPS` (400,000) and
+  returns `StatusTimestamps.OVER_LIMIT`, holding nothing, once a window exceeds it; the merger
+  halves the window and asks again. A refused load has read at most the limit plus one status
+  document. Keep the limit where the timestamps are materialized: a check in the merger after
+  the map is built bounds nothing.
+- **Cancellation is checked on every pass of the merge loop**, so before each bucket read and
+  each row, on both paths: the stream's gate, and for unary
+  `OutboundReadinessGate.isCancelled(observer)`. Checking only before a read missed the rows
+  still in open buckets once the cursor was exhausted. A cancelled request stops reading, sends
   nothing further, does not complete, and is `dp.outcome=abandoned`.
 - **The `pvStats` span classes are resolved once per retrieval, never held across requests**
   (#232, plan D7): a stored span only grows, so a stale one is too small, and a too-small

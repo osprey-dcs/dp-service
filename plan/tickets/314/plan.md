@@ -239,6 +239,35 @@ It narrows the bad cases but keeps the guess, the discard, and the per-slice re-
   next one doubles when it held fewer than 10,000 matching timestamps or halves above 100,000.
 - **Batch size:** 256 documents across a request's cursors, 4 to 64 per cursor.
 
+### D9. Changes from the PR #323 review (2026-11-22)
+
+- **The status window is bounded by a count, not by its length.** D8's adaptive length is a guess
+  from the previous window: a sparsely labeled stretch doubles it without limit, and the densely
+  labeled stretch after it was then loaded whole. `resolveSampleStatusTimestamps()` now takes a
+  limit (400,000 matching timestamps), stops and keeps nothing when a window exceeds it, and the
+  merger halves the window and asks again; a one-nanosecond window is loaded without the limit.
+  *Rejected:* reading the status documents sorted by `firstTimeNanos` and ending the window at
+  the first unread document. It reads each document once, but the sort has no streaming plan
+  when the selector names no layer or several, the server would sort whole status documents of
+  up to 16 MB, and one document can still overflow the limit alone, so it needs the same
+  truncation logic on top. Halving costs a few refused loads at each sparse-to-dense transition,
+  each bounded by the limit.
+- **A bucket's `firstTime` is checked against its first stored timestamp when it is opened.** The
+  row-order check alone missed the unary case: a page ending before the late bucket is opened
+  returns a row without its value, and the next page starts after that row.
+- **All cursors of one retrieval share an explicit session.** Measured on MongoDB 8.0.6 with
+  `cursorTimeoutMillis=3000` and `localLogicalSessionTimeoutMinutes=1`: a session cursor idle for
+  7 s survived (the idle-cursor timeout does not apply to it); idle for 240 s it was gone, with or
+  without `noCursorTimeout`; an idle cursor sharing a session with one read every 10 s survived
+  240 s. *Rejected:* `noCursorTimeout` (no effect on session expiry), and reopening a killed find
+  from the last bucket read (ties in `firstTime` across PVs need per-PV resume state, and the
+  filter change would need its own single-plan proof).
+- **Column names are charged once per message**, not once per row; `RowChunkSizeBoundTest` pins
+  the estimate as an upper bound on the serialized table.
+- **Cancellation is checked on every pass of the merge loop**, not only before a bucket read.
+- **Declined:** adding the response envelope to the byte estimate. It is about 100 bytes against
+  a default limit 98,304 bytes under gRPC's maximum.
+
 ### D5. Bucket cursors set a batch size; the command listener stays
 
 With several cursors open per request, the driver default (101 documents, then up to 16 MiB per
