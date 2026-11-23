@@ -78,7 +78,7 @@ window starting two years before the data):
 
 The reporter has since said the PVs have data from before the range start (Archiver import), so
 their case was not an empty *leading* stretch. Any quiet stretch inside the range has the same
-effect. Whether their PVs are change-driven is an open question on the issue (see Open questions).
+effect. They have since confirmed the data is irregular in that way (see Customer answers).
 
 ### 5. Heap per buffered row is 24–34 times the wire size — measured
 
@@ -94,7 +94,9 @@ The byte budget is the gRPC wire limit, read from `GrpcServer.incomingMessageSiz
 In steady state the slice settles at 50–100 rows when `pageSize=100`, so the stream issues about one
 `find` per page of rows, and each `find` re-decodes every bucket it overlaps. A two-year stream of
 millions of samples is tens of thousands of queries. The incident log shows `queueMs` of 22–42 s
-with all seven workers saturated before the crash, against a client deadline of about two minutes.
+with all seven workers saturated before the crash. (This line first read "against a client
+deadline of about two minutes". The customer has since said their clients set no deadline and no
+keepalive, so the two minutes was not a client deadline; see Customer answers.)
 
 A row cap would force every request back to that regime. This is arithmetic from the code and the
 incident log, not a measurement on the customer's data; PR 2 carries the measurement.
@@ -359,6 +361,21 @@ includes garbage not yet collected and is an upper bound on what was live. One r
 The 4 GB "after" figure is higher than the 512 MB one because the collector lets garbage
 accumulate in a larger heap; the 512 MB run shows the workload fits in 130 MB.
 
+**At the incident's heap (2026-11-23).** The customer's pod had a 1 GB memory limit and no
+`-Xmx`, for which the JVM's default maximum heap is a quarter of the limit, about 256 MB (an
+inference from the JVM default, not something they reported). Same fixture and machine, this
+branch at `72e5357`, server with `-Xmx256m -XX:+ExitOnOutOfMemoryError`, one run each. Heap was
+sampled about every 0.4 s here, so the peaks are coarser than the table above.
+
+| Streams | `limit` | Outcome | First message | Stream completes | Peak heap used |
+|---|---|---|---|---|---|
+| 16 | 10,000 | all complete | 0.13–3.7 s | 1.9–4.5 s | 146 MB |
+| 4 | 100 | all complete | 0.09 s | 2.0 s | 145 MB |
+
+Sixteen streams against seven workers run in three waves, which is the spread in the first row:
+the first seven get a message after 0.13 s, the rest wait for a worker. 16 and 10,000 are the
+customer's bulk-read concurrency and page size; 4 and 100 are their diagnostic script's.
+
 On the unit fixture (`MongoSyncQuerySamplesV2Test`, 200 buckets after a two-year empty lead,
 `limit` 100): 2 buckets read before the first message (was 200), and 200 buckets read in total at
 a 40,000-byte budget (was 2,454).
@@ -394,8 +411,24 @@ reduction). The gRPC health service is the existing #293, which stays under its 
 - Neither PR blocks on the reporter's answers. They affect only the shape of the benchmark fixture
   in task 7.
 
-## Open questions
+## Customer answers
 
-Asked on the issue, 2026-11-19, unanswered when this was written: whether the PVs are change-driven
-with quiet periods, the typical bucket shape, the heap limit at the time of the incident, whether
-`pageSize=100` is required, and the client deadline.
+Asked on the issue 2026-11-19, answered by email 2026-11-23, after PR 2 was implemented. None
+changes the design.
+
+- **Data shape.** Irregular, with long quiet periods followed by dense sampling. Archiver PVs are
+  about 1 Hz; some will be much faster as live ingestion at native rates comes in. This is the
+  case the merge was built for.
+- **Bucket shape.** A fixed number of samples per bucket for BSAS Gen1 ingested from HDF5; a
+  variable number for live EPICS ingestion (Gen1 and Gen2). No sizes were given, so the memory a
+  request holds on their data (the buckets overlapping the read position) is still unmeasured.
+- **Heap.** No JVM heap limit at the time, pod memory limit 1 GB. See the 256 MB measurement.
+- **`pageSize=100` was not the workload.** It came from a diagnostic script: one PV per
+  `querySamplesStream`, four at a time, `limit` 100, reading the first message and cancelling.
+  The cancel is the likely source of the abandoned request in the log that kept reading about
+  35,000 buckets, which the per-pass cancellation check now stops. Their bulk read uses the
+  library default of 10,000 rows, one PV per call, 16 calls at a time, one hour per call with a
+  look-back of at most a day.
+- **Deadline.** None, and no keepalive, in dp-python-lib or in their library on top of it. An
+  unanswered call waits until it is killed. Corrected in finding 6; the client side is
+  osprey-dcs/dp-python-lib#81, a sub-issue of this ticket.
