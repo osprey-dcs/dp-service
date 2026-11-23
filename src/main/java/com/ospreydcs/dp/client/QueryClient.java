@@ -1356,8 +1356,9 @@ public class QueryClient extends ServiceApiClientBase {
      * (4,096,000 bytes by default) trips first; a page ended by the budget holds the rows that
      * fit, and {@code nextPageToken} resumes at the first row that did not.  Since dp-service
      * #314 the byte accounting is an upper bound on the whole table (timestamps, values, column
-     * names and framing), so a page does not exceed the budget; servers before that counted
-     * sample values only, and a page's wire size could exceed the budget by the framing.
+     * names and framing), so the table in a page does not exceed the budget; the response around
+     * it adds the token, a response time and framing, about 100 bytes.  Servers before that
+     * counted sample values only, and a page's wire size could exceed the budget by the framing.
      *
      * <p><strong>A single oversized row is a hard error, not a page.</strong>  If the values for
      * one timestamp across all selected PVs exceed the byte budget, the request fails.  The

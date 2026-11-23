@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
 
 /**
  * Pins how the two querySamples dispatchers classify a null cursor from
- * {@code executeQuerySamplesV2} (issue #232, task 6). The client returns null both when nothing
+ * {@code executeQuerySamplesTimeOrdered} (issue #232, task 6). The client returns null both when nothing
  * overlaps the page window and when retrieval fails — a database error, or a failed pvStats span
  * read (plan D8). The dispatchers must screen the empty window themselves, before the database call,
  * and report a null they do receive as an error. Treating it as an empty page would silently return

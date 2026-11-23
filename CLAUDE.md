@@ -932,7 +932,12 @@ A few concurrent long-range `querySamplesStream` requests ran the query service 
   PV-major, so a class's cursor goes unread while other classes' PVs are streamed. A single-class
   request keeps its one cursor's implicit session. `testOneRetrievalsCursorsShareOneSession` and
   `testSpanClassCursorsShareOneSession` read the session ids from `$currentOp`. A new path that
-  holds more than one bucket cursor open owes the same session.
+  holds more than one bucket cursor open owes the same session. **Every consumer of a bucket
+  cursor must therefore close it on every exit, including the ones that read it to its end.** An
+  exhausted cursor releases an implicit session by itself, but the explicit one ends only on
+  close, and it holds any unread server cursor until the session expires. `queryTable`'s
+  empty-result return and the export jobs' data-block loops returned without closing until the
+  PR #323 review; `QueryTableDispatcherCursorCloseTest` pins the first.
 - **A row is complete when the next unread bucket starts after it.** `SampleRowMerger` keeps each
   bucket read as an open bucket with a position, a min-heap over them yields the earliest pending
   sample, and one bucket is read ahead; its `firstTime` is the watermark. That rests on a bucket's

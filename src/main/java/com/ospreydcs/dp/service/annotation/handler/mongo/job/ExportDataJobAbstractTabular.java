@@ -103,71 +103,77 @@ public abstract class ExportDataJobAbstractTabular extends ExportDataJobBase {
                     return new ExportDataStatus(true, errorMsg);
                 }
 
-                if (!cursor.hasNext()) {
-                    final String errorMsg = "data block query returned no data";
-                    logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
-                    return new ExportDataStatus(true, errorMsg);
-                }
-
-                // get time range for data block
-                final long beginSeconds = dataBlock.getBeginTime().getSeconds();
-                final long beginNanos = dataBlock.getBeginTime().getNanos();
-                final Instant beginInstant = Instant.ofEpochSecond(beginSeconds, beginNanos);
-                final long endSeconds = dataBlock.getEndTime().getSeconds();
-                final long endNanos = dataBlock.getEndTime().getNanos();
-                final Instant endInstant = Instant.ofEpochSecond(endSeconds, endNanos);
-
-                // update min/max time range for dataset
-                if (first) {
-                    exportBeginInstant = beginInstant;
-                    exportEndInstant = endInstant;
-                    first = false;
-                } else {
-                    if (beginInstant.isBefore(exportBeginInstant)) {
-                        exportBeginInstant = beginInstant;
-                    }
-                    if (endInstant.isAfter(exportEndInstant)) {
-                        exportEndInstant = endInstant;
-                    }
-                }
-
-                TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
+                // Closed on every exit: a multi-class request's cursor owns the session its
+                // finds share (#314), which ends only when the cursor is closed.
                 try {
-                    sizeStats = TabularDataUtility.addBucketsToTable(
-                            tableValueMap,
-                            cursor,
-                            tableDataSize,
-                            ExportConfiguration.getExportFileSizeLimitBytes(),
-                            beginSeconds,
-                            beginNanos,
-                            endSeconds,
-                            endNanos
-                    );
-                } catch (NonScalarColumnException e) {
-                    // Q4: tabular formats are scalar-only — a client mistake, not a service
-                    // error (#235 / #248 plan D30). Phrase export-specific guidance around the
-                    // neutral shared exception.
-                    final String errorMsg = "tabular export supports scalar PVs only: PV '"
-                            + e.getPvName() + "' has non-scalar column type " + e.getColumnType()
-                            + "; export to HDF5 instead";
-                    logger.debug("id: {}, reject: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
-                    return ExportDataStatus.reject(errorMsg);
-                } catch (DpException e) {
-                    final String errorMsg = "exception building tabular result: " + e.getMessage();
-                    logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
-                    return new ExportDataStatus(true, errorMsg);
-                }
+                    if (!cursor.hasNext()) {
+                        final String errorMsg = "data block query returned no data";
+                        logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                        return new ExportDataStatus(true, errorMsg);
+                    }
 
-                // check if tabular structure execeeds export output file size limit
-                if (sizeStats.sizeLimitExceeded()) {
-                    final String errorMsg = "export file size limit "
-                            + ExportConfiguration.getExportFileSizeLimitBytes()
-                            + " exceeded for: " + serverFilePath;
-                    logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
-                    return new ExportDataStatus(true, errorMsg);
-                }
+                    // get time range for data block
+                    final long beginSeconds = dataBlock.getBeginTime().getSeconds();
+                    final long beginNanos = dataBlock.getBeginTime().getNanos();
+                    final Instant beginInstant = Instant.ofEpochSecond(beginSeconds, beginNanos);
+                    final long endSeconds = dataBlock.getEndTime().getSeconds();
+                    final long endNanos = dataBlock.getEndTime().getNanos();
+                    final Instant endInstant = Instant.ofEpochSecond(endSeconds, endNanos);
 
-                tableDataSize = tableDataSize + sizeStats.currentDataSize();
+                    // update min/max time range for dataset
+                    if (first) {
+                        exportBeginInstant = beginInstant;
+                        exportEndInstant = endInstant;
+                        first = false;
+                    } else {
+                        if (beginInstant.isBefore(exportBeginInstant)) {
+                            exportBeginInstant = beginInstant;
+                        }
+                        if (endInstant.isAfter(exportEndInstant)) {
+                            exportEndInstant = endInstant;
+                        }
+                    }
+
+                    TabularDataUtility.TimestampDataMapSizeStats sizeStats = null;
+                    try {
+                        sizeStats = TabularDataUtility.addBucketsToTable(
+                                tableValueMap,
+                                cursor,
+                                tableDataSize,
+                                ExportConfiguration.getExportFileSizeLimitBytes(),
+                                beginSeconds,
+                                beginNanos,
+                                endSeconds,
+                                endNanos
+                        );
+                    } catch (NonScalarColumnException e) {
+                        // Q4: tabular formats are scalar-only — a client mistake, not a service
+                        // error (#235 / #248 plan D30). Phrase export-specific guidance around the
+                        // neutral shared exception.
+                        final String errorMsg = "tabular export supports scalar PVs only: PV '"
+                                + e.getPvName() + "' has non-scalar column type " + e.getColumnType()
+                                + "; export to HDF5 instead";
+                        logger.debug("id: {}, reject: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                        return ExportDataStatus.reject(errorMsg);
+                    } catch (DpException e) {
+                        final String errorMsg = "exception building tabular result: " + e.getMessage();
+                        logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                        return new ExportDataStatus(true, errorMsg);
+                    }
+
+                    // check if tabular structure execeeds export output file size limit
+                    if (sizeStats.sizeLimitExceeded()) {
+                        final String errorMsg = "export file size limit "
+                                + ExportConfiguration.getExportFileSizeLimitBytes()
+                                + " exceeded for: " + serverFilePath;
+                        logger.trace("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                        return new ExportDataStatus(true, errorMsg);
+                    }
+
+                    tableDataSize = tableDataSize + sizeStats.currentDataSize();
+                } finally {
+                    closeCursorQuietly(cursor);
+                }
             }
         }
 

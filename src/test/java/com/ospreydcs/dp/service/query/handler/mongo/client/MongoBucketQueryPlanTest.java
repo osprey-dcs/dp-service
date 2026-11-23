@@ -66,7 +66,7 @@ import static org.junit.Assert.fail;
  *
  * <p>The queries under test are the exact filter, sort, and hint the service issues, obtained
  * from the package-private {@code FindIterable} builders on {@link MongoSyncQueryClient}
- * ({@code bucketDocumentQuery} for V1, {@code bucketQueryV2} and {@code bucketSamplesQueryV2}
+ * ({@code bucketDocumentQuery} for V1, {@code bucketQueryV2} and {@code bucketSamplesTimeOrderedQuery}
  * for V2), with the name filters built the way the production callers build them. The span is
  * resolved through the production {@code resolveMaxBucketSpanSeconds} from {@code pvStats}
  * documents seeded through the production updater, so each test pins the chain from stored
