@@ -4,6 +4,7 @@ import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataRequest;
 import com.ospreydcs.dp.grpc.v1.query.QueryDataResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.common.handler.Dispatcher;
 import com.ospreydcs.dp.service.common.mongo.TimedMongoCursor;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
@@ -43,6 +44,22 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
         }
     }
 
+    /**
+     * Records the error outcome and sends the error response, unless the client has cancelled
+     * (#326): then nothing is sent and the call is not completed. The outcome is {@code error}
+     * either way, because the request did fail. Cancellation only, not readiness: one small
+     * message to a slow reader is cheaper than holding a worker for it, and a reader that
+     * resumes should find its error. On a unary call, which has no cancel handler, this also
+     * avoids the {@code StatusRuntimeException} gRPC throws from {@code onNext} once cancelled.
+     */
+    protected void sendError(String msg) {
+        telemetry.markError();
+        if (OutboundReadinessGate.isCancelled(getResponseObserver())) {
+            return;
+        }
+        QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());
+    }
+
     protected abstract void handleResult_(MongoCursor<BucketDocument> cursor);
 
     protected StreamObserver<QueryDataResponse> getResponseObserver() {
@@ -59,8 +76,7 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
         if (cursor == null) {
             final String msg = "executeQuery returned null cursor";
             logger.error(msg);
-            telemetry.markError();
-            QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());
+            sendError(msg);
             return;
         }
 

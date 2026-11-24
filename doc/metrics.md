@@ -298,7 +298,9 @@ Extending the stage telemetry to them is a follow-on if it is ever needed.
   the data it did send was correct, but the response is incomplete — so this is neither `success`
   nor `error`. A rising rate means clients are disconnecting or reading too slowly to keep up,
   which is a client or network question, not a service fault; sustained non-zero also means workers
-  are being occupied waiting on those clients.
+  are being occupied waiting on those clients. A request that failed or was rejected is counted
+  as `error` or `reject` even when the client had already cancelled and the response was not
+  sent; `abandoned` is only for a response that was otherwise succeeding.
 
 A rising `reject` rate means clients are sending something wrong; a rising `error` rate means the
 service is failing. **An alert that cannot tell them apart pages the wrong person**, which is why

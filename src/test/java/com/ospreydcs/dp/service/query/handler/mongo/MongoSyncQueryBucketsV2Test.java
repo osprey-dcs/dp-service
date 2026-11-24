@@ -351,6 +351,39 @@ public class MongoSyncQueryBucketsV2Test extends MongoQueryHandlerTestBase {
                 DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
     }
 
+    /**
+     * An error is not sent to a client that has cancelled, and the call is not completed; the
+     * request is still an error, since it failed whoever is left to be told (#326). The three
+     * error sends of this dispatcher go through one helper; the oversized bucket is the one a
+     * fixture can produce.
+     */
+    @Test
+    public void testStreamErrorIsNotSentToACancelledClient() {
+        final long tinyBudget = Math.max(1, firstBucketSerializedSize(COL_1_NAME) - 1);
+        final QueryBucketsRequest request =
+                bucketsRequest(List.of(COL_1_NAME), startSeconds, startSeconds + 10, 100, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.BUCKET, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QueryBucketsResponse> observer = new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        // gone before the first bucket is read; the error precedes any gated send
+        observer.cancelled.set(true);
+
+        final QueryTelemetry telemetry = new QueryTelemetry("queryBucketsTest");
+        new QueryV2Job(
+                resolution.getResolvedQuery(),
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QueryBucketsStreamDispatcher(
+                        observer, tinyBudget, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("a call with no reader must not be completed", observer.completed);
+        assertEquals("an error stays an error when the client has gone",
+                DpMetrics.OUTCOME_ERROR, telemetry.getOutcome());
+    }
+
     private static List<DataBucket> allStreamedBuckets(StreamOutcome outcome) {
         final List<DataBucket> all = new ArrayList<>();
         for (QueryBucketsResponse r : outcome.messages) {
