@@ -49,12 +49,15 @@ public abstract class QueryDataAbstractDispatcher extends Dispatcher {
      * (#326): then nothing is sent and the call is not completed. The outcome is {@code error}
      * either way, because the request did fail. Cancellation only, not readiness: one small
      * message to a slow reader is cheaper than holding a worker for it, and a reader that
-     * resumes should find its error. On a unary call, which has no cancel handler, this also
-     * avoids the {@code StatusRuntimeException} gRPC throws from {@code onNext} once cancelled.
+     * resumes should find its error. Shared with the unary and bidi dispatchers: a unary
+     * {@code onNext} does not throw on a cancelled call, so there the skip changes nothing; the
+     * bidi call has no cancel handler, so there it avoids the {@code StatusRuntimeException}
+     * gRPC throws from {@code onNext} once cancelled.
      */
     protected void sendError(String msg) {
         telemetry.markError();
         if (OutboundReadinessGate.isCancelled(getResponseObserver())) {
+            logger.debug("error response not sent, client cancelled id: {}", getResponseObserver().hashCode());
             return;
         }
         QueryServiceImpl.sendQueryDataResponseError(msg, getResponseObserver());

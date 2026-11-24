@@ -205,8 +205,9 @@ public class QuerySamplesDispatcherNullCursorTest {
     }
 
     /**
-     * The helper is shared with the unary dispatcher, where gRPC would throw from
-     * {@code onNext} on a cancelled call because a unary call registers no cancel handler.
+     * The helper is shared with the unary dispatcher, so it skips the send there too. gRPC does
+     * not throw from a unary {@code onNext} on a cancelled call, so this pins uniformity, not a
+     * fix.
      */
     @Test
     public void testUnaryNullCursorErrorIsNotSentToACancelledClient() {

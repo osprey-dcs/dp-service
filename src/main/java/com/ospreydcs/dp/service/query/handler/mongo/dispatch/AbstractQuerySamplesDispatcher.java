@@ -75,11 +75,16 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
      * (#326). The outcome is still recorded by the caller: the request failed, or was wrong,
      * whether or not anyone is left to be told. Cancellation only, not readiness: one small
      * message to a slow reader is cheaper than holding a worker for it, and a reader that
-     * resumes should find its error. Also spares a unary call, which has no cancel handler, the
-     * {@code StatusRuntimeException} gRPC throws from {@code onNext} on a cancelled call.
+     * resumes should find its error. On the unary dispatcher the skip changes nothing gRPC does
+     * (a unary {@code onNext} does not throw on a cancelled call); it is kept so the two
+     * dispatchers cannot drift. Logs the skipped send at debug.
      */
     private boolean clientCancelled() {
-        return OutboundReadinessGate.isCancelled(responseObserver);
+        if (OutboundReadinessGate.isCancelled(responseObserver)) {
+            logger.debug("exceptional response not sent, client cancelled id: {}", responseObserver.hashCode());
+            return true;
+        }
+        return false;
     }
 
     /**

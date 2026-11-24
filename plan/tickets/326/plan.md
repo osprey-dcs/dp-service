@@ -44,13 +44,17 @@ version on this classpath:
 
 - `onNext()` throws `StatusRuntimeException` ("call already cancelled. Use
   ServerCallStreamObserver.setOnCancelHandler() to disable this exception") when the call is
-  cancelled **and no cancel handler is registered**.
+  cancelled, **no cancel handler is registered**, and the call is **server-streaming or bidi**:
+  the test is `cancelled && serverStreamingOrBidi`, and `cancelled` is set only when there is no
+  handler to run.
 - The gate registers a cancel handler (#274), so on the three streaming responders `onNext()` does
   not throw.
-- A unary responder registers none. An error send on a cancelled unary call therefore throws out
-  of the dispatcher into the job, whose catch rethrows it to the worker, which logs it. The
-  outcome was already marked, so the metric is right; the cost is a stack trace in the log for a
-  client that simply went away.
+- A unary call never throws: `asyncUnaryCall` builds its observer with `serverStreamingOrBidi`
+  false. (The first version of this plan said a unary error send throws; the PR #327 review
+  corrected it from the bytecode.)
+- `queryDataBidiStream` is bidi and registers no cancel handler, so a send on a cancelled bidi
+  call does throw, out of the dispatcher. The outcome was already marked, so the metric is right;
+  the cost is a stack trace in the log for a client that simply went away.
 
 Not measured against a running server: what the transport does with the message and the
 `close(Status.OK)` after a cancel on a call that does have a handler. The tests here use
@@ -105,11 +109,15 @@ the static `OutboundReadinessGate.isCancelled(observer)`, which registers nothin
 false for a plain `StreamObserver`. The buckets stream uses its gate.
 
 Consequence, accepted: the unary samples dispatcher, and the null-cursor path of unary and bidi
-`queryData`, also skip the send on a cancelled call. On a unary call that avoids the throw in
-finding 2. No behavior a client can observe changes.
+`queryData`, also skip the send on a cancelled call. On a unary call the skip is a no-op (no throw
+to avoid, finding 2); on the bidi null-cursor path it avoids the throw. No behavior a client can
+observe changes.
 
-Rejected: an overridable hook so only the stream dispatchers check. It would keep the unary throw
-for no benefit.
+Each helper logs the skipped send at debug, so a log can be read against a client report of
+receiving no error.
+
+Rejected: an overridable hook so only the stream dispatchers check. It would add a seam and keep
+the bidi null-cursor throw for no benefit.
 
 ## Implementation tasks
 
@@ -140,9 +148,9 @@ for no benefit.
 - **The other error sends of the unary and bidi `queryData` dispatchers**
   (`QueryDataDispatcher.java:88`, `QueryDataBidiStreamDispatcher.java:144`): not streaming
   responders in the sense of #274; `queryDataBidiStream` is client-paced and ungated by design.
+  The bidi one still throws on a cancelled call (finding 2). No ticket.
+- **Normal sends of `queryDataBidiStream`**, which throw on a cancelled call for the same reason.
   No ticket.
-- **Normal sends on unary calls**, which throw on a cancelled call for the same reason as
-  finding 2. No ticket.
 
 ## Dependencies and sequencing
 

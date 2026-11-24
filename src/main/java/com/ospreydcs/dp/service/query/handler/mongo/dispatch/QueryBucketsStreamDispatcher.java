@@ -174,6 +174,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
     private void sendError(String msg) {
         telemetry.markError();
         if (gate.isCancelled()) {
+            logger.debug("error response not sent, client cancelled id: {}", responseObserver.hashCode());
             return;
         }
         QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);

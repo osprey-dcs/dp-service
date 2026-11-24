@@ -1059,8 +1059,12 @@ and waiting would hold a worker up to the timeout and then leave a live client w
 all. And the outcome is not `abandoned`: the request failed, or was wrong, whoever was left to be
 told, and relabelling it would hide failures behind disconnects. The samples and `queryData`
 helpers are shared with dispatchers that have no gate, so they use the static
-`OutboundReadinessGate.isCancelled(observer)`; on a unary call that also avoids the
-`StatusRuntimeException` gRPC throws from `onNext` on a cancelled call with no cancel handler.
+`OutboundReadinessGate.isCancelled(observer)`. gRPC throws `StatusRuntimeException` from `onNext`
+on a cancelled call only when the call is server-streaming or bidi **and** has no cancel handler
+(grpc-stub 1.65.1: `cancelled && serverStreamingOrBidi`). A unary call never throws, so there the
+skip is a no-op kept for uniformity; `queryDataBidiStream` registers no handler, so on its
+null-cursor path the skip avoids the throw. That dispatcher's other error send is out of scope and
+still throws on a cancelled call. Each helper logs the skipped send at debug.
 
 **An abandoned response is `dp.outcome=abandoned`, never `success`.** The refusal paths return
 without sending, and `QueryTelemetry.outcome` defaults to `success`, so before `markAbandoned()`
