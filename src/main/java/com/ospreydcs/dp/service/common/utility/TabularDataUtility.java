@@ -155,22 +155,7 @@ public class TabularDataUtility {
 
         final DataTimestamps bucketDataTimestamps = bucket.getDataTimestamps().toDataTimestamps();
 
-        // Only scalar column types and DataColumnDocument can be converted to DataColumn for tabular export
-        final ColumnDocumentBase columnDocument = bucket.getDataColumn();
-        final DataColumn bucketColumn;
-        
-        if (columnDocument instanceof ScalarColumnDocumentBase) {
-            // Scalar columns can be converted to legacy DataColumn format
-            bucketColumn = ((ScalarColumnDocumentBase<?>) columnDocument).toDataColumn();
-        } else if (columnDocument instanceof DataColumnDocument) {
-            // Legacy DataColumn documents can be converted directly
-            bucketColumn = ((DataColumnDocument) columnDocument).toDataColumn();
-        } else {
-            // Non-scalar columns (arrays, images, structs) have no tabular (row/column) representation.
-            // Throw a neutral, PV-named exception; each caller phrases its own guidance (the export
-            // framework and querySamples both catch this and translate for their context, Q4).
-            throw new NonScalarColumnException(bucket.getPvName(), columnDocument.getClass().getSimpleName());
-        }
+        final DataColumn bucketColumn = tabularDataColumn(bucket);
 
         return addColumnsToTable(
                 bucketDataTimestamps,
@@ -178,6 +163,22 @@ public class TabularDataUtility {
                 tableValueMap,
                 retentionIntervals,
                 statusFilter);
+    }
+
+    /**
+     * Narrows a bucket's stored column to the legacy {@link DataColumn} form a row/column result
+     * requires. Scalar and legacy documents convert; arrays, images and structs have no tabular
+     * representation and throw a neutral, PV-named exception that each caller phrases for its own
+     * context (the export framework and querySamples both translate it, Q4).
+     */
+    public static DataColumn tabularDataColumn(BucketDocument bucket) throws DpException {
+        final ColumnDocumentBase columnDocument = bucket.getDataColumn();
+        if (columnDocument instanceof ScalarColumnDocumentBase) {
+            return ((ScalarColumnDocumentBase<?>) columnDocument).toDataColumn();
+        } else if (columnDocument instanceof DataColumnDocument) {
+            return ((DataColumnDocument) columnDocument).toDataColumn();
+        }
+        throw new NonScalarColumnException(bucket.getPvName(), columnDocument.getClass().getSimpleName());
     }
 
     /**

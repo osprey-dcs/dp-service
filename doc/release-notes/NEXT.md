@@ -22,6 +22,7 @@ person cutting the release has any reason to re-read.
 - [Signed release artifacts (Issue #221)](#signed-release-artifacts-issue-221)
 - [Database credentials removed from the startup log (Issue #316)](#database-credentials-removed-from-the-startup-log-issue-316)
 - [Services exit when they run out of memory (Issue #314)](#services-exit-when-they-run-out-of-memory-issue-314)
+- [Sample queries read long ranges in bounded memory (Issue #314)](#sample-queries-read-long-ranges-in-bounded-memory-issue-314)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -239,6 +240,64 @@ This applies to all services, since they share the worker pool. For ingestion, a
 requests that were acknowledged but not yet written, as any other crash does.
 
 ---
+
+## Sample queries read long ranges in bounded memory (Issue #314)
+
+`querySamples` and `querySamplesStream` no longer run the query service out of memory on a long
+time range. The API and the data returned are unchanged.
+
+Previously these methods retrieved the range in time slices and buffered each slice before
+sending any of it. The slice length adapted to the data, and a stretch with few samples made it
+grow, so the dense data after a quiet stretch was buffered in very large pieces. A few concurrent
+long-range streams were enough to exhaust the heap.
+
+They now read each PV's stored buckets once, in time order, and send each row as soon as it is
+complete. What a request holds in memory is the buckets overlapping its current position and one
+outgoing message, however long the range.
+
+Measured with a benchmark modelled on the reported request (four concurrent streams over 4,000,000
+samples of one PV, the range beginning two years before the first sample, 100 rows per message),
+on a development machine with a local MongoDB:
+
+| Query service heap | Before | After |
+|---|---|---|
+| 512 MB | out of memory; no stream received a message | all streams complete in 2.2 s; first message after 0.13 s |
+| 4 GB | all streams complete in 10.8 s; first message after 5.9 s | all streams complete in 2.2 s; first message after 0.12 s |
+
+Your figures will depend on your data and deployment. The benchmark is
+`BenchmarkQuerySamplesStreamLongRange`, described in
+[`doc/benchmark-overview.md`](https://github.com/osprey-dcs/dp-service/blob/main/doc/benchmark-overview.md).
+
+What you may notice:
+
+- **A page of `querySamples` limited by message size may hold fewer rows than before.** The page
+  size is now checked against an upper bound on the size of the message being built, the same
+  bound `querySamplesStream` already used. The previous check counted value bytes only and could
+  produce a response larger than the configured message size. Paging with `nextPageToken` returns
+  the same rows in total. A page limited by `limit` is unchanged.
+- **A `querySamplesStream` message limited by message size holds more rows over many PVs.** The
+  size bound counted every column's name once per row; it now counts it once per message. For
+  20-character PV names and numeric values that is roughly three times as many rows per message,
+  and the "single row exceeds the outgoing message size limit" error is reached at a
+  correspondingly larger PV count.
+- **A sample status selector no longer loads an unbounded number of statuses at once.** The
+  statuses are joined in windows that lengthen while few samples are labeled. A long sparsely
+  labeled range followed by a densely labeled one could load the whole dense range in one
+  window. A window is now limited to 400,000 matching statuses and is shortened until it fits.
+  Results are unchanged.
+- **A cancelled request stops.** The service checks for cancellation while reading, not only when
+  it sends, so a client that gives up no longer keeps a worker busy to the end of its range.
+- **`QueryHandler.queryV2SamplesInitialSliceSeconds` is removed**, with its environment variable
+  `DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS`. There is no slice to size. A
+  deployment that sets either can delete the setting; leaving it has no effect.
+- **Two kinds of malformed stored bucket are now reported as an error on these two methods:** a
+  bucket whose timestamps decrease, and a bucket whose recorded first time is later than its
+  first sample. Ingestion cannot write either. Data written to
+  the `buckets` collection by another tool could contain them, and a query that reaches such a
+  bucket now fails with a message naming the PV where it previously returned the samples.
+  `queryBuckets` and `queryBucketsStream` are not affected and can be used to inspect the bucket.
+
+`queryTable` and tabular export are not changed by this.
 
 ## Cutting the release
 

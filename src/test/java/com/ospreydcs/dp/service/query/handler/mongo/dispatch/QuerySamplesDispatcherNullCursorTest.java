@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
 
 /**
  * Pins how the two querySamples dispatchers classify a null cursor from
- * {@code executeQuerySamplesV2} (issue #232, task 6). The client returns null both when nothing
+ * {@code executeQuerySamplesTimeOrdered} (issue #232, task 6). The client returns null both when nothing
  * overlaps the page window and when retrieval fails — a database error, or a failed pvStats span
  * read (plan D8). The dispatchers must screen the empty window themselves, before the database call,
  * and report a null they do receive as an error. Treating it as an empty page would silently return
@@ -63,11 +63,11 @@ public class QuerySamplesDispatcherNullCursorTest {
         @Override public List<TimeInterval> resolveConfigurationIntervals(List<Bson> f) { return List.of(); }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2(ResolvedQuery q) { return null; }
         @Override public MongoCursor<BucketDocument> executeQueryBucketsV2Stream(ResolvedQuery q) { return null; }
-        @Override public MongoCursor<BucketDocument> executeQuerySamplesV2(ResolvedQuery q, long bs, long bn, long es, long en) {
+        @Override public MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(ResolvedQuery q, long bs, long bn) {
             samplesCalls++;
             return null;
         }
-        @Override public Map<String, Set<Long>> resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn, long es, long en) { return Map.of(); }
+        @Override public StatusTimestamps resolveSampleStatusTimestamps(ResolvedQuery q, long bs, long bn, long es, long en, int max) { return StatusTimestamps.of(Map.of()); }
         @Override public MongoCursor<ProviderDocument> executeQueryProviders(QueryProvidersRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(QueryProviderStatsRequest r) { return null; }
         @Override public MongoCursor<ProviderMetadataQueryResultDocument> executeQueryProviderStats(String id) { return null; }

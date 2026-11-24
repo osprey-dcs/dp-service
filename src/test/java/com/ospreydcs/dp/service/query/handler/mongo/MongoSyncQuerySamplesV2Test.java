@@ -92,7 +92,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             mongoCollectionSampleStatusBuckets.insertMany(documentList);
         }
 
-        /** Number of slice retrievals issued (#274): pins the adaptive slice sizing. */
+        /** Number of samples retrievals opened: one per page or stream since #314. */
         int samplesRetrievals = 0;
 
         /** Number of pvStats span-class resolutions (#274): pins the per-page hoist. */
@@ -106,14 +106,29 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
             return super.resolveSpanClasses(pvNames);
         }
 
-        // Counted on the SpanClassHolder overload, which is what the slice drain calls (#274);
-        // the five-arg form delegates to it, so both routes are counted exactly once.
         @Override
-        public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesV2(
-                ResolvedQuery resolvedQuery, long bs, long bn, long es, long en,
-                com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.SpanClassHolder holder) {
+        public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(
+                ResolvedQuery resolvedQuery, long bs, long bn) {
             samplesRetrievals++;
-            return super.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
+            final com.mongodb.client.MongoCursor<BucketDocument> cursor =
+                    super.executeQuerySamplesTimeOrdered(resolvedQuery, bs, bn);
+            return (cursor == null) ? null : new CountingCursor(cursor);
+        }
+
+        /** Number of bucket documents the merge has pulled from its cursor (#314). */
+        long bucketsRead = 0;
+
+        /** Counts documents as the drain reads them; otherwise a transparent delegate. */
+        private final class CountingCursor implements com.mongodb.client.MongoCursor<BucketDocument> {
+            private final com.mongodb.client.MongoCursor<BucketDocument> delegate;
+            CountingCursor(com.mongodb.client.MongoCursor<BucketDocument> delegate) { this.delegate = delegate; }
+            @Override public void close() { delegate.close(); }
+            @Override public boolean hasNext() { return delegate.hasNext(); }
+            @Override public BucketDocument next() { bucketsRead++; return delegate.next(); }
+            @Override public int available() { return delegate.available(); }
+            @Override public BucketDocument tryNext() { return delegate.tryNext(); }
+            @Override public com.mongodb.ServerCursor getServerCursor() { return delegate.getServerCursor(); }
+            @Override public com.mongodb.ServerAddress getServerAddress() { return delegate.getServerAddress(); }
         }
     }
 
@@ -297,11 +312,6 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     private QuerySamplesResponse runSamplesWithBudget(QuerySamplesRequest request, long byteBudget) {
-        return runSamplesWithBudgetAndSlice(request, byteBudget, 60_000_000_000L);
-    }
-
-    private QuerySamplesResponse runSamplesWithBudgetAndSlice(
-            QuerySamplesRequest request, long byteBudget, long initialSliceNanos) {
         final ResolutionResult resolution = resolve(request);
         assertFalse("unexpected resolution error: "
                 + (resolution.isError() ? resolution.getErrorStatus().msg : ""), resolution.isError());
@@ -317,21 +327,22 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         // instance as a zero-count success on every call.
         final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         final QuerySamplesUnaryDispatcher dispatcher =
-                new QuerySamplesUnaryDispatcher(observer, byteBudget, initialSliceNanos, telemetry);
+                new QuerySamplesUnaryDispatcher(observer, byteBudget, telemetry);
         new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         assertEquals("expected exactly one unary response", 1, responses.size());
         return responses.get(0);
     }
 
     /**
-     * A mid-slice cursor failure must reach the caller as an error response, not escape unchecked
-     * (Copilot review on #281). The driver fetches later batches during iteration, which happens
-     * inside addBucketsToTable, so a getMore failure surfaces there rather than as the null cursor
-     * the open path returns. Only DpException is caught by the drain loops, so uncaught this
-     * escapes into QueueHandlerBase's worker and the caller's stream hangs with no response.
+     * A cursor failure partway through the read must reach the caller as an error response, not
+     * escape unchecked (Copilot review on #281). The driver fetches later batches during
+     * iteration, which happens inside the merge, so a getMore failure surfaces there rather than
+     * as the null cursor the open path returns. The dispatchers catch only DpException, so
+     * uncaught this escapes into QueueHandlerBase's worker and the caller's stream hangs with no
+     * response. SampleRowMerger wraps it.
      */
     @Test
-    public void testMidSliceCursorFailureIsReportedAsAnError() {
+    public void testMidReadCursorFailureIsReportedAsAnError() {
         final QuerySamplesRequest request =
                 samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false);
         final ResolutionResult resolution = resolve(request);
@@ -339,7 +350,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
         // a client whose samples cursor throws partway through iteration
         final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface failingClient =
-                new FailingSliceClient((TestSyncClient) clientTestInterface);
+                new FailingCursorClient((TestSyncClient) clientTestInterface);
 
         final List<QuerySamplesResponse> responses = new ArrayList<>();
         final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
@@ -349,22 +360,22 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         };
         final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         final QuerySamplesUnaryDispatcher dispatcher =
-                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry);
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry);
 
         // must not throw out of the job: that is the hang
         new QueryV2Job(resolution.getResolvedQuery(), dispatcher, failingClient, telemetry).execute();
 
         assertEquals("the caller must receive exactly one response", 1, responses.size());
-        assertTrue("a mid-slice cursor failure must be an error response",
+        assertTrue("a mid-read cursor failure must be an error response",
                 responses.get(0).hasExceptionalResult());
     }
 
     /**
-     * An {@code OutOfMemoryError} during a slice must leave the dispatcher as itself (#314). The
+     * An {@code OutOfMemoryError} during the read must leave the dispatcher as itself (#314). The
      * JVM reuses one pre-allocated instance when the heap is exhausted, so the cursor's
      * {@code close()} can throw the very object already propagating. Under try-with-resources that
      * made the implicit {@code addSuppressed} throw {@code IllegalArgumentException}
-     * ("Self-suppression not permitted"), which the slice's {@code RuntimeException} catch then
+     * ("Self-suppression not permitted"), which the retrieval's {@code RuntimeException} catch then
      * reported to the caller as the failure -- hiding the real cause in the incident's response
      * and log, and keeping the error from the worker that must exit the process on it.
      */
@@ -377,7 +388,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
         final OutOfMemoryError oom = new OutOfMemoryError("simulated");
         final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface failingClient =
-                new FailingSliceClient((TestSyncClient) clientTestInterface, oom);
+                new FailingCursorClient((TestSyncClient) clientTestInterface, oom);
 
         final List<QuerySamplesResponse> responses = new ArrayList<>();
         final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
@@ -387,7 +398,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         };
         final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         final QuerySamplesUnaryDispatcher dispatcher =
-                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry);
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry);
 
         Throwable thrown = null;
         try {
@@ -401,28 +412,27 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     /** Delegates to the real client but hands back a cursor that fails during iteration. */
-    private static final class FailingSliceClient
+    private static final class FailingCursorClient
             extends com.ospreydcs.dp.service.query.handler.mongo.client.MongoSyncQueryClient {
         private final TestSyncClient delegate;
 
         /** When set, thrown from iteration in place of the MongoException and again from close(). */
         private final Error errorAlsoThrownOnClose;
 
-        FailingSliceClient(TestSyncClient delegate) {
+        FailingCursorClient(TestSyncClient delegate) {
             this(delegate, null);
         }
 
-        FailingSliceClient(TestSyncClient delegate, Error errorAlsoThrownOnClose) {
+        FailingCursorClient(TestSyncClient delegate, Error errorAlsoThrownOnClose) {
             this.delegate = delegate;
             this.errorAlsoThrownOnClose = errorAlsoThrownOnClose;
         }
 
         @Override
-        public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesV2(
-                ResolvedQuery resolvedQuery, long bs, long bn, long es, long en,
-                com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.SpanClassHolder holder) {
+        public com.mongodb.client.MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(
+                ResolvedQuery resolvedQuery, long bs, long bn) {
             final com.mongodb.client.MongoCursor<BucketDocument> real =
-                    delegate.executeQuerySamplesV2(resolvedQuery, bs, bn, es, en, holder);
+                    delegate.executeQuerySamplesTimeOrdered(resolvedQuery, bs, bn);
             if (real == null) {
                 return null;
             }
@@ -436,7 +446,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                     if (errorAlsoThrownOnClose != null) {
                         throw errorAlsoThrownOnClose;
                     }
-                    throw new com.mongodb.MongoException("simulated getMore failure mid-slice");
+                    throw new com.mongodb.MongoException("simulated getMore failure mid-read");
                 }
                 @Override public BucketDocument tryNext() { return hasNext() ? next() : null; }
                 @Override public void close() {
@@ -452,10 +462,10 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         }
 
         @Override
-        public java.util.Map<String, java.util.Set<Long>> resolveSampleStatusTimestamps(
-                ResolvedQuery q, long bs, long bn, long es, long en)
+        public StatusTimestamps resolveSampleStatusTimestamps(
+                ResolvedQuery q, long bs, long bn, long es, long en, int max)
                 throws com.ospreydcs.dp.service.common.exception.DpException {
-            return delegate.resolveSampleStatusTimestamps(q, bs, bn, es, en);
+            return delegate.resolveSampleStatusTimestamps(q, bs, bn, es, en, max);
         }
     }
 
@@ -480,13 +490,12 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
     /** Pages a unary query to completion; returns every page's table in order. */
     private List<ColumnTable> pageToCompletion(
-            List<String> pvNames, long byteBudget, long initialSliceNanos, int limit, List<String> tokensOut) {
+            List<String> pvNames, long byteBudget, int limit, List<String> tokensOut) {
         final List<ColumnTable> tables = new ArrayList<>();
         String token = null;
         for (int page = 0; page < 200; page++) {
-            final QuerySamplesResponse response = runSamplesWithBudgetAndSlice(
-                    samplesRequest(pvNames, B, 0, B + NUM_SECONDS, 0, limit, token, false),
-                    byteBudget, initialSliceNanos);
+            final QuerySamplesResponse response = runSamplesWithBudget(
+                    samplesRequest(pvNames, B, 0, B + NUM_SECONDS, 0, limit, token, false), byteBudget);
             assertFalse(response.hasExceptionalResult() ? response.getExceptionalResult().getMessage() : "",
                     response.hasExceptionalResult());
             tables.add(response.getSampleQueryResult().getColumnTable());
@@ -510,11 +519,6 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     private StreamOutcome runSamplesStream(QuerySamplesRequest request, long byteBudget) {
-        return runSamplesStreamWithSlice(request, byteBudget, 60_000_000_000L);
-    }
-
-    private StreamOutcome runSamplesStreamWithSlice(
-            QuerySamplesRequest request, long byteBudget, long initialSliceNanos) {
         final ResolutionResult resolution = resolver().resolve(
                 request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
                 ResolvedQuery.ResultMode.SAMPLE, true /* streaming */);
@@ -531,7 +535,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher dispatcher =
                 new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
-                        observer, byteBudget, initialSliceNanos, telemetry);
+                        observer, byteBudget, telemetry);
         new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
         return outcome;
     }
@@ -659,12 +663,9 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     @Test
     public void testByteBudgetPagingSeamNoGapNoOverlap() {
         // Force byte-driven page boundaries with a small budget, then page the full spv_a window and
-        // verify the seam invariant holds across byte-driven cuts (the last, possibly-incomplete
-        // timestamp of each page is dropped and re-queried, so no gap and no duplicate).
-        // Size one row: run one page unbounded, measure a single-row column table's per-row cost via
-        // the serialized size of the whole 30-row result divided out is fragile; instead pick a tiny
-        // absolute budget that admits only a few rows and rely on truncation correctness.
-        final long smallBudget = 40; // bytes — admits a couple of rows per page
+        // verify no row is lost or repeated across them. One single-column row is estimated at 52
+        // bytes (timestamp 24, value 9 + 6, column overhead 13), so 120 bytes admits two per page.
+        final long smallBudget = 120;
 
         final List<Timestamp> collected = new ArrayList<>();
         String token = null;
@@ -675,6 +676,8 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                     smallBudget);
             final QuerySamplesResponse.SampleQueryResult result = response.getSampleQueryResult();
             assertFalse(response.hasExceptionalResult());
+            assertTrue("a byte-bounded page must stay within what the budget admits",
+                    result.getColumnTable().getTimestampList().getTimestampsCount() <= 2);
             collected.addAll(result.getColumnTable().getTimestampList().getTimestampsList());
             pages++;
             token = result.getNextPageToken();
@@ -695,17 +698,18 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // #274: time-sliced retrieval. Before #274 the page was drained from the PV-major cursor
-    // until the byte budget tripped, and a trip partway through the first PV silently emitted the
-    // remaining PVs as all-unset -- the two-PV variant of the seam test below reproduced it
-    // (30 spv_a values, 0 spv_b values, no error, on the pre-#274 code).
+    // #274: every row is complete across PVs. Before #274 the page was drained from the PV-major
+    // cursor until the byte budget tripped, and a trip partway through the first PV silently
+    // emitted the remaining PVs as all-unset -- the two-PV variant of the seam test below
+    // reproduced it (30 spv_a values, 0 spv_b values, no error, on the pre-#274 code). Since
+    // #314 the rows come from the time-ordered merge.
     // -----------------------------------------------------------------------
 
     @Test
     public void testByteBudgetPagingCompletesEveryPv() {
-        // spv_a (10 Hz) sorts before spv_b (5 Hz); a 40-byte budget trips inside every slice's
-        // first PV unless the retrieval is sliced so each accepted slice holds both
-        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 40, ONE_SECOND_NANOS, 10_000, null);
+        // spv_a (10 Hz) sorts before spv_b (5 Hz); a budget of two rows ends every page long
+        // before either PV is exhausted, and each row must still hold both
+        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 200, 10_000, null);
         int rows = 0;
         for (ColumnTable page : pages) {
             rows += page.getTimestampList().getTimestampsCount();
@@ -725,9 +729,8 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     public void testStreamByteBudgetCompletesEveryPv() {
         // streaming analog: chunks bounded by a budget that trips repeatedly; both PVs complete.
         // The budget must clear one two-column row's framing estimate (~90 bytes).
-        final StreamOutcome outcome = runSamplesStreamWithSlice(
-                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 10_000, null, false),
-                120, ONE_SECOND_NANOS);
+        final StreamOutcome outcome = runSamplesStream(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 120);
         assertTrue(outcome.completed);
         assertFalse(outcome.errored);
         assertTrue("budget should force multiple chunks", outcome.messages.size() > 1);
@@ -753,39 +756,40 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     @Test
-    public void testSmallInitialSliceGrowsProportionallyAndPageIsComplete() {
-        // 1 s initial slice over the 3 s window, page size 10,000: the first slice yields 10 rows, so
-        // the length grows by the capped factor (16x) and the second retrieval covers the rest --
-        // two retrievals for the page, not three fixed slices
+    public void testWholeWindowPageIsOneRetrieval() {
+        // #314: a page is one time-ordered read, however its rows are spread. (Under #274 this
+        // fixture took two slice retrievals.)
         final TestSyncClient client = (TestSyncClient) clientTestInterface;
         final int before = client.samplesRetrievals;
-        final QuerySamplesResponse response = runSamplesWithBudgetAndSlice(
-                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 10_000, null, false),
-                Long.MAX_VALUE, ONE_SECOND_NANOS);
+        final QuerySamplesResponse response = runSamples(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 10_000, null, false));
         assertFalse(response.hasExceptionalResult());
         final ColumnTable table = response.getSampleQueryResult().getColumnTable();
         assertEquals(30, table.getTimestampList().getTimestampsCount());
         assertTrue(response.getSampleQueryResult().getNextPageToken().isEmpty());
-        assertEquals(2, client.samplesRetrievals - before);
+        assertEquals(1, client.samplesRetrievals - before);
         final java.util.Map<String, Integer> values = countSetValues(List.of(table));
         assertEquals(30, values.get(PV_A).intValue());
         assertEquals(15, values.get(PV_B).intValue());
     }
 
     @Test
-    public void testSliceGrowthTargetsThePageSize() throws Exception {
-        // page size 20 with a 1 s initial slice: slice 1 yields 10 rows -> factor 2 -> slice 2 covers
-        // [B+1, B+3) and brings the map to 30 >= 20, so the page truncates to 20 rows with the
-        // token at the 21st timestamp. Two retrievals.
+    public void testRowLimitEndsPageWithTokenAtTheNextRow() throws Exception {
+        // page size 20: the page holds exactly 20 rows and the token is the 21st timestamp, read
+        // from the merge, not derived from a retrieval boundary. One retrieval, and only the
+        // buckets needed to learn that a 21st row exists: seconds B and B+1 for both PVs, plus the
+        // first bucket at B+2 and the one read ahead of it.
         final TestSyncClient client = (TestSyncClient) clientTestInterface;
         final int before = client.samplesRetrievals;
-        final QuerySamplesResponse response = runSamplesWithBudgetAndSlice(
-                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false),
-                Long.MAX_VALUE, ONE_SECOND_NANOS);
+        final long bucketsBefore = client.bucketsRead;
+        final QuerySamplesResponse response = runSamples(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false));
         assertFalse(response.hasExceptionalResult());
         final ColumnTable table = response.getSampleQueryResult().getColumnTable();
         assertEquals(20, table.getTimestampList().getTimestampsCount());
-        assertEquals(2, client.samplesRetrievals - before);
+        assertEquals(1, client.samplesRetrievals - before);
+        assertTrue("read " + (client.bucketsRead - bucketsBefore) + " of 6 buckets",
+                client.bucketsRead - bucketsBefore <= 6);
         final com.ospreydcs.dp.service.query.handler.model.KeysetPosition resume =
                 com.ospreydcs.dp.service.query.handler.paging.PageToken.decode(
                         response.getSampleQueryResult().getNextPageToken());
@@ -795,59 +799,70 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     }
 
     @Test
-    public void testBudgetTripEndsPageAtTheDiscardedSliceBegin() throws Exception {
-        // Each 1 s slice holds 15 values (10 spv_a + 5 spv_b) of 9 bytes; a 200-byte budget fits
-        // one slice but not two. Page 1: slice [B, B+1) accepted, the grown slice [B+1, B+3) trips,
-        // is discarded whole, and the page ends with the 10 rows of slice 1 and a token at B+1.
-        // Pages 2 and 3 repeat the shape; the traversal covers every row exactly once.
+    public void testExactlyFilledLastPageHasNoToken() {
+        // 30 rows and a page size of 30: the page is full and the result is exhausted, so there
+        // is no next row and no token. A token here would cost the caller an empty extra page;
+        // a missing token one row earlier would end the traversal with a row unread.
+        final QuerySamplesResponse full = runSamples(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 30, null, false));
+        assertEquals(30, full.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsCount());
+        assertTrue(full.getSampleQueryResult().getNextPageToken().isEmpty());
+
+        final QuerySamplesResponse oneShort = runSamples(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 29, null, false));
+        assertEquals(29, oneShort.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsCount());
+        assertFalse(oneShort.getSampleQueryResult().getNextPageToken().isEmpty());
+    }
+
+    @Test
+    public void testByteBudgetEndsPageWithTokenAtTheNextRow() throws Exception {
+        // Two columns: the empty table is estimated at 42 bytes (the two names, charged once per
+        // page), a row with both values at 54 and one with only spv_a at 45. A 150-byte budget
+        // admits two rows (141) and not a third. Nothing is discarded: each page ends at the row
+        // that would not fit, and the token is that row's timestamp.
         final List<String> tokens = new ArrayList<>();
-        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 200, ONE_SECOND_NANOS, 10_000, tokens);
-        assertEquals(3, pages.size());
+        final List<ColumnTable> pages = pageToCompletion(List.of(PV_A, PV_B), 150, 10_000, tokens);
+        assertEquals(15, pages.size());
         for (ColumnTable page : pages) {
-            assertEquals(10, page.getTimestampList().getTimestampsCount());
+            assertEquals(2, page.getTimestampList().getTimestampsCount());
         }
-        for (int page = 0; page < 2; page++) {
+        for (int page = 0; page < 14; page++) {
             final com.ospreydcs.dp.service.query.handler.model.KeysetPosition resume =
                     com.ospreydcs.dp.service.query.handler.paging.PageToken.decode(tokens.get(page));
-            assertEquals("token is the discarded slice's begin", B + page + 1, resume.getSeconds());
-            assertEquals(0, resume.getNanos());
+            final long expectedNanos = (page + 1) * 200_000_000L;
+            assertEquals("token is the first row not on the page", B + expectedNanos / 1_000_000_000L, resume.getSeconds());
+            assertEquals(expectedNanos % 1_000_000_000L, resume.getNanos());
         }
-        assertTrue(tokens.get(2).isEmpty());
+        assertTrue(tokens.get(14).isEmpty());
         final java.util.Map<String, Integer> values = countSetValues(pages);
         assertEquals(30, values.get(PV_A).intValue());
         assertEquals(15, values.get(PV_B).intValue());
     }
 
     /**
-     * The pvStats span-class partition is resolved once per page, not once per slice (#274). It
-     * depends only on the PV list and the stored spans, so it is identical for every slice; before
-     * the SpanClassHolder hoist a multi-slice page re-read pvStats once per retrieval. Uses the
-     * same fixture as the slice-growth test, which is known to take two retrievals.
+     * The pvStats span-class partition is read once per page (#232: never cached across requests,
+     * and since #314 there is one retrieval per page to read it for).
      */
     @Test
-    public void testSpanClassesResolvedOncePerPageNotPerSlice() {
+    public void testSpanClassesResolvedOncePerPage() {
         final TestSyncClient client = (TestSyncClient) clientTestInterface;
         final int retrievalsBefore = client.samplesRetrievals;
         final int resolutionsBefore = client.spanClassResolutions;
 
-        final QuerySamplesResponse response = runSamplesWithBudgetAndSlice(
-                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false),
-                Long.MAX_VALUE, ONE_SECOND_NANOS);
+        final QuerySamplesResponse response = runSamples(
+                samplesRequest(List.of(PV_A, PV_B), B, 0, B + NUM_SECONDS, 0, 20, null, false));
 
         assertFalse(response.hasExceptionalResult());
-        assertEquals("fixture must take more than one slice to make the hoist observable",
-                2, client.samplesRetrievals - retrievalsBefore);
-        assertEquals("pvStats must be read once for the whole page",
+        assertEquals(1, client.samplesRetrievals - retrievalsBefore);
+        assertEquals("pvStats must be read once for the page",
                 1, client.spanClassResolutions - resolutionsBefore);
     }
 
     @Test
-    public void testGapOnlySlicesSkipTheDatabase() {
-        // #207 fixture: fragments [SPAN_B, +2) and [SPAN_B+8, +10) with a 6 s gap. With 1 s slices
-        // and a huge page, the position jumps from the first fragment's end to the second's begin
-        // without a retrieval for the gap: slice 1 [+0,+1) -> 1 row -> x16 -> slice 2 [+1,+2) (capped
-        // by the fragment? no: the clamp intersects, so the slice is [+1, +17) and covers +1 and
-        // +8..+9 in one retrieval). Two retrievals, four rows, no gap samples.
+    public void testFragmentGapIsTrimmedInOneRetrieval() {
+        // #207 fixture: fragments [SPAN_B, +2) and [SPAN_B+8, +10) with a 6 s gap, over one
+        // bucket spanning all ten seconds. One retrieval covers both fragments, and the merge
+        // drops the bucket's six in-gap samples.
         final TestSyncClient client = (TestSyncClient) clientTestInterface;
         final int before = client.samplesRetrievals;
         final List<QuerySamplesResponse> responses = new ArrayList<>();
@@ -859,21 +874,18 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
         new QueryV2Job(
                 fragmentedSpanQuery(false),
-                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry),
+                new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
                 clientTestInterface, telemetry).execute();
         assertEquals(1, responses.size());
         assertEquals(List.of(0L, 1L, 8L, 9L), spanOffsets(responses.get(0).getSampleQueryResult().getColumnTable()));
-        assertEquals(2, client.samplesRetrievals - before);
+        assertEquals(1, client.samplesRetrievals - before);
     }
 
     @Test
-    public void testGapWiderThanTheSliceIsJumpedWithoutRetrieval() throws Exception {
-        // A slice that lands entirely inside the gap must not cost a retrieval: page size 1 keeps
-        // the slice at 1 s (factor 1), so after the first fragment [+0,+2) the slices [+2,+3) ...
-        // would each be a gap slice; the drain jumps straight to +8. Page 1 = row +0 (slice
-        // [+0,+1) already meets the page size), and paging on: each page one retrieval, four
-        // pages, four rows, tokens +1, +2 (the fragment end -- resume there, and the next page's
-        // first slice [+2,+3) is a gap jumped to +8 with no retrieval), +9, then empty.
+    public void testPagingAcrossAFragmentGap() throws Exception {
+        // Page size 1 over the same fixture: four pages, one row and one retrieval each. The token
+        // after row +1 is row +8, the next retained sample, so no page is spent on the gap, and
+        // the last page (row +9) has no token.
         final TestSyncClient client = (TestSyncClient) clientTestInterface;
         final List<Long> collected = new ArrayList<>();
         String pageToken = null;
@@ -896,7 +908,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 @Override public void onCompleted() { }
             };
             final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
-            new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, ONE_SECOND_NANOS, telemetry),
+            new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
                     clientTestInterface, telemetry).execute();
             pages++;
             final QuerySamplesResponse.SampleQueryResult result = responses.get(0).getSampleQueryResult();
@@ -908,13 +920,42 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         }
         assertEquals(List.of(0L, 1L, 8L, 9L), collected);
         assertEquals(4, pages);
-        assertEquals("one retrieval per page; gap slices cost none", 4, client.samplesRetrievals - before);
+        assertEquals("one retrieval per page", 4, client.samplesRetrievals - before);
+    }
+
+    /**
+     * The client stops and keeps nothing once a window holds more matching timestamps than the
+     * caller's limit (PR #323 review): the limit, not the window length, is what bounds the
+     * status join's memory. The fixture labels sspv four times on layer l1.
+     */
+    @Test
+    public void testStatusTimestampsOverTheLimitAreRefusedNotTruncated() throws Exception {
+        final ResolvedQuery rq = new ResolvedQuery(
+                List.of(PV_STATUS), wholeStatusRange(), 100, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, false,
+                statusFilter(false, List.of(STATUS_LAYER_1)));
+
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps atLimit = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + STATUS_SECONDS, 0, 4);
+        assertFalse(atLimit.overLimit());
+        assertEquals(4, atLimit.matchingTimestampsByPv().get(PV_STATUS).size());
+
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps over = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + STATUS_SECONDS, 0, 3);
+        assertTrue(over.overLimit());
+        assertTrue("a refused window must not hand back a partial map", over.matchingTimestampsByPv().isEmpty());
+
+        // a shorter window under the same limit succeeds, which is how the merger proceeds
+        final com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInterface.StatusTimestamps shorter = clientTestInterface.resolveSampleStatusTimestamps(
+                rq, STATUS_B, 0, STATUS_B + 4, 0, 3);
+        assertFalse(shorter.overLimit());
+        assertEquals(2, shorter.matchingTimestampsByPv().get(PV_STATUS).size());
     }
 
     @Test
-    public void testStatusFilterIsAppliedPerSlice() throws Exception {
-        // the status join is resolved per slice (plan D5); with 2 s slices over the 10 s status
-        // fixture, the EXCLUDE result must equal the single-window result
+    public void testStatusFilterHoldsAcrossPages() throws Exception {
+        // the status join is loaded per window of the merge, starting at each page's resume
+        // point; paged one row at a time, the EXCLUDE result must equal the single-page result
         final List<QuerySamplesResponse> responses = new ArrayList<>();
         final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
             @Override public void onNext(QuerySamplesResponse r) { responses.add(r); }
@@ -926,10 +967,10 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 List.of(PV_STATUS), wholeStatusRange(), 1, null, false, false,
                 ResolvedQuery.ResultMode.SAMPLE, false,
                 statusFilter(false, List.of(STATUS_LAYER_1)));
-        new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, 2 * ONE_SECOND_NANOS, telemetry),
+        new QueryV2Job(rq, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
                 clientTestInterface, telemetry).execute();
         // page size 1: only the first surviving row (offset 0) on this page; the point is that the
-        // slice-scoped status lookup still drops offset 2 when a later page reaches it
+        // window-scoped status lookup still drops offset 2 when a later page reaches it
         final List<Long> collected = new ArrayList<>(statusOffsets(responses.get(0).getSampleQueryResult().getColumnTable()));
         String token = responses.get(0).getSampleQueryResult().getNextPageToken();
         for (int page = 0; page < 20 && !token.isEmpty(); page++) {
@@ -939,7 +980,7 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                     com.ospreydcs.dp.service.query.handler.paging.PageToken.decode(token),
                     false, false, ResolvedQuery.ResultMode.SAMPLE, false,
                     statusFilter(false, List.of(STATUS_LAYER_1)));
-            new QueryV2Job(next, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, 2 * ONE_SECOND_NANOS, telemetry),
+            new QueryV2Job(next, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
                     clientTestInterface, telemetry).execute();
             collected.addAll(statusOffsets(responses.get(0).getSampleQueryResult().getColumnTable()));
             token = responses.get(0).getSampleQueryResult().getNextPageToken();
@@ -1075,10 +1116,11 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
     @Test
     public void testStreamByteBudgetChunkFlush() {
         // small budget forces multiple chunks even though limit is huge; verify every row delivered
-        // once. The budget must clear the conservative single-row estimate (timestamp + one labeled
-        // double column + framing, ~52 bytes) but not two rows, so each chunk carries ~one row.
+        // once. The budget must clear the conservative estimate of a one-row table (29 bytes for
+        // the empty table with its column name, 39 for the row) but not two rows (107), so each
+        // chunk carries one row.
         final StreamOutcome outcome = runSamplesStream(
-                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 60);
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 80);
         assertTrue(outcome.completed);
         assertTrue("byte budget should force multiple chunks", outcome.messages.size() > 1);
         int totalRows = 0;
@@ -1445,5 +1487,229 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
 
         final ColumnTable table = runStatusUnary(resolution.getResolvedQuery());
         assertEquals(List.of(2L, 5L), statusOffsets(table));
+    }
+
+    // -----------------------------------------------------------------------
+    // #314: a stretch with no data must not unbound the stream's buffering or its reads
+    // -----------------------------------------------------------------------
+
+    private static final String PV_GAP = "gappv";
+    /** Data begins two years into the queried window, as in the #314 incident's request shape. */
+    private static final long GAP_LEAD_SECONDS = 2L * 365 * 24 * 3600;
+    private static final long GAP_WINDOW_B = startSeconds + 1_000_000L;
+    private static final long GAP_DATA_B = GAP_WINDOW_B + GAP_LEAD_SECONDS;
+    private static final int GAP_BUCKETS = 200;
+    private static final int GAP_SAMPLES_PER_BUCKET = 100; // 1 Hz, 100 s per bucket
+    private static final int GAP_PAGE_SIZE = 100;
+    private static boolean gapFixtureInserted = false;
+
+    private static void insertGapFixture() {
+        if (gapFixtureInserted) {
+            return;
+        }
+        final List<BucketDocument> buckets = new ArrayList<>();
+        for (int i = 0; i < GAP_BUCKETS; i++) {
+            buckets.add(scalarBucket(
+                    PV_GAP, GAP_DATA_B + (long) i * GAP_SAMPLES_PER_BUCKET, ONE_SECOND_NANOS, GAP_SAMPLES_PER_BUCKET));
+        }
+        assertEquals(buckets.size(), ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
+        gapFixtureInserted = true;
+    }
+
+    /** Runs the gap-fixture stream, recording how many buckets had been read at the first message. */
+    private long[] runGapStream(long byteBudget) {
+        insertGapFixture();
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+        final int retrievalsBefore = client.samplesRetrievals;
+
+        final QuerySamplesRequest request = samplesRequest(
+                List.of(PV_GAP), GAP_WINDOW_B, 0, GAP_DATA_B + (long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, 0,
+                GAP_PAGE_SIZE, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertFalse(resolution.isError());
+
+        final long[] bucketsAtFirstMessage = {-1};
+        final long[] rows = {0};
+        final int[] messages = {0};
+        final boolean[] failed = {false};
+        final StreamObserver<QuerySamplesResponse> observer = new StreamObserver<>() {
+            @Override public void onNext(QuerySamplesResponse r) {
+                if (r.hasExceptionalResult()) {
+                    failed[0] = true;
+                }
+                if (bucketsAtFirstMessage[0] < 0) {
+                    bucketsAtFirstMessage[0] = client.bucketsRead - bucketsBefore;
+                }
+                messages[0]++;
+                rows[0] += r.getSampleQueryResult().getColumnTable().getTimestampList().getTimestampsCount();
+            }
+            @Override public void onError(Throwable t) { failed[0] = true; }
+            @Override public void onCompleted() { }
+        };
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher dispatcher =
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, byteBudget, telemetry);
+        new QueryV2Job(resolution.getResolvedQuery(), dispatcher, clientTestInterface, telemetry).execute();
+
+        assertFalse(failed[0]);
+        assertEquals((long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, rows[0]);
+        final long totalBuckets = client.bucketsRead - bucketsBefore;
+        final int retrievals = client.samplesRetrievals - retrievalsBefore;
+        System.out.println("#314 gap stream budget=" + byteBudget
+                + " bucketsAtFirstMessage=" + bucketsAtFirstMessage[0]
+                + " totalBucketsRead=" + totalBuckets + " (fixture holds " + GAP_BUCKETS + ")"
+                + " retrievals=" + retrievals + " messages=" + messages[0]);
+        return new long[]{bucketsAtFirstMessage[0], totalBuckets, retrievals};
+    }
+
+    /**
+     * With the production message budget, a chunk limit of 100 rows means the first message goes
+     * out after about one chunk's worth of data has been read. Before #314 the empty leading
+     * stretch grew the retrieval slice to span the whole window, and all 200 buckets were buffered
+     * first.
+     */
+    @Test
+    public void testLeadingGapDoesNotBufferTheWholeWindowBeforeTheFirstChunk() {
+        final long[] result = runGapStream(4_096_000L);
+        // 100 rows is one bucket, and the merge reads one bucket ahead
+        assertTrue("read " + result[0] + " buckets (" + result[0] * GAP_SAMPLES_PER_BUCKET
+                        + " rows) before emitting the first " + GAP_PAGE_SIZE + "-row chunk",
+                result[0] <= 2);
+        assertEquals("one retrieval for the stream", 1, result[2]);
+    }
+
+    /**
+     * Each bucket is read exactly once, whatever the byte budget. Before #314 a slice that tripped
+     * the budget was discarded and halved, and every attempt re-read up to a budget's worth of
+     * buckets: 2,454 reads to return this fixture of 200 at a 40,000-byte budget.
+     */
+    @Test
+    public void testEveryBucketIsReadOnceUnderASmallBudget() {
+        final long[] result = runGapStream(40_000L);
+        assertEquals(GAP_BUCKETS, result[1]);
+        assertEquals("one retrieval for the stream", 1, result[2]);
+    }
+
+    // -----------------------------------------------------------------------
+    // #314: cancellation is noticed while reading, not only when sending
+    // -----------------------------------------------------------------------
+
+    private ResolvedQuery gapQuery(boolean streaming) {
+        insertGapFixture();
+        final QuerySamplesRequest request = samplesRequest(
+                List.of(PV_GAP), GAP_WINDOW_B, 0, GAP_DATA_B + (long) GAP_BUCKETS * GAP_SAMPLES_PER_BUCKET, 0,
+                GAP_PAGE_SIZE, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, streaming);
+        assertFalse(resolution.isError());
+        return resolution.getResolvedQuery();
+    }
+
+    /**
+     * A unary call cancelled before its job runs reads nothing and sends nothing. Before #314 the
+     * unary path never looked: the job assembled the whole page for a caller that had gone.
+     */
+    @Test
+    public void testCancelledUnaryCallReadsNothing() {
+        final ResolvedQuery resolvedQuery = gapQuery(false);
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.cancelled.set(true);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(resolvedQuery, new QuerySamplesUnaryDispatcher(observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertTrue("nothing may be sent to a cancelled call", observer.messages.isEmpty());
+        assertEquals(0, client.bucketsRead - bucketsBefore);
+        assertEquals(com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    /**
+     * A stream cancelled after its first message stops reading: of the fixture's 200 buckets it
+     * reads only the few behind that message, does not complete, and is recorded as abandoned.
+     */
+    @Test
+    public void testStreamCancelledMidwayStopsReading() {
+        final ResolvedQuery resolvedQuery = gapQuery(true);
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final long bucketsBefore = client.bucketsRead;
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.setAfterNext(observer::cancel);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(
+                resolvedQuery,
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, 4_096_000L, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertEquals(1, observer.messages.size());
+        assertFalse("an abandoned stream must not be completed", observer.completed);
+        assertTrue("read " + (client.bucketsRead - bucketsBefore) + " of " + GAP_BUCKETS + " buckets",
+                client.bucketsRead - bucketsBefore <= 3);
+        assertEquals(com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    // -----------------------------------------------------------------------
+    // #314: more PVs than one find may name, across two span classes
+    // -----------------------------------------------------------------------
+
+    /**
+     * 120 PVs is three finds of at most 50, plus a fourth for a PV in another span class; the
+     * client merges them into one time-ordered read. Every row must still hold every PV, in
+     * order, whichever find a PV's buckets came from.
+     */
+    @Test
+    public void testManyPvsAcrossSeveralFindsAndSpanClasses() {
+        final long groupB = startSeconds + 400_000L;
+        final int pvCount = 120;
+        final int seconds = 4;
+        final String widePv = "grp_wide";
+        final List<BucketDocument> buckets = new ArrayList<>();
+        final List<String> pvNames = new ArrayList<>();
+        for (int pv = 0; pv < pvCount; pv++) {
+            final String pvName = String.format("grp_%03d", pv);
+            pvNames.add(pvName);
+            for (int second = 0; second < seconds; second++) {
+                buckets.add(scalarBucket(pvName, groupB + second, ONE_SECOND_NANOS, 1));
+            }
+        }
+        // one bucket spanning all four seconds: a different span class from the one-second PVs
+        buckets.add(spanningBucket(widePv, groupB, seconds));
+        pvNames.add(widePv);
+        assertEquals(buckets.size(), ((TestClientInterface) clientTestInterface).insertBucketDocuments(buckets));
+
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final int before = client.samplesRetrievals;
+        final QuerySamplesResponse response = runSamples(
+                samplesRequest(pvNames, groupB, 0, groupB + seconds, 0, 10_000, null, false));
+        assertFalse(response.hasExceptionalResult() ? response.getExceptionalResult().getMessage() : "",
+                response.hasExceptionalResult());
+        assertEquals(1, client.samplesRetrievals - before);
+
+        final ColumnTable table = response.getSampleQueryResult().getColumnTable();
+        assertEquals(seconds, table.getTimestampList().getTimestampsCount());
+        for (int row = 0; row < seconds; row++) {
+            assertEquals(groupB + row, table.getTimestampList().getTimestamps(row).getEpochSeconds());
+        }
+        assertEquals(pvCount + 1, table.getDataColumnsCount());
+        for (DataColumn column : table.getDataColumnsList()) {
+            assertEquals(seconds, column.getDataValuesCount());
+            for (int row = 0; row < seconds; row++) {
+                assertTrue(column.getName() + " has no value at row " + row,
+                        column.getDataValues(row).getValueCase() != DataValue.ValueCase.VALUE_NOT_SET);
+                final double expected = column.getName().equals(widePv) ? row : (groupB + row) * 1000.0;
+                assertEquals(column.getName() + " row " + row, expected, column.getDataValues(row).getDoubleValue(), 0);
+            }
+        }
     }
 }

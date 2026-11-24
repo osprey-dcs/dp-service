@@ -124,8 +124,8 @@ public class TimeIntervalTest {
     // clampToWindowBegin
     //
     // The single source for the querySamples page clamp (#207): both the bucket
-    // retrieval filter (MongoSyncQueryClient.executeQuerySamplesV2) and the sample
-    // retention trim (AbstractQuerySamplesDispatcher.retentionIntervals) are built
+    // retrieval filter (MongoSyncQueryClient.executeQuerySamplesTimeOrdered) and the sample
+    // retention trim (AbstractQuerySamplesDispatcher.openMerger) are built
     // from this, so a divergence here is a divergence between what the database
     // returns and what assembly keeps.
     // -----------------------------------------------------------------------

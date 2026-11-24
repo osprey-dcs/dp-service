@@ -233,7 +233,6 @@ Below is the list of environment variables referenced in the project's `applicat
 - `DP_QUERY_HANDLER_QUERY_V2_DEFAULT_PAGE_SIZE` : Default page size for the Query API V2 methods when the request's limit is unset (default: `10000`)
 - `DP_QUERY_HANDLER_QUERY_V2_MAX_PAGE_SIZE` : Maximum page size for the Query API V2 methods; a larger requested limit is clamped (default: `100000`)
 - `DP_QUERY_HANDLER_QUERY_V2_MAX_RESOLVED_PV_COUNT` : Maximum number of PVs a Query API V2 `PvSelector` may resolve to before the request is rejected (default: `10000`)
-- `DP_QUERY_HANDLER_QUERY_V2_SAMPLES_INITIAL_SLICE_SECONDS` : Length of the first time slice a `querySamples`/`querySamplesStream` page retrieves; later slices adapt toward the page size (default: `60`)
 - `DP_QUERY_HANDLER_STREAM_READY_TIMEOUT_SECONDS` : How long a server-streaming query waits for a slow client to drain the outbound buffer before the response is abandoned; the worker serving the stream is held for the wait (default: `300`)
 - `DP_QUERY_BENCHMARK_GRPC_CONNECT_STRING` : Query benchmark gRPC `host:port` connect string (default: `localhost:60052`)
 - `DP_ANNOTATION_SERVER_PORT` : Annotation Service gRPC port (default: `50053`)

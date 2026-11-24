@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.annotation.handler.mongo.job;
 
+import com.mongodb.client.MongoCursor;
 import com.ospreydcs.dp.grpc.v1.annotation.DataBlock;
 import com.ospreydcs.dp.grpc.v1.common.CalculationsSpec;
 import com.ospreydcs.dp.service.annotation.handler.model.ExportConfiguration;
@@ -349,4 +350,18 @@ public abstract class ExportDataJobBase extends HandlerJob {
         return null;
     }
 
+    /**
+     * Closes a data block's bucket cursor from a {@code finally}. Every exit must close it, not
+     * only the ones that leave it unexhausted: when the block's PVs fall in more than one span
+     * class the cursor owns the explicit session its finds share (#314, PR #323 review), and that
+     * session ends only on close. A failed close is logged and dropped, since the export's
+     * outcome is already decided. Safe to call on a cursor that is already closed.
+     */
+    protected static void closeCursorQuietly(MongoCursor<?> cursor) {
+        try {
+            cursor.close();
+        } catch (RuntimeException ex) {
+            logger.error("error closing export data block cursor: {}", ex.getMessage(), ex);
+        }
+    }
 }

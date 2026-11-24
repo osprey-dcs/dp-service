@@ -83,16 +83,22 @@ public abstract class ExportDataJobAbstractBucketed extends ExportDataJobBase {
                 // dataColumnBytes.getSerializedSize() to get the size of the protobuf vector of data values written to the
                 // file for each bucket.
 
-                while (cursor.hasNext()) {
-                    final BucketDocument bucketDocument = cursor.next();
-                    try {
-                        exportFile.writeBucket(bucketDocument);
-                    } catch (DpException e) {
-                        final String errorMsg =
-                                "exception writing data bucket to export file " + serverFilePath + ": " + e.getMessage();
-                        logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
-                        return new ExportDataStatus(true, errorMsg);
+                // Closed on every exit: a multi-class request's cursor owns the session its
+                // finds share (#314), which ends only when the cursor is closed.
+                try {
+                    while (cursor.hasNext()) {
+                        final BucketDocument bucketDocument = cursor.next();
+                        try {
+                            exportFile.writeBucket(bucketDocument);
+                        } catch (DpException e) {
+                            final String errorMsg =
+                                    "exception writing data bucket to export file " + serverFilePath + ": " + e.getMessage();
+                            logger.error("id: {}, error: {}", this.handlerRequest.responseObserver.hashCode(), errorMsg);
+                            return new ExportDataStatus(true, errorMsg);
+                        }
                     }
+                } finally {
+                    closeCursorQuietly(cursor);
                 }
             }
         }

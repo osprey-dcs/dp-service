@@ -78,7 +78,7 @@ window starting two years before the data):
 
 The reporter has since said the PVs have data from before the range start (Archiver import), so
 their case was not an empty *leading* stretch. Any quiet stretch inside the range has the same
-effect. Whether their PVs are change-driven is an open question on the issue (see Open questions).
+effect. They have since confirmed the data is irregular in that way (see Customer answers).
 
 ### 5. Heap per buffered row is 24–34 times the wire size — measured
 
@@ -94,7 +94,9 @@ The byte budget is the gRPC wire limit, read from `GrpcServer.incomingMessageSiz
 In steady state the slice settles at 50–100 rows when `pageSize=100`, so the stream issues about one
 `find` per page of rows, and each `find` re-decodes every bucket it overlaps. A two-year stream of
 millions of samples is tens of thousands of queries. The incident log shows `queueMs` of 22–42 s
-with all seven workers saturated before the crash, against a client deadline of about two minutes.
+with all seven workers saturated before the crash. (This line first read "against a client
+deadline of about two minutes". The customer has since said their clients set no deadline and no
+keepalive, so the two minutes was not a client deadline; see Customer answers.)
 
 A row cap would force every request back to that regime. This is arithmetic from the code and the
 incident log, not a measurement on the customer's data; PR 2 carries the measurement.
@@ -118,8 +120,27 @@ Keys examined equalled documents returned in every streaming case. The threshold
 `pvName` as a trailing sort key defeats the plan (blocking `SORT`), so the tie-break must be done in
 the service.
 
-Not yet checked: the same plan with a multi-fragment `$or` (configuration selector). PR 2's first
-task is the plan-shape test that pins it.
+**PR 2 task 1 result (2026-11-20), which supersedes the table's thresholds.** The plan above was
+the planner's *choice among several*, not the only plan. With the production overlap filter the
+planner also enumerates index-union plans over the filter's `(seconds, nanos)` `$or`s (three
+candidates for one fragment, ten for two), every one of which needs a blocking `SORT`, and it
+picks by trial. On the plan test's fixture it picked a blocking sort for 2 to 5 PVs with one
+fragment and a span of 7 s or more. A trial winner can also be cached and reused for a long range.
+
+Wrapping the overlap predicate in a double `$nor`, with the `firstTime.seconds` bounds hoisted to
+the top level, leaves the predicate's meaning unchanged and makes it non-indexable. *Measured:*
+every case then has exactly one candidate plan and no rejected plans: a plain `IXSCAN` for one PV,
+`FETCH < SORT_MERGE < IXSCAN × N` for N PVs, for one, two and three fragments, spans 0 to 300 s,
+with keys examined equal to documents examined. The merge holds up to **200** PVs per find and
+becomes a blocking `SORT` at 201 (one scan per PV against `internalQueryMaxScansToExplode`; the
+earlier figure of 100 was for the unwrapped filter, which costs two scans per PV).
+
+The two sharded layouts in the table were re-measured with the wrapped filter on a two-shard
+MongoDB 8.0.6 cluster (2026-11-20): hashed `pvName` with 1, 12 and 50 PVs, and ranged
+`(pvName, firstTime.seconds)` with every PV's history split across both shards, with 1 and 12 PVs;
+one and two fragments; spans 0, 7 and 300 s. Every case was `SHARD_MERGE_SORT` over a per-shard
+`SORT_MERGE` (a plain `IXSCAN` for one PV), with no `SORT` stage, no rejected plans on mongos or
+either shard, keys examined equal to documents examined, and results returned in order.
 
 ### 8. Cancellation is noticed only at emit — confirmed
 
@@ -166,8 +187,10 @@ default; the runbook says so.
 
 - **Retrieval.** One `find` per (span class, PV group), sorted `(firstTime.seconds, firstTime.nanos)`
   over the whole remaining window of every fragment, merged in the service into one time-ordered
-  bucket stream. A PV group holds at most 50 PVs — half the measured threshold, since the limit is a
-  server parameter and a planner detail.
+  bucket stream. A PV group holds at most 50 PVs, a quarter of the measured threshold of 200, since
+  the limit is a server parameter and a planner detail. The filter hoists the `firstTime.seconds`
+  bounds and wraps the overlap predicate in a double `$nor` so the planner has one plan (finding 7,
+  task 1 result); `MongoSyncQueryClient.bucketSamplesTimeOrderedQuery()` builds it.
 - **Merge.** Each bucket read becomes an *open bucket*: its decoded column plus a position, advanced
   past samples before the window begin. A min-heap over the open buckets yields samples in timestamp
   order. The **watermark** is the `firstTime` of the next unread bucket. Every sample strictly before
@@ -200,6 +223,54 @@ It narrows the bad cases but keeps the guess, the discard, and the per-slice re-
   bucket later in `(firstTime, lastTime, _id)` order wins.
 - **Status selector.** Matching timestamps are resolved in bounded windows as the merge position
   advances, replacing the per-slice resolution. A failed read stays an error.
+
+### D8. Decisions made during PR 2 (2026-11-20)
+
+- **One byte estimate for both paths.** The unary page used to be bounded by the sum of value
+  bytes; it now uses the stream's conservative per-row estimate (`RowChunk.rowBytes()`), which
+  includes timestamp and framing. Byte-limited unary pages hold fewer rows, and a response can no
+  longer exceed the configured message size. *Rejected:* keeping two accountings.
+- **The old slice query is deleted, not kept beside the new one.** `executeQuerySamplesV2`, its
+  span-class holder and `bucketSamplesQueryV2` had no caller left.
+- **Ordering violations are errors.** The watermark rule assumes a bucket's `firstTime` is its
+  earliest sample and that timestamps within a bucket do not decrease. Ingestion guarantees both,
+  but the merger checks, because a violation would emit rows out of order with no other symptom.
+  This is stricter than the pivot map, which sorted whatever it was given; an archive written by
+  another tool could hold such buckets, and the release notes say so.
+- **Status windows adapt by count.** A window starts at the row that needs it, 60 s long, and the
+  next one doubles when it held fewer than 10,000 matching timestamps or halves above 100,000.
+- **Batch size:** 256 documents across a request's cursors, 4 to 64 per cursor.
+
+### D9. Changes from the PR #323 review (2026-11-22)
+
+- **The status window is bounded by a count, not by its length.** D8's adaptive length is a guess
+  from the previous window: a sparsely labeled stretch doubles it without limit, and the densely
+  labeled stretch after it was then loaded whole. `resolveSampleStatusTimestamps()` now takes a
+  limit (400,000 matching timestamps), stops and keeps nothing when a window exceeds it, and the
+  merger halves the window and asks again; a one-nanosecond window is loaded without the limit.
+  *Rejected:* reading the status documents sorted by `firstTimeNanos` and ending the window at
+  the first unread document. It reads each document once, but the sort has no streaming plan
+  when the selector names no layer or several, the server would sort whole status documents of
+  up to 16 MB, and one document can still overflow the limit alone, so it needs the same
+  truncation logic on top. Halving costs a few refused loads at each sparse-to-dense transition,
+  each bounded by the limit.
+- **A bucket's `firstTime` is checked against its first stored timestamp when it is opened.** The
+  row-order check alone missed the unary case: a page ending before the late bucket is opened
+  returns a row without its value, and the next page starts after that row.
+- **All cursors of one retrieval share an explicit session.** Measured on MongoDB 8.0.6 with
+  `cursorTimeoutMillis=3000` and `localLogicalSessionTimeoutMinutes=1`: a session cursor idle for
+  7 s survived (the idle-cursor timeout does not apply to it); idle for 240 s it was gone, with or
+  without `noCursorTimeout`; an idle cursor sharing a session with one read every 10 s survived
+  240 s. *Rejected:* `noCursorTimeout` (no effect on session expiry), and reopening a killed find
+  from the last bucket read (ties in `firstTime` across PVs need per-PV resume state, and the
+  filter change would need its own single-plan proof).
+  The span-class merge of `queryData`, `queryTable`, `queryBuckets` and `queryBucketsStream`
+  (#274) had the same exposure and gets the same session when a request has more than one class.
+- **Column names are charged once per message**, not once per row; `RowChunkSizeBoundTest` pins
+  the estimate as an upper bound on the serialized table.
+- **Cancellation is checked on every pass of the merge loop**, not only before a bucket read.
+- **Declined:** adding the response envelope to the byte estimate. It is about 100 bytes against
+  a default limit 98,304 bytes under gRPC's maximum.
 
 ### D5. Bucket cursors set a batch size; the command listener stays
 
@@ -247,6 +318,9 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
 1. `MongoBucketQueryPlanTest`: pin the time-ordered plan (no `SORT` stage, one `IXSCAN` per PV) for
    a single fragment, a multi-fragment `$or`, and a mixed span-class request, at the group size.
    **This gates the rest:** if the multi-fragment case does not stream, D3's retrieval changes.
+   *Done 2026-11-20: it streams, given the filter change recorded under finding 7.* The two sharded
+   layouts were re-checked with the wrapped filter (finding 7).
+   *Tasks 2 to 8 done 2026-11-20 on `issue-314-pr2`; the measurement is below.*
 2. `MongoSyncQueryClient.java`: time-ordered samples query builder and cursor open, per span class
    and PV group, with `batchSize` (D5); a time-ordered merging cursor beside `MergedBucketCursor`.
    `MongoQueryClientInterface`: the new method, replacing the six-argument slice overload.
@@ -266,6 +340,48 @@ and with no `addSuppressed` call there is nothing to fail. Applies to the new me
    heap and time to completion recorded in the PR.
 8. `CLAUDE.md`: replace "querySamples Retrieval Is Time-Sliced" with the merge invariants;
    `NEXT.md`.
+
+### Measurement (PR 2 task 7, 2026-11-20)
+
+`BenchmarkQuerySamplesStreamLongRange`, default options: one PV, 40,000 buckets of 100 one-hertz
+samples (4,000,000 samples, 46 days), four concurrent `querySamplesStream` requests over a range
+beginning two years before the first sample, `limit` 100. Benchmark server and client on one
+development machine against a local standalone MongoDB 8.0.6, the server with
+`-XX:+ExitOnOutOfMemoryError`. "Before" is `main` at `ccffc66` (PR 1 merged); "after" is this
+branch. Peak heap is the largest used figure in `jstat -gc` samples taken every 250 ms, so it
+includes garbage not yet collected and is an upper bound on what was live. One run each.
+
+| Server heap | Build | Outcome | First message | Stream completes | Peak heap used |
+|---|---|---|---|---|---|
+| 512 MB | before | server out of memory, exit status 3; no stream received a message | — | — | 511 MB |
+| 512 MB | after | all four streams complete | 0.13 s | 2.2 s | 130 MB |
+| 4 GB | before | all four streams complete | 5.7–5.9 s | 10.6–10.8 s | 1,466 MB |
+| 4 GB | after | all four streams complete | 0.12 s | 2.2 s | 603 MB |
+
+The 4 GB "after" figure is higher than the 512 MB one because the collector lets garbage
+accumulate in a larger heap; the 512 MB run shows the workload fits in 130 MB.
+
+**At the incident's heap (2026-11-23).** The customer's pod had a 1 GB memory limit and no
+`-Xmx`, for which the JVM's default maximum heap is a quarter of the limit, about 256 MB (an
+inference from the JVM default, not something they reported). Same fixture and machine, this
+branch at `72e5357`, server with `-Xmx256m -XX:+ExitOnOutOfMemoryError`, one run each. Heap was
+sampled about every 0.4 s here, so the peaks are coarser than the table above.
+
+| Streams | `limit` | Outcome | First message | Stream completes | Peak heap used |
+|---|---|---|---|---|---|
+| 16 | 10,000 | all complete | 0.13–3.7 s | 1.9–4.5 s | 146 MB |
+| 4 | 100 | all complete | 0.09 s | 2.0 s | 145 MB |
+
+Sixteen streams against seven workers run in three waves, which is the spread in the first row:
+the first seven get a message after 0.13 s, the rest wait for a worker. 16 and 10,000 are the
+customer's bulk-read concurrency and page size; 4 and 100 are their diagnostic script's.
+
+On the unit fixture (`MongoSyncQuerySamplesV2Test`, 200 buckets after a two-year empty lead,
+`limit` 100): 2 buckets read before the first message (was 200), and 200 buckets read in total at
+a 40,000-byte budget (was 2,454).
+
+Not measured: the customer's data. Their bucket shape, PV count per request and heap limit are
+still unanswered on the issue.
 
 ## Out of scope
 
@@ -295,8 +411,24 @@ reduction). The gRPC health service is the existing #293, which stays under its 
 - Neither PR blocks on the reporter's answers. They affect only the shape of the benchmark fixture
   in task 7.
 
-## Open questions
+## Customer answers
 
-Asked on the issue, 2026-11-19, unanswered when this was written: whether the PVs are change-driven
-with quiet periods, the typical bucket shape, the heap limit at the time of the incident, whether
-`pageSize=100` is required, and the client deadline.
+Asked on the issue 2026-11-19, answered by email 2026-11-23, after PR 2 was implemented. None
+changes the design.
+
+- **Data shape.** Irregular, with long quiet periods followed by dense sampling. Archiver PVs are
+  about 1 Hz; some will be much faster as live ingestion at native rates comes in. This is the
+  case the merge was built for.
+- **Bucket shape.** A fixed number of samples per bucket for BSAS Gen1 ingested from HDF5; a
+  variable number for live EPICS ingestion (Gen1 and Gen2). No sizes were given, so the memory a
+  request holds on their data (the buckets overlapping the read position) is still unmeasured.
+- **Heap.** No JVM heap limit at the time, pod memory limit 1 GB. See the 256 MB measurement.
+- **`pageSize=100` was not the workload.** It came from a diagnostic script: one PV per
+  `querySamplesStream`, four at a time, `limit` 100, reading the first message and cancelling.
+  The cancel is the likely source of the abandoned request in the log that kept reading about
+  35,000 buckets, which the per-pass cancellation check now stops. Their bulk read uses the
+  library default of 10,000 rows, one PV per call, 16 calls at a time, one hour per call with a
+  look-back of at most a day.
+- **Deadline.** None, and no keepalive, in dp-python-lib or in their library on top of it. An
+  unanswered call waits until it is killed. Corrected in finding 6; the client side is
+  osprey-dcs/dp-python-lib#81, a sub-issue of this ticket.

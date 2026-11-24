@@ -85,6 +85,24 @@ public class OutboundReadinessGate {
         return observer == null;
     }
 
+    /**
+     * True when the client has cancelled the call. For work that produces no message for a while
+     * (a long read between sends), so it can stop without waiting for the next
+     * {@link #awaitReady()} (#314). Always false for a no-op gate.
+     */
+    public boolean isCancelled() {
+        return observer != null && observer.isCancelled();
+    }
+
+    /**
+     * Cancellation check for a responder that has no gate, such as a unary method: true when
+     * {@code responseObserver} is a server call that the client has cancelled. Registers nothing,
+     * so it may be called from any thread at any time.
+     */
+    public static boolean isCancelled(StreamObserver<?> responseObserver) {
+        return responseObserver instanceof ServerCallStreamObserver<?> serverCall && serverCall.isCancelled();
+    }
+
     private void signal() {
         lock.lock();
         try {

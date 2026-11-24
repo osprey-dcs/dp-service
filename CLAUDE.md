@@ -84,7 +84,7 @@ worker permanently. The invariants:
   still use try-with-resources (the V2 bucket dispatchers, the `pvStats` and sample-status reads in
   `MongoSyncQueryClient`, others), and converting them would not close the gap, since every catch
   that turns an exception into a response does the same. `AbstractQuerySamplesDispatcher.closeQuietly()`
-  exists for **diagnosis**: on the samples slice, the path of the incident, the error response and
+  exists for **diagnosis**: on the samples retrieval, the path of the incident, the error response and
   log name the real cause instead of the self-suppression. Do not read it as the mechanism that
   guarantees an exit; that is the flag.
 - **A query job's catch classifies `Error` as well as `RuntimeException`.** `QueryV2Job`,
@@ -871,73 +871,134 @@ The #197 startup scan also reported buckets missing `dataColumn`/`dataTimestamps
 ### querySamples Fragment Clamp Invariant (issue #207)
 A `querySamples` request with a `ConfigurationSelector` resolves to a set of **disjoint** retrieval fragments. Two filters must agree on that fragment set, and they run at different granularities:
 
-- **Database (bucket granularity)** — `MongoSyncQueryClient.executeQuerySamplesV2()` builds a per-fragment `$or` of bucket-overlap predicates.
-- **Assembly (sample granularity)** — `TabularDataUtility.addBucketsToTable()` retains a sample only when it falls inside *some* fragment.
+- **Database (bucket granularity)** — `MongoSyncQueryClient.executeQuerySamplesTimeOrdered()` builds a per-fragment `$or` of bucket-overlap predicates.
+- **Merge (sample granularity)** — `SampleRowMerger` retains a sample only when it falls inside *some* fragment.
 
-**Both must derive their fragments from `TimeInterval.clampToWindowBegin()`** — the single source for clamping each fragment to the page window begin. Do not reimplement the clamp at either call site. When the two disagree, the database returns buckets the assembly then keeps samples from incorrectly, which is exactly issue #207: a bucket spanning the gap between two fragments passes the bucket-level filter, and its in-gap samples were never trimmed.
+**Both must derive their fragments from `TimeInterval.clampToWindowBegin()`** — the single source for clamping each fragment to the page window begin. Do not reimplement the clamp at either call site. When the two disagree, the database returns buckets the merge then keeps samples from incorrectly, which is exactly issue #207: a bucket spanning the gap between two fragments passes the bucket-level filter, and its in-gap samples were never trimmed.
 
 Like the max-bucket-span invariant, the failure mode is a **silent wrong answer** — out-of-interval data in an otherwise normal-looking result, not an error. Two related traps:
 
 - **Never collapse the fragments** into a single `[min begin, max end)` window for sample filtering; that window spans the gaps. `computeWindowBegin()` deliberately returns only a begin — there is no correct single upper bound. Do not reintroduce a window end.
-- **`TimestampDataMap.getColumnIndex()` is a mutator.** It appends unseen names to the list that determines the emitted/exported column set, so it must be called for every column regardless of whether any sample survives trimming — otherwise a PV with no in-range samples is silently dropped instead of emitted as an all-empty column. `addColumnsToTable()` registers columns up front for this reason; `AnnotationCalculationsIT` (16 columns expected) is the regression guard.
+- **Every resolved PV gets a column, with or without samples.** On the samples paths the column set is the resolved PV list itself (`RowChunk` is built from it), so a PV with no in-range samples is an all-unset column. On the paths that still assemble in a `TimestampDataMap` (`queryTable`, tabular export), `getColumnIndex()` is a **mutator**: it appends unseen names to the list that determines the emitted column set, so it must be called for every column regardless of whether any sample survives trimming. `addColumnsToTable()` registers columns up front for this reason; `AnnotationCalculationsIT` (16 columns expected) is the regression guard.
 
-### querySamples Retrieval Is Time-Sliced (issue #274)
+### querySamples Rows Are Merged from One Time-Ordered Read (issues #274, #314)
 
-Every bucket query is sorted `(pvName, firstTime)`, so its cursor is **PV-major**: all of one PV's
-buckets in the window, then the next PV's. Before #274 the unary `querySamples` page was assembled
-by draining that cursor until the outgoing byte budget tripped, on the assumption that only the
-last assembled timestamp could be incomplete. Under PV-major order that is false: a trip partway
-through the first PV left every later PV with nothing, the page went out with those columns
-all-unset (indistinguishable from "no sample here"), and the timestamp token resumed at the same
-position, so the later PVs were **never returned** — a silent wrong answer reproduced with two PVs
-and a 40-byte budget (30 values for the first PV, 0 for the second, no error). With the production
-budget the trip point is ~455k values from the first PV in name order: a window over ~7.5 minutes at
-1 kHz, ~12 hours at 10 Hz, ~5 days at 1 Hz.
+A row of a samples result is one timestamp across every resolved PV, so a row may be sent only
+once every PV's sample at that timestamp has been read. The other bucket queries are sorted
+`(pvName, firstTime)`, which is **PV-major**: all of one PV's buckets, then the next PV's. Reading
+that order until a byte budget trips emits rows whose later PVs were never reached, all-unset and
+indistinguishable from "no sample here", and a timestamp token then resumes past them, so they are
+**never returned** (#274: two PVs and a 40-byte budget returned 30 values for the first PV and 0
+for the second, no error).
 
-Both samples paths therefore retrieve through `AbstractQuerySamplesDispatcher.SliceDrain`:
+#274 fixed that by retrieving the window in time slices, each a query over every PV, buffered in
+the pivot map and accepted or discarded whole. The slice length was a guess that grew after a
+slice with few rows, so a quiet stretch inflated it and the dense data after it was read at the
+inflated length, up to the full byte budget, in a structure holding 24 to 34 times the wire size.
+A few concurrent long-range `querySamplesStream` requests ran the query service out of heap
+(#314). The samples paths now work differently, and these are the invariants:
 
-- **A slice is one query over every resolved PV, and is accepted whole or discarded whole.** A
-  timestamp inside an accepted slice is complete across every PV by construction. Never emit rows
-  from a partially drained retrieval on these paths.
-- **The slice end is a retrieval bound applied per fragment, not a collapsed retention window.**
-  `TimeInterval.clampToWindow()` intersects each resolved fragment with the slice and is the single
-  source for both the client's per-fragment `$or` (`executeQuerySamplesV2`) and the dispatcher's
-  retention intervals, so the #207 gap trim still holds inside a slice. `computeWindowBegin()`
-  stays begin-only for that reason. A slice that intersects no fragment costs no database call; the
-  position jumps to the next fragment begin.
-- **Slice length adapts proportionally, because each retrieval pays the span scan.** After an
-  accepted slice of *r* rows toward a target of `pageSize`, the length is multiplied by
-  `clamp(pageSize / max(r, 1), 1, 16)`, reaching a 10k-row page in two or three retrievals at any
-  steady rate. Doubling would need eight retrievals at 1 Hz, each fetching `[begin − span, end]`.
-  The start is `QueryHandler.queryV2SamplesInitialSliceSeconds` (60), in both `application.yml`s.
-- **A budget trip discards the slice and ends the page at the slice begin** (`TimestampMap.removeFrom`).
-  Only when the page is still empty is the slice halved and retried; a trip at one nanosecond is
-  the indivisible-oversized error. Every non-error page still makes progress, and the token is the
-  first undrained timestamp — including on an **exactly filled** page, where nothing is truncated
-  and the token is the drain's position (a missing token there silently ended the traversal early;
-  `testGapWiderThanTheSliceIsJumpedWithoutRetrieval` pins it).
-- **The stream path is bounded by the budget plus one slice.** It emits after each slice that
-  reaches the row limit, on every budget trip (then retries the slice), and at exhaustion. It no
-  longer materializes the window; do not reintroduce a `null` size limit on a samples path.
-- **The status join is resolved per slice** (`resolveSampleStatusTimestamps` takes the slice end),
-  and each slice's retrieval and cursor are timed into the request's `db` stage.
-- **The `pvStats` span-class partition is resolved once per page, not once per slice.** It depends
-  only on the request's PV list and the stored spans, so it is identical for every slice;
-  `SliceDrain` carries a `MongoQueryClientInterface.SpanClassHolder` that `executeQuerySamplesV2`'s
-  six-argument overload fills on the first slice and reuses. The five-arg form delegates with a null
-  holder, and the overload is a `default` method, so no other client or test double knows about it.
-  **This is a per-request hoist and must stay one:** spans must never be held across requests (#232,
-  plan D7) — a stored span only grows, so a stale one is too small, and a too-small `firstTime`
-  bound silently omits buckets instead of failing. A holder created per page cannot go stale within
-  that page; a field, a static, or anything keyed by PV name can.
-  `testSpanClassesResolvedOncePerPageNotPerSlice` pins the count.
+- **One retrieval per page or stream, ordered by bucket start time.**
+  `MongoSyncQueryClient.executeQuerySamplesTimeOrdered()` opens a find per span class and group of
+  PVs, each sorted `(firstTime.seconds, firstTime.nanos)`, and merges them through
+  `MergedBucketCursor` with `TIME_ORDER`. There is no slice, no retry and no re-read: each bucket
+  is read once. Do not reintroduce a windowed retrieval on these paths.
+- **The find must have exactly one plan, and that takes two things.** The server streams the time
+  order by scanning the index once per PV under a `SORT_MERGE`. With the ordinary overlap filter
+  it also enumerates index-union plans over the filter's `(seconds, nanos)` `$or`s, every one
+  needing a blocking `SORT`, and picks by trial; measured, it picked a blocking sort for small
+  results, and a trial winner can be cached and reused for a long range.
+  `bucketSamplesTimeOrderedQuery()` therefore hoists the `firstTime.seconds` bounds to the top
+  level and wraps the overlap predicate in a **double `$nor`**, which leaves its meaning unchanged
+  and makes it non-indexable. The predicate still comes from `fragmentsOverlapFilter()`, so it
+  cannot drift (#207). Do not "simplify" the double negation away, and do not add `pvName` to the
+  sort: either one brings the blocking sort back.
+- **At most 50 PVs per find** (`SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND`). The server merges up to
+  `internalQueryMaxScansToExplode` scans (200, measured as the limit on 8.0) and sorts in memory
+  above it. The builder refuses a larger group. A request of 10,000 PVs is 200 cursors, which is
+  why each sets a `batchSize` (`samplesBatchSize()`, 256 documents across the request, 4 to 64 per
+  cursor): the driver default is 101 documents and then 16 MiB per cursor.
+- **Every find of one retrieval is issued in one explicit session** (`SessionBoundCursor`, PR #323
+  review). The merge reads a cursor only when it reaches that cursor's next bucket, so a slow PV
+  group beside fast ones can go unread for a long time. Measured on 8.0.6 with the timeouts
+  shortened: the server does not apply `cursorTimeoutMillis` to a cursor that belongs to a
+  session; it kills the cursor when the *session* has gone unused for the session timeout (30
+  minutes by default), and `noCursorTimeout` does not prevent that. Each driver cursor otherwise
+  gets its own implicit session. In one shared session a `getMore` on any cursor keeps all of
+  them, so do not reach for `noCursorTimeout`, and do not let a find on this path fall back to an
+  implicit session. A retrieval that reads nothing at all for the session timeout still fails,
+  as an error response. The span-class merge on the bucket paths (#274) does the same through
+  `openSpanClassCursorsInSession()` whenever a request has more than one class: that merge is
+  PV-major, so a class's cursor goes unread while other classes' PVs are streamed. A single-class
+  request keeps its one cursor's implicit session. `testOneRetrievalsCursorsShareOneSession` and
+  `testSpanClassCursorsShareOneSession` read the session ids from `$currentOp`. A new path that
+  holds more than one bucket cursor open owes the same session. **Every consumer of a bucket
+  cursor must therefore close it on every exit, including the ones that read it to its end.** An
+  exhausted cursor releases an implicit session by itself, but the explicit one ends only on
+  close, and it holds any unread server cursor until the session expires. `queryTable`'s
+  empty-result return and the export jobs' data-block loops returned without closing until the
+  PR #323 review; `QueryTableDispatcherCursorCloseTest` pins the first.
+- **A row is complete when the next unread bucket starts after it.** `SampleRowMerger` keeps each
+  bucket read as an open bucket with a position, a min-heap over them yields the earliest pending
+  sample, and one bucket is read ahead; its `firstTime` is the watermark. That rests on a bucket's
+  `firstTime` being its earliest sample, on timestamps not decreasing within a bucket, and on the
+  cursor order. A violation would emit rows out of order, a silent wrong answer, so the merger
+  checks each and throws `DpException`. Do not remove those checks as unreachable. **The
+  `firstTime` check is made when a bucket is opened, against its first stored timestamp before
+  any trimming**, not left to the row-order check: on unary paging a page can end before the late
+  bucket is opened, and the next page starts after the missed row, where its retrieval trims the
+  early sample and row order shows nothing wrong (PR #323 review). The pages before the bucket is
+  read have already gone out without the value; the page that reads it is the error.
+- **Memory is the open buckets, one cursor batch per find, and one outgoing chunk.** Rows go
+  straight into the `ColumnTable` builders (`AbstractQuerySamplesDispatcher.RowChunk`); there is no
+  pivot map on these paths. A bucket whose remaining samples lie past the last fragment is closed.
+- **The byte budget and the row limit are checked per row, against what is being built.** The
+  estimate is a conservative upper bound on the serialized `ColumnTable` and is the same on both
+  paths; before #314 the unary path counted value bytes only. It has two parts: the column names
+  and framing, charged once to the empty chunk (`RowChunk.emptyBytes()`), and what each row adds
+  (`rowBytes()`). Charging the names to every row made a wide message go out about a quarter full
+  (PR #323 review). `RowChunkSizeBoundTest` pins the bound against the real serialized size; the
+  estimate has little slack left, so change it only with that test. The response envelope (token,
+  `responseTime`, framing, about 100 bytes) is outside the bound and inside the default limit's
+  margin under gRPC's 4 MiB. A row that with the empty table exceeds the budget is the
+  indivisible-oversized error. Nothing is discarded.
+- **The unary token is the next row's timestamp**, read from the merge, so one row is read past a
+  full page. An exactly filled last page has no token; `testExactlyFilledLastPageHasNoToken` pins
+  both sides.
+- **Fragments are clamped at the begin only** (`TimeInterval.clampToWindowBegin()`), the single
+  source for the client's filter and the merger's retention (#207). `computeWindowBegin()` stays
+  begin-only. When no fragment remains the merger has no cursor and costs no database call.
+- **Duplicate timestamps: the bucket read later wins**, as a later insert into the pivot map did.
+  Read order within a PV is index order.
+- **The status join is loaded in windows as the merge advances.** Rows come in time order, so the
+  windows only move forward; the test is made when a row is emitted, and a row with nothing left
+  is not produced. A failed load is a `DpException`. **The window length is a guess and does not
+  bound memory; the count limit does** (PR #323 review). The length adapts to how many matching
+  timestamps the previous window held, so a long sparsely labeled stretch doubles it without
+  limit and the dense stretch after it would be loaded whole, the #314 defect over again.
+  `resolveSampleStatusTimestamps()` therefore takes `STATUS_WINDOW_MAX_TIMESTAMPS` (400,000) and
+  returns `StatusTimestamps.OVER_LIMIT`, holding nothing, once a window exceeds it; the merger
+  halves the window and asks again. A refused load has read at most the limit plus one status
+  document. Keep the limit where the timestamps are materialized: a check in the merger after
+  the map is built bounds nothing.
+- **Cancellation is checked on every pass of the merge loop**, so before each bucket read and
+  each row, on both paths: the stream's gate, and for unary
+  `OutboundReadinessGate.isCancelled(observer)`. Checking only before a read missed the rows
+  still in open buckets once the cursor was exhausted. A cancelled request stops reading, sends
+  nothing further, does not complete, and is `dp.outcome=abandoned`.
+- **The `pvStats` span classes are resolved once per retrieval, never held across requests**
+  (#232, plan D7): a stored span only grows, so a stale one is too small, and a too-small
+  `firstTime` bound silently omits buckets.
+- **The cursor is closed in a guarded `finally`** (`closeMerger()` → `closeQuietly()`), not
+  try-with-resources; see Handler Workers Must Outlive Their Jobs.
 
-The regression guards are the two-PV byte-budget tests in `MongoSyncQuerySamplesV2Test` (unary and
-stream), which count set values per column across every page; the single-PV seam test cannot see
-this class of defect. `TimestampDataMap.getColumnIndex()` is hash-backed and
-`TabularDataUtility.addColumnsToTable()` resolves each column's index once per call, not once per
-retained sample (it was an `indexOf` per value, O(columns) string compares per sample on wide
-queries).
+`queryTable` and tabular export still assemble in the pivot map, with the size limit as a hard
+ceiling (osprey-dcs/dp-service#321). The regression guards: `SampleRowMergerTest` drives the merge
+from in-memory cursors; `MongoSyncQuerySamplesV2Test` covers it through the dispatchers, including
+the two-PV byte-budget tests that count set values per column (the single-PV seam test cannot see
+the #274 defect) and the #314 fixture (2 buckets read before the first message where the sliced
+retrieval read 200; 200 read in total where it read 2,454); `MongoBucketQueryPlanTest` pins the
+plan, with counterfactuals for the unwrapped filter and for 201 PVs.
 
 ### Outbound Flow Control on Streaming Responders (issue #274)
 
@@ -972,14 +1033,14 @@ stream abandoned because the client was gone was still reported to gRPC as a fin
 send site owes the same check; `testEmptyResultDoesNotCompleteWhenTheGateRefuses` pins the two empty
 branches, which are the easy ones to miss because they look like they have nothing to send.
 
-**A mid-slice cursor failure on the samples path must be wrapped as `DpException`.** The find is
+**A mid-read cursor failure on the samples path must be wrapped as `DpException`.** The find is
 issued when the cursor is opened, but the driver fetches later batches *during iteration* — which
-happens inside `TabularDataUtility.addBucketsToTable`, not in the retrieval method. So a `getMore`
+happens inside `SampleRowMerger`, not in the retrieval method. So a `getMore`
 against a failed-over server, or a connection dropped mid-cursor, surfaces as an unchecked
-`MongoException` there rather than as the null cursor the open path returns. The drain loops catch
+`MongoException` there rather than as the null cursor the open path returns. The dispatchers catch
 only `DpException`, so uncaught it escapes into `QueueHandlerBase`'s worker and the caller's stream
 hangs with no response — the same class of defect as the missing `cursor()` catch, and the reason
-`SliceDrain.retrieveSlice` wraps its assembly block. `testMidSliceCursorFailureIsReportedAsAnError`
+`SampleRowMerger.nextRow()` wraps everything it does. `testMidReadCursorFailureIsReportedAsAnError`
 pins it.
 
 **An abandoned response is `dp.outcome=abandoned`, never `success`.** The refusal paths return
@@ -1040,16 +1101,15 @@ a fresh server-set updatedTime; delete-path trims keep the original provenance (
 Supported by `querySamples`/`querySamplesStream` only; `QueryV2Resolver` **rejects** it on
 bucket-oriented methods (whole storage buckets cannot represent per-sample filtering). The validated
 selector is carried as `ResolvedStatusFilter` on `ResolvedQuery`;
-`MongoSyncQueryClient.resolveSampleStatusTimestamps()` fetches per-PV matching-timestamp sets over the
-same clamped page window as bucket retrieval, and `TabularDataUtility.SampleStatusFilter` applies the
-per-sample test during assembly (INCLUDE keeps iff labeled at the **exact** timestamp; EXCLUDE drops
+`MongoSyncQueryClient.resolveSampleStatusTimestamps()` fetches per-PV matching-timestamp sets for one
+window of the merge at a time (#314), and `TabularDataUtility.SampleStatusFilter` applies the
+per-sample test as each row is emitted (INCLUDE keeps iff labeled at the **exact** timestamp; EXCLUDE drops
 iff labeled). Composition with `configurationSelector` is by intersection — both the fragment retention
 test and the status test are applied in the same per-sample retention decision. A DB error or corrupt
 status document during the join surfaces as `DpException`/error, never as "no statuses" (in EXCLUDE
-mode that would silently return filtered-out samples). Filtered samples are simply never inserted into
-the `TimestampDataMap`, so missing values and all-PVs-filtered row omission fall out of the existing
-representation; the `getColumnIndex()` registration invariant still guarantees all-filtered PVs emit
-all-empty columns.
+mode that would silently return filtered-out samples). A filtered sample is left out of its row, so it reads as a missing
+value where another PV keeps the row, and a row with nothing left is not produced; the column set
+is the resolved PV list, so an all-filtered PV still emits an all-empty column.
 
 ## Performance Benchmarking Framework
 Benchmarks in `com.ospreydcs.dp.service.ingest.benchmark`:
@@ -1158,7 +1218,8 @@ positional list.
 - **`MongoBucketQueryPlanTest`** is the repo's only `explain`-based plan-shape test: it pins the
   `[begin − span, end]` index interval on the compound bucket index, resolved through the production
   resolver from `pvStats` documents seeded through the production updater, for the V1 named and
-  pattern paths and the V2 fragment-`$or`, keyset-page, and samples queries — the V2 and mixed-span
+  pattern paths and the V2 fragment-`$or` and keyset-page queries, plus the time-ordered samples
+  query (#314: exactly one plan, no `SORT`, one scan per PV) — the V2 and mixed-span
   cases explaining **one find per span class**, the shape production issues since #274. Since #275
   it also carries a deep-history PV (20,000 one-second buckets ending where the other PVs' history
   ends) and asserts that the same window costs the same keys and documents 1,000 s and 19,000 s

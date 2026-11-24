@@ -1,11 +1,9 @@
 package com.ospreydcs.dp.service.query.handler.mongo.dispatch;
 
-import com.ospreydcs.dp.grpc.v1.common.DataValue;
 import com.ospreydcs.dp.grpc.v1.query.ColumnTable;
 import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
-import com.ospreydcs.dp.service.common.model.TimestampDataMap;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.ResolvedQuery;
 import com.ospreydcs.dp.service.query.handler.mongo.MongoQueryHandler;
@@ -13,21 +11,15 @@ import com.ospreydcs.dp.service.query.handler.mongo.client.MongoQueryClientInter
 import com.ospreydcs.dp.service.query.service.QueryServiceImpl;
 import io.grpc.stub.StreamObserver;
 
-import java.util.List;
-import java.util.Map;
-
 /**
- * Server-streaming {@code querySamplesStream} formatter (Q4/Q5/Q8/Q9). Retrieves the window in time
- * slices through the shared {@link SliceDrain} (issue #274) and emits the accumulated rows in
- * chunks of {@code limit} timestamps whenever an accepted slice brings the accumulation to at least
- * {@code limit} rows, whenever a slice trips the byte budget (the accumulated rows go out and the
- * slice is retried against a fresh budget), and once more at exhaustion. Memory is therefore
- * bounded by the byte budget plus one slice, rather than by the whole window as before #274.
+ * Server-streaming {@code querySamplesStream} formatter (Q4/Q5/Q8/Q9). Reads the result through
+ * the shared {@link SampleRowMerger} (issue #314) and sends the rows in chunks of at most
+ * {@code limit} timestamps, each also kept under the outgoing message-size budget: a chunk is
+ * sent before adding a row that would exceed the wire limit, even if it holds fewer rows. Memory
+ * is one chunk plus the buckets overlapping the merge position, however long the window.
  *
- * <p>Column seeding (Q9) is computed once, so the column set and order are trivially stable across
- * streamed chunks. Each chunk also respects the outgoing message-size budget: a chunk is flushed
- * before adding a row that would exceed the wire limit, even if it holds fewer than {@code limit}
- * rows. {@code nextPageToken} is empty on every message (the stream signals completion via
+ * <p>The column set is the resolved PV list (Q9), so it is the same on every chunk.
+ * {@code nextPageToken} is empty on every message (the stream signals completion via
  * {@code onCompleted}). An empty result emits a single empty message. A non-scalar PV is rejected
  * (Q4), same as the unary path.
  */
@@ -41,22 +33,14 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
 
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, QueryTelemetry telemetry) {
-        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(),
-                MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
+        this(responseObserver, MongoQueryHandler.getOutgoingMessageSizeLimitBytes(), telemetry);
     }
 
     /** Package/test constructor allowing the outgoing message-size budget to be injected. */
     public QuerySamplesStreamDispatcher(
             StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
             QueryTelemetry telemetry) {
-        this(responseObserver, byteBudget, MongoQueryHandler.getQuerySamplesInitialSliceNanos(), telemetry);
-    }
-
-    /** Test constructor allowing the byte budget and the initial slice length to be injected. */
-    public QuerySamplesStreamDispatcher(
-            StreamObserver<QuerySamplesResponse> responseObserver, long byteBudget,
-            long initialSliceNanos, QueryTelemetry telemetry) {
-        super(responseObserver, byteBudget, initialSliceNanos, telemetry);
+        super(responseObserver, byteBudget, telemetry);
         this.gate = OutboundReadinessGate.forObserver(
                 responseObserver, MongoQueryHandler.getStreamReadyTimeoutSeconds(),
                 "querySamplesStream id: " + responseObserver.hashCode());
@@ -72,54 +56,60 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         }
 
         final long[] windowBegin = computeWindowBegin(resolvedQuery);
-        final TimestampDataMap tableValueMap = seededTable(resolvedQuery);
-        final SliceDrain drain = new SliceDrain(
-                resolvedQuery, mongoClient, tableValueMap, windowBegin[0], windowBegin[1]);
         final int chunkRowLimit = resolvedQuery.getPageSize();
+        final boolean useSerialized = resolvedQuery.isUseSerializedColumns();
+        final RowChunk chunk = new RowChunk(resolvedQuery.getPvNames(), useSerialized);
 
         boolean emittedAnything = false;
+        SampleRowMerger merger = null;
         try {
-            drainLoop:
-            while (true) {
-                switch (drain.drainNext()) {
-                    case ACCEPTED -> {
-                        if (tableValueMap.size() >= chunkRowLimit) {
-                            final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
-                            if (emitted < 0) {
-                                return; // oversized-row error already sent
-                            }
-                            emittedAnything |= emitted > 0;
-                            drain.markEmitted();
-                        }
-                    }
-                    case BUDGET_TRIP -> {
-                        // the accumulated rows fill the budget; send them, then retry the slice
-                        final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
-                        if (emitted < 0) {
-                            return;
-                        }
-                        emittedAnything |= emitted > 0;
-                        drain.markEmitted();
-                    }
-                    case EXHAUSTED -> {
-                        final int emitted = emitAccumulated(resolvedQuery, tableValueMap);
-                        if (emitted < 0) {
-                            return;
-                        }
-                        emittedAnything |= emitted > 0;
-                        break drainLoop;
-                    }
-                    case OVERSIZED -> {
-                        // a single timestamp larger than the whole budget cannot be chunked; error
-                        // out naming it rather than emit an over-limit message gRPC would abort on
-                        sendOversizedRowError(drain.resumeSecs(), drain.resumeNanos(), byteBudget);
+            // Cancellation is otherwise noticed only when a chunk is sent, and a quiet stretch or
+            // a status filter can mean a long read between sends (#314, plan D6).
+            merger = openMerger(resolvedQuery, mongoClient, windowBegin[0], windowBegin[1], gate::isCancelled);
+
+            SampleRowMerger.Row row;
+            while ((row = merger.nextRow()) != null) {
+                final long rowBytes = chunk.rowBytes(row);
+
+                // A single row larger than the whole budget cannot be chunked. Error out naming
+                // the timestamp rather than emit an over-limit message gRPC would abort on.
+                if (chunk.emptyBytes() + rowBytes > byteBudget) {
+                    sendOversizedRowError(row.seconds, row.nanos, chunk.emptyBytes() + rowBytes);
+                    return;
+                }
+                // byte flush: this row would take the chunk over the budget
+                if (chunk.rowCount() > 0 && chunk.bytes() + rowBytes > byteBudget) {
+                    if (!emitChunk(chunk, useSerialized)) {
                         return;
                     }
+                    emittedAnything = true;
                 }
+                chunk.add(row, rowBytes);
+                // count flush: the chunk reached the per-message row limit
+                if (chunk.rowCount() >= chunkRowLimit) {
+                    if (!emitChunk(chunk, useSerialized)) {
+                        return;
+                    }
+                    emittedAnything = true;
+                }
+            }
+
+            if (merger.wasCancelled()) {
+                // no reader: stop without completing, as on a refused send
+                telemetry.markAbandoned();
+                return;
+            }
+            if (chunk.rowCount() > 0) {
+                if (!emitChunk(chunk, useSerialized)) {
+                    return;
+                }
+                emittedAnything = true;
             }
         } catch (DpException e) {
             sendDrainFailure(e); // scalar-only reject (Q4), or error
             return;
+        } finally {
+            closeMerger(merger);
         }
 
         if (!emittedAnything) {
@@ -130,144 +120,13 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         responseObserver.onCompleted();
     }
 
-    /**
-     * Emits every row currently in the map as one or more chunks bounded by the row limit and the
-     * byte budget, draining the map. Returns the number of rows emitted (0 when the map held
-     * none), or -1 when the caller must stop: after sending the indivisible-oversized-row error,
-     * or when the readiness gate refused a send (client cancelled or not draining; nothing sent).
-     */
-    private int emitAccumulated(ResolvedQuery resolvedQuery, TimestampDataMap tableValueMap) {
-
-        final List<long[]> timestamps = collectTimestamps(tableValueMap);
-        if (timestamps.isEmpty()) {
-            return 0;
-        }
-
-        final int chunkRowLimit = resolvedQuery.getPageSize();
-        final List<String> columnNames = tableValueMap.getColumnNameList();
-        final int columnCount = columnNames.size();
-        final boolean useSerialized = resolvedQuery.isUseSerializedColumns();
-        // fixed per-column overhead (column name + repeated-field framing), counted once per row so
-        // the estimate stays a conservative upper bound of the emitted ColumnTable size.
-        final long perColumnOverhead = columnOverhead(columnNames, useSerialized);
-
-        int chunkStart = 0;
-        long chunkBytes = 0;
-
-        for (int rowIndex = 0; rowIndex < timestamps.size(); rowIndex++) {
-            final long rowBytes = rowByteEstimate(
-                    tableValueMap, timestamps, rowIndex, columnCount, perColumnOverhead);
-            final int rowsInChunk = rowIndex - chunkStart;
-
-            // indivisible-oversized guard (mirrors the buckets streaming dispatcher): a single row
-            // larger than the whole budget cannot be chunked. The drain bounds a slice's DataValue
-            // bytes by the budget, but the estimate here adds per-row and per-column framing, so a
-            // row can still exceed a small budget. Error out naming the timestamp rather than emit
-            // an over-limit message that gRPC would abort the whole stream on.
-            if (rowsInChunk == 0 && rowBytes > byteBudget) {
-                sendOversizedRowError(timestamps.get(rowIndex)[0], timestamps.get(rowIndex)[1], rowBytes);
-                return -1;
-            }
-
-            // byte flush: adding this row would overflow the budget and the chunk already has >= 1 row
-            if (rowsInChunk >= 1 && chunkBytes + rowBytes > byteBudget) {
-                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex, useSerialized)) {
-                    return -1;
-                }
-                chunkStart = rowIndex;
-                chunkBytes = 0;
-            }
-
-            chunkBytes += rowBytes;
-
-            // count flush: the chunk reached the per-message row limit (inclusive of this row)
-            if (rowIndex - chunkStart + 1 >= chunkRowLimit) {
-                if (!emitChunk(tableValueMap, timestamps, chunkStart, rowIndex + 1, useSerialized)) {
-                    return -1;
-                }
-                chunkStart = rowIndex + 1;
-                chunkBytes = 0;
-            }
-        }
-
-        // flush the trailing partial chunk
-        if (chunkStart < timestamps.size()
-                && !emitChunk(tableValueMap, timestamps, chunkStart, timestamps.size(), useSerialized)) {
-            return -1;
-        }
-        return timestamps.size();
-    }
-
-    /**
-     * Conservative <b>upper bound</b> on the serialized size one table row contributes to the emitted
-     * {@link ColumnTable} — the timestamp entry plus, for every column, the value's serialized size
-     * (or the unset-value framing) and this row's share of the per-column name/framing overhead
-     * ({@code perColumnOverhead}, precomputed by {@link #columnOverhead}). It must not under-count:
-     * the chunk boundary relies on it to keep each emitted message under the gRPC wire limit.
-     */
-    private static long rowByteEstimate(
-            TimestampDataMap tableValueMap, List<long[]> timestamps, int rowIndex, int columnCount,
-            long perColumnOverhead) {
-        final long second = timestamps.get(rowIndex)[0];
-        final long nano = timestamps.get(rowIndex)[1];
-        // Timestamp: two int64 fields (up to 10 bytes varint each) + field tags/length framing.
-        long bytes = 24;
-        // ORDERING (#199): buildColumnTable drains each row it emits, so this must run before the
-        // row is emitted. The chunk loop guarantees that -- a row is always estimated at index
-        // rowIndex before any emitChunk whose range reaches it -- but a future change that emits
-        // ahead of estimating would read a drained row here. Fail loudly rather than under-count:
-        // this estimate bounds the chunk against the gRPC wire limit, so silently treating a
-        // missing row as zero bytes would produce an over-limit message that aborts the stream.
-        final Map<Integer, DataValue> rowValues = tableValueMap.get(second, nano);
-        if (rowValues == null) {
-            throw new IllegalStateException(
-                    "querySamples row at timestamp " + second + "." + nano
-                            + " was drained before its size was estimated; rowByteEstimate must run"
-                            + " before the emitChunk that consumes the row (#199)");
-        }
-        for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
-            final DataValue value = rowValues.get(columnIndex);
-            // value payload + repeated DataValue tag+length framing (a few bytes); unset value is one
-            // empty DataValue message which still costs its framing.
-            bytes += ((value != null) ? value.getSerializedSize() : 0) + 6;
-        }
-        return bytes + perColumnOverhead;
-    }
-
-    /**
-     * Per-row share of the fixed per-column overhead: each emitted column carries its UTF-8 name and
-     * repeated-field framing regardless of how many rows it holds. Amortizing the whole overhead onto
-     * every row keeps {@link #rowByteEstimate} a strict upper bound (a chunk of N rows is charged N×
-     * the overhead, never less than the single copy actually emitted). Under
-     * {@code useSerializedColumns} each column is additionally wrapped in a {@code SerializedDataColumn}
-     * (name + payload framing), so the per-column overhead is larger.
-     */
-    private static long columnOverhead(List<String> columnNames, boolean useSerialized) {
-        long overhead = 0;
-        for (String name : columnNames) {
-            final long nameBytes = name.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-            // column name field (tag+len+bytes) + repeated-column tag/length framing; serialized
-            // columns pay it twice (inner DataColumn name + outer SerializedDataColumn name/payload).
-            overhead += nameBytes + 8;
-            if (useSerialized) {
-                overhead += nameBytes + 8;
-            }
-        }
-        return overhead;
-    }
-
-    /** Builds and emits one chunk; false when the gate refused (nothing built or sent). */
-    private boolean emitChunk(
-            TimestampDataMap tableValueMap, List<long[]> timestamps,
-            int fromRow, int toRow, boolean useSerialized) {
-        // Wait before building: the build drains the rows from the map, and a refused send would
-        // otherwise lose them (they are not re-queried on the stream path).
+    /** Sends the chunk and empties it; false when the gate refused (nothing sent). */
+    private boolean emitChunk(RowChunk chunk, boolean useSerialized) {
         if (!gate.awaitReady()) {
             telemetry.markAbandoned();
             return false; // abandoned: the gate logged why
         }
-        final ColumnTable columnTable = buildColumnTable(tableValueMap, timestamps, fromRow, toRow, useSerialized);
-        emit(columnTable);
+        emit(chunk.buildAndReset(useSerialized));
         return true;
     }
 

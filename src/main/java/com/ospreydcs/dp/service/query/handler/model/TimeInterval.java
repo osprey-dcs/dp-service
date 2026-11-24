@@ -144,8 +144,8 @@ public final class TimeInterval {
 
     /**
      * Clamps each interval's begin to the window begin, dropping intervals entirely at or before
-     * it: the {@code end = +infinity} case of {@link #clampToWindow}. Retained for callers that
-     * bound a page on the left only (the samples dispatchers' page-window screen).
+     * it: the {@code end = +infinity} case of {@link #clampToWindow}. This is the clamp of the
+     * samples paths, which bound a page or stream on the left only (#314).
      */
     public static List<TimeInterval> clampToWindowBegin(
             List<TimeInterval> intervals, long windowBeginSecs, long windowBeginNanos) {
@@ -158,23 +158,23 @@ public final class TimeInterval {
      * end becomes {@code min(fragment.end, windowEnd)}, and intervals left empty are dropped.
      * Order is preserved.
      *
-     * <p><b>Single source for the querySamples retrieval clamp (issues #207, #274).</b> A page's
-     * bucket retrieval filter and its sample-level retention trim must be derived from the
-     * <em>same</em> interval set, or the database and the assembly disagree about which samples
-     * belong to the page -- the exact class of defect #207 fixed. Under #274 the samples paths
-     * retrieve the page in time slices, every slice over all PVs, and each slice is this method
-     * applied to the resolved fragments with the slice as the window:
-     * {@code MongoSyncQueryClient.executeQuerySamplesV2} builds its per-fragment {@code $or} of
-     * bucket-overlap predicates from the result, and
-     * {@code AbstractQuerySamplesDispatcher.retentionIntervals} builds its retention windows from
-     * it. Do not reimplement the clamp at either call site.
+     * <p><b>Single source for the querySamples retrieval clamp (issues #207, #314).</b> The
+     * bucket retrieval filter and the sample-level retention trim must be derived from the
+     * <em>same</em> interval set, or the database and the merge disagree about which samples
+     * belong to the result -- the exact class of defect #207 fixed. The samples paths clamp the
+     * resolved fragments to the window begin through {@link #clampToWindowBegin}, which is this
+     * method with no upper bound: {@code MongoSyncQueryClient.executeQuerySamplesTimeOrdered}
+     * builds its fragment overlap filter from the result, and
+     * {@code AbstractQuerySamplesDispatcher.openMerger} hands the same result to the merge as its
+     * retention fragments. The status-selector windows use the two-sided form. Do not reimplement
+     * the clamp at any call site.
      *
-     * <p>The window end is a <em>retrieval</em> bound applied to each fragment. It is not a
+     * <p>A window end is a <em>retrieval</em> bound applied to each fragment. It is not a
      * collapsed {@code [min begin, max end)} retention window -- gaps between fragments inside the
      * window are still absent from the result, so the #207 sample trim keeps working per fragment.
      *
-     * <p>An empty result means nothing overlaps the window; callers treat that as an empty slice
-     * or page rather than an unfiltered query.
+     * <p>An empty result means nothing overlaps the window; callers treat that as an empty
+     * window or page rather than an unfiltered query.
      */
     public static List<TimeInterval> clampToWindow(
             List<TimeInterval> intervals,

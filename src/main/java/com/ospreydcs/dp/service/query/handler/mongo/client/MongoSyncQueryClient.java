@@ -1,5 +1,6 @@
 package com.ospreydcs.dp.service.query.handler.mongo.client;
 
+import com.mongodb.client.ClientSession;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoIterable;
@@ -42,6 +43,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -196,7 +198,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * dispatcher turns into an error response. Cursors already opened when a later one fails are
      * closed first.
      */
-    // Package-private (like bucketSamplesQueryV2) so the cleanup-on-partial-open path can be
+    // Package-private (like the query builders) so the cleanup-on-partial-open path can be
     // tested directly: a leak there is invisible from the outside, since the caller sees the same
     // null cursor either way.
     MongoCursor<BucketDocument> openSpanClassCursors(
@@ -208,6 +210,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (classes.size() == 1) {
             return timedCursor(finder.apply(classes.get(0)));
         }
+        return new TimedMongoCursor<>(mergedSpanClassCursors(classes, finder));
+    }
+
+    private static MongoCursor<BucketDocument> mergedSpanClassCursors(
+            List<SpanClass> classes, Function<SpanClass, FindIterable<BucketDocument>> finder) {
         final List<MongoCursor<BucketDocument>> cursors = new ArrayList<>(classes.size());
         try {
             for (SpanClass spanClass : classes) {
@@ -223,7 +230,33 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             }
             throw ex;
         }
-        return new TimedMongoCursor<>(new MergedBucketCursor(cursors));
+        return new MergedBucketCursor(cursors);
+    }
+
+    /**
+     * {@link #openSpanClassCursors} for the production paths: when the request has more than one
+     * span class, every class's find is issued in one explicit session that the returned cursor
+     * ends on close (PR #323 review). The merge is PV-major, so a class's cursor goes unread
+     * while the PVs of the other classes that sort before its next PV are streamed, and the
+     * server kills a cursor whose session has gone unused for the session timeout; in one
+     * session a read on any class keeps them all. See {@link SessionBoundCursor} for the
+     * measurement. A single class has one cursor and keeps its implicit session: {@code finder}
+     * is then given a null session.
+     */
+    private MongoCursor<BucketDocument> openSpanClassCursorsInSession(
+            List<SpanClass> classes, BiFunction<ClientSession, SpanClass, FindIterable<BucketDocument>> finder) {
+
+        if (classes.size() <= 1) {
+            return openSpanClassCursors(classes, spanClass -> finder.apply(null, spanClass));
+        }
+        final ClientSession session = mongoClient.startSession();
+        try {
+            return new TimedMongoCursor<>(new SessionBoundCursor<>(
+                    mergedSpanClassCursors(classes, spanClass -> finder.apply(session, spanClass)), session));
+        } catch (RuntimeException | Error ex) {
+            closeSessionQuietly(session);
+            throw ex;
+        }
     }
 
     /**
@@ -273,7 +306,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos
     ) {
         try {
-            return openSpanClassCursors(spanClasses, spanClass -> bucketDocumentQuery(
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) -> bucketDocumentQuery(
+                    session,
                     in(BsonConstants.BSON_KEY_PV_NAME, spanClass.pvNames()),
                     startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
                     spanClass.maxSpanSeconds()));
@@ -299,6 +333,21 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             long endTimeNanos,
             long maxBucketSpanSeconds
     ) {
+        return bucketDocumentQuery(
+                null, columnNameFilter, startTimeSeconds, startTimeNanos, endTimeSeconds, endTimeNanos,
+                maxBucketSpanSeconds);
+    }
+
+    /** As above, issued in {@code session} when it is not null (a multi-class request). */
+    private FindIterable<BucketDocument> bucketDocumentQuery(
+            ClientSession session,
+            Bson columnNameFilter,
+            long startTimeSeconds,
+            long startTimeNanos,
+            long endTimeSeconds,
+            long endTimeNanos,
+            long maxBucketSpanSeconds
+    ) {
         // Bucket overlap predicate (firstTime < end AND lastTime >= begin) built from the shared
         // filter builder so the V1 retrieval path and the V2 $or fragmentation cannot drift. The
         // span is the per-query pvStats maximum resolved by the caller (#232).
@@ -311,7 +360,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
                 + " endSeconds: " + endTimeSeconds
                 + " maxBucketSpanSeconds: " + maxBucketSpanSeconds);
 
-        return bucketFind(filter);
+        return bucketFind(session, filter, bucketSort());
     }
 
     /**
@@ -334,10 +383,96 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * {@code MongoBucketQueryPlanTest} pins the resulting plan shape against an adversarial index set.
      */
     FindIterable<BucketDocument> bucketFind(Bson filter) {
-        return mongoCollectionBuckets
-                .find(filter)
-                .sort(bucketSort())
+        return bucketFind(null, filter, bucketSort());
+    }
+
+    /** {@code session} is null except on the time-ordered samples retrieval (#314). */
+    private FindIterable<BucketDocument> bucketFind(ClientSession session, Bson filter, Bson sort) {
+        final FindIterable<BucketDocument> find = (session == null)
+                ? mongoCollectionBuckets.find(filter)
+                : mongoCollectionBuckets.find(session, filter);
+        return find
+                .sort(sort)
                 .hint(MongoClientBase.BUCKET_QUERY_INDEX_KEYS);
+    }
+
+    /**
+     * Sort by bucket start time alone, for the time-ordered samples retrieval (#314). Deliberately
+     * without a trailing {@code pvName}: measured, adding it defeats the merge plan and the server
+     * falls back to a blocking {@code SORT}. Ties between PVs are broken in the service.
+     */
+    private static Bson bucketTimeSort() {
+        return ascending(
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_SECS,
+                BsonConstants.BSON_KEY_BUCKET_FIRST_TIME_NANOS);
+    }
+
+    /**
+     * The most PVs one time-ordered samples find may name (#314). The server streams this query
+     * by scanning the index once per PV and merging the scans ({@code SORT_MERGE}); above
+     * {@code internalQueryMaxScansToExplode} scans (200 by default, measured as the limit on
+     * MongoDB 8.0) it sorts the whole result in memory instead. 50 leaves a factor of four for a
+     * server parameter set lower or a planner that counts differently.
+     */
+    static final int SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND = 50;
+
+    /**
+     * Builds the time-ordered samples retrieval query for one group of PVs sharing a span bound
+     * (#314), without opening a cursor, so {@code MongoBucketQueryPlanTest} can {@code explain()}
+     * it. Buckets come back ordered by {@code firstTime} across the group's PVs, which is what
+     * lets the samples paths merge them into rows as they arrive instead of buffering a window.
+     *
+     * <p>The filter is the same predicate as the other V2 bucket queries', arranged so the
+     * planner has exactly one plan:
+     * <ul>
+     * <li>The {@code firstTime.seconds} bounds are top-level, over the fragments' earliest begin
+     *     and latest end, so every per-PV scan is the interval {@code [minBegin - span, maxEnd]}
+     *     (the #271 hoist, applied here to a single fragment too).</li>
+     * <li>The overlap predicate is wrapped in a double {@code $nor}, which leaves its meaning
+     *     unchanged and keeps the planner from indexing its {@code $or}s. Unwrapped, each
+     *     {@code (seconds, nanos)} {@code $or} is a candidate for an index-union plan, and a union
+     *     cannot stream the sort: measured on the plan test's fixture, the planner enumerated up
+     *     to nine such plans with a blocking {@code SORT} beside the streaming one, chose by
+     *     trial, and picked a blocking one for small results. A plan chosen by trial can also be
+     *     cached and reused for a long range. With the wrap there is one candidate and no trial.</li>
+     * </ul>
+     * The overlap predicate still comes from {@link #fragmentsOverlapFilter}, so it cannot drift
+     * from the other bucket queries (#207).
+     *
+     * @param pvNames at most {@link #SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND} names
+     */
+    FindIterable<BucketDocument> bucketSamplesTimeOrderedQuery(
+            List<String> pvNames, List<TimeInterval> clampedIntervals, long maxSpanSeconds) {
+        return bucketSamplesTimeOrderedQuery(null, pvNames, clampedIntervals, maxSpanSeconds);
+    }
+
+    /**
+     * As above, issued in {@code session} when it is not null. Production passes the retrieval's
+     * one session so its cursors keep each other alive (see {@link SessionBoundCursor}).
+     */
+    FindIterable<BucketDocument> bucketSamplesTimeOrderedQuery(
+            ClientSession session,
+            List<String> pvNames, List<TimeInterval> clampedIntervals, long maxSpanSeconds) {
+
+        if (pvNames.size() > SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
+            throw new IllegalArgumentException(
+                    "time-ordered samples query names " + pvNames.size() + " PVs, limit "
+                            + SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND);
+        }
+        final Bson overlapFilter = fragmentsOverlapFilter(clampedIntervals, maxSpanSeconds);
+
+        long minBeginSeconds = Long.MAX_VALUE;
+        long maxEndSeconds = Long.MIN_VALUE;
+        for (TimeInterval interval : clampedIntervals) {
+            minBeginSeconds = Math.min(minBeginSeconds, interval.getBeginSeconds());
+            maxEndSeconds = Math.max(maxEndSeconds, interval.getEndSeconds());
+        }
+        final List<Bson> parts = new ArrayList<>();
+        parts.add(in(BsonConstants.BSON_KEY_PV_NAME, pvNames));
+        parts.addAll(MongoQueryFilterBuilder.bucketFirstTimeSecondsIndexBounds(
+                minBeginSeconds, maxEndSeconds, maxSpanSeconds));
+        parts.add(nor(nor(overlapFilter)));
+        return bucketFind(session, and(parts), bucketTimeSort());
     }
 
     /**
@@ -698,8 +833,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         try {
             // +1 probe row per class to detect a following page; the merged consumer stops after
             // pageSize + 1 documents, so the extra rows of the other classes are never read.
-            return openSpanClassCursors(spanClasses, spanClass ->
-                    bucketQueryV2(resolvedQuery, spanClass).limit(resolvedQuery.getPageSize() + 1));
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) ->
+                    bucketQueryV2(session, resolvedQuery, spanClass).limit(resolvedQuery.getPageSize() + 1));
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2 database error: {}", ex.getMessage(), ex);
             return null;
@@ -714,6 +849,11 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * {@link #bucketDocumentQuery} makes for V1). Package-private on purpose.
      */
     FindIterable<BucketDocument> bucketQueryV2(ResolvedQuery resolvedQuery, SpanClass spanClass) {
+        return bucketQueryV2(null, resolvedQuery, spanClass);
+    }
+
+    private FindIterable<BucketDocument> bucketQueryV2(
+            ClientSession session, ResolvedQuery resolvedQuery, SpanClass spanClass) {
         // Base filter: PV-name filter AND the $or of per-fragment overlap predicates.
         final List<Bson> andParts = new ArrayList<>();
         andParts.add(bucketBaseFilterV2(resolvedQuery, spanClass));
@@ -724,7 +864,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         if (pageStart != null) {
             andParts.add(bucketKeysetSeekFilter(pageStart));
         }
-        return bucketFind(and(andParts));
+        return bucketFind(session, and(andParts), bucketSort());
     }
 
     @Override
@@ -743,7 +883,8 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         // Streaming is fire-and-consume: no keyset seek and no limit — the full result of the
         // (resolved intervals × PV list) overlap query is streamed to exhaustion, chunked downstream.
         try {
-            return openSpanClassCursors(spanClasses, spanClass -> bucketStreamQueryV2(resolvedQuery, spanClass));
+            return openSpanClassCursorsInSession(spanClasses, (session, spanClass) ->
+                    bucketStreamQueryV2(session, resolvedQuery, spanClass));
         } catch (Exception ex) {
             logger.error("executeQueryBucketsV2Stream database error: {}", ex.getMessage(), ex);
             return null;
@@ -756,87 +897,141 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      * Package-private for the plan test.
      */
     FindIterable<BucketDocument> bucketStreamQueryV2(ResolvedQuery resolvedQuery, SpanClass spanClass) {
-        return bucketFind(bucketBaseFilterV2(resolvedQuery, spanClass));
+        return bucketStreamQueryV2(null, resolvedQuery, spanClass);
     }
 
-    @Override
-    public MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery,
-            long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) {
-        return executeQuerySamplesV2(
-                resolvedQuery, windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos, null);
+    private FindIterable<BucketDocument> bucketStreamQueryV2(
+            ClientSession session, ResolvedQuery resolvedQuery, SpanClass spanClass) {
+        return bucketFind(session, bucketBaseFilterV2(resolvedQuery, spanClass), bucketSort());
     }
 
     /**
-     * Slice-drain form carrying the per-page {@link SpanClassHolder}: the {@code pvStats}
-     * span-class partition is resolved on the first slice and reused by the rest, instead of being
-     * re-read once per slice (#274). See the interface javadoc for why the holder is a per-request
-     * scratch slot and not a cache (#232, plan D7).
+     * The documents a samples request may hold in open cursor batches, across all its cursors
+     * (#314, plan D5). The driver's default is 101 documents on the first batch and then as many
+     * as fit in 16 MiB, per cursor, and a request over many PVs opens one cursor per PV group; a
+     * command listener also makes the driver copy every reply. Buckets are consumed one at a
+     * time, so a small batch costs round trips, not correctness.
      */
+    static final int SAMPLES_OPEN_BATCH_DOCUMENTS = 256;
+    static final int SAMPLES_MIN_BATCH_SIZE = 4;
+    static final int SAMPLES_MAX_BATCH_SIZE = 64;
+
+    static int samplesBatchSize(int cursorCount) {
+        return Math.max(SAMPLES_MIN_BATCH_SIZE,
+                Math.min(SAMPLES_MAX_BATCH_SIZE, SAMPLES_OPEN_BATCH_DOCUMENTS / Math.max(1, cursorCount)));
+    }
+
     @Override
-    public MongoCursor<BucketDocument> executeQuerySamplesV2(
-            ResolvedQuery resolvedQuery,
-            long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos,
-            SpanClassHolder spanClassHolder) {
+    public MongoCursor<BucketDocument> executeQuerySamplesTimeOrdered(
+            ResolvedQuery resolvedQuery, long windowBeginSecs, long windowBeginNanos) {
 
         if (resolvedQuery == null || resolvedQuery.isEmptyResult()) {
             return null;
         }
-
-        // Each fragment is intersected with the slice window [windowBegin, windowEnd) (#274): the
-        // begin is the resume timestamp on a continuation page or the previous slice's end, the
-        // end is the slice end. The clamp lives on TimeInterval so this filter and the
-        // dispatcher's sample-level retention trim are derived from the same interval set (#207)
-        // — see clampToWindow.
-        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindow(
-                resolvedQuery.getRetrievalIntervals(),
-                windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
+        // The same clamp the dispatcher's sample retention uses (#207).
+        final List<TimeInterval> clampedIntervals = TimeInterval.clampToWindowBegin(
+                resolvedQuery.getRetrievalIntervals(), windowBeginSecs, windowBeginNanos);
         if (clampedIntervals.isEmpty()) {
-            // nothing overlaps the slice. The samples dispatchers screen this same condition, from
-            // the same clamp, before calling — so a null they receive is one of the failures below.
+            // nothing at or after the window begin; the dispatchers screen this before calling
             return null;
         }
-
-        // Per-PV firstTime lower-bound spans from pvStats, partitioned into span classes (#232,
-        // #274). Resolved once per page: the partition depends only on the PV list and the stored
-        // spans, so every slice of one request would otherwise repeat the same read. A failed
-        // resolution is recorded too (as null), so it is reported per slice without being retried.
-        final List<SpanClass> spanClasses;
-        if (spanClassHolder == null) {
-            spanClasses = resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2");
-        } else {
-            if (!spanClassHolder.isResolved()) {
-                spanClassHolder.set(
-                        resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesV2"));
-            }
-            spanClasses = spanClassHolder.get();
-        }
+        final List<SpanClass> spanClasses =
+                resolveSpanClassesOrNull(resolvedQuery.getPvNames(), "executeQuerySamplesTimeOrdered");
         if (spanClasses == null) {
             return null;
         }
-
+        // cursor() issues the find, so a database failure (an outage, a missing hinted index)
+        // is thrown here; report it as the null cursor the dispatchers turn into an error.
+        // Every find is issued in one session, which the returned cursor ends when it is closed:
+        // see SessionBoundCursor for why.
+        ClientSession session = null;
         try {
-            return openSpanClassCursors(spanClasses, spanClass ->
-                    bucketSamplesQueryV2(resolvedQuery, clampedIntervals, spanClass));
+            session = mongoClient.startSession();
+            return openTimeOrderedCursors(timeOrderedFinds(session, spanClasses, clampedIntervals), session);
         } catch (Exception ex) {
-            logger.error("executeQuerySamplesV2 database error: {}", ex.getMessage(), ex);
+            logger.error("executeQuerySamplesTimeOrdered database error: {}", ex.getMessage(), ex);
+            closeSessionQuietly(session);
             return null;
         }
     }
 
-    /**
-     * Builds the V2 samples retrieval query for one span class over {@code clampedIntervals} (the
-     * output of {@code TimeInterval.clampToWindow}, non-empty) without opening a cursor, so that
-     * {@code MongoBucketQueryPlanTest} can {@code explain()} the exact fragment {@code $or}
-     * {@link #executeQuerySamplesV2} issues per class (#274, plan D11). Package-private on purpose.
-     */
-    FindIterable<BucketDocument> bucketSamplesQueryV2(
-            ResolvedQuery resolvedQuery, List<TimeInterval> clampedIntervals, SpanClass spanClass) {
+    private static void closeSessionQuietly(ClientSession session) {
+        if (session == null) {
+            return;
+        }
+        try {
+            session.close();
+        } catch (RuntimeException ex) {
+            logger.error("error closing querySamples session: {}", ex.getMessage(), ex);
+        }
+    }
 
-        final Bson pvNameFilter = in(BsonConstants.BSON_KEY_PV_NAME, spanClass.pvNames());
-        return bucketFind(and(pvNameFilter, fragmentsOverlapFilter(clampedIntervals, spanClass.maxSpanSeconds())));
+    /**
+     * One find per span class and PV group: each class carries its own span bound (#274), and
+     * each group stays within what the server merges without sorting. Package-private for tests.
+     */
+    List<FindIterable<BucketDocument>> timeOrderedFinds(
+            List<SpanClass> spanClasses, List<TimeInterval> clampedIntervals) {
+        return timeOrderedFinds(null, spanClasses, clampedIntervals);
+    }
+
+    List<FindIterable<BucketDocument>> timeOrderedFinds(
+            ClientSession session, List<SpanClass> spanClasses, List<TimeInterval> clampedIntervals) {
+
+        final List<FindIterable<BucketDocument>> finds = new ArrayList<>();
+        for (SpanClass spanClass : spanClasses) {
+            final List<String> pvNames = spanClass.pvNames();
+            for (int from = 0; from < pvNames.size(); from += SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND) {
+                final int to = Math.min(pvNames.size(), from + SAMPLES_TIME_ORDERED_MAX_PVS_PER_FIND);
+                finds.add(bucketSamplesTimeOrderedQuery(
+                        session, pvNames.subList(from, to), clampedIntervals, spanClass.maxSpanSeconds()));
+            }
+        }
+        final int batchSize = samplesBatchSize(finds.size());
+        finds.replaceAll(find -> find.batchSize(batchSize));
+        return finds;
+    }
+
+    /**
+     * Opens every find eagerly and merges them by bucket start time. Eager for the reason
+     * {@link #openSpanClassCursors} is: a find that fails to open must fail the retrieval method,
+     * not surface mid-iteration. Cursors already opened when a later one fails are closed.
+     */
+    MongoCursor<BucketDocument> openTimeOrderedCursors(List<FindIterable<BucketDocument>> finds) {
+        return openTimeOrderedCursors(finds, null);
+    }
+
+    /**
+     * As above; when {@code session} is not null the finds were issued in it, and the returned
+     * cursor ends it on close. On a failure to open, the caller still owns the session.
+     */
+    MongoCursor<BucketDocument> openTimeOrderedCursors(
+            List<FindIterable<BucketDocument>> finds, ClientSession session) {
+        final MongoCursor<BucketDocument> merged = openTimeOrderedCursorsUntimed(finds);
+        return new TimedMongoCursor<>(session == null ? merged : new SessionBoundCursor<>(merged, session));
+    }
+
+    private static MongoCursor<BucketDocument> openTimeOrderedCursorsUntimed(
+            List<FindIterable<BucketDocument>> finds) {
+        if (finds.size() == 1) {
+            return finds.get(0).cursor();
+        }
+        final List<MongoCursor<BucketDocument>> cursors = new ArrayList<>(finds.size());
+        try {
+            for (FindIterable<BucketDocument> find : finds) {
+                cursors.add(find.cursor());
+            }
+        } catch (RuntimeException ex) {
+            for (MongoCursor<BucketDocument> opened : cursors) {
+                try {
+                    opened.close();
+                } catch (RuntimeException closeEx) {
+                    ex.addSuppressed(closeEx);
+                }
+            }
+            throw ex;
+        }
+        return new MergedBucketCursor(cursors, MergedBucketCursor.TIME_ORDER);
     }
 
     /**
@@ -855,7 +1050,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
      *
      * <p>Rejects an empty interval list rather than building a filter for it. Both callers already
      * screen the case -- {@code ResolvedQuery.isEmptyResult()} for the base filter, and
-     * {@code clampedIntervals.isEmpty()} on the samples path -- so arriving here with no intervals
+     * the empty clamp on the samples path -- so arriving here with no intervals
      * is a caller bug, and both ways of "handling" it fail in the silent direction: an empty
      * {@code $or} is a driver error at query time, while the hoisted bounds would be built from
      * the {@code Long.MAX_VALUE}/{@code MIN_VALUE} loop sentinels, giving an impossible interval
@@ -901,26 +1096,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
     }
 
     @Override
-    public Map<String, Set<Long>> resolveSampleStatusTimestamps(
+    public StatusTimestamps resolveSampleStatusTimestamps(
             ResolvedQuery resolvedQuery,
             long windowBeginSecs, long windowBeginNanos,
-            long windowEndSecs, long windowEndNanos) throws DpException {
+            long windowEndSecs, long windowEndNanos,
+            int maxTimestamps) throws DpException {
 
         final ResolvedStatusFilter statusFilter = resolvedQuery.getStatusFilter();
         if (statusFilter == null) {
-            return Map.of();
+            return StatusTimestamps.of(Map.of());
         }
 
-        // Bound the fetch by the same clamped slice the sample retrieval uses (#207, #274): a
-        // status can only affect samples inside some clamped fragment. The bounds here are the
-        // slice's extremes [first fragment begin, last fragment end) — statuses in the gaps between
+        // Bound the fetch by the window the samples merge asked for, clamped to the fragments
+        // (#207, #314): a status can only affect samples inside some clamped fragment. The bounds
+        // here are the window's extremes [first fragment begin, last fragment end) — statuses in the gaps between
         // fragments are harmless to include (their samples are dropped by the fragment retention
         // test regardless of mode), so per-fragment precision is not required for correctness.
         final List<TimeInterval> clampedFragments = TimeInterval.clampToWindow(
                 resolvedQuery.getRetrievalIntervals(),
                 windowBeginSecs, windowBeginNanos, windowEndSecs, windowEndNanos);
         if (clampedFragments.isEmpty()) {
-            return Map.of();
+            return StatusTimestamps.of(Map.of());
         }
         final TimeInterval firstFragment = clampedFragments.get(0);
         final TimeInterval lastFragment = clampedFragments.get(clampedFragments.size() - 1);
@@ -942,22 +1138,27 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
         filters.add(gte(BsonConstants.BSON_KEY_SAMPLE_STATUS_LAST_TIME_NANOS, windowBeginTotalNanos));
 
         final Map<String, Set<Long>> matchingTimestampsByPv = new HashMap<>();
+        long collected = 0;
         try (MongoCursor<SampleStatusBucketDocument> cursor =
                      mongoCollectionSampleStatusBuckets.find(and(filters)).cursor()) {
             while (cursor.hasNext()) {
                 final SampleStatusBucketDocument document = cursor.next();
                 for (SampleStatusDocumentUtility.StatusPoint point :
                         SampleStatusDocumentUtility.expandDocument(document)) {
-                    // keep only in-window matching timestamps: memory stays bounded by the number
-                    // of labeled samples in the window
+                    // keep only in-window matching timestamps
                     if (point.timestampNanos() < windowBeginTotalNanos
                             || point.timestampNanos() >= windowEndTotalNanos) {
                         continue;
                     }
-                    if (statusFilter.matchesCode(point.statusCode())) {
-                        matchingTimestampsByPv
-                                .computeIfAbsent(document.getPvName(), k -> new HashSet<>())
-                                .add(point.timestampNanos());
+                    if (statusFilter.matchesCode(point.statusCode())
+                            && matchingTimestampsByPv
+                                    .computeIfAbsent(document.getPvName(), k -> new HashSet<>())
+                                    .add(point.timestampNanos())
+                            && ++collected > maxTimestamps) {
+                        // The window holds more labeled samples than the caller will hold
+                        // (#314): stop here and keep nothing. Documents arrive in no useful
+                        // order, so a partial map says nothing about any sub-window.
+                        return StatusTimestamps.OVER_LIMIT;
                     }
                 }
             }
@@ -970,7 +1171,7 @@ public class MongoSyncQueryClient extends MongoSyncClient implements MongoQueryC
             return null;
         }
 
-        return matchingTimestampsByPv;
+        return StatusTimestamps.of(matchingTimestampsByPv);
     }
 
     /**

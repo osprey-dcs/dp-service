@@ -173,8 +173,16 @@ public class QueryTableDispatcher extends Dispatcher {
         try {
             handleResult_(cursor);
         } finally {
-            // In a finally so the db stage is folded in on every exit below, including each of the
-            // four error returns.
+            // In a finally so the cursor is closed and the db stage folded in on every exit below,
+            // including the empty result and each of the error returns. The close is needed even
+            // when the cursor was read to its end: a multi-class request's cursor owns the
+            // session its finds share (#314, PR #323 review), which ends only on close. Closing
+            // again after addBucketsToTable() has closed it is a no-op.
+            try {
+                cursor.close();
+            } catch (RuntimeException ex) {
+                logger.error("error closing queryTable cursor: {}", ex.getMessage(), ex);
+            }
             recordCursorTime(cursor);
         }
     }
