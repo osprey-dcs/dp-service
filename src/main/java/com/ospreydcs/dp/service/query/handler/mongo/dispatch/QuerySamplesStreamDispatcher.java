@@ -50,7 +50,6 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
     public void executeAndDispatch(ResolvedQuery resolvedQuery, MongoQueryClientInterface mongoClient) {
 
         if (resolvedQuery.isEmptyResult()) {
-            telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
@@ -113,7 +112,6 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         }
 
         if (!emittedAnything) {
-            telemetry.markEmpty();
             emitEmptyChunkAndComplete();
             return;
         }
@@ -130,8 +128,20 @@ public class QuerySamplesStreamDispatcher extends AbstractQuerySamplesDispatcher
         return true;
     }
 
+    /**
+     * Sends the single empty message of an empty result, through the gate like every other send
+     * (#324). A refused send is not followed by {@code onCompleted()}: the client is gone or not
+     * draining. The outcome is marked empty only after the send, because
+     * {@code markAbandoned()} does not overwrite an outcome already set, so marking first
+     * recorded a cancelled client as a successful empty query.
+     */
     private void emitEmptyChunkAndComplete() {
+        if (!gate.awaitReady()) {
+            telemetry.markAbandoned();
+            return; // abandoned: the gate logged why
+        }
         emit(ColumnTable.getDefaultInstance());
+        telemetry.markEmpty();
         responseObserver.onCompleted();
     }
 

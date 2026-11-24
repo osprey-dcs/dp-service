@@ -118,11 +118,17 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         /** Number of bucket documents the merge has pulled from its cursor (#314). */
         long bucketsRead = 0;
 
+        /**
+         * Runs after a samples cursor is closed, which is when the merge has finished and before
+         * the dispatcher sends anything further (#324). A test sets it and must reset it.
+         */
+        Runnable afterSamplesCursorClose = () -> { };
+
         /** Counts documents as the drain reads them; otherwise a transparent delegate. */
         private final class CountingCursor implements com.mongodb.client.MongoCursor<BucketDocument> {
             private final com.mongodb.client.MongoCursor<BucketDocument> delegate;
             CountingCursor(com.mongodb.client.MongoCursor<BucketDocument> delegate) { this.delegate = delegate; }
-            @Override public void close() { delegate.close(); }
+            @Override public void close() { delegate.close(); afterSamplesCursorClose.run(); }
             @Override public boolean hasNext() { return delegate.hasNext(); }
             @Override public BucketDocument next() { bucketsRead++; return delegate.next(); }
             @Override public int available() { return delegate.available(); }
@@ -1657,6 +1663,85 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
         assertTrue("read " + (client.bucketsRead - bucketsBefore) + " of " + GAP_BUCKETS + " buckets",
                 client.bucketsRead - bucketsBefore <= 3);
         assertEquals(com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    // -----------------------------------------------------------------------
+    // #324: the empty-result sends go through the gate like every other send
+    // -----------------------------------------------------------------------
+
+    private static void assertRefusedEmptySendIsAbandoned(
+            com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer,
+            QueryTelemetry telemetry) {
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("an abandoned stream must not be completed", observer.completed);
+        // A refused send and a genuine empty result look the same to the observer once the
+        // completion is fixed, so the outcome is asserted too: marking empty before the send left
+        // markAbandoned() nothing to overwrite.
+        assertEquals("a refused empty send is abandoned, not empty",
+                com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ABANDONED, telemetry.getOutcome());
+    }
+
+    /**
+     * A query that resolves to nothing sends its one empty message through the gate (#324). The
+     * samples counterpart of the buckets test of the same name: this branch sent to a cancelled
+     * client, completed the call and recorded it as empty.
+     */
+    @Test
+    public void testEmptyResolutionDoesNotCompleteWhenTheGateRefuses() {
+        // no retrieval intervals: the dispatcher returns before any read
+        final ResolvedQuery resolvedQuery = new ResolvedQuery(
+                List.of(PV_A), new ArrayList<>(), DEFAULT_PAGE_SIZE, null, false, false,
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertTrue(resolvedQuery.isEmptyResult());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.ready.set(false);
+        observer.cancelled.set(true);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        new QueryV2Job(
+                resolvedQuery,
+                new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                        observer, Long.MAX_VALUE, telemetry),
+                clientTestInterface, telemetry).execute();
+
+        assertRefusedEmptySendIsAbandoned(observer, telemetry);
+    }
+
+    /**
+     * The second empty branch: the read finds no rows. A cancel seen while reading is caught by
+     * the merge's own check (#314), so the client here goes away after the read has finished and
+     * before the empty message is sent, which only the gate can see.
+     */
+    @Test
+    public void testEmptyReadDoesNotCompleteWhenTheGateRefuses() {
+        final QuerySamplesRequest request =
+                samplesRequest(List.of(PV_A), B - 1000, 0, B - 900, 0, 10, null, false);
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer =
+                new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final int retrievalsBefore = client.samplesRetrievals;
+        client.afterSamplesCursorClose = observer::cancel;
+        try {
+            new QueryV2Job(
+                    resolution.getResolvedQuery(),
+                    new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                            observer, Long.MAX_VALUE, telemetry),
+                    clientTestInterface, telemetry).execute();
+        } finally {
+            client.afterSamplesCursorClose = () -> { };
+        }
+
+        assertEquals("the read must have run for this to be the second branch",
+                1, client.samplesRetrievals - retrievalsBefore);
+        assertTrue("the cancel must have arrived after the read", observer.cancelled.get());
+        assertRefusedEmptySendIsAbandoned(observer, telemetry);
     }
 
     // -----------------------------------------------------------------------

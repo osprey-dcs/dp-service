@@ -23,6 +23,7 @@ person cutting the release has any reason to re-read.
 - [Database credentials removed from the startup log (Issue #316)](#database-credentials-removed-from-the-startup-log-issue-316)
 - [Services exit when they run out of memory (Issue #314)](#services-exit-when-they-run-out-of-memory-issue-314)
 - [Sample queries read long ranges in bounded memory (Issue #314)](#sample-queries-read-long-ranges-in-bounded-memory-issue-314)
+- [Empty `querySamplesStream` results honor flow control (Issue #324)](#empty-querysamplesstream-results-honor-flow-control-issue-324)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -298,6 +299,20 @@ What you may notice:
   `queryBuckets` and `queryBucketsStream` are not affected and can be used to inspect the bucket.
 
 `queryTable` and tabular export are not changed by this.
+
+---
+
+## Empty `querySamplesStream` results honor flow control (Issue #324)
+
+A `querySamplesStream` request with no samples in its range answers with one empty message. That
+message was sent without the flow-control check every other streamed message gets, so a client
+that had already cancelled was sent the message, the call was completed, and the request was
+counted as `dp_outcome="empty"`.
+
+The empty message now waits for the client like any other. If the client has cancelled or does not
+become ready, nothing is sent, the call is not completed, and the request is counted as
+`dp_outcome="abandoned"`. A client that is still reading sees no change. `queryBucketsStream` and
+`queryDataStream` already behaved this way.
 
 ## Cutting the release
 
