@@ -1032,6 +1032,11 @@ The empty-result branches originally discarded `emitChunk()`'s return and comple
 stream abandoned because the client was gone was still reported to gRPC as a finished RPC. Every
 send site owes the same check; `testEmptyResultDoesNotCompleteWhenTheGateRefuses` pins the two empty
 branches, which are the easy ones to miss because they look like they have nothing to send.
+`querySamplesStream` was missed for exactly that reason: its empty send bypassed the gate
+altogether until #324 (`testEmptyResolutionDoesNotCompleteWhenTheGateRefuses` and
+`testEmptyReadDoesNotCompleteWhenTheGateRefuses` in `MongoSyncQuerySamplesV2Test`). On that path a
+cancel seen during the read is caught by the merge's own check, so the second test cancels after
+the cursor is closed, the one point where only the gate can see it.
 
 **A mid-read cursor failure on the samples path must be wrapped as `DpException`.** The find is
 issued when the cursor is opened, but the driver fetches later batches *during iteration* — which
