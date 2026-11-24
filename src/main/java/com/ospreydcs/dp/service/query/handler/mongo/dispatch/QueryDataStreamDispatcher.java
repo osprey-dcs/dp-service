@@ -143,8 +143,7 @@ public class QueryDataStreamDispatcher extends QueryDataAbstractDispatcher {
 
         } else {
             logger.trace("sending error response id: " + getResponseObserver().hashCode() + " msg: " + errorMsg);
-            telemetry.markError();
-            QueryServiceImpl.sendQueryDataResponseError(errorMsg, getResponseObserver());
+            sendError(errorMsg);
         }
     }
 

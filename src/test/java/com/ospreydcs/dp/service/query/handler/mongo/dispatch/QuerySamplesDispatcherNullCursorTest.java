@@ -175,4 +175,52 @@ public class QuerySamplesDispatcherNullCursorTest {
         assertEquals("empty window must be screened before the database call", 0, client.samplesCalls);
         assertSingleEmptyResponse(observer);
     }
+
+    // -----------------------------------------------------------------------
+    // #326: the error is not sent to a client that has cancelled
+    // -----------------------------------------------------------------------
+
+    private static void assertErrorNotSentToCancelledClient(
+            com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer, QueryTelemetry telemetry) {
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("a call with no reader must not be completed", observer.completed);
+        assertEquals("an error stays an error when the client has gone",
+                com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ERROR, telemetry.getOutcome());
+    }
+
+    /** The null cursor is found before the merge exists, so nothing else has checked for a cancel. */
+    @Test
+    public void testStreamNullCursorErrorIsNotSentToACancelledClient() {
+        final NullCursorClient client = new NullCursorClient();
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer = new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.cancelled.set(true);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final ResolvedQuery query = sampleQuery(
+                List.of(new TimeInterval(B, 0, B + 10, 0)), null, true);
+
+        new QuerySamplesStreamDispatcher(observer, BYTE_BUDGET, telemetry).executeAndDispatch(query, client);
+
+        assertEquals(1, client.samplesCalls);
+        assertErrorNotSentToCancelledClient(observer, telemetry);
+    }
+
+    /**
+     * The helper is shared with the unary dispatcher, so it skips the send there too. gRPC does
+     * not throw from a unary {@code onNext} on a cancelled call, so this pins uniformity, not a
+     * fix.
+     */
+    @Test
+    public void testUnaryNullCursorErrorIsNotSentToACancelledClient() {
+        final NullCursorClient client = new NullCursorClient();
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer = new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        observer.cancelled.set(true);
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        final ResolvedQuery query = sampleQuery(
+                List.of(new TimeInterval(B, 0, B + 10, 0)), null, false);
+
+        new QuerySamplesUnaryDispatcher(observer, BYTE_BUDGET, telemetry).executeAndDispatch(query, client);
+
+        assertEquals(1, client.samplesCalls);
+        assertErrorNotSentToCancelledClient(observer, telemetry);
+    }
 }

@@ -11,6 +11,7 @@ import com.ospreydcs.dp.grpc.v1.query.QuerySamplesResponse;
 import com.ospreydcs.dp.service.common.bson.bucket.BucketDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.exception.NonScalarColumnException;
+import com.ospreydcs.dp.service.common.grpc.OutboundReadinessGate;
 import com.ospreydcs.dp.service.common.utility.TabularDataUtility;
 import com.ospreydcs.dp.service.query.handler.QueryTelemetry;
 import com.ospreydcs.dp.service.query.handler.model.KeysetPosition;
@@ -69,7 +70,28 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
 
     // ---- exceptional responses, shared so the two dispatchers cannot drift ----------------------
 
-    /** Sends an error response, recording the outcome; {@code cause} may be null. */
+    /**
+     * True when the client has cancelled the call, so an exceptional response has no reader
+     * (#326). The outcome is still recorded by the caller: the request failed, or was wrong,
+     * whether or not anyone is left to be told. Cancellation only, not readiness: one small
+     * message to a slow reader is cheaper than holding a worker for it, and a reader that
+     * resumes should find its error. On the unary dispatcher the skip changes nothing gRPC does
+     * (a unary {@code onNext} does not throw on a cancelled call); it is kept so the two
+     * dispatchers cannot drift. Logs the skipped send at debug.
+     */
+    private boolean clientCancelled() {
+        if (OutboundReadinessGate.isCancelled(responseObserver)) {
+            logger.debug("exceptional response not sent, client cancelled id: {}", responseObserver.hashCode());
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Sends an error response, recording the outcome; {@code cause} may be null. Nothing is sent
+     * and the call is not completed when the client has cancelled; the outcome stays
+     * {@code error}.
+     */
     protected void sendError(String msg, Throwable cause) {
         if (cause != null) {
             logger.error(msg + " id: " + responseObserver.hashCode(), cause);
@@ -77,13 +99,23 @@ public abstract class AbstractQuerySamplesDispatcher extends QueryV2Dispatcher {
             logger.error(msg + " id: " + responseObserver.hashCode());
         }
         telemetry.markError();
+        if (clientCancelled()) {
+            return;
+        }
         QueryServiceImpl.sendQuerySamplesResponseError(msg, responseObserver);
     }
 
-    /** Sends a reject response (a client mistake, #235), recording the outcome. */
+    /**
+     * Sends a reject response (a client mistake, #235), recording the outcome. Nothing is sent
+     * and the call is not completed when the client has cancelled; the outcome stays
+     * {@code reject}.
+     */
     protected void sendReject(String msg) {
         logger.debug(msg);
         telemetry.markReject();
+        if (clientCancelled()) {
+            return;
+        }
         QueryServiceImpl.sendQuerySamplesResponseReject(msg, responseObserver);
     }
 

@@ -1048,6 +1048,24 @@ hangs with no response — the same class of defect as the missing `cursor()` ca
 `SampleRowMerger.nextRow()` wraps everything it does. `testMidReadCursorFailureIsReportedAsAnError`
 pins it.
 
+**An error or reject is not sent to a client that has cancelled, and it is still counted as
+`error` or `reject` (#326).** Each dispatcher family has one helper that marks the outcome, checks
+for cancellation and sends: `sendError()`/`sendReject()` on `AbstractQuerySamplesDispatcher`,
+`sendError()` on `QueryBucketsStreamDispatcher` and on `QueryDataAbstractDispatcher`. A new
+exceptional send goes through the helper, not `QueryServiceImpl.sendQuery*ResponseError()`
+directly. Two things here differ from the empty-result send on purpose. The check is
+`isCancelled()`, not `awaitReady()`: one small message buffered for a slow reader costs nothing,
+and waiting would hold a worker up to the timeout and then leave a live client with no error at
+all. And the outcome is not `abandoned`: the request failed, or was wrong, whoever was left to be
+told, and relabelling it would hide failures behind disconnects. The samples and `queryData`
+helpers are shared with dispatchers that have no gate, so they use the static
+`OutboundReadinessGate.isCancelled(observer)`. gRPC throws `StatusRuntimeException` from `onNext`
+on a cancelled call only when the call is server-streaming or bidi **and** has no cancel handler
+(grpc-stub 1.65.1: `cancelled && serverStreamingOrBidi`). A unary call never throws, so there the
+skip is a no-op kept for uniformity; `queryDataBidiStream` registers no handler, so on its
+null-cursor path the skip avoids the throw. That dispatcher's other error send is out of scope and
+still throws on a cancelled call. Each helper logs the skipped send at debug.
+
 **An abandoned response is `dp.outcome=abandoned`, never `success`.** The refusal paths return
 without sending, and `QueryTelemetry.outcome` defaults to `success`, so before `markAbandoned()`
 every stream cut short by a cancellation or a 300 s stall was counted as a successful request with a

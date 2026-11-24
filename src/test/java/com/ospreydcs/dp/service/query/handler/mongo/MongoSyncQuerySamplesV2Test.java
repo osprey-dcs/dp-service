@@ -124,13 +124,25 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
          */
         Runnable afterSamplesCursorClose = () -> { };
 
+        /**
+         * Runs after each bucket document is read from a samples cursor (#326): the point from
+         * which a cancel is not seen by the merge before the pass that read it ends. A test sets
+         * it and must reset it.
+         */
+        Runnable afterSamplesBucketRead = () -> { };
+
         /** Counts documents as the drain reads them; otherwise a transparent delegate. */
         private final class CountingCursor implements com.mongodb.client.MongoCursor<BucketDocument> {
             private final com.mongodb.client.MongoCursor<BucketDocument> delegate;
             CountingCursor(com.mongodb.client.MongoCursor<BucketDocument> delegate) { this.delegate = delegate; }
             @Override public void close() { delegate.close(); afterSamplesCursorClose.run(); }
             @Override public boolean hasNext() { return delegate.hasNext(); }
-            @Override public BucketDocument next() { bucketsRead++; return delegate.next(); }
+            @Override public BucketDocument next() {
+                bucketsRead++;
+                final BucketDocument document = delegate.next();
+                afterSamplesBucketRead.run();
+                return document;
+            }
             @Override public int available() { return delegate.available(); }
             @Override public BucketDocument tryNext() { return delegate.tryNext(); }
             @Override public com.mongodb.ServerCursor getServerCursor() { return delegate.getServerCursor(); }
@@ -1742,6 +1754,75 @@ public class MongoSyncQuerySamplesV2Test extends MongoQueryHandlerTestBase {
                 1, client.samplesRetrievals - retrievalsBefore);
         assertTrue("the cancel must have arrived after the read", observer.cancelled.get());
         assertRefusedEmptySendIsAbandoned(observer, telemetry);
+    }
+
+    // -----------------------------------------------------------------------
+    // #326: an error or reject is not sent to a client that has cancelled
+    // -----------------------------------------------------------------------
+
+    /**
+     * Runs a samples stream whose client cancels as the {@code cancelOnRead}-th bucket is read.
+     * The merge asks about cancellation at the top of each pass, so a cancel that arrives during
+     * a read is not seen before the failure that the same pass produces.
+     */
+    private com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> runSamplesStreamCancelledOnRead(
+            QuerySamplesRequest request, long byteBudget, int cancelOnRead, QueryTelemetry telemetry) {
+        final ResolutionResult resolution = resolver().resolve(
+                request.getQuerySpec(), request.getExecutionOptions(), request.getResultRepresentation(),
+                ResolvedQuery.ResultMode.SAMPLE, true);
+        assertFalse(resolution.isError());
+
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer = new com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<>();
+        final TestSyncClient client = (TestSyncClient) clientTestInterface;
+        final int[] reads = {0};
+        client.afterSamplesBucketRead = () -> {
+            if (++reads[0] == cancelOnRead) {
+                observer.cancel();
+            }
+        };
+        try {
+            new QueryV2Job(
+                    resolution.getResolvedQuery(),
+                    new com.ospreydcs.dp.service.query.handler.mongo.dispatch.QuerySamplesStreamDispatcher(
+                            observer, byteBudget, telemetry),
+                    clientTestInterface, telemetry).execute();
+        } finally {
+            client.afterSamplesBucketRead = () -> { };
+        }
+        assertTrue("the cancel must have arrived", observer.cancelled.get());
+        return observer;
+    }
+
+    /**
+     * The reject is not sent to a client that has cancelled, and the call is not completed; the
+     * request is still a reject, since the PV is non-scalar whoever is left to be told (#326).
+     */
+    @Test
+    public void testStreamRejectIsNotSentToACancelledClient() {
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        // the non-scalar bucket is the first one read, and opening it is what throws
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer = runSamplesStreamCancelledOnRead(
+                samplesRequest(List.of(PV_ARR), B, 0, B + 1, 0, 10, null, false), Long.MAX_VALUE, 1, telemetry);
+
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("a call with no reader must not be completed", observer.completed);
+        assertEquals("a reject stays a reject when the client has gone",
+                com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_REJECT, telemetry.getOutcome());
+    }
+
+    /** The error counterpart, on the indivisible-oversized row (#326). */
+    @Test
+    public void testStreamErrorIsNotSentToACancelledClient() {
+        final QueryTelemetry telemetry = new QueryTelemetry("querySamplesTest");
+        // The first row is complete once the second bucket has been read ahead, in the same pass
+        // of the merge, so a cancel on that read is first seen by the error send.
+        final com.ospreydcs.dp.service.common.grpc.FakeServerCallStreamObserver<QuerySamplesResponse> observer = runSamplesStreamCancelledOnRead(
+                samplesRequest(List.of(PV_A), B, 0, B + NUM_SECONDS, 0, 10_000, null, false), 1, 2, telemetry);
+
+        assertEquals("nothing may be sent to a cancelled client", 0, observer.messages.size());
+        assertFalse("a call with no reader must not be completed", observer.completed);
+        assertEquals("an error stays an error when the client has gone",
+                com.ospreydcs.dp.service.common.telemetry.DpMetrics.OUTCOME_ERROR, telemetry.getOutcome());
     }
 
     // -----------------------------------------------------------------------

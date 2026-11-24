@@ -80,8 +80,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
         if (cursor == null) {
             final String msg = "executeQueryBucketsV2Stream returned null cursor";
             logger.error(msg + " id: " + responseObserver.hashCode());
-            telemetry.markError();
-            QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
+            sendError(msg);
             return;
         }
 
@@ -112,8 +111,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
                 } catch (DpException e) {
                     final String msg = "exception building bucket result: " + e.getMessage();
                     logger.error(msg, e);
-                    telemetry.markError();
-                    QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
+                    sendError(msg);
                     return;
                 }
 
@@ -135,8 +133,7 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
                             + " exceeds the outgoing message size limit (" + bucketBytes + " > "
                             + byteBudget + " bytes)";
                     logger.error(msg);
-                    telemetry.markError();
-                    QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
+                    sendError(msg);
                     return;
                 }
 
@@ -165,6 +162,22 @@ public class QueryBucketsStreamDispatcher extends AbstractQueryBucketsDispatcher
             // including both error returns.
             recordCursorTime(cursor);
         }
+    }
+
+    /**
+     * Records the error outcome and sends the error response, unless the client has cancelled
+     * (#326): then nothing is sent and the call is not completed. The outcome is {@code error}
+     * either way, because the request did fail. Cancellation only, not readiness: one small
+     * message to a slow reader is cheaper than holding a worker for it, and a reader that
+     * resumes should find its error.
+     */
+    private void sendError(String msg) {
+        telemetry.markError();
+        if (gate.isCancelled()) {
+            logger.debug("error response not sent, client cancelled id: {}", responseObserver.hashCode());
+            return;
+        }
+        QueryServiceImpl.sendQueryBucketsResponseError(msg, responseObserver);
     }
 
     /**
