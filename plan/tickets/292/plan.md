@@ -57,14 +57,15 @@ minutes), that is one more concurrent scan of a 1.34-billion-bucket archive per 
 claim is the only thing that prevents the pile-up. See D5.
 
 Not measured: a server on which the operation is not in a JavaScript `sleep` (the fixture used one
-to make the operations slow), and a sharded cluster. Task 9 covers the second.
+to make the operations slow). The sharded case was measured during implementation; see finding 6.
 
 ### 2. The service user can see its own orphaned operations without a new privilege (measured)
 
 As a user holding only `readWrite` on the database, `$currentOp` with `allUsers: false` returned
 the orphaned `updateMany` of a killed client, with its `command.comment` and `ns`.
 `allUsers: true` failed with `Unauthorized`. Every dp-service process connects as the same user, so
-the own-operations form is sufficient and needs no `inprog` grant.
+the own-operations form is sufficient and needs no `inprog` grant **on a mongod**. Through mongos
+it does; see finding 6.
 
 ### 3. A server-time staleness filter treats a missing heartbeat as stale (measured)
 
@@ -92,6 +93,27 @@ The process that takes over is killed by the same liveness probe. v4's `updateMa
 across attempts; v5's `$group`/`$merge` starts over each time. #293 is the fix for the kills. With
 only #292, the takeover cap (D4) is reached and an operator clears the claim, which is no worse
 than today. (#293's background cites a 35M-bucket archive; the figure is 1.34 billion.)
+
+### 6. Through mongos the orphan check needs `inprog` (measured during implementation, Task 9)
+
+Against a throwaway sharded cluster (8.0.26, one mongos, one shard, auth on):
+
+- **Finding 1 holds through mongos.** A slow `updateMany` and a slow `$group`/`$merge` aggregate
+  whose clients were killed with `kill -9` both ran to completion on the shard (300 of 300
+  documents each).
+- **`$currentOp {allUsers: false}` through mongos, as a user holding only `readWrite`, fails with
+  `Unauthorized`.** So does the `currentOp` command with `$ownOps`. MongoDB allows a user to list
+  its own operations without `inprog` on a mongod only.
+- **With `inprog` on the cluster resource, the same query works** and reports the shard's operation
+  with its comment and an `ns` the D5 match accepts. The `opid` is a string prefixed with the
+  shard name (`"sh1:100358"`), which `killOp` takes as a string.
+- `$currentOp {allUsers: false, localOps: true}` works without `inprog` and showed the killed
+  client's operation for as long as the shard ran it, but it lists only the operations routed
+  through the mongos that is asked. It was not adopted; see D5.
+
+This is the case Task 9 said to stop and raise. D5's fail-closed rule means a sharded deployment
+without the grant never takes over, which is the behavior before this ticket, not a regression.
+The decision recorded in D5 is to keep the rule and document the grant.
 
 ## Design decisions
 
@@ -242,6 +264,18 @@ service user does not have.
 
 *Rejected: document it and rely on the cap.* Four concurrent full scans of `buckets` is still an
 outage for the query service.
+
+**Through mongos the check needs the `inprog` privilege (finding 6).** Without it the check throws
+`Unauthorized`, the takeover is refused under the rule above, and an abandoned claim needs the
+manual clear, as it did before this ticket. The error names the privilege, and the runbook gives
+the role to create. Takeover on the primary (sharded) deployment therefore depends on one grant.
+
+*Rejected: falling back to `localOps: true` when the full check is unauthorized.* It needs no
+privilege, but it sees only the operations routed through the mongos the waiter is connected to.
+With more than one mongos, or after a mongos restart, an orphan on the shard is invisible to it
+and the takeover would start a second scan beside it, which is the failure D5 exists to prevent,
+on the deployment where it costs most. A check that is sometimes blind is worse than a documented
+grant.
 
 **What the check cannot see.** An operation that carries no comment is invisible to it. Of the
 commands the shipped migrations issue, only `dropIndexes` and `drop` take no comment in this driver,
@@ -507,6 +541,35 @@ primary deployment.
   observed, never compared; takeover waits for orphaned operations; the cap; the heartbeat's
   `finally`; migrations carry the comment and must be safe late and concurrently.
 - `doc/release-notes/NEXT.md`: a section for #292.
+
+## Departures from the plan as merged
+
+Recorded here per the Ticket Planning Workflow; the sections above describe the plan as reviewed,
+except finding 6 and the two paragraphs it added to D5.
+
+- **Task 9's result (finding 6):** the orphan check needs `inprog` through mongos. D5 keeps its
+  fail-closed rule, the error names the privilege, and the runbook documents the grant.
+- **`SchemaVersionMarker.heartbeat()` throws instead of returning whether it matched** (Task 1,
+  D9). It reports a write that matched nothing through the same helper as the other three holder
+  writes, so `ClaimHeartbeat` distinguishes a lost claim (`ClaimLostException`: set the flag, stop)
+  from a missing marker or a driver error (log, keep beating) by type.
+- **The runner takes the client's `admin` database as a second argument** (Task 5).
+  `$currentOp` must be run there and a `MongoDatabase` handle does not expose its client.
+  `findOrphanedOperations(adminDatabase, databaseName)` takes it likewise.
+- **The heartbeat is also stopped before the release on the success path** (D9), in addition to
+  the `finally`. Otherwise a beat landing between the release and the `finally` finds the token
+  gone and logs a lost claim at error on every successful migration.
+- **The runner only attempts an ordinary claim when the marker reads unclaimed** (Task 5). Before,
+  it attempted one on every poll and relied on the filter to refuse it. The outcome is the same;
+  the loop no longer issues a write every 500 ms while it waits.
+- **The lease timings reach the runner as one `LeaseTimings` record** on the existing protected
+  constructor, and validation is the static `validateLeaseTimings()`, so the three rejections are
+  tested through the seam with the database at the current version (D12).
+- **Test layout (Task 8):** the runner's lease tests are in a new `SchemaMigrationLeaseTest`, the
+  heartbeat's in `ClaimHeartbeatTest`, and comment coverage in `MigrationOperationCommentTest`;
+  `SchemaMigrationRunnerTest` keeps the 1.16.0-shaped claim case. "A heartbeat whose write throws
+  keeps beating" overrides `ClaimHeartbeat.beat()` instead of mocking the collection. One test was
+  added that the plan did not list: an orphan check that cannot run refuses the takeover.
 
 ## Out of scope
 

@@ -492,13 +492,15 @@ public class SchemaMigrationRunner {
                                 adminDatabase, database.getName());
                         orphanCheckFailure = null;
                     } catch (DpException ex) {
+                        // the check repeats every few seconds: log the trace once per claim
+                        final boolean firstFailure = orphanCheckFailure == null;
                         orphans = List.of();
                         orphanCheckFailure = ex.getMessage();
                         logger.warn(
                                 "the schema migration held by {} appears abandoned, but it is not "
                                         + "being taken over because the check for its operations "
                                         + "still running on the server failed: {}",
-                                describeHolder(state), ex.getMessage(), ex);
+                                describeHolder(state), ex.getMessage(), firstFailure ? ex : null);
                     }
 
                     if (orphanCheckFailure == null && orphans.isEmpty()) {

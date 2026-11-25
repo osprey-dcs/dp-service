@@ -1529,6 +1529,8 @@ binary cannot establish stops the service rather than being served from. Operato
   written under a previous one. This also keeps an old migration working after the classes move on.
 - **Every migration must be idempotent**, and must say why in its Javadoc — the runner cannot enforce
   it. A crash between applying and recording the version re-runs it, as can the stuck-claim recovery.
+  Since #292 it must also be safe late and concurrently, and comment its operations; see The
+  migration claim is a lease, below.
 - **Index changes are migration steps**, so `createMongoIndex*` stays purely additive. Reconciling
   live indexes against the declared set instead would drop an index an operator added deliberately.
   Migrations therefore run **after** collection init but **before** every `createMongoIndexes*()`
@@ -1564,8 +1566,9 @@ on the deleted verifier, and the test had to reflect over two classes to see it)
 
 ### Every marker write checks `matchedCount`
 
-`recordApplied` and `releaseClaim` filter on `_id: "schemaVersion"`, and a filtered update that
-matches nothing writes nothing while reporting no error. Both therefore test
+`recordApplied` and `releaseClaim` filter on `_id: "schemaVersion"` (and, since #292, on the claim
+token; so do `heartbeat` and `markFailed`), and a filtered update that matches nothing writes
+nothing while reporting no error. Both therefore test
 `getMatchedCount() == 0` and throw — the same convention the annotation client's `replaceOne` calls
 follow, and for a sharper reason here: `recordApplied` runs *after* the migration has already changed
 the data, so an unchecked write leaves migrated data with no record of it, and the run continues to
@@ -1574,10 +1577,77 @@ report success. Any new marker write must check the same way.
 ### The claim wait is bounded by one deadline, not one per attempt
 
 `SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one absolute deadline across every
-claim attempt, including takeovers after another process releases without completing. It was
+claim attempt, including claims after another process releases without completing, the wait for a
+claim to go stale, the orphaned-operation check and the takeover attempts (#292). It was
 originally a pair of mutually recursive methods, each allocating a fresh timeout — so the bound the
 class documents was not the bound in force, and repeated takeovers grew the stack. Keep the deadline
 computed once at entry; do not reintroduce a per-attempt timeout.
+
+### The migration claim is a lease (issue #292)
+
+A process killed while it held the claim used to leave it held forever. The holder now increments
+`heartbeatSeq` on the marker (`ClaimHeartbeat`), and a waiting process that sees it stop takes the
+claim over (`SchemaVersionMarker.takeOverClaim()`) and resumes from the recorded version. The
+bounds on that takeover are as much the design as the takeover:
+
+- **Every marker write by a holder filters on its `claimToken`.** `recordApplied`, `releaseClaim`,
+  `heartbeat` and `markFailed` take the `Claim`. A holder displaced while stalled still believes
+  the claim is its own; an unfenced write would overwrite the new holder's version or release its
+  claim, with no error. A write that matches nothing re-reads the marker and reports one of three
+  things: the marker is gone (the pre-lease error), another token holds it, or no token does (an
+  operator cleared a live holder's claim). The last two are `ClaimLostException`, which must never
+  be answered with `markFailed`: the claim is someone else's. A new marker write needs the same
+  filter and the same check.
+- **Staleness is observed, never compared.** A waiter remembers the `(claimToken, heartbeatSeq)`
+  pair and when, on its own `nanoTime`, it first read it; the same pair for
+  `schemaMigrationStaleAfterSeconds` is a stale claim. `migratingHeartbeat` is for operators and no
+  code reads it. A filter comparing it with `$$NOW` matches a marker with no such field (a missing
+  value sorts below any date), and that marker is a live 1.16.0 migrator. A claim with no token is
+  never taken over.
+- **A failed migration marks its claim and is never taken over.** `applyPending()` writes
+  `migrationFailed` for a `DpException` or `RuntimeException` out of `apply()`, and a waiter that
+  reads the flag throws at once. An `Error`, a mark that could not be written, and a marker-write
+  failure leave no flag; the cap covers them. A fresh claim unsets the flag, because the 1.16.0
+  runbook clear leaves it behind and a kept flag would make every waiter exit against a healthy
+  holder from then on.
+- **At most `MAX_TAKEOVERS_PER_VERSION` (3) takeovers without the version advancing.** The image
+  runs with `-XX:+ExitOnOutOfMemoryError`, so a migration that runs its process out of memory
+  writes no flag and is indistinguishable from a kill. The cap is the only thing that stops it
+  being retried forever. It is a constant on purpose.
+- **A takeover waits for the previous claims' operations to end.** A killed client's operation
+  runs to completion on the server (measured for `updateMany` and `$group`/`$merge`, standalone and
+  through mongos). Every migration operation carries the comment `dp-schema-migration:<token>`
+  from `MigrationContext`, and the waiter runs `$currentOp {allUsers: false}` for that prefix
+  before each takeover attempt, at `ORPHAN_CHECK_INTERVAL_MILLIS`, not on every poll. If the check
+  fails the takeover is refused: do not make it proceed. **Through mongos the check needs the
+  `inprog` action even for the user's own operations** (a mongod does not), so a sharded
+  deployment without that grant never takes over and still needs the manual clear; the runbook has
+  the role. An operation with no comment is invisible to the check.
+  `MigrationOperationCommentTest` fails any command a shipped migration starts without the comment
+  unless its name is in an exempt set (`dropIndexes`, `drop`). It lists what is exempt, not what is
+  checked, so a new kind of command is caught by default. `createIndexes` cannot carry a comment in
+  driver 5.4.0 and an index build survives its client: a migration that needs one needs its own
+  design first, not an entry in the exempt set.
+- **Migrations must be safe late and concurrently, not only idempotent.** Only the marker is
+  fenced. A displaced holder's data operation runs beside the new holder's, and can finish after
+  later migrations and after the services start. A write must be filtered on the state it was
+  computed from, or be monotone. v2 and v3 shipped as a read followed by an `updateOne` on `_id`
+  alone, which overwrote a concurrent `saveAnnotation` with the canonical form of the old value;
+  their filters now include the arrays that were read.
+- **The heartbeat is stopped in a `finally`**, and each beat is under its own `catch (Throwable)`.
+  One that outlives its migration keeps a dead claim fresh forever; one that dies makes a live
+  migrator look dead. It is also stopped before the release on the success path, so no beat finds
+  the token gone.
+- **The takeover returns the version to resume from**, and it can be the target (apply nothing,
+  release) or above it (a newer build's claim: release, then refuse to start). The filter does not
+  include the version and `recordApplied` does not move the heartbeat.
+- The lease timings are validated at the top of `run()` on every startup, so a bad value fails the
+  deployment that introduced it. Both keys are in both `application.yml` files.
+
+"Exactly one waiter wins" assumes a majority-acknowledged marker write, which mongos deployments
+do not have until #291; the consequence is two migrators at once, which the rule above tolerates.
+A process that takes over is killed by the same probe as the one before it, so #292 does not by
+itself end a probe-kill loop: that is #293.
 
 ### The async client skips the version check, and that is a deployment constraint
 
