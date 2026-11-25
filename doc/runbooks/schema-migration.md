@@ -289,6 +289,11 @@ db.getSiblingDB("admin").grantRolesToUser("<service user>", [{role: "dpMigration
 `inprog` lets that user see every user's running operations, not only its own. The service itself
 only ever asks for its own.
 
+**Every service start checks for this and says so.** A service that cannot run the check logs, at
+`warn`, *"this service cannot take over an abandoned schema migration: ..."* with the reason, and
+starts normally. Look for that line after deploying to a sharded cluster, so that the missing
+grant is found then and not when a claim is stuck.
+
 ---
 
 ## Clearing a stuck migration claim

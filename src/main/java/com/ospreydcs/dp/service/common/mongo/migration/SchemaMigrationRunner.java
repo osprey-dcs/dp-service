@@ -231,6 +231,16 @@ public class SchemaMigrationRunner {
         leaseTimings = leaseTimingsOverride != null ? leaseTimingsOverride : configuredLeaseTimings();
         validateLeaseTimings(leaseTimings, claimWaitTimeoutMillis);
 
+        final String orphanCheckFailure = probeOrphanCheck();
+        if (orphanCheckFailure != null) {
+            logger.warn(
+                    "this service cannot take over an abandoned schema migration: {} Startup "
+                            + "continues; nothing is affected unless a process is killed while it "
+                            + "migrates, and that migration's claim will then need to be cleared "
+                            + "by hand.",
+                    orphanCheckFailure);
+        }
+
         final boolean applyMigrations = configMgr().getConfigBoolean(
                 CFG_KEY_RUN_MIGRATIONS_ON_STARTUP, DEFAULT_RUN_MIGRATIONS_ON_STARTUP);
 
@@ -321,6 +331,26 @@ public class SchemaMigrationRunner {
                     "error determining whether database is empty: " + ex.getMessage(), ex);
         }
         return true;
+    }
+
+    /**
+     * Runs the orphaned-operation check once, to find out whether it can be run at all, and returns
+     * why not, or null if it can.
+     *
+     * <p>The check is otherwise run only when a claim has gone stale, so a deployment where it is
+     * refused (through mongos it needs the {@code inprog} privilege) would first learn of that in
+     * the middle of an incident, from a process declining to take over a stuck claim. Run at every
+     * startup, the missing grant is reported on an ordinary day. It never fails startup: without
+     * the check the service behaves as it did before the lease, which is not a reason to refuse to
+     * serve.
+     */
+    String probeOrphanCheck() {
+        try {
+            SchemaVersionMarker.findOrphanedOperations(adminDatabase, database.getName());
+            return null;
+        } catch (DpException | RuntimeException ex) {
+            return ex.getMessage();
+        }
     }
 
     private static LeaseTimings configuredLeaseTimings() {

@@ -549,6 +549,9 @@ except finding 6 and the two paragraphs it added to D5.
 
 - **Task 9's result (finding 6):** the orphan check needs `inprog` through mongos. D5 keeps its
   fail-closed rule, the error names the privilege, and the runbook documents the grant.
+- **The orphan check is also run once at every startup** (`probeOrphanCheck()`), logging a `warn`
+  when it cannot run and never failing startup. Added after Task 9: the check otherwise runs only
+  once a claim is stale, so a missing `inprog` grant would first show during an incident.
 - **`SchemaVersionMarker.heartbeat()` throws instead of returning whether it matched** (Task 1,
   D9). It reports a write that matched nothing through the same helper as the other three holder
   writes, so `ClaimHeartbeat` distinguishes a lost claim (`ClaimLostException`: set the flag, stop)

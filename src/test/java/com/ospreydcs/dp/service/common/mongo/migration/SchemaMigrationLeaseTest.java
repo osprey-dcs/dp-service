@@ -528,6 +528,29 @@ public class SchemaMigrationLeaseTest {
         assertEquals(dead.token(), SchemaVersionMarker.read(database).claimToken());
     }
 
+    @Test
+    public void testStartupProbeReportsACheckThatCannotRunWithoutFailingStartup() throws Exception {
+
+        // With nothing to migrate the check is never needed, so without the probe a deployment
+        // where it is refused learns of that only when a claim is already stuck.
+        markerCollection.deleteMany(new Document());
+        SchemaVersionMarker.stampFresh(database, 1);
+
+        assertNull(
+                "the check runs against the admin database",
+                runner(List.of(new TestMigration(1)), 1).probeOrphanCheck());
+
+        final LeaseRunner unable = new LeaseRunner(
+                database, database, List.of(new TestMigration(1)), 1,
+                LONG_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L);
+        final String failure = unable.probeOrphanCheck();
+        assertNotNull(failure);
+        assertTrue(failure, failure.contains("$currentOp"));
+
+        // reported, not fatal: the service is no worse off than before the lease
+        unable.run();
+    }
+
     // ------------------------------------------------------------------
     // failures that leave no flag
     // ------------------------------------------------------------------

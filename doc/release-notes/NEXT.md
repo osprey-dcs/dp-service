@@ -341,7 +341,9 @@ privilege to list even its own running operations. Without it the service cannot
 check, refuses every takeover, and an abandoned claim still needs the manual clear. The role to
 create is in the
 [runbook](https://github.com/osprey-dcs/dp-service/blob/main/doc/runbooks/schema-migration.md#the-privilege-a-sharded-deployment-needs).
-A standalone or replica set needs nothing.
+A standalone or replica set needs nothing. Every service start checks for the privilege and logs a
+warning beginning "this service cannot take over an abandoned schema migration" when it is missing;
+the service still starts.
 
 Other things an operator will notice:
 

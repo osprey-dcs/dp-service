@@ -1622,7 +1622,10 @@ bounds on that takeover are as much the design as the takeover:
   fails the takeover is refused: do not make it proceed. **Through mongos the check needs the
   `inprog` action even for the user's own operations** (a mongod does not), so a sharded
   deployment without that grant never takes over and still needs the manual clear; the runbook has
-  the role. An operation with no comment is invisible to the check.
+  the role. `run()` therefore runs the check once at every startup (`probeOrphanCheck()`) and logs
+  a `warn` when it is refused, so the missing grant shows on an ordinary start and not first in
+  an incident. The probe must never fail startup. An operation with no comment is invisible to
+  the check.
   `MigrationOperationCommentTest` fails any command a shipped migration starts without the comment
   unless its name is in an exempt set (`dropIndexes`, `drop`). It lists what is exempt, not what is
   checked, so a new kind of command is caught by default. `createIndexes` cannot carry a comment in
