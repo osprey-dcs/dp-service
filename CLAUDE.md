@@ -114,11 +114,29 @@ When modifying gRPC APIs:
 
 ## Ticket Planning Workflow
 
-Every non-trivial ticket gets a **version-controlled plan** at `plan/tickets/<issue>/plan.md`,
-committed alongside the implementation. This is a deliberate change from the older convention of
-keeping plans in the gitignored `.dev/plan/issue-<n>/` directory — plans there were invisible to
-reviewers, to CI, and to anyone working from a fresh clone. `.dev/` remains in `.gitignore` and still
-holds scratch material; do not add new ticket plans there.
+A ticket large enough to need a plan gets a **version-controlled plan** at
+`plan/tickets/<issue>/plan.md`, and **the plan goes up in its own PR, reviewed and merged before
+implementation starts** (convention changed 2026-11-25, first used for #292; before that the plan
+was committed alongside the implementation, where it could only be reviewed after the fact). The
+implementation follows in a separate PR on a new branch.
+
+- **Plan PR:** contains the plan and nothing else. Its description lists the decisions that most
+  need the reviewer's attention and any open risk. Do not start the implementation until it is
+  merged.
+- **Minor tickets** need no plan: one PR, with the reasoning in its description.
+- **A plan and its implementation in one PR is the exception**, for a ticket in the gray area
+  between the two. Ask before choosing it; do not default to it.
+- If the implementation departs from the merged plan, update the plan in the implementation PR and
+  say so in that PR's description.
+
+The same pattern applies in every Data Platform repo (dp-grpc, dp-service, dp-desktop-app,
+dp-python-lib, data-platform), not only this one. When working in a repo whose CLAUDE.md does not
+yet say so, follow it anyway and add it there.
+
+Plans are version-controlled, not kept in the gitignored `.dev/plan/issue-<n>/` directory of the
+older convention — plans there were invisible to reviewers, to CI, and to anyone working from a
+fresh clone. `.dev/` remains in `.gitignore` and still holds scratch material; do not add new
+ticket plans there.
 
 Scratch and draft material stays outside the repo, under `~/dp/dev/tickets/dp-service/<issue>/`.
 The distinction is intent, not format: a draft being iterated on is scratch; the plan the
