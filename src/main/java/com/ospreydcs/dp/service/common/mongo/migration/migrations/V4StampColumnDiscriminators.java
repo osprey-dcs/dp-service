@@ -10,6 +10,7 @@ import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.Migration;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -44,6 +45,12 @@ import java.util.List;
  * nothing. The filters also naturally skip documents that never held an embedded column document —
  * v1-shaped buckets without a {@code dataColumn} subdocument, and typed columns stamped by 1.13+
  * builds (whatever their {@code _t} value) are all untouched.
+ *
+ * <p><b>Late and concurrent runs (#292).</b> For the same reason: each update tests for the absent
+ * key in the write itself, with no separate read. A run that arrives late, or beside another,
+ * stamps only entries still unstamped, and every column the running services write carries its
+ * own {@code _t}. The cost of a concurrent run is a second full scan of {@code buckets}, which is
+ * what the takeover's check for operations still running on the server exists to prevent.
  */
 public class V4StampColumnDiscriminators implements Migration {
 
@@ -66,7 +73,7 @@ public class V4StampColumnDiscriminators implements Migration {
     }
 
     @Override
-    public void apply(MongoDatabase database) throws DpException {
+    public void apply(MongoDatabase database, MigrationContext context) throws DpException {
 
         try {
             // buckets: one embedded subdocument per document
@@ -78,7 +85,8 @@ public class V4StampColumnDiscriminators implements Migration {
             final UpdateResult bucketResult = buckets.updateMany(
                     bucketFilter,
                     Updates.set(
-                            FIELD_DATA_COLUMN + "." + DISCRIMINATOR_KEY, DISCRIMINATOR_LEGACY_VALUE));
+                            FIELD_DATA_COLUMN + "." + DISCRIMINATOR_KEY, DISCRIMINATOR_LEGACY_VALUE),
+                    new UpdateOptions().comment(context.operationComment()));
             logger.info(
                     "V4StampColumnDiscriminators: stamped _t on {} bucket document(s)",
                     bucketResult.getModifiedCount());
@@ -99,9 +107,11 @@ public class V4StampColumnDiscriminators implements Migration {
                             FIELD_DATA_FRAMES + ".$[frame]." + FIELD_DATA_COLUMNS + ".$[col]."
                                     + DISCRIMINATOR_KEY,
                             DISCRIMINATOR_LEGACY_VALUE),
-                    new UpdateOptions().arrayFilters(List.of(
-                            Filters.exists("frame." + FIELD_DATA_COLUMNS),
-                            Filters.exists("col." + DISCRIMINATOR_KEY, false))));
+                    new UpdateOptions()
+                            .arrayFilters(List.of(
+                                    Filters.exists("frame." + FIELD_DATA_COLUMNS),
+                                    Filters.exists("col." + DISCRIMINATOR_KEY, false)))
+                            .comment(context.operationComment()));
             logger.info(
                     "V4StampColumnDiscriminators: stamped _t on column entries in {} calculations document(s)",
                     calculationsResult.getModifiedCount());

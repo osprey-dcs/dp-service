@@ -5,11 +5,13 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
+import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.MergeOptions;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.Migration;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -66,6 +68,11 @@ import java.util.List;
  * recovery — cannot regress a value. Dropping a collection that does not exist is a no-op, so the
  * drop step is idempotent too.
  *
+ * <p><b>Late and concurrent runs (#292).</b> The same {@code $max} is what makes a run that arrives
+ * late, or beside another, harmless: the seed never lowers a value, whether the stored one came
+ * from ingestion or from another run of this pipeline. A takeover does not resume the pipeline; it
+ * starts the scan again.
+ *
  * <p>The {@code $merge} form used here — a {@code whenMatched} pipeline referencing {@code $$new} —
  * was verified against a real mongo:8.0 server before this class was written, per the #254 lesson.
  */
@@ -93,7 +100,7 @@ public class V5SeedPvStatsMaxBucketSpan implements Migration {
     }
 
     @Override
-    public void apply(MongoDatabase database) throws DpException {
+    public void apply(MongoDatabase database, MigrationContext context) throws DpException {
 
         try {
             final MongoCollection<Document> buckets =
@@ -103,14 +110,20 @@ public class V5SeedPvStatsMaxBucketSpan implements Migration {
 
             // toCollection() is the driver's execution entry point for a pipeline ending in $merge;
             // the aggregate returns no documents to iterate.
-            buckets.aggregate(seedPipeline()).allowDiskUse(true).toCollection();
+            buckets.aggregate(seedPipeline())
+                    .allowDiskUse(true)
+                    .comment(context.operationComment())
+                    .toCollection();
             logger.info(
                     "V5SeedPvStatsMaxBucketSpan: seeded {} from {}; {} now holds {} document(s)",
                     MongoClientBase.COLLECTION_NAME_PV_STATS,
                     MongoClientBase.COLLECTION_NAME_BUCKETS,
                     MongoClientBase.COLLECTION_NAME_PV_STATS,
-                    pvStats.countDocuments());
+                    pvStats.countDocuments(
+                            new Document(), new CountOptions().comment(context.operationComment())));
 
+            // drop takes no comment in this driver; it finishes at once, so the takeover check
+            // has nothing to wait for
             database.getCollection(MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY).drop();
             logger.info(
                     "V5SeedPvStatsMaxBucketSpan: dropped legacy collection {}",

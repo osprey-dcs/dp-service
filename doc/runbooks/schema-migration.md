@@ -4,7 +4,9 @@ The services apply pending database schema migrations at startup, and **refuse t
 they cannot handle. This document covers what an operator needs to know: how to read the current
 version, what each startup failure means, and how to recover from an interrupted migration.
 
-Implemented under [issue #254](https://github.com/osprey-dcs/dp-service/issues/254). To rehearse
+Implemented under [issue #254](https://github.com/osprey-dcs/dp-service/issues/254); the takeover of
+a migration whose process has gone away under
+[issue #292](https://github.com/osprey-dcs/dp-service/issues/292). To rehearse
 the migrations against a copy of a production database before upgrading it, see
 [schema-migration-rehearsal.md](schema-migration-rehearsal.md).
 
@@ -45,8 +47,34 @@ db.serviceMetadata.findOne({_id: "schemaVersion"})
 }
 ```
 
-While a migration is running the document also carries `migratingSince` and `migratingHost`,
-identifying when it started and which process holds it.
+While a migration is running the document also carries the claim of the process running it:
+
+```js
+{
+  migrating: true,
+  migratingSince: ISODate("..."),      // when this process claimed, or took over, the migration
+  migratingHost: "12345@dp-ingest-0",  // the JVM's runtime name, typically pid@hostname
+  claimToken: "6f1c...",               // identifies this claim; changes on every takeover
+  heartbeatSeq: Long("42"),            // incremented every 10 s while the process is alive
+  migratingHeartbeat: ISODate("..."),  // server time of the last heartbeat
+  takeoverCount: 0                     // takeovers since the version last advanced
+}
+```
+
+`migratingHeartbeat` is the field to read: a value within the last few seconds means the migrating
+process is alive. A claim with **no** `claimToken` was written by 1.16.0 or earlier, which has no
+heartbeat.
+
+A migration that **failed** leaves its claim in place with three more fields, and stays that way
+until an operator clears it:
+
+```js
+{
+  migrationFailed: true,
+  migrationFailedVersion: 4,
+  migrationFailedMessage: "error stamping column discriminators: ..."
+}
+```
 
 The version is a **plain incrementing integer owned by the service code**, not the Maven project
 version. Most releases change no schema, so the two move at different rates.
@@ -62,7 +90,10 @@ version. Most releases change no schema, so the two move at different rates.
 | present, version < binary | — | Pending migrations applied in order. |
 | present, version == binary | — | Nothing to do. |
 | present, version > binary | — | **Refuses to start.** |
-| present, `migrating: true` | — | Waits for the holder, then proceeds — or fails after 5 minutes. |
+| present, `migrating: true`, heartbeat moving | — | Waits for the holder, then proceeds, or fails after 5 minutes. |
+| present, `migrating: true`, heartbeat stopped for 60 s | — | Takes the migration over and resumes from the recorded version (see [A migration whose process has gone away](#a-migration-whose-process-has-gone-away)). |
+| present, `migrating: true`, `migrationFailed: true` | — | **Refuses to start** at once. |
+| present, `migrating: true`, no `claimToken` | — | A 1.16.0 claim. Waits, then fails after 5 minutes; never taken over. |
 
 The empty-versus-populated distinction matters and cannot be assumed either way. Treating "no marker"
 as always-version-0 would make every fresh install replay an ever-growing migration list against empty
@@ -99,22 +130,52 @@ supported — if you must go back, restore a database backup taken at the older 
 
 ### "schema migration version N (...) failed"
 
-A migration failed partway. The migration claim is **deliberately left in place**, so every
-subsequent startup blocks rather than serving from a database in an unknown state.
+A migration failed partway. The migration claim is **deliberately left in place and marked
+`migrationFailed`**, so every subsequent startup blocks rather than serving from a database in an
+unknown state. A failed claim is never taken over by another process: the migration would fail
+again.
+
+The process whose migration failed reports the message above. Every other process, and every later
+startup, reports *"schema migration version N failed in ... and its claim is held for an operator"*
+with the stored failure message, at once and without waiting.
 
 **Fix:**
 
-1. Read the error in the service log — it names the migration and the underlying cause.
+1. Read the error in the service log, or `migrationFailedMessage` on the marker. It names the
+   migration and the underlying cause.
 2. Inspect the database and decide whether the migration partially applied.
 3. Resolve the underlying problem, or restore from backup.
 4. Clear the claim (below) and restart.
 
+If the message ends *"The failure could NOT be recorded on the marker"*, the write that marks the
+claim failed too, most likely in the same outage. That claim is not marked, so it reads as
+abandoned and a starting process will take it over and run the migration again, at most three
+times.
+
 ### "timed out after 300s waiting for a schema migration held by ..."
 
-Another process holds the claim, and it did not finish within five minutes. Either a migration is
-genuinely still running on a large archive, or a process **crashed while holding the claim**.
+Another process holds the claim, and it did not finish within five minutes. The rest of the message
+says which of four cases this is.
 
-**Distinguish them** using the marker:
+**"Its heartbeat is current, so the migration is still running."** A real migration on a large
+archive. Wait for it, then restart this service (a supervisor that restarts on failure does this by
+itself). Do not clear the claim.
+
+**"Its heartbeat has stopped ... but N operation(s) ... are still running on the server."** The
+process that held the claim is gone, but an operation it sent is still running: a client that is
+killed does not take its operation with it. The claim will be taken over by a starting process as
+soon as that operation ends, so restarting is enough. The message names the operation, how long it
+has run, and the `db.killOp(...)` that ends it early. Ending v4's update early loses nothing (the
+takeover stamps what is left); ending v5's aggregate discards its work, and the takeover starts
+that scan again.
+
+**"... the check for its operations still running on the server failed."** The claim looks
+abandoned, but the service could not list its own running operations, so it refused to take over.
+See [the privilege a sharded deployment needs](#the-privilege-a-sharded-deployment-needs).
+
+**"The claim has no heartbeat: it was written by a service build that predates migration
+takeover."** A 1.16.0 process holds or left the claim. Nothing can tell whether it is alive, so it
+is never taken over. Distinguish by hand:
 
 ```js
 db.serviceMetadata.findOne({_id: "schemaVersion"}, {migrating: 1, migratingSince: 1, migratingHost: 1})
@@ -124,6 +185,20 @@ db.serviceMetadata.findOne({_id: "schemaVersion"}, {migrating: 1, migratingSince
 - `migratingSince` hours or days ago, or the named host is gone → a crashed process; clear the claim.
 
 `migratingHost` is the JVM's runtime name (typically `pid@hostname`), so it identifies the process.
+
+### "the schema migration from version N has been abandoned by 4 processes in a row"
+
+The claim was taken over three times and every process that held it went away without the schema
+version advancing. It will not be taken over a fourth time. Something is ending the migrating
+process each time, and another attempt would meet it again:
+
+- a liveness or startup probe that kills a pod which has not bound its port yet (a long migration
+  holds startup for its whole length);
+- an out-of-memory kill, of the container or by `-XX:+ExitOnOutOfMemoryError`;
+- the migration itself ending the process.
+
+**Fix:** find and remove the cause first (the previous pods' exit reasons and logs say which), then
+clear the claim (below) and restart. Clearing resets the count.
 
 ### "... requires migration to N, but MongoClient.runSchemaMigrationsOnStartup is disabled"
 
@@ -149,22 +224,141 @@ implemented for that client before it carries production traffic.
 
 ---
 
+## A migration whose process has gone away
+
+Before [#292](https://github.com/osprey-dcs/dp-service/issues/292), a process killed while it
+migrated left its claim held forever, and every later startup failed until an operator cleared it.
+The claim is now a lease. The migrating process increments `heartbeatSeq` every 10 seconds. A
+starting process that finds the claim held watches that number; if it has not changed for 60
+seconds, the holder is gone, and the waiting process takes the claim over and resumes from the
+recorded version. Nothing compares clocks between hosts: the waiter measures the 60 seconds itself,
+so it always waits that long, even for a process that died days ago.
+
+Three things stop a takeover, and each is deliberate:
+
+| The claim | What a starting process does |
+|---|---|
+| is marked `migrationFailed` | Refuses to start at once. A migration that threw would throw again. |
+| has an operation still running on the server | Waits for it (checked every 5 s), against the five-minute limit. |
+| has been taken over three times at this version | Refuses to start. See the "abandoned by 4 processes" failure above. |
+
+**The second one matters on a large archive.** MongoDB does not stop an operation when its client
+dies (measured: an `updateMany` and a `$group`/`$merge` aggregate both ran to completion after
+`kill -9` of the client, on a standalone and through mongos). A takeover that started beside one
+would add a second full scan of `buckets`, and a third after the next kill. Every operation a
+migration issues therefore carries the comment `dp-schema-migration:<claimToken>`, and a process
+about to take over first looks for any operation with that prefix:
+
+```js
+db.getSiblingDB("admin").aggregate([
+  {$currentOp: {allUsers: false}},
+  {$match: {"command.comment": /^dp-schema-migration:/, ns: /^dp\./}}
+])
+```
+
+(`dp` is the service database name. Run it as the service user; `allUsers: false` lists that user's
+own operations.) An `opid` it reports can be ended with `db.killOp(<opid>)` by a user allowed to;
+through mongos the opid is a string such as `"shard01:12345"`.
+
+A process that was only **stalled**, not dead, and is taken over, stops at its next write to the
+marker and exits with *"another process ... took the schema migration over from this one"*. That is
+the expected end of a displaced process, not a second failure.
+
+**This does not stop a probe from killing the migrating pod.** If a liveness probe kills each
+migrating process in turn, each takeover is killed the same way and the cap is reached. v4's update
+keeps the work of each attempt; v5's aggregate starts over. A waiting pod also has to survive the
+60 seconds itself to take over at all. The lasting fix is a probe that allows for the migration.
+
+### The privilege a sharded deployment needs
+
+On a standalone or a replica set, any user may list its own operations and nothing needs granting.
+**Through mongos, `$currentOp` is refused unless the user holds the `inprog` action**, own
+operations included (measured on 8.0.26). Without it the check above cannot run, every takeover is
+refused, and an abandoned claim needs the manual clear below, exactly as before #292. To enable
+takeover on a sharded deployment, grant the service user the action once:
+
+```js
+db.getSiblingDB("admin").createRole({
+  role: "dpMigrationInprog",
+  privileges: [{resource: {cluster: true}, actions: ["inprog"]}],
+  roles: []
+})
+db.getSiblingDB("admin").grantRolesToUser("<service user>", [{role: "dpMigrationInprog", db: "admin"}])
+```
+
+`inprog` lets that user see every user's running operations, not only its own. The service itself
+only ever asks for its own.
+
+**Every service start checks for this and says so.** A service that cannot run the check logs, at
+`warn`, *"this service cannot take over an abandoned schema migration: ..."* with the reason, and
+starts normally. Look for that line after deploying to a sharded cluster, so that the missing
+grant is found then and not when a claim is stuck.
+
+---
+
 ## Clearing a stuck migration claim
 
-Only after confirming no migration is actually running.
+Needed after a failed migration, at the takeover cap, for a claim left by a 1.16.0 process, and on
+a sharded deployment without the `inprog` privilege. An abandoned claim otherwise clears itself.
+
+**First confirm no migration is running.** The holder must be gone (`migratingHeartbeat` not
+advancing over 30 seconds, or for a 1.16.0 claim the named host not running), and no operation of
+a previous holder may still be running on the server:
+
+```js
+db.getSiblingDB("admin").aggregate([
+  {$currentOp: {allUsers: true}},
+  {$match: {"command.comment": /^dp-schema-migration:/, ns: /^dp\./}}
+])
+```
+
+(`dp` is the service database name.) Run this one as an administrator: `allUsers: true` lists every
+user's operations and needs the `inprog` privilege on a standalone or replica set as well as
+through mongos, where the service's own check above needs it only through mongos. It is the form
+to use here because it does not depend on connecting as the service user. Without such a user, run
+the `allUsers: false` query from
+[A migration whose process has gone away](#a-migration-whose-process-has-gone-away) as the service
+user instead.
+
+Wait for anything this lists to finish, or end it with `db.killOp(<opid>)`. An operation started by
+1.16.0 carries no comment; look for a long-running `update` or `aggregate` on `buckets` instead.
+Then:
 
 ```js
 db.serviceMetadata.updateOne(
   {_id: "schemaVersion"},
-  {$set: {migrating: false}, $unset: {migratingSince: "", migratingHost: ""}}
+  {
+    $set: {migrating: false},
+    $unset: {
+      migratingSince: "", migratingHost: "",
+      claimToken: "", heartbeatSeq: "", migratingHeartbeat: "", takeoverCount: "",
+      migrationFailed: "", migrationFailedVersion: "", migrationFailedMessage: ""
+    }
+  }
 )
 ```
+
+Unset every field, as shown. (The command in the 1.16.0 version of this document unset only the
+first two. A marker cleared that way is still claimed correctly by this build, which removes the
+rest itself.)
+
+**After the 1.16.0 form of the clear, do not let a 1.16.0 process claim the migration.** That form
+leaves `claimToken` and `heartbeatSeq` on the marker, and a 1.16.0 claim does not remove them. The
+claim then carries a token whose heartbeat never moves, and a process of this build takes it over
+after 60 seconds although the 1.16.0 migrator is alive: its operations carry no comment, so the
+check for running operations does not see them. The two then migrate at once. Use the command
+above, which removes the token, or upgrade every service before restarting.
 
 Then restart the service. It re-reads the version and resumes from wherever the interrupted run
 actually got to — the version advances after *each* migration, not once at the end, so a crash partway
 through a multi-migration upgrade leaves the version at the last one that completed.
 
 Every migration is also individually idempotent, so re-running one that had already finished is safe.
+
+**Clearing the claim of a process that is alive stops that process**, whichever form of the clear
+was used. It finds its claim gone at its next write to the marker and exits with *"the migration claim was cleared or released while this process held
+it"*. The operation it had already sent keeps running on the server. A 1.16.0 process is not
+stopped this way; it carries on and records its versions.
 
 ---
 
@@ -185,7 +379,8 @@ runner at the same time — this is the normal case, not an edge case.
 
 One process wins an atomic claim on the marker and migrates; the others wait, then proceed once the
 version is current. No coordination between service processes is needed, and their start order does
-not matter.
+not matter. If the process that won goes away, one of the others takes the migration over (see
+[A migration whose process has gone away](#a-migration-whose-process-has-gone-away)).
 
 A migration holds no database-wide lock. Services that have not yet completed startup are not serving,
 but any process already running against the database continues to read and write during the migration.
@@ -199,8 +394,18 @@ traffic — it protects against two concurrent *migrations*, not against a servi
 | Key | Default | Effect |
 |---|---|---|
 | `MongoClient.runSchemaMigrationsOnStartup` | `true` | Whether pending migrations are applied. |
+| `MongoClient.schemaMigrationHeartbeatIntervalSeconds` | `10` | How often the migrating process increments its heartbeat. |
+| `MongoClient.schemaMigrationStaleAfterSeconds` | `60` | How long a waiting process must see no heartbeat before it takes the migration over. |
 
-Environment override: `DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP`.
+Environment overrides: `DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP`,
+`DP_MONGO_SCHEMA_MIGRATION_HEARTBEAT_INTERVAL_SECONDS`,
+`DP_MONGO_SCHEMA_MIGRATION_STALE_AFTER_SECONDS`.
+
+The two lease settings are checked at every startup, whether or not a migration is pending. The
+service refuses to start if the interval is below 1, if stale-after is below three intervals (one
+slow heartbeat would read as a dead process), or if stale-after is not below the five-minute claim
+wait (no waiting process would last long enough to take over). The takeover cap (three per schema
+version) and the five-minute wait are not configurable.
 
 Setting it to `false` skips *applying* migrations, not the version check — a service whose expected
 version does not match the database still refuses to start. Use it only when migrating out of band.
@@ -297,10 +502,12 @@ buckets. Two operational consequences:
 
 - **Waiting services will time out and must be restarted.** While the elected process migrates, the
   other services wait five minutes and then refuse to start with the held-claim timeout message.
-  During a long v4 run this is the *"a real migration; wait"* branch of that message's triage, not
-  the stuck-claim case — check `migratingSince`/`migratingHost` as described there, let the
-  migrating process finish, and restart the others (a supervisor that restarts on failure
-  self-heals). Do **not** clear the claim while the migrating host is alive.
+  During a long v4 run that message says *"Its heartbeat is current, so the migration is still
+  running"*: let the migrating process finish, and restart the others (a supervisor that restarts
+  on failure self-heals). Do **not** clear the claim while the migrating host is alive.
+- **If the migrating process is killed**, a waiting process takes the migration over once the
+  killed process's update has finished on the server. That update keeps stamping after its client
+  is gone, so the takeover's own update finds little or nothing left to do.
 - Buckets that never held an embedded column subdocument (the v1 storage shape) and columns already
   stamped by 1.13+ builds are untouched; a re-run matches nothing.
 
@@ -327,9 +534,14 @@ collection, which nothing reads or writes any more.
 
 **Expect a long run on a large archive.** The seed is a one-time full scan of `buckets` — the same
 order of work as v4, with the same operational consequence: **waiting services will time out and
-must be restarted.** Follow the v4 guidance above: check `migratingSince`/`migratingHost`, let the
-migrating process finish, restart the others, and do **not** clear the claim while the migrating
-host is alive. Memory is bounded by the number of distinct PVs, not the number of buckets.
+must be restarted.** Follow the v4 guidance above: let the migrating process finish, restart the
+others, and do **not** clear the claim while the migrating host is alive. Memory is bounded by the
+number of distinct PVs, not the number of buckets.
+
+**If the migrating process is killed**, its aggregate still runs to completion on the server and
+writes `pvStats`; a waiting process takes the migration over only after it ends, and then runs the
+whole scan again, because the pipeline is not resumable. The second run changes nothing (`$max`),
+but it costs a second full scan. Avoid killing a v5 migrator.
 
 **Stop every service.** A pre-upgrade ingestion process still writing after the seed has run
 produces buckets no statistic covers, and a bucket longer than its PV's recorded span is skipped by
@@ -381,9 +593,23 @@ process caches a per-PV watermark and skips writes the collection would then no 
    registry is bound to the *current* class shape, while a migration by definition reads documents
    written under a previous one.
 3. Make it idempotent, and say why in the class Javadoc. The runner cannot enforce this.
-4. Add it to `SchemaMigrationRunner.MIGRATIONS` and bump `SCHEMA_VERSION`.
-5. Add a test covering the change, the no-op case, and applying it twice.
-6. Add a row to the history table above.
+4. **Make it safe to run late and beside another run of itself**, and say why in the Javadoc.
+   Idempotent is not enough. A migrating process that stalls is taken over; its operation and the
+   new holder's then run at once, and its migration can finish after later migrations have been
+   applied and the services have started. Filter every write on the state it was computed from (an
+   absent field, the value that was read), or make it monotone (`$max`). A read followed by a write
+   filtered on `_id` alone overwrites whatever a save path stored in between, with no error; v2 and
+   v3 shipped that way and were corrected under #292.
+5. **Pass `context.operationComment()` to every operation**, on every driver call that takes a
+   comment. That is how a takeover sees an operation of a previous holder still running on the
+   server. `MigrationOperationCommentTest` fails a migration that issues an uncommented command
+   other than `dropIndexes` and `drop`; add the migration's expected commands and fixture data
+   there. In driver 5.4.0 `createIndexes` cannot carry a comment, and an index build on `buckets`
+   is long and survives its client: a migration that needs one needs its own design for this
+   first.
+6. Add it to `SchemaMigrationRunner.MIGRATIONS` and bump `SCHEMA_VERSION`.
+7. Add a test covering the change, the no-op case, and applying it twice.
+8. Add a row to the history table above.
 
 Index drops belong in migrations rather than in a startup reconciliation pass. Reconciliation would
 drop an index an operator added deliberately for an ad-hoc query, with no record of what was removed.

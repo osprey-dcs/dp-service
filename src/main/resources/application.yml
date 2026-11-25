@@ -22,6 +22,20 @@ MongoClient:
   # before the service will start.
   runSchemaMigrationsOnStartup: ${DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP:true}
 
+  # MongoClient.schemaMigrationHeartbeatIntervalSeconds: How often the process that is running a
+  # schema migration increments the heartbeat on its claim (issue #292). A starting process that
+  # sees the heartbeat stop takes the migration over; see doc/runbooks/schema-migration.md.
+  schemaMigrationHeartbeatIntervalSeconds: ${DP_MONGO_SCHEMA_MIGRATION_HEARTBEAT_INTERVAL_SECONDS:10}
+
+  # MongoClient.schemaMigrationStaleAfterSeconds: How long a waiting process must see no heartbeat
+  # before it treats the migrating process as gone and takes the migration over.
+  #
+  # Checked at every startup, whether or not a migration is pending; the service refuses to start
+  # unless this is at least three heartbeat intervals (so one slow heartbeat does not read as a dead
+  # process) and below the five-minute claim wait (above it, no waiting process would ever last
+  # long enough to take over).
+  schemaMigrationStaleAfterSeconds: ${DP_MONGO_SCHEMA_MIGRATION_STALE_AFTER_SECONDS:60}
+
 # GrpcClient: General settings for gRPC clients.
 GrpcClient:
 

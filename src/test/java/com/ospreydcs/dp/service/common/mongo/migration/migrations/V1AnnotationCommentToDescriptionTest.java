@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.common.bson.BsonConstants;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.Document;
 import org.junit.After;
 import org.junit.Before;
@@ -31,6 +32,8 @@ import static org.junit.Assert.fail;
  * rather than merely leaving a redundant index behind.
  */
 public class V1AnnotationCommentToDescriptionTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoDatabase database;
@@ -111,7 +114,7 @@ public class V1AnnotationCommentToDescriptionTest {
         annotations.insertOne(new Document("name", "a").append("comment", "first"));
         annotations.insertOne(new Document("name", "b").append("comment", "second"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         assertEquals(
                 "no document should retain the old field",
@@ -129,7 +132,7 @@ public class V1AnnotationCommentToDescriptionTest {
         annotations.insertOne(new Document("name", "a").append("description", "already migrated"));
         annotations.insertOne(new Document("name", "b"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         assertEquals(
                 "already migrated",
@@ -146,7 +149,7 @@ public class V1AnnotationCommentToDescriptionTest {
                 new Document("name", "a").append("comment", "old").append("description", "new"));
 
         try {
-            migration.apply(database);
+            migration.apply(database, CONTEXT);
             fail("expected the migration to refuse rather than overwrite a description");
         } catch (DpException ex) {
             assertTrue(ex.getMessage().contains("both"));
@@ -167,7 +170,7 @@ public class V1AnnotationCommentToDescriptionTest {
         createOldTextIndex();
         assertTrue(textIndexWeightFields().contains("comment"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         assertFalse(
                 "the old text index must be gone, or creating the replacement fails",
@@ -180,7 +183,7 @@ public class V1AnnotationCommentToDescriptionTest {
         createOldTextIndex();
         annotations.insertOne(new Document("name", "a").append("comment", "text"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         // This is the assertion that matters: before the drop, this call fails with
         // IndexOptionsConflict because Mongo permits only one text index per collection.
@@ -205,7 +208,7 @@ public class V1AnnotationCommentToDescriptionTest {
                         Indexes.ascending(BsonConstants.BSON_KEY_ANNOTATION_OWNER_ID)),
                 new com.mongodb.client.model.IndexOptions().name("customAnnotationTextIndex"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         assertFalse(textIndexWeightFields().contains("comment"));
     }
@@ -213,7 +216,7 @@ public class V1AnnotationCommentToDescriptionTest {
     @Test
     public void testNoIndexToDropIsNotAnError() throws DpException {
         // A fresh database has no such index; the migration must treat that as normal.
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
         assertFalse(textIndexWeightFields().contains("comment"));
     }
 
@@ -228,11 +231,11 @@ public class V1AnnotationCommentToDescriptionTest {
         annotations.insertOne(new Document("name", "a").append("comment", "first"));
         annotations.insertOne(new Document("name", "b").append("comment", "second"));
 
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         // A crash between applying and recording the version can re-run a migration, and the
         // operator recovery path for a stuck claim can too.
-        migration.apply(database);
+        migration.apply(database, CONTEXT);
 
         assertEquals(0, annotations.countDocuments(Filters.exists("comment")));
         assertEquals(2, annotations.countDocuments(Filters.exists("description")));

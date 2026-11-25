@@ -24,6 +24,7 @@ person cutting the release has any reason to re-read.
 - [Services exit when they run out of memory (Issue #314)](#services-exit-when-they-run-out-of-memory-issue-314)
 - [Sample queries read long ranges in bounded memory (Issue #314)](#sample-queries-read-long-ranges-in-bounded-memory-issue-314)
 - [Empty `querySamplesStream` results honor flow control (Issue #324)](#empty-querysamplesstream-results-honor-flow-control-issue-324)
+- [An interrupted schema migration recovers by itself (Issue #292)](#an-interrupted-schema-migration-recovers-by-itself-issue-292)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -313,6 +314,64 @@ The empty message now waits for the client like any other. If the client has can
 become ready, nothing is sent, the call is not completed, and the request is counted as
 `dp_outcome="abandoned"`. A client that is still reading sees no change. `queryBucketsStream` and
 `queryDataStream` already behaved this way.
+
+---
+
+## An interrupted schema migration recovers by itself (Issue #292)
+
+A service process killed while it was applying a schema migration (a liveness probe, a node drain,
+an out-of-memory kill, a host reboot) used to leave the migration claim held forever. Every later
+startup waited five minutes and failed, until an operator cleared the marker by hand.
+
+The claim is now a lease. The migrating process writes a heartbeat to the marker every 10 seconds.
+A starting process that sees no heartbeat for 60 seconds takes the migration over and resumes from
+the recorded schema version. Three cases are deliberately not taken over:
+
+- **A migration that failed.** Its claim is marked `migrationFailed` and held for an operator, as
+  before. Other processes now refuse to start at once, with the stored failure message, instead of
+  waiting five minutes first.
+- **A migration whose operation is still running on the server.** MongoDB does not stop an
+  operation when its client dies. A starting process waits for it to end before taking over, so an
+  interrupted full scan of `buckets` is not joined by a second one.
+- **A migration abandoned four times in a row at the same schema version.** Something is ending the
+  migrating process each time, and an operator needs to find out what.
+
+**Sharded deployments need one grant for this to work.** Through mongos, a user needs the `inprog`
+privilege to list even its own running operations. Without it the service cannot make the second
+check, refuses every takeover, and an abandoned claim still needs the manual clear. The role to
+create is in the
+[runbook](https://github.com/osprey-dcs/dp-service/blob/main/doc/runbooks/schema-migration.md#the-privilege-a-sharded-deployment-needs).
+A standalone or replica set needs nothing. Every service start checks for the privilege and logs a
+warning beginning "this service cannot take over an abandoned schema migration" when it is missing;
+the service still starts.
+
+Other things an operator will notice:
+
+- The marker document has new fields while a migration runs (`claimToken`, `heartbeatSeq`,
+  `migratingHeartbeat`, `takeoverCount`) and after one fails (`migrationFailed`,
+  `migrationFailedVersion`, `migrationFailedMessage`). `migratingHeartbeat` is the one to read to
+  see whether a migration is alive.
+- The manual clear in the runbook now unsets all of these fields, and starts with a check for
+  operations still running on the server. A marker cleared with the command from the 1.16.0
+  runbook is still handled correctly by this build. Do not let a 1.16.0 process claim a migration
+  after that older clear: it leaves the claim's token behind, and this build would take the live
+  1.16.0 migrator's claim over.
+- Clearing the claim of a migrating process that is alive now stops that process at its next write
+  to the marker. Before, it carried on and recorded its versions regardless.
+- A claim left by a 1.16.0 process has no heartbeat and is never taken over. It still needs the
+  manual clear.
+- Two new settings, `MongoClient.schemaMigrationHeartbeatIntervalSeconds` (10) and
+  `MongoClient.schemaMigrationStaleAfterSeconds` (60), with environment overrides
+  `DP_MONGO_SCHEMA_MIGRATION_HEARTBEAT_INTERVAL_SECONDS` and
+  `DP_MONGO_SCHEMA_MIGRATION_STALE_AFTER_SECONDS`. They are validated at every startup.
+- Migrations 2 and 3 (annotation tags and reference ids) no longer overwrite an annotation saved
+  while they run. This could only happen to a migration running beside live services, which the
+  upgrade procedure already rules out.
+
+This does not stop a probe from killing a pod during a long migration; the process that takes over
+is subject to the same probe. No schema version change.
+
+---
 
 ## Cutting the release
 

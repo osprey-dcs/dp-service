@@ -3,16 +3,25 @@ package com.ospreydcs.dp.service.common.mongo.migration.migrations;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.UpdateOptions;
+import com.mongodb.client.model.Updates;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
 
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
@@ -22,6 +31,8 @@ import static org.junit.Assert.assertNull;
  * tags into line so a normalized {@code TagsCriterion} value cannot silently miss them.
  */
 public class V2NormalizeAnnotationTagsTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoCollection<Document> annotations;
@@ -58,7 +69,7 @@ public class V2NormalizeAnnotationTagsTest {
         annotations.insertOne(new Document("name", "mixed")
                 .append("tags", List.of("Beam Loss", "OUTAGE", "beam loss", "outage", "Vacuum")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("beam loss", "outage", "vacuum"), storedTags("mixed"));
     }
@@ -69,7 +80,7 @@ public class V2NormalizeAnnotationTagsTest {
                 .append("tags", List.of("alpha", "beta")));
         annotations.insertOne(new Document("name", "untagged"));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("alpha", "beta"), storedTags("normalized"));
         assertNull(storedTags("untagged"));
@@ -80,11 +91,51 @@ public class V2NormalizeAnnotationTagsTest {
         annotations.insertOne(new Document("name", "rerun")
                 .append("tags", List.of("Zeta", "alpha", "ALPHA")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         final List<String> afterFirstRun = storedTags("rerun");
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("alpha", "zeta"), afterFirstRun);
         assertEquals(afterFirstRun, storedTags("rerun"));
+    }
+
+    /**
+     * A database that behaves as the real one, except that {@code concurrentSave} runs between the
+     * migration's read of an annotation and its write: the position of a save path that lands
+     * while a displaced holder is still inside this loop (#292).
+     */
+    @SuppressWarnings("unchecked")
+    private MongoDatabase databaseWithASaveBeforeEachWrite(Runnable concurrentSave) {
+        final MongoCollection<Document> intercepted =
+                mock(MongoCollection.class, delegatesTo(annotations));
+        doAnswer(invocation -> {
+            concurrentSave.run();
+            return annotations.updateOne(
+                    invocation.<Bson>getArgument(0), invocation.<Bson>getArgument(1),
+                    invocation.<UpdateOptions>getArgument(2));
+        }).when(intercepted).updateOne(any(Bson.class), any(Bson.class), any(UpdateOptions.class));
+
+        final MongoDatabase database = mock(MongoDatabase.class, delegatesTo(testClient.database()));
+        doReturn(intercepted).when(database)
+                .getCollection(MongoClientBase.COLLECTION_NAME_ANNOTATIONS);
+        return database;
+    }
+
+    @Test
+    public void testDoesNotOverwriteTagsSavedBetweenItsReadAndItsWrite() throws DpException {
+        annotations.insertOne(new Document("name", "racing").append("tags", List.of("Old", "TAGS")));
+
+        // the save path stores normalized tags, and these are not the ones the migration read
+        final MongoDatabase database = databaseWithASaveBeforeEachWrite(() ->
+                annotations.updateOne(
+                        Filters.eq("name", "racing"),
+                        Updates.set("tags", List.of("replaced", "since"))));
+
+        migration.apply(database, CONTEXT);
+
+        assertEquals(
+                "a write filtered on _id alone stores the normalized form of the tags that were "
+                        + "read, silently discarding the save",
+                List.of("replaced", "since"), storedTags("racing"));
     }
 }

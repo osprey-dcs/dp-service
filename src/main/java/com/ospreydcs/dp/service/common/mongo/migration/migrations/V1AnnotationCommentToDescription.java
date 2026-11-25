@@ -3,11 +3,14 @@ package com.ospreydcs.dp.service.common.mongo.migration.migrations;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.Updates;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.Migration;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -34,6 +37,12 @@ import org.bson.Document;
  * still have a {@code comment} field, so a second pass matches nothing; and the index scan finds no
  * candidate once the drop has happened. A document that somehow carries both fields is left alone
  * and reported rather than silently resolved — see {@link #renameField}.
+ *
+ * <p><b>Late and concurrent runs (#292).</b> The rename is one {@code updateMany} filtered on the
+ * old field, which no save path has written since this migration shipped: a run that arrives
+ * late, or beside another, matches only documents still unrenamed, and renaming one twice is not
+ * possible. The index drop looks for the old field in {@code weights}, so it cannot drop the
+ * replacement index a newer startup has since created.
  */
 public class V1AnnotationCommentToDescription implements Migration {
 
@@ -57,11 +66,11 @@ public class V1AnnotationCommentToDescription implements Migration {
     }
 
     @Override
-    public void apply(MongoDatabase database) throws DpException {
+    public void apply(MongoDatabase database, MigrationContext context) throws DpException {
         final MongoCollection<Document> annotations =
                 database.getCollection(MongoClientBase.COLLECTION_NAME_ANNOTATIONS);
-        dropStaleTextIndex(annotations);
-        renameField(annotations);
+        dropStaleTextIndex(annotations, context);
+        renameField(annotations, context);
     }
 
     /**
@@ -73,13 +82,15 @@ public class V1AnnotationCommentToDescription implements Migration {
      * description with no record of it. That state should not arise — nothing ever wrote both — but
      * if it does, losing data silently is worse than leaving it for an operator.
      */
-    private void renameField(MongoCollection<Document> annotations) throws DpException {
+    private void renameField(MongoCollection<Document> annotations, MigrationContext context)
+            throws DpException {
 
         try {
             final long conflicting = annotations.countDocuments(
                     Filters.and(
                             Filters.exists(FIELD_COMMENT),
-                            Filters.exists(FIELD_DESCRIPTION)));
+                            Filters.exists(FIELD_DESCRIPTION)),
+                    new CountOptions().comment(context.operationComment()));
 
             if (conflicting > 0) {
                 throw new DpException(
@@ -93,7 +104,8 @@ public class V1AnnotationCommentToDescription implements Migration {
 
             final long renamed = annotations.updateMany(
                     Filters.exists(FIELD_COMMENT),
-                    Updates.rename(FIELD_COMMENT, FIELD_DESCRIPTION)).getModifiedCount();
+                    Updates.rename(FIELD_COMMENT, FIELD_DESCRIPTION),
+                    new UpdateOptions().comment(context.operationComment())).getModifiedCount();
 
             logger.info(
                     "migration v1 renamed '{}' to '{}' on {} annotation document(s)",
@@ -112,12 +124,13 @@ public class V1AnnotationCommentToDescription implements Migration {
      * such index, and on a re-run it has already gone. See the class comment for why {@code weights}
      * rather than the key document is the discriminator.
      */
-    private void dropStaleTextIndex(MongoCollection<Document> annotations) throws DpException {
+    private void dropStaleTextIndex(
+            MongoCollection<Document> annotations, MigrationContext context) throws DpException {
 
         try {
             String staleIndexName = null;
 
-            for (Document index : annotations.listIndexes()) {
+            for (Document index : annotations.listIndexes().comment(context.operationComment())) {
 
                 final Document weights = index.get(INDEX_FIELD_WEIGHTS, Document.class);
                 if (weights == null || !weights.containsKey(FIELD_COMMENT)) {
@@ -140,6 +153,8 @@ public class V1AnnotationCommentToDescription implements Migration {
                 return;
             }
 
+            // dropIndex takes no comment in this driver; it finishes at once, so the takeover
+            // check has nothing to wait for
             annotations.dropIndex(staleIndexName);
             logger.info("migration v1 dropped stale text index '{}'", staleIndexName);
 
