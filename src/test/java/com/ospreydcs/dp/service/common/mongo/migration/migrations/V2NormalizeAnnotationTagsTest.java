@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.Document;
 import org.junit.After;
 import org.junit.Before;
@@ -22,6 +23,8 @@ import static org.junit.Assert.assertNull;
  * tags into line so a normalized {@code TagsCriterion} value cannot silently miss them.
  */
 public class V2NormalizeAnnotationTagsTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoCollection<Document> annotations;
@@ -58,7 +61,7 @@ public class V2NormalizeAnnotationTagsTest {
         annotations.insertOne(new Document("name", "mixed")
                 .append("tags", List.of("Beam Loss", "OUTAGE", "beam loss", "outage", "Vacuum")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("beam loss", "outage", "vacuum"), storedTags("mixed"));
     }
@@ -69,7 +72,7 @@ public class V2NormalizeAnnotationTagsTest {
                 .append("tags", List.of("alpha", "beta")));
         annotations.insertOne(new Document("name", "untagged"));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("alpha", "beta"), storedTags("normalized"));
         assertNull(storedTags("untagged"));
@@ -80,9 +83,9 @@ public class V2NormalizeAnnotationTagsTest {
         annotations.insertOne(new Document("name", "rerun")
                 .append("tags", List.of("Zeta", "alpha", "ALPHA")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         final List<String> afterFirstRun = storedTags("rerun");
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("alpha", "zeta"), afterFirstRun);
         assertEquals(afterFirstRun, storedTags("rerun"));

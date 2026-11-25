@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -84,10 +85,10 @@ public class SchemaVersionMarkerTest {
 
         SchemaVersionMarker.createUnmanagedMarker(database);
 
-        assertTrue(
+        assertNotNull(
                 SchemaVersionMarker.claimForMigration(
                         database, SchemaVersionMarker.VERSION_UNMANAGED, "first-process"));
-        assertFalse(
+        assertNull(
                 "exactly one process may hold the claim, or two migrations run concurrently",
                 SchemaVersionMarker.claimForMigration(
                         database, SchemaVersionMarker.VERSION_UNMANAGED, "second-process"));
@@ -105,7 +106,7 @@ public class SchemaVersionMarkerTest {
 
         SchemaVersionMarker.stampFresh(database, 2);
 
-        assertFalse(
+        assertNull(
                 "a claim built on a version another process has already advanced past must fail, "
                         + "or the claimant would re-run migrations already applied",
                 SchemaVersionMarker.claimForMigration(database, 1, "stale-process"));
@@ -115,15 +116,16 @@ public class SchemaVersionMarkerTest {
     public void testReleaseClearsTheClaimAndAllowsAnother() throws DpException {
 
         SchemaVersionMarker.createUnmanagedMarker(database);
-        assertTrue(SchemaVersionMarker.claimForMigration(
-                database, SchemaVersionMarker.VERSION_UNMANAGED, "first-process"));
+        final SchemaVersionMarker.Claim claim = SchemaVersionMarker.claimForMigration(
+                database, SchemaVersionMarker.VERSION_UNMANAGED, "first-process");
+        assertNotNull(claim);
 
-        SchemaVersionMarker.releaseClaim(database);
+        SchemaVersionMarker.releaseClaim(database, claim);
 
         final SchemaVersionMarker.MarkerState state = SchemaVersionMarker.read(database);
         assertFalse(state.migrating());
 
-        assertTrue(SchemaVersionMarker.claimForMigration(
+        assertNotNull(SchemaVersionMarker.claimForMigration(
                 database, SchemaVersionMarker.VERSION_UNMANAGED, "second-process"));
     }
 
@@ -132,8 +134,10 @@ public class SchemaVersionMarkerTest {
 
         SchemaVersionMarker.createUnmanagedMarker(database);
 
-        SchemaVersionMarker.recordApplied(database, 1, "first change");
-        SchemaVersionMarker.recordApplied(database, 2, "second change");
+        final SchemaVersionMarker.Claim claim = SchemaVersionMarker.claimForMigration(
+                database, SchemaVersionMarker.VERSION_UNMANAGED, "host");
+        SchemaVersionMarker.recordApplied(database, claim, 1, "first change");
+        SchemaVersionMarker.recordApplied(database, claim, 2, "second change");
 
         assertEquals(2, SchemaVersionMarker.read(database).version());
         assertEquals(
@@ -148,7 +152,9 @@ public class SchemaVersionMarkerTest {
         // runner carries on and reports success, and the next startup re-runs from a stale version.
         // The data change is real, so this must be reported rather than absorbed.
         try {
-            SchemaVersionMarker.recordApplied(database, 1, "change against a missing marker");
+            SchemaVersionMarker.recordApplied(
+                    database, new SchemaVersionMarker.Claim("no-such-token", 0), 1,
+                    "change against a missing marker");
             fail("expected recording against an absent marker to fail");
         } catch (DpException ex) {
             assertTrue(
@@ -162,14 +168,16 @@ public class SchemaVersionMarkerTest {
     public void testReleaseClaimFailsWhenTheMarkerHasVanished() throws DpException {
 
         SchemaVersionMarker.createUnmanagedMarker(database);
-        assertTrue(SchemaVersionMarker.claimForMigration(database, 0, "host"));
+        final SchemaVersionMarker.Claim claim =
+                SchemaVersionMarker.claimForMigration(database, 0, "host");
+        assertNotNull(claim);
         markerCollection.deleteMany(new Document());
 
         // Releasing a claim on a marker that no longer exists must not report success: the
         // authoritative state is gone, so every other starting process is polling for something
         // that will never appear.
         try {
-            SchemaVersionMarker.releaseClaim(database);
+            SchemaVersionMarker.releaseClaim(database, claim);
             fail("expected releasing a claim against an absent marker to fail");
         } catch (DpException ex) {
             assertTrue(

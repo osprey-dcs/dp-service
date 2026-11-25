@@ -4,10 +4,13 @@ import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.Updates;
+import com.mongodb.client.result.UpdateResult;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.Migration;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -35,6 +38,16 @@ import java.util.List;
  * <p><b>Idempotency.</b> Canonicalization is a fixpoint — {@code toHexString()} output is already
  * canonical — and the update is only issued for documents whose stored arrays differ from their
  * canonical form, so a re-run matches nothing and writes nothing.
+ *
+ * <p><b>Late and concurrent runs (#292).</b> This is a read followed by a write per document, so
+ * the write is filtered on each id array it sets, as read, as well as on {@code _id}. As first
+ * shipped it was filtered on {@code _id} alone: a holder displaced by a takeover while stalled
+ * could still be in this loop after the services had started, and a {@code saveAnnotation} landing
+ * between its read and its write had its references overwritten with the canonical form of the
+ * <i>old</i> ones, a lost update with no error. With the filter, a document changed since the read
+ * matches nothing; whatever replaced it came through the save path and is already canonical. An
+ * array the update does not set is not in the filter, so a change to that one alone does not block
+ * the write, and is not touched by it. An ordinary run is unchanged.
  */
 public class V3CanonicalizeAnnotationReferenceIds implements Migration {
 
@@ -54,7 +67,7 @@ public class V3CanonicalizeAnnotationReferenceIds implements Migration {
     }
 
     @Override
-    public void apply(MongoDatabase database) throws DpException {
+    public void apply(MongoDatabase database, MigrationContext context) throws DpException {
 
         final MongoCollection<Document> annotations =
                 database.getCollection(MongoClientBase.COLLECTION_NAME_ANNOTATIONS);
@@ -64,9 +77,13 @@ public class V3CanonicalizeAnnotationReferenceIds implements Migration {
 
         long canonicalizedCount = 0;
         try {
-            for (Document document : annotations.find(filter)) {
+            for (Document document : annotations.find(filter).comment(context.operationComment())) {
                 try {
                     final List<Bson> updates = new ArrayList<>();
+                    // Each array the update sets is also matched as it was read (#292): see the
+                    // class comment. A document saved since the read matches nothing.
+                    final List<Bson> asRead = new ArrayList<>();
+                    asRead.add(Filters.eq("_id", document.getObjectId("_id")));
                     for (String field : List.of(FIELD_DATA_SET_IDS, FIELD_ANNOTATION_IDS)) {
                         final List<String> storedIds = document.getList(field, String.class);
                         if (storedIds == null || storedIds.isEmpty()) {
@@ -86,14 +103,19 @@ public class V3CanonicalizeAnnotationReferenceIds implements Migration {
                         }
                         if (!canonicalIds.equals(storedIds)) {
                             updates.add(Updates.set(field, canonicalIds));
+                            asRead.add(Filters.eq(field, storedIds));
                         }
                     }
                     if (updates.isEmpty()) {
                         continue;
                     }
-                    annotations.updateOne(
-                            Filters.eq("_id", document.getObjectId("_id")), Updates.combine(updates));
-                    canonicalizedCount++;
+                    final UpdateResult result = annotations.updateOne(
+                            Filters.and(asRead),
+                            Updates.combine(updates),
+                            new UpdateOptions().comment(context.operationComment()));
+                    if (result.getMatchedCount() > 0) {
+                        canonicalizedCount++;
+                    }
                 } catch (MongoException ex) {
                     // MongoException extends RuntimeException; rethrow so a database failure is
                     // classified by the outer catch, not reported as a malformed document

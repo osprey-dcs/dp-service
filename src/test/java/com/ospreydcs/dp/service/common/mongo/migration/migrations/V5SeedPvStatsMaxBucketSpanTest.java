@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.common.bson.pvstats.PvStatsDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -31,6 +32,8 @@ import static org.junit.Assert.assertTrue;
  * with — are all server-side behaviour that a mocked collection could not exercise.
  */
 public class V5SeedPvStatsMaxBucketSpanTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoCollection<Document> buckets;
@@ -103,7 +106,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                 bucket("pvB", 1000, 90000),
                 bucket("pvC", 5, 5)));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(Long.valueOf(60), storedSpan("pvA"));
         assertEquals(Long.valueOf(89000), storedSpan("pvB"));
@@ -119,9 +122,9 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                 bucket("pvA", 100, 160),
                 bucket("pvB", 1000, 90000)));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         final List<Document> afterFirstRun = allPvStats();
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(2, afterFirstRun.size());
         assertEquals(afterFirstRun, allPvStats());
@@ -138,7 +141,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                 bucket("pvA", 100, 160),
                 bucket("pvB", 1000, 90000)));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(Long.valueOf(500000), storedSpan("pvA"));
         assertEquals(Long.valueOf(89000), storedSpan("pvB"));
@@ -149,7 +152,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
     public void testEmptyBucketsSeedsNothingAndLeavesExistingStats() throws DpException {
         pvStats.insertOne(new Document("_id", "pvExisting").append("maxBucketSpanSeconds", 42L));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         final List<Document> stats = allPvStats();
         assertEquals(1, stats.size());
@@ -174,7 +177,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
         buckets.insertOne(bucket("pvMixed", 500, 400));
         buckets.insertOne(bucket("pvMixed", 600, 630));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertNull(storedSpan("pvMissing"));
         assertEquals(Long.valueOf(7), storedSpan("pvInverted"));
@@ -189,11 +192,11 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                 .append("verifiedAt", new java.util.Date()));
         assertTrue(collectionNames().contains(MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         assertFalse(collectionNames().contains(MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY));
 
         // the second run finds no collection to drop and must not fail on that
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         assertFalse(collectionNames().contains(MongoClientBase.COLLECTION_NAME_BUCKET_SPAN_VERIFICATION_LEGACY));
     }
 
@@ -208,7 +211,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                         .append("lastTime", new Document("seconds", 107).append("nanos", 0))));
         buckets.insertOne(bucket("pvLong", 1000, 90000));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         final PvStatsDocument intSeeded = testClient.pvStatsPojo().find(Filters.eq("_id", "pvInt")).first();
         assertNotNull(intSeeded);
@@ -261,7 +264,7 @@ public class V5SeedPvStatsMaxBucketSpanTest {
                         .append("lastTime", new Document("seconds", 900L).append("nanos", 0L))));
 
         // must not throw
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(Long.valueOf(30), storedSpan("pvGood"));
         assertEquals(1, allPvStats().size());

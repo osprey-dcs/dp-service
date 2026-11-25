@@ -242,7 +242,8 @@ public class MongoSyncClient extends MongoClientBase {
     @Override
     protected boolean runSchemaMigrations() {
         try {
-            new SchemaMigrationRunner(mongoDatabase).run();
+            new SchemaMigrationRunner(
+                    mongoDatabase, mongoClient.getDatabase(ADMIN_DATABASE_NAME)).run();
             return true;
         } catch (DpException ex) {
             // Logged here with the full message because this is the last point that knows it was a

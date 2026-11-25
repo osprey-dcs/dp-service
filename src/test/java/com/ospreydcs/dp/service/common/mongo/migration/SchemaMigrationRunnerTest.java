@@ -31,12 +31,17 @@ public class SchemaMigrationRunnerTest {
 
     private RunnerTestClient testClient;
     private MongoDatabase database;
+    private MongoDatabase adminDatabase;
     private MongoCollection<Document> markerCollection;
 
     /** Exposes the raw database handle, which is what the runner operates on. */
     private static class RunnerTestClient extends MongoTestClient {
         MongoDatabase database() {
             return mongoDatabase;
+        }
+
+        MongoDatabase adminDatabase() {
+            return mongoClient.getDatabase(MongoClientBase.ADMIN_DATABASE_NAME);
         }
     }
 
@@ -61,7 +66,7 @@ public class SchemaMigrationRunnerTest {
         }
 
         @Override
-        public void apply(MongoDatabase database) {
+        public void apply(MongoDatabase database, MigrationContext context) {
             applyCount.incrementAndGet();
         }
     }
@@ -80,7 +85,7 @@ public class SchemaMigrationRunnerTest {
         }
 
         @Override
-        public void apply(MongoDatabase database) throws DpException {
+        public void apply(MongoDatabase database, MigrationContext context) throws DpException {
             throw new DpException("deliberate test failure");
         }
     }
@@ -90,6 +95,7 @@ public class SchemaMigrationRunnerTest {
         testClient = new RunnerTestClient();
         testClient.init();
         database = testClient.database();
+        adminDatabase = testClient.adminDatabase();
         markerCollection = SchemaVersionMarker.collection(database);
         clearAll();
     }
@@ -127,7 +133,7 @@ public class SchemaMigrationRunnerTest {
     public void testFreshDatabaseIsStampedWithoutRunningMigrations() throws DpException {
 
         final RecordingMigration migration = new RecordingMigration(1);
-        new SchemaMigrationRunner(database, List.of(migration), 1).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(migration), 1).run();
 
         assertEquals(
                 "a fresh install must not replay migrations against empty collections",
@@ -146,7 +152,7 @@ public class SchemaMigrationRunnerTest {
 
         final RecordingMigration first = new RecordingMigration(1);
         final RecordingMigration second = new RecordingMigration(2);
-        new SchemaMigrationRunner(database, List.of(first, second), 2).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(first, second), 2).run();
 
         assertEquals(
                 "a database with data but no marker predates the mechanism and must be migrated",
@@ -164,7 +170,7 @@ public class SchemaMigrationRunnerTest {
                 .insertOne(new Document("pvName", "seeded"));
 
         final RecordingMigration migration = new RecordingMigration(1);
-        new SchemaMigrationRunner(database, List.of(migration), 1).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(migration), 1).run();
 
         assertEquals(1, migration.applyCount.get());
     }
@@ -185,7 +191,7 @@ public class SchemaMigrationRunnerTest {
                 .insertOne(new Document("verifiedLimitSeconds", 86400L));
 
         final RecordingMigration migration = new RecordingMigration(1);
-        new SchemaMigrationRunner(database, List.of(migration), 1).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(migration), 1).run();
 
         assertEquals(
                 "a database carrying a prior deployment's bucket-span marker is not a fresh install",
@@ -203,7 +209,7 @@ public class SchemaMigrationRunnerTest {
         SchemaVersionMarker.stampFresh(database, 1);
 
         final RecordingMigration migration = new RecordingMigration(1);
-        new SchemaMigrationRunner(database, List.of(migration), 1).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(migration), 1).run();
 
         assertEquals(0, migration.applyCount.get());
         assertEquals(1, SchemaVersionMarker.read(database).version());
@@ -217,7 +223,7 @@ public class SchemaMigrationRunnerTest {
 
         final RecordingMigration first = new RecordingMigration(1);
         final RecordingMigration second = new RecordingMigration(2);
-        new SchemaMigrationRunner(database, List.of(first, second), 2).run();
+        new SchemaMigrationRunner(database, adminDatabase, List.of(first, second), 2).run();
 
         assertEquals("already-applied migration must not re-run", 0, first.applyCount.get());
         assertEquals(1, second.applyCount.get());
@@ -231,7 +237,7 @@ public class SchemaMigrationRunnerTest {
         SchemaVersionMarker.stampFresh(database, 5);
 
         try {
-            new SchemaMigrationRunner(database, List.of(new RecordingMigration(1)), 1).run();
+            new SchemaMigrationRunner(database, adminDatabase, List.of(new RecordingMigration(1)), 1).run();
             fail("expected refusal on a database written by a newer service build");
         } catch (DpException ex) {
             assertTrue(
@@ -250,7 +256,7 @@ public class SchemaMigrationRunnerTest {
         seedData();
 
         try {
-            new SchemaMigrationRunner(database, List.of(new FailingMigration()), 1).run();
+            new SchemaMigrationRunner(database, adminDatabase, List.of(new FailingMigration()), 1).run();
             fail("expected the migration failure to propagate");
         } catch (DpException ex) {
             assertTrue(ex.getMessage().contains("deliberate test failure"));
@@ -271,12 +277,18 @@ public class SchemaMigrationRunnerTest {
 
         seedData();
         SchemaVersionMarker.createUnmanagedMarker(database);
-        // Simulate a process that crashed while holding the claim.
-        assertTrue(SchemaVersionMarker.claimForMigration(
-                database, SchemaVersionMarker.VERSION_UNMANAGED, "crashed-host"));
+        // Simulate a 1.16.0 process that crashed while holding the claim: no token and no
+        // heartbeat, so there is nothing to watch and the claim must never be taken over. A claim
+        // written by this build is taken over; SchemaMigrationLeaseTest covers that.
+        markerCollection.updateOne(
+                new Document("_id", SchemaVersionMarker.MARKER_ID),
+                new Document("$set", new Document("migrating", true)
+                        .append("migratingSince", new java.util.Date())
+                        .append("migratingHost", "crashed-host")));
 
+        final RecordingMigration migration = new RecordingMigration(1);
         final SchemaMigrationRunner runner =
-                new ShortWaitRunner(database, List.of(new RecordingMigration(1)), 1);
+                new ShortWaitRunner(database, adminDatabase, List.of(migration), 1);
 
         try {
             runner.run();
@@ -285,14 +297,23 @@ public class SchemaMigrationRunnerTest {
             assertTrue(
                     "message should identify the claim holder: " + ex.getMessage(),
                     ex.getMessage().contains("crashed-host"));
+            assertTrue(
+                    "message should say why the claim was not taken over: " + ex.getMessage(),
+                    ex.getMessage().contains("no heartbeat"));
         }
+        assertEquals(0, migration.applyCount.get());
+        assertTrue(SchemaVersionMarker.read(database).migrating());
     }
 
     /** Overrides the wait so the stuck-claim test does not take five minutes. */
     private static class ShortWaitRunner extends SchemaMigrationRunner {
 
-        ShortWaitRunner(MongoDatabase database, List<Migration> migrations, int targetVersion) {
-            super(database, migrations, targetVersion, 1_500L, 250L);
+        // stale-after is well inside the wait, so a claim that could be taken over would be
+        ShortWaitRunner(
+                MongoDatabase database, MongoDatabase adminDatabase,
+                List<Migration> migrations, int targetVersion) {
+            super(database, adminDatabase, migrations, targetVersion, 1_500L, 100L,
+                    new LeaseTimings(50L, 300L, 100L));
         }
     }
 

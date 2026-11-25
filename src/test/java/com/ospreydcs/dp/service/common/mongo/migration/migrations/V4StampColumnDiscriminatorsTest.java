@@ -11,6 +11,7 @@ import com.ospreydcs.dp.service.common.bson.column.DataColumnDocument;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.junit.After;
@@ -33,6 +34,8 @@ import static org.junit.Assert.assertTrue;
  * an unstamped entry is unreadable through the POJO codec, and a stamped one reads back losslessly.
  */
 public class V4StampColumnDiscriminatorsTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoCollection<Document> buckets;
@@ -102,7 +105,7 @@ public class V4StampColumnDiscriminatorsTest {
                 .append("pvName", "pv_v1shaped")
                 .append("columnDataType", 1));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals("dataColumn",
                 storedBucket("pv_legacy-100-0").get("dataColumn", Document.class).getString("_t"));
@@ -126,7 +129,7 @@ public class V4StampColumnDiscriminatorsTest {
                         // a frame without a dataColumns array must not fault the positional update
                         new Document("name", "frame-no-columns"))));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         final Document stored = calculations.find(Filters.eq("_id", mixedId)).first();
         final List<Document> frames = stored.getList("dataFrames", Document.class);
@@ -147,10 +150,10 @@ public class V4StampColumnDiscriminatorsTest {
                         .append("dataColumns", List.of(
                                 legacyColumnSubdocument(doubleDataColumn("calc-rerun")))))));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         final Document bucketAfterFirstRun = storedBucket("pv_rerun-100-0");
         final Document calculationsAfterFirstRun = calculations.find(Filters.eq("_id", calculationsId)).first();
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(bucketAfterFirstRun, storedBucket("pv_rerun-100-0"));
         assertEquals(calculationsAfterFirstRun, calculations.find(Filters.eq("_id", calculationsId)).first());
@@ -168,7 +171,7 @@ public class V4StampColumnDiscriminatorsTest {
         assertThrows(RuntimeException.class, () ->
                 testClient.bucketsPojo().find(Filters.eq("_id", "pv_decode-100-0")).first());
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         final BucketDocument decoded =
                 testClient.bucketsPojo().find(Filters.eq("_id", "pv_decode-100-0")).first();
@@ -189,7 +192,7 @@ public class V4StampColumnDiscriminatorsTest {
             testClient.calculationsPojo().find(Filters.eq("_id", calculationsId)).into(results);
         });
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         final CalculationsDocument decoded =
                 testClient.calculationsPojo().find(Filters.eq("_id", calculationsId)).first();

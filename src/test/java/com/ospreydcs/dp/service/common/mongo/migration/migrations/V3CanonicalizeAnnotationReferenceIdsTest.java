@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters;
 import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.MongoTestClient;
+import com.ospreydcs.dp.service.common.mongo.migration.MigrationContext;
 import org.bson.Document;
 import org.junit.After;
 import org.junit.Before;
@@ -23,6 +24,8 @@ import static org.junit.Assert.assertNull;
  * integrity, the queryAnnotations dataSets/annotations criteria) cannot silently miss them.
  */
 public class V3CanonicalizeAnnotationReferenceIdsTest {
+
+    private static final MigrationContext CONTEXT = MigrationContext.forClaimToken("test");
 
     private MigrationTestClient testClient;
     private MongoCollection<Document> annotations;
@@ -60,7 +63,7 @@ public class V3CanonicalizeAnnotationReferenceIdsTest {
                 .append("dataSetIds", List.of("66A1B2C3D4E5F60718293A4B", "66a1b2c3d4e5f60718293a4c"))
                 .append("annotationIds", List.of("66A1B2C3D4E5F60718293A4D")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(
                 List.of("66a1b2c3d4e5f60718293a4b", "66a1b2c3d4e5f60718293a4c"),
@@ -78,7 +81,7 @@ public class V3CanonicalizeAnnotationReferenceIdsTest {
                 .append("dataSetIds", List.of("not-an-object-id", "66A1B2C3D4E5F60718293A4B")));
         annotations.insertOne(new Document("name", "noReferences"));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("66a1b2c3d4e5f60718293a4b"), storedList("canonical", "dataSetIds"));
         // the junk entry is preserved as evidence; the valid entry beside it is still canonicalized
@@ -94,9 +97,9 @@ public class V3CanonicalizeAnnotationReferenceIdsTest {
                 .append("dataSetIds", List.of("66A1B2C3D4E5F60718293A4B"))
                 .append("annotationIds", List.of("66a1b2c3d4e5f60718293a4d")));
 
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
         final List<String> afterFirstRun = storedList("rerun", "dataSetIds");
-        migration.apply(testClient.database());
+        migration.apply(testClient.database(), CONTEXT);
 
         assertEquals(List.of("66a1b2c3d4e5f60718293a4b"), afterFirstRun);
         assertEquals(afterFirstRun, storedList("rerun", "dataSetIds"));
