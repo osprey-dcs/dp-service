@@ -596,10 +596,21 @@ public class SchemaVersionMarker {
      * with {@code kill -9} both ran to completion. A process that took over a claim without looking
      * would start the same scan beside the one still running, once per kill.
      *
-     * <p>{@code allUsers: false} reports the operations of the connecting user only, which needs no
-     * privilege beyond the service's own ({@code allUsers: true} needs {@code inprog}); every
+     * <p>{@code allUsers: false} reports the operations of the connecting user only; every
      * dp-service process connects as the same user, so that is sufficient. {@code $currentOp} must
      * be run on the {@code admin} database, which is why this takes that handle.
+     *
+     * <p><b>What privilege this needs depends on what the service connects to</b> (measured, 8.0.6
+     * standalone and 8.0.26 sharded). On a {@code mongod}, a user may always list its own
+     * operations: {@code readWrite} on the service database is enough. <b>Through mongos it is
+     * refused ({@code Unauthorized}) unless the user holds the {@code inprog} action on the
+     * cluster</b>, own operations included. With {@code inprog}, mongos reports the shard's
+     * operation with its comment, an {@code ns} of the same form, and an {@code opid} prefixed with
+     * the shard name ({@code "sh1:100358"}). A killed client's {@code updateMany} and
+     * {@code $merge} aggregate run to completion on the shard through mongos just as they do on a
+     * standalone. So on a sharded deployment without that privilege this throws, the caller
+     * refuses every takeover, and an abandoned claim needs the manual clear as it did before the
+     * lease. The message says which privilege is missing.
      *
      * <p><b>An operation with no comment is invisible here.</b> In driver 5.4.0 {@code dropIndexes},
      * {@code drop} and {@code createIndexes} cannot carry one. The first two finish at once. An
@@ -636,6 +647,15 @@ public class SchemaVersionMarker {
                         runningSeconds == null ? 0L : runningSeconds.longValue()));
             }
         } catch (MongoException ex) {
+            if (ex.getCode() == ERROR_CODE_UNAUTHORIZED) {
+                throw new DpException(
+                        "the service's database user is not allowed to list its own running "
+                                + "operations ($currentOp). Through mongos that needs the 'inprog' "
+                                + "privilege on the cluster; grant it to let a starting service "
+                                + "take over an abandoned schema migration on a sharded "
+                                + "deployment (doc/runbooks/schema-migration.md). Server said: "
+                                + ex.getMessage(), ex);
+            }
             throw new DpException(
                     "error checking for running schema migration operations ($currentOp): "
                             + ex.getMessage(), ex);
@@ -672,6 +692,8 @@ public class SchemaVersionMarker {
         }
         return versions;
     }
+
+    private static final int ERROR_CODE_UNAUTHORIZED = 13;
 
     private static boolean isDuplicateKey(MongoException ex) {
         return ex.getCode() == 11000;

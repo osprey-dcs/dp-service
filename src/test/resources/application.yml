@@ -12,6 +12,8 @@ MongoClient:
   # Left enabled under test: MongoTestClient drops and recreates the database for every test, so this
   # exercises the fresh-install path on every run — which is the path production installs take too.
   runSchemaMigrationsOnStartup: ${DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP:true}
+  schemaMigrationHeartbeatIntervalSeconds: ${DP_MONGO_SCHEMA_MIGRATION_HEARTBEAT_INTERVAL_SECONDS:10}
+  schemaMigrationStaleAfterSeconds: ${DP_MONGO_SCHEMA_MIGRATION_STALE_AFTER_SECONDS:60}
 
 # Telemetry: Metrics collection and export (issue #212). See doc/metrics.md.
 # Mirrors the main application.yml keys so tests exercise the same defaults; see that file for docs.
