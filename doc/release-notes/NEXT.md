@@ -353,7 +353,9 @@ Other things an operator will notice:
   see whether a migration is alive.
 - The manual clear in the runbook now unsets all of these fields, and starts with a check for
   operations still running on the server. A marker cleared with the command from the 1.16.0
-  runbook is still handled correctly.
+  runbook is still handled correctly by this build. Do not let a 1.16.0 process claim a migration
+  after that older clear: it leaves the claim's token behind, and this build would take the live
+  1.16.0 migrator's claim over.
 - Clearing the claim of a migrating process that is alive now stops that process at its next write
   to the marker. Before, it carried on and recorded its versions regardless.
 - A claim left by a 1.16.0 process has no heartbeat and is never taken over. It still needs the

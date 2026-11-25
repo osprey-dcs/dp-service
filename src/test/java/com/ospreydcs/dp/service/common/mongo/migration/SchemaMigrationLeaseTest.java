@@ -482,24 +482,31 @@ public class SchemaMigrationLeaseTest {
         });
 
         try (LeaseTestSupport.RecordingClient recording = new LeaseTestSupport.RecordingClient()) {
+            final long runStarted = System.nanoTime();
             new LeaseRunner(
                     database, recording.database(MongoClientBase.ADMIN_DATABASE_NAME),
                     List.of(migration), 1,
                     LONG_WAIT_MILLIS, STALE_AFTER_MILLIS, orphanCheckIntervalMillis).run();
+            final long runMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - runStarted);
 
             assertEquals(1, migration.applyCount.get());
             assertEquals(
                     "the takeover started while the previous claim's update was still running",
                     0L, unfinishedWhenApplied[0]);
 
-            // The update ran for about three seconds. Checked on every 50 ms poll that is about
-            // sixty $currentOp commands; at the 500 ms orphan interval it is about seven.
+            // The update runs for about three seconds. Checked on every 50 ms poll that is about
+            // sixty $currentOp commands; at the 500 ms orphan interval it is about seven. The
+            // bound follows the time the run actually took, so a slow machine, where the update
+            // runs longer and is rightly checked more often, does not fail it: one check per
+            // interval, plus the startup probe, the first check and the one before the takeover.
+            final long maxChecks = runMillis / orphanCheckIntervalMillis + 3;
             final long checks = recording.started.stream()
                     .filter(LeaseTestSupport.StartedCommand::isCurrentOp).count();
             assertTrue("expected the check to repeat while the update ran: " + checks, checks >= 2);
             assertTrue(
-                    "$currentOp must follow the orphan check interval, not the marker poll: " + checks,
-                    checks <= 15);
+                    "$currentOp must follow the orphan check interval, not the marker poll: " + checks
+                            + " checks in " + runMillis + " ms",
+                    checks <= maxChecks);
         }
         orphan.get(30, TimeUnit.SECONDS);
         assertEquals(1, SchemaVersionMarker.read(database).version());

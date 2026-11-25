@@ -331,6 +331,37 @@ public class SchemaVersionMarkerLeaseTest {
     }
 
     @Test
+    public void testWritesAfterThe1160ManualClearReportTheClearedClaim() throws DpException {
+
+        // The clear in the 1.16.0 runbook unsets only migratingSince and migratingHost, so the
+        // holder's token stays on the marker. A fence on the token alone would let a holder cleared
+        // that way go on recording versions and beating against a marker that reads unclaimed.
+        for (HolderWrite write : holderWrites()) {
+            markerCollection.deleteMany(new Document());
+            SchemaVersionMarker.createUnmanagedMarker(database);
+
+            final Claim holder = claim("live-holder");
+            markerCollection.updateOne(
+                    new Document("_id", SchemaVersionMarker.MARKER_ID),
+                    new Document("$set", new Document("migrating", false))
+                            .append("$unset", new Document("migratingSince", "")
+                                    .append("migratingHost", "")));
+            final Document before = LeaseTestSupport.rawMarker(database);
+            assertEquals(holder.token(), before.getString("claimToken"));
+
+            try {
+                write.run(holder);
+                fail("a holder whose claim was cleared must stop at its next marker write");
+            } catch (ClaimLostException ex) {
+                assertTrue(
+                        "message should say the claim was cleared: " + ex.getMessage(),
+                        ex.getMessage().contains("cleared or released"));
+            }
+            assertEquals(before, LeaseTestSupport.rawMarker(database));
+        }
+    }
+
+    @Test
     public void testWritesAgainstAMissingMarkerReportItGone() throws DpException {
 
         for (HolderWrite write : holderWrites()) {

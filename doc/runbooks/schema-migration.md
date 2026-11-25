@@ -308,9 +308,17 @@ a previous holder may still be running on the server:
 ```js
 db.getSiblingDB("admin").aggregate([
   {$currentOp: {allUsers: true}},
-  {$match: {"command.comment": /^dp-schema-migration:/}}
+  {$match: {"command.comment": /^dp-schema-migration:/, ns: /^dp\./}}
 ])
 ```
+
+(`dp` is the service database name.) Run this one as an administrator: `allUsers: true` lists every
+user's operations and needs the `inprog` privilege on a standalone or replica set as well as
+through mongos, where the service's own check above needs it only through mongos. It is the form
+to use here because it does not depend on connecting as the service user. Without such a user, run
+the `allUsers: false` query from
+[A migration whose process has gone away](#a-migration-whose-process-has-gone-away) as the service
+user instead.
 
 Wait for anything this lists to finish, or end it with `db.killOp(<opid>)`. An operation started by
 1.16.0 carries no comment; look for a long-running `update` or `aggregate` on `buckets` instead.
@@ -334,15 +342,23 @@ Unset every field, as shown. (The command in the 1.16.0 version of this document
 first two. A marker cleared that way is still claimed correctly by this build, which removes the
 rest itself.)
 
+**After the 1.16.0 form of the clear, do not let a 1.16.0 process claim the migration.** That form
+leaves `claimToken` and `heartbeatSeq` on the marker, and a 1.16.0 claim does not remove them. The
+claim then carries a token whose heartbeat never moves, and a process of this build takes it over
+after 60 seconds although the 1.16.0 migrator is alive: its operations carry no comment, so the
+check for running operations does not see them. The two then migrate at once. Use the command
+above, which removes the token, or upgrade every service before restarting.
+
 Then restart the service. It re-reads the version and resumes from wherever the interrupted run
 actually got to — the version advances after *each* migration, not once at the end, so a crash partway
 through a multi-migration upgrade leaves the version at the last one that completed.
 
 Every migration is also individually idempotent, so re-running one that had already finished is safe.
 
-**Clearing the claim of a process that is alive stops that process.** It finds its claim gone at
-its next write to the marker and exits with *"the migration claim was cleared or released while
-this process held it"*. The operation it had already sent keeps running on the server.
+**Clearing the claim of a process that is alive stops that process**, whichever form of the clear
+was used. It finds its claim gone at its next write to the marker and exits with *"the migration claim was cleared or released while this process held
+it"*. The operation it had already sent keeps running on the server. A 1.16.0 process is not
+stopped this way; it carries on and records its versions.
 
 ---
 

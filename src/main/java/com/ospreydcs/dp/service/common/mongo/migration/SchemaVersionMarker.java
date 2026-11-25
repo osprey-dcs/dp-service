@@ -39,7 +39,8 @@ import java.util.regex.Pattern;
  * <p><b>The claim is a lease (issue #292).</b> A claim carries a random {@code claimToken} and a
  * {@code heartbeatSeq} its holder increments. A waiting process that sees the same pair for long
  * enough concludes the holder is gone and takes the claim over with {@link #takeOverClaim}, a
- * compare-and-swap on that pair. <b>Every marker write a holder makes filters on its token</b>
+ * compare-and-swap on that pair. <b>Every marker write a holder makes filters on its token</b>, and
+ * on {@code migrating: true}
  * ({@link #recordApplied}, {@link #releaseClaim}, {@link #heartbeat}, {@link #markFailed}), so a
  * holder that was displaced while stalled cannot overwrite the new holder's state: its write
  * matches nothing and is reported as {@link ClaimLostException}. A new marker write by a holder
@@ -351,9 +352,13 @@ public class SchemaVersionMarker {
         return UUID.randomUUID().toString();
     }
 
+    // migrating as well as the token: the manual clear in the 1.16.0 runbook sets migrating false
+    // and leaves the token, and a holder cleared that way must stop like any other cleared holder,
+    // not go on recording versions against a marker that reads unclaimed.
     private static Bson heldBy(Claim claim) {
         return Filters.and(
                 Filters.eq(FIELD_ID, MARKER_ID),
+                Filters.eq(FIELD_MIGRATING, true),
                 Filters.eq(FIELD_CLAIM_TOKEN, claim.token()));
     }
 
@@ -365,7 +370,8 @@ public class SchemaVersionMarker {
      * {@code goneMessage}, the pre-lease error. The marker is held under another token: this
      * process was displaced by a takeover. The marker has no token: the claim was cleared or
      * released while this process held it, which is an operator running the manual clear against a
-     * holder that was alive.
+     * holder that was alive. The marker still has this token but is not {@code migrating}: the
+     * same, by the 1.16.0 form of the clear, which leaves the token behind.
      */
     private static DpException claimWriteMatchedNothing(
             MongoDatabase database, Claim claim, String action, String goneMessage) {
@@ -384,7 +390,9 @@ public class SchemaVersionMarker {
         }
 
         final String currentToken = readString(marker, FIELD_CLAIM_TOKEN);
-        if (currentToken == null) {
+        final boolean clearedLeavingToken = claim.token().equals(currentToken)
+                && !Boolean.TRUE.equals(marker.get(FIELD_MIGRATING));
+        if (currentToken == null || clearedLeavingToken) {
             return new ClaimLostException(
                     "could not " + action + ": the migration claim was cleared or released while "
                             + "this process held it, most likely by the manual clear in "

@@ -1590,12 +1590,15 @@ A process killed while it held the claim used to leave it held forever. The hold
 claim over (`SchemaVersionMarker.takeOverClaim()`) and resumes from the recorded version. The
 bounds on that takeover are as much the design as the takeover:
 
-- **Every marker write by a holder filters on its `claimToken`.** `recordApplied`, `releaseClaim`,
-  `heartbeat` and `markFailed` take the `Claim`. A holder displaced while stalled still believes
+- **Every marker write by a holder filters on its `claimToken`, and on `migrating: true`.**
+  `recordApplied`, `releaseClaim`, `heartbeat` and `markFailed` take the `Claim`. The second
+  condition is for the 1.16.0 form of the manual clear, which sets `migrating: false` and leaves
+  the token: on the token alone, a live holder cleared that way went on recording versions against
+  a marker that read unclaimed. A holder displaced while stalled still believes
   the claim is its own; an unfenced write would overwrite the new holder's version or release its
   claim, with no error. A write that matches nothing re-reads the marker and reports one of three
-  things: the marker is gone (the pre-lease error), another token holds it, or no token does (an
-  operator cleared a live holder's claim). The last two are `ClaimLostException`, which must never
+  things: the marker is gone (the pre-lease error), another token holds it, or no token does, or this
+  token with `migrating` false (an operator cleared a live holder's claim, by either form). The last two are `ClaimLostException`, which must never
   be answered with `markFailed`: the claim is someone else's. A new marker write needs the same
   filter and the same check.
 - **Staleness is observed, never compared.** A waiter remembers the `(claimToken, heartbeatSeq)`
