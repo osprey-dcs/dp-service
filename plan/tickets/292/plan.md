@@ -106,7 +106,8 @@ Added while a claim is held, all removed by `releaseClaim()`:
 | `migratingHeartbeat` | date | Server time of the last heartbeat (`$currentDate`). For operators only; no code compares it. |
 | `takeoverCount` | int32 | Takeovers since the version last advanced. |
 
-Written by a failed migration and removed only by the operator's manual clear:
+Written by a failed migration, and removed by the operator's manual clear or by the next fresh
+claim:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -116,6 +117,15 @@ Written by a failed migration and removed only by the operator's manual clear:
 
 `migrating`, `migratingSince` and `migratingHost` keep their meaning; a takeover rewrites the last
 two. `MarkerState` grows the new fields.
+
+**A fresh claim unsets the three failure fields.** `claimForMigration()` matches only
+`migrating != true`, so a failed claim can be claimed afresh only after an operator cleared it, and
+the flag then describes a failure that has been dealt with. The runbook clear shipped with 1.16.0
+unsets only `migratingSince` and `migratingHost`. An operator who follows that text leaves
+`migrationFailed: true` on the marker; were the next claim to keep it, every waiter would read a
+healthy holder's claim as failed and exit at once, on that migration and on every later one, since
+no release removes the flag either. A takeover never unsets them: its filter requires the flag to
+be absent.
 
 ### D2. Staleness is what the waiter observes, not a timestamp comparison
 
@@ -128,6 +138,10 @@ same pair has been read for `staleAfter`, the claim is stale.
   waiter behaves as it does today.
 - The cost: a waiter always waits one full `staleAfter` (60 s) before taking over, even from a
   holder that died days ago.
+- The observation lives in one waiter's memory, so a takeover needs a waiter that itself survives
+  for `staleAfter` plus the orphan check. Before #293 a waiter has not bound its port either and is
+  killed by the same probe as the migrator; where the probe allows a pod less than that, no takeover
+  happens and the claim stays stuck as it does today.
 
 *Rejected:* `$$NOW` in the heartbeat and in the takeover filter (the ticket's preference). It needs
 a guard for the missing field (finding 3) and makes correctness depend on the filter being written
@@ -145,6 +159,21 @@ exactly right, for no benefit over observation.
 A null result is an ordinary refused claim: another waiter won, or the holder was alive after all
 and its heartbeat moved. The winner resumes from the marker's recorded `version`, read from the
 returned document, not from an earlier read.
+
+The filter does not include `version`, and `recordApplied()` does not change `heartbeatSeq`, so the
+returned version can differ from the one the waiter last read. Two values need a stated outcome:
+
+- **Equal to the target.** The holder recorded its last migration and stopped before the release.
+  The winner applies nothing and releases the claim.
+- **Above the target.** A newer build's migrator stopped partway and this binary took its claim
+  over. The winner releases the claim, so a process of the newer build can claim afresh, and then
+  throws the same "newer than this service supports" error the waiter loop throws.
+
+**"Exactly one wins" assumes the marker write is majority-acknowledged.** Through mongos the
+service runs with `WriteConcern.ACKNOWLEDGED` until #291 is fixed, and a takeover write
+acknowledged by a primary that is then rolled back could be followed by a second takeover. The
+consequence is two concurrent migrators, which D8 makes safe, so this ticket does not block on
+#291; it is recorded here because the guarantee is weaker on that deployment until then.
 
 ### D4. A claim is taken over at most three times per version
 
@@ -169,6 +198,19 @@ or `RuntimeException` out of `Migration.apply()`. An `Error` propagates with no 
 usually ends the process before any catch could write, and one rule is easier to hold than a
 classification of `Error`s in the runner.
 
+**Two more failures leave no flag, and the cap covers those too.** Both are a change from today,
+where any failure leaves the claim for an operator:
+
+- *The `markFailed()` write itself fails*, most likely in the outage that failed the migration. It
+  is logged at error with the exception, the original migration failure is still what is thrown,
+  and the heartbeat stops. The claim then reads as vanished and is taken over, up to the cap.
+- *A marker write fails for a reason other than fencing* (a `MongoException` out of
+  `recordApplied()` or `releaseClaim()`). The migration did not fail, so no flag is written. A
+  takeover re-runs the migration whose record was lost, or only releases when all were recorded.
+
+*Rejected: retrying `markFailed()` until it succeeds.* It keeps a process that has already failed
+alive for the length of an outage in order to prevent at most three idempotent re-runs.
+
 ### D5. A takeover waits for the previous claim's operations to end
 
 Every operation a migration issues carries the comment `dp-schema-migration:<claimToken>` (D6).
@@ -181,6 +223,12 @@ its running time and the `killOp` an operator can use.
 - **If `$currentOp` fails, the takeover is refused**, and the log says why. The process then waits
   and times out as it does today. Proceeding without the check would restore the pile-up on exactly
   the deployments where nobody can see it.
+- **The check runs at its own interval, not on every poll.** Once a claim is stale and an orphan
+  is found, the waiter repeats the check every `ORPHAN_CHECK_INTERVAL_MILLIS` (5 s, a constant with
+  a test seam) while the marker poll stays at 500 ms. Through mongos `$currentOp` is sent to every
+  shard, and each waiting process runs its own check, for what can be hours of an orphaned scan.
+  The first check happens as soon as the claim is stale, and a takeover always follows a check that
+  found nothing, never a remembered result.
 - **The check and the takeover are not atomic.** A holder that was stalled, not dead, can issue a
   new operation after the check. Every migration tolerates that (D8); the check removes the
   repeated case, not every case.
@@ -195,17 +243,31 @@ service user does not have.
 *Rejected: document it and rely on the cap.* Four concurrent full scans of `buckets` is still an
 outage for the query service.
 
+**What the check cannot see.** An operation that carries no comment is invisible to it. Of the
+commands the shipped migrations issue, only `dropIndexes` and `drop` take no comment in this driver,
+and both finish at once. `createIndexes` takes none either (`CreateIndexOptions` has no `comment`
+in 5.4.0), and an index build on `buckets` is long and survives its client. No shipped migration
+builds an index. One that needs to, or needs any other long operation that cannot carry the
+comment, needs its own answer to this section before it ships; D6's test is what stops it from
+arriving unnoticed.
+
 ### D6. Migrations receive the claim's comment through a context argument
 
 `Migration.apply(MongoDatabase)` becomes `apply(MongoDatabase, MigrationContext)`, where
 `MigrationContext` is a record carrying `operationComment()`. Each migration passes it to every
-`find`, `updateOne`, `updateMany` and `aggregate` it issues (`.comment(String)` on the iterable or
-options class; driver 5.4.0). Index and collection drops take no comment in this driver and
-finish at once.
+operation it issues that can take one (`.comment(String)` on the iterable or options class; checked
+against the driver 5.4.0 classes). In the shipped migrations those are `find`, `updateOne`,
+`updateMany`, `aggregate`, `countDocuments` (v1 and v5; the driver sends it as an `aggregate`) and
+`listIndexes` (v1). `dropIndex` and `drop` take no comment in this driver and finish at once.
 
 A new migration that forgets the comment would silently fall outside D5, so a test pins it (Task
-8): each shipped migration runs against a client with a `CommandListener`, and every `find`,
-`update` and `aggregate` command it starts must carry the comment.
+8): each shipped migration runs against a client with a `CommandListener`, and **every command it
+starts must carry the comment unless the command name is in an exempt set**, which is `dropIndexes`
+and `drop`. The test names what is exempt, not what is checked. A list of checked commands
+(`find`, `update`, `aggregate`) would pass a future migration that issues a `delete`, a
+`findAndModify`, a `distinct` or a `createIndexes`, and the last of those is the long-running case
+D5 exists for. Adding a name to the exempt set is then a visible decision, made against D5's "What
+the check cannot see".
 
 *Rejected: a default `apply` overload so existing migrations need no change.* The point is that no
 migration may omit it; an overload that makes omission the default defeats that.
@@ -222,7 +284,11 @@ A write that matches nothing re-reads the marker to say which of two things happ
 - marker present under another token: `ClaimLostException` (a `DpException` subclass). The holder
   was displaced. It stops, writes no failure flag (it cannot: that write is fenced too), and the
   process exits with a message that says another process took the migration over. It must not
-  reuse the "claim has been left in place" text.
+  reuse the "claim has been left in place" text;
+- marker present with no token: also `ClaimLostException`, with a message that says the claim was
+  cleared or released while this process held it. This is an operator running the manual clear
+  against a holder that was alive. Today that holder carries on and records its versions
+  regardless; with fencing it stops at its next marker write.
 
 Fencing covers the marker only. A displaced holder's data operation continues until its next
 marker write; see D8.
@@ -236,7 +302,16 @@ five shipped migrations meet it, and Task 7 records why for each in its Javadoc:
 
 - v1 `$rename` filtered on the old field; v4 `updateMany` filtered on the absent key: a late run
   matches nothing new.
-- v2, v3: per-document rewrites to a canonical form the save path already produces.
+- v2, v3: per-document rewrites to a canonical form the save path already produces. **As shipped
+  they do not meet the rule, and Task 7 changes them.** Each reads a document, computes the
+  canonical arrays, and issues an `updateOne` filtered on `_id` alone. A displaced holder that was
+  stalled can still be in that loop after the new holder has finished and the services have
+  started, and a `saveAnnotation` landing between its read and its write is then overwritten with
+  the canonical form of the *old* value: a lost update, with no error. The `updateOne` filter gains
+  the array values that were read (`tags` in v2; in v3 each id array the update sets), so a
+  document changed since the read matches nothing and is left alone. Whatever replaced it came
+  through the save path and is already canonical. An ordinary run is unaffected, which is why
+  changing a released migration is acceptable here.
 - v5: `$merge` with `$max`, monotone against concurrent ingestion by design.
 
 ### D9. The heartbeat is a daemon thread that outlives nothing
@@ -253,7 +328,8 @@ five shipped migrations meet it, and Task 7 records why for each in its Javadoc:
 - **A fenced beat** (matched 0, marker present under another token) logs at error, sets a
   `claimLost` flag the runner checks before each migration, and stops beating. It does not
   interrupt the running operation: per finding 1 the server-side operation would continue anyway.
-- On failure the order is: write `migrationFailed`, then stop the heartbeat.
+- On failure the order is: write `migrationFailed`, then stop the heartbeat. If that write fails,
+  the heartbeat stops all the same (D4).
 - The beat is `$inc heartbeatSeq`, `$currentDate migratingHeartbeat`, filtered on the token, on the
   runner's `MongoDatabase` handle. A beat delayed past `staleAfter` (a majority write that cannot
   be acknowledged) can lead to a takeover from a live holder; D7 and D8 make that safe.
@@ -285,11 +361,12 @@ Two keys under `MongoClient`, in both `application.yml` files:
 | `schemaMigrationHeartbeatIntervalSeconds` | 10 | `DP_MONGO_SCHEMA_MIGRATION_HEARTBEAT_INTERVAL_SECONDS` |
 | `schemaMigrationStaleAfterSeconds` | 60 | `DP_MONGO_SCHEMA_MIGRATION_STALE_AFTER_SECONDS` |
 
-The runner validates them when a migration is pending and throws `DpException` if the interval is
-below 1, if `staleAfter` is below three intervals (one slow beat must not read as a dead holder),
-or if `staleAfter` is not below the claim wait timeout (a takeover could then never happen, which
-would disable the feature silently). The tests pass millisecond values through the existing
-protected constructor.
+The runner validates them at the top of `run()` on every startup, not only when a migration is
+pending, so a bad value fails the deployment that introduced it and not the next upgrade. It throws
+`DpException` if the interval is below 1, if `staleAfter` is below three intervals (one slow beat
+must not read as a dead holder), or if `staleAfter` is not below the claim wait timeout (a takeover
+could then never happen, which would disable the feature silently). The tests pass millisecond
+values through the existing protected constructor.
 
 ## Implementation tasks
 
@@ -300,13 +377,14 @@ protected constructor.
 - Field constants for D1; extend `MarkerState` and `read()`.
 - `record Claim(String token, int fromVersion)`.
 - `claimForMigration()` returns `Claim` or null; also sets `claimToken`, `heartbeatSeq: 0`,
-  `migratingHeartbeat`, `takeoverCount: 0`, and unsets nothing else.
+  `migratingHeartbeat`, `takeoverCount: 0`, and unsets the three failure fields (D1).
 - `takeOverClaim(database, observedToken, observedSeq, host, maxTakeovers)` per D3.
 - `heartbeat(database, claim)` returns whether it matched.
 - `recordApplied(database, claim, version, description)`: token filter, `takeoverCount: 0`.
 - `releaseClaim(database, claim)`: token filter; unsets every D1 claim field.
 - `markFailed(database, claim, version, message)`: token filter; redact and truncate.
-- A private helper that turns `matchedCount == 0` into "marker gone" or `ClaimLostException` (D7).
+- A private helper that turns `matchedCount == 0` into "marker gone" or `ClaimLostException`, the
+  latter with one message for another token and one for no token (D7).
 - `findOrphanedOperations(database)` per D5, returning comment, `ns`, `opid` and running seconds;
   `MongoException` becomes `DpException`.
 
@@ -326,17 +404,21 @@ Javadoc).
 
 ### Task 5. `SchemaMigrationRunner`
 
-- Read and validate the two keys (D12); constructor seam gains heartbeat interval and stale-after
-  in milliseconds.
+- Read and validate the two keys at the top of `run()` (D12); constructor seam gains heartbeat
+  interval, stale-after and orphan-check interval in milliseconds.
 - `migrateOrWait()`: on a refused claim, read the marker and, in order:
   1. `migrationFailed`: throw at once, naming the failed version and stored message;
   2. update the observed pair (D2);
   3. if stale and at the cap: throw (D4);
-  4. if stale: orphan check (D5), then `takeOverClaim()`;
+  4. if stale: orphan check (D5), at its own interval while it keeps finding an orphan, then
+     `takeOverClaim()`;
   5. otherwise the existing deadline, sleep and re-read.
 - A won claim or takeover runs through one method: start heartbeat, `applyPending(claim)`, release,
   with the heartbeat stopped in `finally`, and `markFailed()` in the catch for a migration failure
-  only (not for `ClaimLostException`, not for a marker-write failure).
+  only (not for `ClaimLostException`, not for a marker-write failure). A `markFailed()` that throws
+  is logged and does not replace the migration failure being thrown (D4).
+- A takeover whose returned version is the target applies nothing and releases; one whose returned
+  version is above the target releases and throws (D3).
 - `applyPending()` checks `heartbeat.isClaimLost()` before each migration and passes the context.
 - `describeHolder()` adds the last heartbeat time and takeover count; timeout messages distinguish
   a live holder, an orphaned operation, and a legacy claim with no heartbeat.
@@ -348,9 +430,14 @@ comments in the main file.
 
 ### Task 7. Migrations
 
-`V1`–`V5`: new signature, the comment on every `find`/`updateOne`/`updateMany`/`aggregate`, and a
-Javadoc sentence on late and concurrent runs (D8). Update the existing per-migration tests for the
-signature.
+`V1`–`V5`: new signature, the comment on every operation that takes one (D6, including v1's and
+v5's `countDocuments` and v1's `listIndexes`), and a Javadoc sentence on late and concurrent runs
+(D8). Update the existing per-migration tests for the signature.
+
+`V2` and `V3`: add the arrays that were read to the `updateOne` filter (D8), and count a document
+as rewritten only when the update matched. Each gets a test that changes the document between the
+migration's read and its write (a Mockito collection delegating to the real one, intercepting
+`updateOne`) and asserts the concurrent value survives.
 
 ### Task 8. Tests
 
@@ -362,12 +449,23 @@ shortened intervals:
 - A claim with a moving heartbeat is not taken over; the waiter returns when the holder releases.
 - A claim marked `migrationFailed` is never taken over, and the waiter throws without waiting for
   the deadline, naming the failed version.
+- A marker left with `migrationFailed: true` and `migrating: false` (the 1.16.0 runbook clear) is
+  claimed, the claim removes the three failure fields, and a waiter beside that holder waits
+  instead of throwing.
+- A stale claim whose recorded version is already the target is taken over, applies nothing, and
+  is released; one whose recorded version is above the target is released and the process throws.
+- A `markFailed()` whose write throws: the migration's own failure is what is thrown, the heartbeat
+  stops, and the claim is left without a flag.
 - A claim with no `claimToken` (1.16.0 shape) is not taken over; the old timeout applies.
 - A stale claim at the cap is not taken over; the waiter throws at once.
 - A stale claim with a running operation carrying the migration comment is not taken over until
-  that operation ends (a slow commented `updateMany` on a scratch collection in `dp-test`).
+  that operation ends (a slow commented `updateMany` on a scratch collection in `dp-test`). While
+  it runs, the number of `$currentOp` commands issued (counted by a `CommandListener`) follows the
+  orphan-check interval, not the poll interval.
 - A displaced holder's `recordApplied()`, `releaseClaim()`, `heartbeat()` and `markFailed()` leave
-  the marker unchanged and report `ClaimLostException`; with the marker deleted they report "gone".
+  the marker unchanged and report `ClaimLostException`; with the marker deleted they report "gone";
+  with the claim cleared by hand (marker present, no token) they report `ClaimLostException` with
+  the cleared-claim message.
 - Two waiters racing a takeover: exactly one wins.
 - A failing migration leaves `migrationFailed`, version and message set, with the claim held; a
   secret-bearing URI in the message is redacted.
@@ -375,15 +473,22 @@ shortened intervals:
   `StackOverflowError`): `heartbeatSeq` does not move afterwards, and no failure flag is written.
 - A heartbeat whose write throws keeps beating (Mockito collection delegating to the real one, as
   `PvStatsMaxSpanUpdaterTest` does).
-- Configuration validation: each of the three rejections in D12.
-- **Comment coverage (D6):** every shipped migration, run through a `CommandListener` client,
-  issues no `find`, `update` or `aggregate` without the comment.
+- Configuration validation: each of the three rejections in D12, raised with the database already
+  at the current version.
+- **Comment coverage (D6):** every shipped migration, run through a `CommandListener` client
+  against a fixture that makes it issue each of its operations (v1 needs a stale text index to
+  reach `dropIndex`), starts no command without the comment other than `dropIndexes` and `drop`.
+  A test migration issuing an uncommented `delete` fails the same check.
 
 Each new test is run once with the behavior it pins reverted, to confirm it fails.
 
 ### Task 9. Sharded verification of the orphan check
 
-Against a throwaway sharded cluster (one mongos, one shard is enough): confirm that
+Against a throwaway sharded cluster (one mongos, one shard is enough): first repeat finding 1
+through mongos, since it was measured on a standalone only. Kill the client of a slow `updateMany`
+and of a slow `$merge` aggregate with `kill -9` and record whether each runs to completion on the
+shard or is ended when mongos sees the client go. If they do not survive, D5 has nothing to wait
+for on a sharded deployment and the check is harmless; record that. Then confirm that
 `$currentOp {allUsers: false}` through mongos, as a `readWrite` user, reports an orphaned
 `updateMany` and `$merge` aggregate with the comment and an `ns` the D5 match accepts. If the shape
 differs (shard-prefixed `opid`, a different `ns`, or the own-user form unavailable through mongos),
@@ -409,7 +514,8 @@ primary deployment.
   indefinitely for a live holder: #293.
 - A standalone migration entry point (a Kubernetes Job or Helm hook): not planned.
 - Recovering a stuck claim left by a 1.16.0 process: remains the manual clear (D10).
-- Topology misdetection through mongos, which decides the write concern the heartbeat uses: #291.
+- Topology misdetection through mongos, which decides the write concern of every marker write,
+  the takeover included (D3): #291.
 - Making v5 resumable across takeovers: no ticket; raise one only if #293 does not remove the need.
 
 ## Dependencies and sequencing
