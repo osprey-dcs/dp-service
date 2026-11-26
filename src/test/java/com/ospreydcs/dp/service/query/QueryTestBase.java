@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -434,6 +436,35 @@ public class QueryTestBase {
         private final int numBucketsExpected;
         private final AtomicInteger numBucketsReceived = new AtomicInteger(0);
 
+        // Callbacks are handled off the calling thread, to simulate out of process grpc: otherwise
+        // a response is handled in the thread of the service handler that sent it. They are
+        // handled by ONE thread, in the order gRPC delivered them. A thread per callback let the
+        // one for onCompleted() release finishLatch before the one for onNext() had stored its
+        // buckets, so a test read an empty result from a query that had been answered correctly,
+        // and let two responses be stored out of order. QueryDataResponseStreamObserverTest pins
+        // both. The thread is a daemon and idles out, so an observer that never sees a terminal
+        // callback leaks nothing. It idles out after milliseconds, not seconds: a test that builds
+        // thousands of observers in a fraction of a second, as that test does, otherwise holds a
+        // live thread for each. The pool never has more than one worker, and a replacement
+        // drains the same queue, so a thread that idles out mid-stream costs no ordering.
+        private final ThreadPoolExecutor callbackExecutor = newCallbackExecutor();
+
+        private static final long CALLBACK_THREAD_KEEP_ALIVE_MILLIS = 10;
+
+        private static ThreadPoolExecutor newCallbackExecutor() {
+            final ThreadPoolExecutor executor =
+                    new ThreadPoolExecutor(
+                            1, 1, CALLBACK_THREAD_KEEP_ALIVE_MILLIS, TimeUnit.MILLISECONDS,
+                            new LinkedBlockingQueue<>(),
+                            runnable -> {
+                                final Thread thread = new Thread(runnable, "query-data-response-observer");
+                                thread.setDaemon(true);
+                                return thread;
+                            });
+            executor.allowCoreThreadTimeOut(true);
+            return executor;
+        }
+
         public QueryDataResponseStreamObserver(ObserverType observerType) {
             this.observerType = observerType;
             this.numBucketsExpected = 0;
@@ -462,7 +493,13 @@ public class QueryTestBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a response that never finishes is an error, not whatever arrived so far
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timeout waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
@@ -487,10 +524,8 @@ public class QueryTestBase {
 
         @Override
         public void onNext(QueryDataResponse response) {
-            
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
+            // handled off this thread, in delivery order; see callbackExecutor
+            callbackExecutor.execute(() -> {
 
                 if (response.hasExceptionalResult()) {
                     final String errorMsg = "onNext received exceptional response: "
@@ -529,32 +564,30 @@ public class QueryTestBase {
                     }
                 }
 
-            }).start();
+            });
         }
 
         @Override
         public void onError(Throwable t) {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
+            // handled off this thread, in delivery order; see callbackExecutor
+            callbackExecutor.execute(() -> {
                 Status status = Status.fromThrowable(t);
                 final String errorMsg = "onError: " + status;
                 System.err.println(errorMsg);
                 isError.set(true);
                 errorMessageList.add(errorMsg);
                 finishLatch.countDown();
-            }).start();
+            });
         }
 
         @Override
         public void onCompleted() {
-            // handle response in separate thread to better simulate out of process grpc,
-            // otherwise response is handled in same thread as service handler that sent it
-            new Thread(() -> {
+            // handled off this thread, in delivery order; see callbackExecutor
+            callbackExecutor.execute(() -> {
                 if (observerType == ObserverType.STREAM) {
                     finishLatch.countDown();
                 }
-            }).start();
+            });
         }
     }
 
