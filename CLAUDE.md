@@ -1213,6 +1213,15 @@ Integration tests follow a layered structure:
 
 **Response observer pattern:** Each `XxxResponseObserver` holds a `CountDownLatch`, `AtomicBoolean isError`, and result list. `onNext()` spawns a thread to process the response and count down the latch; `onError()` sets the error flag and counts down. `await()` uses a 1-minute timeout.
 
+**A streaming observer must not give each callback its own thread.** That pattern is safe only for a
+unary response, where `onNext()` itself counts down. `QueryTestBase.QueryDataResponseStreamObserver`
+did it for a stream: the thread for `onCompleted()` could release the latch before the thread for
+`onNext()` had stored its buckets, and `QueryAnnotationsIT` failed on `main` with 0 buckets from a
+query the service had answered with 2. It also let two responses be stored out of order. That
+observer now hands every callback to one single-thread executor, which keeps the handling off the
+gRPC thread and in delivery order; `QueryDataResponseStreamObserverTest` pins both. A new streaming
+observer that handles callbacks off-thread owes the same single thread.
+
 **`sendAndVerifyXxx()` pattern:** Starts a thread to call the async stub, awaits the observer, asserts `isError()`/`getErrorMessage()` for failure cases or extracts and returns the key identifier for success.
 
 **`MongoTestClient` pattern:** Add `findXxx(String key)` following the retry-loop pattern (300 retries × 100ms = 30s max) to handle asynchronous worker-thread insertion.
