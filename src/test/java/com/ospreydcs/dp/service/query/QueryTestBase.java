@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -441,14 +443,19 @@ public class QueryTestBase {
         // buckets, so a test read an empty result from a query that had been answered correctly,
         // and let two responses be stored out of order. QueryDataResponseStreamObserverTest pins
         // both. The thread is a daemon and idles out, so an observer that never sees a terminal
-        // callback leaks nothing.
-        private final java.util.concurrent.ThreadPoolExecutor callbackExecutor = newCallbackExecutor();
+        // callback leaks nothing. It idles out after milliseconds, not seconds: a test that builds
+        // thousands of observers in a fraction of a second, as that test does, otherwise holds a
+        // live thread for each. The pool never has more than one worker, and a replacement
+        // drains the same queue, so a thread that idles out mid-stream costs no ordering.
+        private final ThreadPoolExecutor callbackExecutor = newCallbackExecutor();
 
-        private static java.util.concurrent.ThreadPoolExecutor newCallbackExecutor() {
-            final java.util.concurrent.ThreadPoolExecutor executor =
-                    new java.util.concurrent.ThreadPoolExecutor(
-                            1, 1, 1, TimeUnit.SECONDS,
-                            new java.util.concurrent.LinkedBlockingQueue<>(),
+        private static final long CALLBACK_THREAD_KEEP_ALIVE_MILLIS = 10;
+
+        private static ThreadPoolExecutor newCallbackExecutor() {
+            final ThreadPoolExecutor executor =
+                    new ThreadPoolExecutor(
+                            1, 1, CALLBACK_THREAD_KEEP_ALIVE_MILLIS, TimeUnit.MILLISECONDS,
+                            new LinkedBlockingQueue<>(),
                             runnable -> {
                                 final Thread thread = new Thread(runnable, "query-data-response-observer");
                                 thread.setDaemon(true);
@@ -486,7 +493,13 @@ public class QueryTestBase {
 
         public void await() {
             try {
-                finishLatch.await(1, TimeUnit.MINUTES);
+                // a response that never finishes is an error, not whatever arrived so far
+                if (!finishLatch.await(1, TimeUnit.MINUTES)) {
+                    final String errorMsg = "timeout waiting for finishLatch";
+                    System.err.println(errorMsg);
+                    isError.set(true);
+                    errorMessageList.add(errorMsg);
+                }
             } catch (InterruptedException e) {
                 final String errorMsg = "InterruptedException waiting for finishLatch";
                 System.err.println(errorMsg);
