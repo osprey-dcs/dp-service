@@ -44,8 +44,7 @@ public class BenchmarkQueryGrpcServer extends QueryGrpcServer {
         BenchmarkMongoClient.prepareBenchmarkDatabase();
         QueryServiceImpl serviceImpl = new QueryServiceImpl();
         final BenchmarkQueryGrpcServer server = new BenchmarkQueryGrpcServer(serviceImpl);
-        server.start();
-        server.blockUntilShutdown();
+        server.run();
     }
 
 }

@@ -75,8 +75,7 @@ public class IngestionGrpcServer extends GrpcServerBase {
 
         IngestionServiceImpl serviceImpl = new IngestionServiceImpl();
         final IngestionGrpcServer server = new IngestionGrpcServer(serviceImpl);
-        server.start();
-        server.blockUntilShutdown();
+        server.run();
     }
 
 }

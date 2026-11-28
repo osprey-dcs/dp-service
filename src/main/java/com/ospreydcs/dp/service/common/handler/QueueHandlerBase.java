@@ -134,7 +134,7 @@ public abstract class QueueHandlerBase {
      * take the next job. An {@code OutOfMemoryError} is not local: in #314 the same exhaustion
      * also killed the Mongo driver's cluster monitor thread.
      */
-    static boolean isFatal(Throwable throwable) {
+    public static boolean isFatal(Throwable throwable) {
         return throwable instanceof VirtualMachineError && !(throwable instanceof StackOverflowError);
     }
 
@@ -272,9 +272,11 @@ public abstract class QueueHandlerBase {
         // register the observable gauge reporting the configured worker count, closed in fini()
         workersMaxGauge = DpMetrics.registerHandlerWorkersMax(getServiceName_(), this::getNumWorkers_);
 
-        // add a JVM shutdown hook just in case
-        final Thread shutdownHook = new Thread(() -> this.fini());
-        Runtime.getRuntime().addShutdownHook(shutdownHook);
+        // No JVM shutdown hook is registered here (#293). GrpcServerBase.stopServer() calls fini()
+        // after the gRPC server has drained and before telemetry shuts down. A hook of the
+        // handler's own ran beside the server's, not after it, so the handler stopped while the
+        // server was still draining calls into it; and addShutdownHook() throws once shutdown has
+        // begun, which is where an initialization that finishes after a SIGTERM would be.
 
         return true;
     }
@@ -304,6 +306,15 @@ public abstract class QueueHandlerBase {
         }
 
         // shut down executor service thread pool and workers
+        // Null until init_() has returned, which for a handler with a Mongo client is after the
+        // schema migrations (#293). GrpcServerBase does not call fini() on a handler that is
+        // still initializing; this keeps that from being one refactoring away from a
+        // NullPointerException on the shutdown hook's thread.
+        if (executorService == null) {
+            logger.info("QueueHandlerBase fini completed; the handler had not finished init()");
+            return true;
+        }
+
         logger.trace("fini shutting down executorService");
         executorService.shutdown(); // disable new tasks from being submitted
         try {
