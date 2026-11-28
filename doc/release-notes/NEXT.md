@@ -25,6 +25,7 @@ person cutting the release has any reason to re-read.
 - [Sample queries read long ranges in bounded memory (Issue #314)](#sample-queries-read-long-ranges-in-bounded-memory-issue-314)
 - [Empty `querySamplesStream` results honor flow control (Issue #324)](#empty-querysamplesstream-results-honor-flow-control-issue-324)
 - [An interrupted schema migration recovers by itself (Issue #292)](#an-interrupted-schema-migration-recovers-by-itself-issue-292)
+- [Services bind their port before initializing, and serve gRPC health (Issue #293)](#services-bind-their-port-before-initializing-and-serve-grpc-health-issue-293)
 - [Cutting the release](#cutting-the-release)
 
 ---
@@ -368,8 +369,93 @@ Other things an operator will notice:
   while they run. This could only happen to a migration running beside live services, which the
   upgrade procedure already rules out.
 
-This does not stop a probe from killing a pod during a long migration; the process that takes over
-is subject to the same probe. No schema version change.
+This does not by itself stop a probe from killing a pod during a long migration; the process that
+takes over is subject to the same probe. No schema version change.
+
+---
+
+## Services bind their port before initializing, and serve gRPC health (Issue #293)
+
+A service used to bind its gRPC port only after it had initialized, and initialization includes
+the schema migrations. On a large archive that was hours with nothing listening, and a Kubernetes
+probe killed the pod that was migrating.
+
+Every service now binds its gRPC port at once and initializes in the background. Until
+initialization has succeeded:
+
+- the standard gRPC health service (`grpc.health.v1.Health`), which every service now serves,
+  reports `NOT_SERVING`;
+- every other call ends with gRPC status `UNAVAILABLE` and a description: `service is
+  initializing`, or the schema migration version being applied, or that the service is waiting
+  for a migration running in another process.
+
+**Deploy this release before a release that changes the schema, not together with one.** It
+changes no schema itself. Its protection of a long migration depends on the probes, the grant and
+the upgrade procedure below being in place, and it is better to have seen them work on an
+ordinary restart first.
+
+### Action needed: Kubernetes probes
+
+The health service registers three names. `""` and the service's full name (for example
+`dp.service.query.DpQueryService`) are `NOT_SERVING` until the service has initialized. `liveness`
+is `SERVING` from the moment the port is bound.
+
+- **Liveness:** `tcpSocket` on the gRPC port, or a `grpc` probe with `service: liveness`.
+- **Readiness:** a `grpc` probe with no service name.
+- **Startup:** not needed. One that waits for `SERVING` kills the pod during a long migration.
+- **A `grpc` liveness probe with no service name kills the pod during a migration.** A Kubernetes
+  gRPC probe passes only on `SERVING`.
+
+The probe YAML is in
+[running.md](https://github.com/osprey-dcs/dp-service/blob/main/doc/running.md#kubernetes-probes).
+
+### Action needed on a sharded deployment: the `inprog` privilege
+
+The grant described under #292 above is a prerequisite here. Without it the probes still stop
+Kubernetes from killing a migrating pod, but a migrating pod that dies for any other reason leaves
+a claim to clear by hand. A new gauge, `dp.schema.migration.takeover.enabled`, is 0 on a service
+that lacks the privilege, so it can be checked, and alerted on, before it matters.
+
+### Upgrades that change the schema: stop every service first
+
+Readiness does not order an upgrade. Under a `RollingUpdate` the old pod serves until the new one
+is ready, which is after the migration; `strategy: Recreate` orders old before new within one
+Deployment, not across the four services. The
+[runbook](https://github.com/osprey-dcs/dp-service/blob/main/doc/runbooks/schema-migration.md#upgrading-to-a-release-that-changes-the-schema)
+has the procedure: confirm the grant, scale every service to zero, deploy, watch, and do not
+restart the migrating pod.
+
+### Behavior changes
+
+- **A service waiting for another process's migration no longer exits after five minutes.** It
+  stays up, `NOT_SERVING`, for as long as the migration shows a sign of life: its heartbeat
+  advancing, the schema version advancing, or an operation of an abandoned claim still running on
+  the server. It gives up five minutes after the last such sign, with a message that begins "gave
+  up waiting for the schema migration" where it used to say "timed out after 300s". A claim left
+  by a 1.16.0 process, and a deployment that cannot check for running operations, still end the
+  wait after five minutes.
+- **A failed initialization still exits with status 1**, now after the port has been bound and
+  released. Supervisors that restart on a non-zero exit need no change.
+- **A `SIGTERM` during a migration stops the service and leaves the migration to be taken over**
+  by the next process, once the interrupted operation has finished on the server. That uses one of
+  the three takeovers allowed per schema version, so do not restart a migrating pod to hurry it.
+  Before, the handler's shutdown could fail with a `NullPointerException` at this point.
+- **A stopping service drains before its handler stops.** The request handler used to stop at the
+  instant of a `SIGTERM`, beside the gRPC server; it now stops after the server has finished its
+  calls (up to 30 seconds). One visible effect on the ingestion service: requests arriving on a
+  stream that is already open are accepted and stored during that time, where they used to be
+  rejected from the moment of the signal.
+- **Clients see `UNAVAILABLE` with a description** from a service that is starting, where they saw
+  a refused connection, which gRPC also reports as `UNAVAILABLE`. Retry handling is unaffected.
+
+### New metrics
+
+`dp.service.ready`, `dp.service.init.elapsed`, `dp.schema.migration.active` and
+`dp.schema.migration.takeover.enabled`, all by `dp.service`; see
+[metrics.md](https://github.com/osprey-dcs/dp-service/blob/main/doc/metrics.md#startup-and-schema-migration-metrics-all-services).
+Calls refused during initialization appear in gRPC's own metrics with `grpc_status="UNAVAILABLE"`.
+
+No new configuration, no dp-grpc change, no schema version change.
 
 ---
 

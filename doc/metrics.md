@@ -16,6 +16,7 @@ Added by [issue #212](https://github.com/osprey-dcs/dp-service/issues/212).
   - [Query](#query-metrics)
   - [Ingestion](#ingestion-metrics)
   - [Handler (all services)](#handler-metrics-all-services)
+  - [Startup and schema migration (all services)](#startup-and-schema-migration-metrics-all-services)
   - [Database](#database-metrics)
   - [gRPC and JVM](#grpc-and-jvm-metrics)
 - [Query stages](#query-stages)
@@ -410,6 +411,55 @@ distribution, not an instantaneous sample — and `workers.active` against `work
 saturation is `workers.active` pinned at `workers.max` with `queue.wait` climbing.
 
 `workers.active` nets to zero even when a job throws.
+
+### Startup and schema migration metrics (all services)
+
+A service binds its ports first and initializes afterwards, and initialization includes any
+pending schema migration, which can take hours
+([#293](https://github.com/osprey-dcs/dp-service/issues/293)). These four gauges say where a
+process is in that. The metrics endpoint answers throughout.
+
+| Metric | Type | Unit | Attributes | Meaning |
+|---|---|---|---|---|
+| `dp.service.ready` | gauge | — | `dp.service` | 1 once the service has initialized and is serving, else 0 |
+| `dp.service.init.elapsed` | gauge | s | `dp.service` | Seconds since startup while initializing; the final initialization time once ready |
+| `dp.schema.migration.active` | gauge | — | `dp.service` | 1 while this process is applying a schema migration, else 0 |
+| `dp.schema.migration.takeover.enabled` | gauge | — | `dp.service` | 1 if this service can take over an abandoned migration, 0 if it cannot |
+
+In a scrape: `dp_service_ready`, `dp_service_init_elapsed_seconds`, `dp_schema_migration_active`,
+`dp_schema_migration_takeover_enabled`.
+
+- **A hung initialization is `ready` 0 with `init.elapsed` climbing**, on a pod whose liveness
+  probe passes. During a migration that is expected, for as long as the migration takes; the
+  migrating pod's log names the migration it is on.
+- **`migration.active` separates the process that is migrating from the ones waiting for it.**
+  During an upgrade exactly one process reports 1. All of them at 0 with `ready` at 0 means every
+  process is waiting, on a claim whose holder is gone.
+- **`migration.takeover.enabled` at 0 means the service's database user cannot list its own
+  running operations**, which through mongos needs the `inprog` privilege. Nothing is wrong today,
+  but a migrating process that dies will leave a claim to clear by hand. It is worth an alert,
+  because it is found on an ordinary day and matters only in an incident:
+
+  ```promql
+  dp_schema_migration_takeover_enabled == 0
+  ```
+
+  The grant is in the
+  [runbook](runbooks/schema-migration.md#the-privilege-a-sharded-deployment-needs). The gauge
+  reports **no value** until the check has run, a moment after startup, so that "not yet known" is
+  never read as "refused"; the ingestion stream service has no database connection and never
+  reports it.
+
+The phase of initialization is not an attribute, since the attribute vocabulary is closed and a
+numeric code is not something to read off a dashboard. The reason a service is not ready is in the
+description of the `UNAVAILABLE` status it returns, and in its log.
+
+**Calls refused during initialization are counted by gRPC's own metrics only**:
+`grpc_server_call_duration_seconds_count{grpc_status="UNAVAILABLE"}`. They never reach a handler,
+so no `dp.*` request metric counts them.
+
+**Health checks appear in gRPC's metrics as `grpc_method="other"`**, not under the health
+service's name, so a probe every few seconds shows there as a steady rate of `OK` calls.
 
 ### Database metrics
 

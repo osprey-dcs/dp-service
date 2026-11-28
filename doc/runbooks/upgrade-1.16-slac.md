@@ -6,6 +6,13 @@ restart. Companion to [schema-migration.md](schema-migration.md), which explains
 mechanism and what each startup failure means, and to the
 [1.16.0 release notes](../release-notes/rel-1.16.0.md), which describe what changed and why.
 
+**This is the record of the 1.16.0 upgrade and describes how 1.16.0 behaves.** Later builds differ
+in the two things that made that upgrade hard: a service binds its gRPC port before it migrates,
+so correctly configured probes do not kill it, and a waiting service no longer times out after
+five minutes ([#293](https://github.com/osprey-dcs/dp-service/issues/293)). For an upgrade from a
+later build, follow
+[schema-migration.md](schema-migration.md#upgrading-to-a-release-that-changes-the-schema).
+
 This runbook covers the bucket-span work (#232), the span-class partition and outbound flow control
 that build on it (#274), and the deployment changes that land in the same release. The other
 1.16.0 migrations (v1–v4) touch the annotations, calculations, and buckets collections; the general

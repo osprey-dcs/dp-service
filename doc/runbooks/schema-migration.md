@@ -90,10 +90,17 @@ version. Most releases change no schema, so the two move at different rates.
 | present, version < binary | — | Pending migrations applied in order. |
 | present, version == binary | — | Nothing to do. |
 | present, version > binary | — | **Refuses to start.** |
-| present, `migrating: true`, heartbeat moving | — | Waits for the holder, then proceeds, or fails after 5 minutes. |
+| present, `migrating: true`, heartbeat moving | — | Waits for the holder for as long as the heartbeat keeps moving, then proceeds. |
 | present, `migrating: true`, heartbeat stopped for 60 s | — | Takes the migration over and resumes from the recorded version (see [A migration whose process has gone away](#a-migration-whose-process-has-gone-away)). |
 | present, `migrating: true`, `migrationFailed: true` | — | **Refuses to start** at once. |
 | present, `migrating: true`, no `claimToken` | — | A 1.16.0 claim. Waits, then fails after 5 minutes; never taken over. |
+
+**All of this happens after the service has bound its gRPC port**
+([#293](https://github.com/osprey-dcs/dp-service/issues/293)). A service that is migrating, or
+waiting for another process's migration, is up and reports `NOT_SERVING` on the gRPC health
+service; every other call gets `UNAVAILABLE` with the reason. It does not serve until its own
+startup has finished. A process that "refuses to start" in the table exits with status 1. Probe
+configuration is in [running.md](../running.md#startup-health-and-kubernetes-probes).
 
 The empty-versus-populated distinction matters and cannot be assumed either way. Treating "no marker"
 as always-version-0 would make every fresh install replay an ever-growing migration list against empty
@@ -152,26 +159,42 @@ claim failed too, most likely in the same outage. That claim is not marked, so i
 abandoned and a starting process will take it over and run the migration again, at most three
 times.
 
-### "timed out after 300s waiting for a schema migration held by ..."
+### "gave up waiting for the schema migration held by ...: it has shown no sign of life for 300s"
 
-Another process holds the claim, and it did not finish within five minutes. The rest of the message
-says which of four cases this is.
+Another process holds the claim, and this one stopped waiting for it. Before
+[#293](https://github.com/osprey-dcs/dp-service/issues/293) the message began *"timed out after
+300s waiting"* and was raised five minutes after startup whatever the holder was doing. **The five
+minutes now count from the last sign of life**, and a waiting service stays up, `NOT_SERVING`, for
+as long as it keeps seeing one:
 
-**"Its heartbeat is current, so the migration is still running."** A real migration on a large
-archive. Wait for it, then restart this service (a supervisor that restarts on failure does this by
-itself). Do not clear the claim.
+- the holder's heartbeat advancing (a migration that is running, however long it takes);
+- the recorded schema version advancing;
+- an operation of an abandoned claim still running on the server (the waiter takes over when it
+  ends).
 
-**"Its heartbeat has stopped ... but N operation(s) ... are still running on the server."** The
-process that held the claim is gone, but an operation it sent is still running: a client that is
-killed does not take its operation with it. The claim will be taken over by a starting process as
-soon as that operation ends, so restarting is enough. The message names the operation, how long it
-has run, and the `db.killOp(...)` that ends it early. Ending v4's update early loses nothing (the
-takeover stamps what is left); ending v5's aggregate discards its work, and the takeover starts
-that scan again.
+So this message no longer appears during a healthy long migration, and no restart is needed after
+one. It means that for five minutes nothing told this process whether the migration is alive. The
+rest of the message says which case this is.
 
 **"... the check for its operations still running on the server failed."** The claim looks
 abandoned, but the service could not list its own running operations, so it refused to take over.
-See [the privilege a sharded deployment needs](#the-privilege-a-sharded-deployment-needs).
+Through mongos this is the missing `inprog` privilege; see
+[the privilege a sharded deployment needs](#the-privilege-a-sharded-deployment-needs). Until it is
+granted, clear the claim by hand (below).
+
+**"The claim was neither released nor taken over in that time."** The heartbeat stopped and every
+attempt to take the claim over was refused, which happens when several waiting processes keep
+winning it from one another without finishing. Look at the other services' logs.
+
+**"Its heartbeat has stopped ... but N operation(s) ... were still running on the server."** Rare
+now, since a running operation keeps the waiter waiting; it needs the check to have stopped
+reporting. The claim will be taken over by a starting process once the operation ends, so
+restarting is enough. The message names the operation, how long it has run, and the
+`db.killOp(...)` that ends it early. Ending v4's update early loses nothing (the takeover stamps
+what is left); ending v5's aggregate discards its work, and the takeover starts that scan again.
+
+**"gave up after 300s trying to claim the schema migration ..."** The marker was unclaimed but
+other processes kept claiming it without completing it.
 
 **"The claim has no heartbeat: it was written by a service build that predates migration
 takeover."** A 1.16.0 process holds or left the claim. Nothing can tell whether it is alive, so it
@@ -186,14 +209,23 @@ db.serviceMetadata.findOne({_id: "schemaVersion"}, {migrating: 1, migratingSince
 
 `migratingHost` is the JVM's runtime name (typically `pid@hostname`), so it identifies the process.
 
+### A waiting service exited with "error reading schema version marker"
+
+A waiting service reads the marker twice a second, for hours during a long migration. One failed
+read (a primary election, a network blip) ends the wait: the service exits non-zero, its supervisor
+restarts it, and it joins the wait again. Nothing is lost and nothing needs doing, unless it keeps
+happening, in which case the database is the thing to look at.
+
 ### "the schema migration from version N has been abandoned by 4 processes in a row"
 
 The claim was taken over three times and every process that held it went away without the schema
 version advancing. It will not be taken over a fourth time. Something is ending the migrating
 process each time, and another attempt would meet it again:
 
-- a liveness or startup probe that kills a pod which has not bound its port yet (a long migration
-  holds startup for its whole length);
+- a liveness or startup probe that kills the pod while it migrates: a gRPC probe that names no
+  health service, or a startup probe that waits for `SERVING`. The port is bound and the `liveness`
+  health name is `SERVING` throughout a migration, so a probe configured as in
+  [running.md](../running.md#kubernetes-probes) does not do this;
 - an out-of-memory kill, of the container or by `-XX:+ExitOnOutOfMemoryError`;
 - the migration itself ending the process.
 
@@ -239,7 +271,7 @@ Three things stop a takeover, and each is deliberate:
 | The claim | What a starting process does |
 |---|---|
 | is marked `migrationFailed` | Refuses to start at once. A migration that threw would throw again. |
-| has an operation still running on the server | Waits for it (checked every 5 s), against the five-minute limit. |
+| has an operation still running on the server | Waits for it, for as long as it runs (checked every 5 s), then takes over. |
 | has been taken over three times at this version | Refuses to start. See the "abandoned by 4 processes" failure above. |
 
 **The second one matters on a large archive.** MongoDB does not stop an operation when its client
@@ -264,10 +296,18 @@ A process that was only **stalled**, not dead, and is taken over, stops at its n
 marker and exits with *"another process ... took the schema migration over from this one"*. That is
 the expected end of a displaced process, not a second failure.
 
-**This does not stop a probe from killing the migrating pod.** If a liveness probe kills each
-migrating process in turn, each takeover is killed the same way and the cap is reached. v4's update
-keeps the work of each attempt; v5's aggregate starts over. A waiting pod also has to survive the
-60 seconds itself to take over at all. The lasting fix is a probe that allows for the migration.
+**A probe configured for it no longer kills the migrating pod**
+([#293](https://github.com/osprey-dcs/dp-service/issues/293)): the gRPC port is bound before the
+migration starts, and the probes in [running.md](../running.md#kubernetes-probes) pass throughout.
+A probe that is not configured that way still kills each migrating process in turn; each takeover
+is killed the same way and the cap is reached. v4's update keeps the work of each attempt; v5's
+aggregate starts over.
+
+**A migrating process that is stopped on purpose is taken over the same way.** A `SIGTERM` (a node
+drain, a restart) stops the service without touching the migration: its claim is left to go stale
+and its operation is left running on the server. The next process waits for that operation and
+then takes over, which uses one of the three takeovers for that schema version. So **do not restart
+the migrating pod** to hurry it; three restarts at one version reach the cap.
 
 ### The privilege a sharded deployment needs
 
@@ -371,14 +411,43 @@ pre-upgrade backup is the only supported way back, and it discards anything writ
 upgrade began. Rehearse the migrations against a restored copy beforehand:
 [schema-migration-rehearsal.md](schema-migration-rehearsal.md).
 
+### Upgrading to a release that changes the schema
+
+A release note says when a release changes the schema. For one that does, on Kubernetes:
+
+1. **On a sharded deployment, confirm the services can take a migration over.**
+   `dp_schema_migration_takeover_enabled` must be 1 on the running services. If it is 0, grant
+   [the privilege](#the-privilege-a-sharded-deployment-needs) first. (The gauge exists from the
+   release that introduced #293; on an earlier one, check for the privilege directly.)
+2. **Stop every dp service.** Scale all four Deployments to zero and wait until their pods are
+   gone.
+3. **Deploy the new version and scale up.** One pod claims the migration. The others come up
+   `NOT_SERVING` and wait for it.
+4. **Watch it, and leave it alone.** `dp_schema_migration_active` is 1 on the pod that is
+   migrating, `dp_service_init_elapsed_seconds` climbs on all of them, and the migrating pod's log
+   names each migration as it starts. Do not restart the migrating pod: each restart uses one of
+   three takeovers.
+5. **The upgrade is complete when `dp_service_ready` is 1 on every service.**
+
+Outside Kubernetes the steps are the same: stop all the service processes, start the new ones,
+and wait for each to log `service ready`.
+
+**Step 2 is the rule, and a rollout strategy does not replace it.** `strategy: Recreate` stops the
+old pods of one Deployment before starting its new ones, but each service is its own Deployment:
+the new pod of one service claims the migration while the old pods of the other three are still
+serving. A `RollingUpdate` is worse, since it keeps even the same service's old pod serving until
+the new one is ready, which is after the migration. An old ingestion process that writes a bucket
+after migration v5 has seeded `pvStats` leaves that bucket invisible to queries.
+
 ## Concurrent startup
 
 The documented deployment starts three service processes (ingestion, query, annotation) against one
 database, and each initializes every collection. So more than one process can reach the migration
 runner at the same time — this is the normal case, not an edge case.
 
-One process wins an atomic claim on the marker and migrates; the others wait, then proceed once the
-version is current. No coordination between service processes is needed, and their start order does
+One process wins an atomic claim on the marker and migrates; the others wait, up and
+`NOT_SERVING`, for as long as the migration shows it is alive, then proceed once the version is
+current. No coordination between service processes is needed, and their start order does
 not matter. If the process that won goes away, one of the others takes the migration over (see
 [A migration whose process has gone away](#a-migration-whose-process-has-gone-away)).
 
@@ -404,8 +473,9 @@ Environment overrides: `DP_MONGO_RUN_SCHEMA_MIGRATIONS_ON_STARTUP`,
 The two lease settings are checked at every startup, whether or not a migration is pending. The
 service refuses to start if the interval is below 1, if stale-after is below three intervals (one
 slow heartbeat would read as a dead process), or if stale-after is not below the five-minute claim
-wait (no waiting process would last long enough to take over). The takeover cap (three per schema
-version) and the five-minute wait are not configurable.
+wait (a waiting process would give up on an abandoned migration before it could see that the
+claim was stale). The takeover cap (three per schema version) and the claim wait (five minutes
+without a sign of life from the migration) are not configurable.
 
 Setting it to `false` skips *applying* migrations, not the version check — a service whose expected
 version does not match the database still refuses to start. Use it only when migrating out of band.
@@ -500,11 +570,10 @@ missing it, in both collections.
 update is a one-time full collection scan — minutes to perhaps an hour at tens of millions of
 buckets. Two operational consequences:
 
-- **Waiting services will time out and must be restarted.** While the elected process migrates, the
-  other services wait five minutes and then refuse to start with the held-claim timeout message.
-  During a long v4 run that message says *"Its heartbeat is current, so the migration is still
-  running"*: let the migrating process finish, and restart the others (a supervisor that restarts
-  on failure self-heals). Do **not** clear the claim while the migrating host is alive.
+- **Waiting services wait for it.** While the elected process migrates, the other services are up
+  and `NOT_SERVING`, and start serving when it finishes; nothing needs restarting. (Builds before
+  [#293](https://github.com/osprey-dcs/dp-service/issues/293) gave up after five minutes and had
+  to be restarted.) Do **not** clear the claim while the migrating host is alive.
 - **If the migrating process is killed**, a waiting process takes the migration over once the
   killed process's update has finished on the server. That update keeps stamping after its client
   is gone, so the takeover's own update finds little or nothing left to do.
@@ -533,9 +602,9 @@ keeping the larger of any stored and computed value), and drops the `bucketSpanV
 collection, which nothing reads or writes any more.
 
 **Expect a long run on a large archive.** The seed is a one-time full scan of `buckets` — the same
-order of work as v4, with the same operational consequence: **waiting services will time out and
-must be restarted.** Follow the v4 guidance above: let the migrating process finish, restart the
-others, and do **not** clear the claim while the migrating host is alive. Memory is bounded by the
+order of work as v4, with the same operational consequence: the other services wait,
+`NOT_SERVING`, until the migrating process finishes. Follow the v4 guidance above, and do **not**
+clear the claim while the migrating host is alive. Memory is bounded by the
 number of distinct PVs, not the number of buckets.
 
 **If the migrating process is killed**, its aggregate still runs to completion on the server and

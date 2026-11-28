@@ -57,6 +57,114 @@ On Kubernetes the metrics port is an ordinary container port; `doc/metrics.md` h
 See [`doc/metrics.md`](metrics.md) for what is measured, the query stage breakdown, the slow-query
 log, and the PromQL for diagnosing a slow query.
 
+## startup, health and Kubernetes probes
+
+A service binds its gRPC port as soon as it starts, and initializes after that, in the background
+([#293](https://github.com/osprey-dcs/dp-service/issues/293)). Initialization includes any pending
+[schema migration](runbooks/schema-migration.md), which on a large archive takes hours. Until
+initialization has succeeded the service is up but not serving:
+
+- the gRPC health service reports `NOT_SERVING`;
+- every other call ends with gRPC status `UNAVAILABLE` and a description saying why, one of
+  `service is initializing`, `service is initializing: applying schema migration version N (target M)`,
+  or `service is initializing: waiting for a schema migration running in another process`;
+- the log line `service ready after N s of initialization` marks the end of it.
+
+**A client should treat `UNAVAILABLE` as "retry later"**, which is what gRPC retry policies already
+do. Before this change the same client got a refused connection, which gRPC also reports as
+`UNAVAILABLE`, so retry handling that worked before still works; the description is new.
+
+**If initialization fails the process exits with status 1**, as it did before; the cause is in the
+log. A fatal JVM error during initialization exits with status 3 (see
+[out-of-memory behavior](#out-of-memory-behavior)). Run the services under a supervisor that
+restarts on a non-zero exit.
+
+### the health service
+
+Every service serves the standard gRPC health service, `grpc.health.v1.Health` (`Check` and
+`Watch`), on its gRPC port. Three names are registered:
+
+| Health service name | Status |
+|---|---|
+| `""` (the server as a whole) | `NOT_SERVING` until the service has initialized, then `SERVING` |
+| the service's full name, e.g. `dp.service.query.DpQueryService` | the same |
+| `liveness` | `SERVING` from the moment the port is bound |
+
+All three report `NOT_SERVING` once the process has begun to shut down.
+
+`liveness` says only that the process is up and answering. It exists because a Kubernetes gRPC
+probe passes only on `SERVING`: a gRPC **liveness** probe that names no service would fail for the
+whole of a migration, and the kubelet would kill the pod that is migrating.
+
+The services do not serve gRPC reflection, so `grpcurl` needs the health proto
+(`grpcurl -plaintext -proto health.proto -d '{"service":"liveness"}' localhost:50052 grpc.health.v1.Health/Check`).
+`grpc_health_probe -addr=localhost:50052 -service=liveness` needs nothing.
+
+### Kubernetes probes
+
+Use these. The ports are the query service's; see the table above for the others.
+
+```yaml
+livenessProbe:
+  tcpSocket:
+    port: 50052
+  periodSeconds: 10
+  failureThreshold: 3
+readinessProbe:
+  grpc:
+    port: 50052        # no service name: passes only once the service has initialized
+  periodSeconds: 5
+  failureThreshold: 1
+# no startupProbe
+```
+
+A gRPC liveness probe is equivalent, **provided it names the `liveness` service**:
+
+```yaml
+livenessProbe:
+  grpc:
+    port: 50052
+    service: liveness
+```
+
+- **Never use a `grpc` liveness probe with no `service`.** It checks `""`, which is `NOT_SERVING`
+  for the whole of initialization, so it kills the pod during a long migration. That is the
+  incident this design exists to end.
+- **A `startupProbe` is not needed.** If one is kept, it must have the liveness form, not the
+  readiness form: a startup probe that waits for `SERVING` kills the pod at
+  `failureThreshold × periodSeconds`, however alive the migration is.
+- **The readiness probe fails for as long as initialization takes**, and that is correct: the pod
+  is kept out of the Service's endpoints and is not restarted for it.
+- `grpc` probes are built into the kubelet from Kubernetes 1.24. Before that, use `tcpSocket` for
+  liveness and an `exec` of `grpc_health_probe` for readiness.
+- A probe that still kills the migrating pod is stopped by the migration's takeover limit: after a
+  migration has been abandoned four times at one schema version, the next process exits and waits
+  for an operator. That is intended; see the
+  [runbook](runbooks/schema-migration.md#the-schema-migration-from-version-n-has-been-abandoned-by-4-processes-in-a-row).
+
+Readiness does not make a rolling update safe across a schema change: the old pods keep serving
+until the new one is ready, which is after the migration. **Stop every dp service before an upgrade
+that changes the schema**; the procedure is in the
+[runbook](runbooks/schema-migration.md#upgrading-to-a-release-that-changes-the-schema).
+
+### a sharded deployment needs the `inprog` privilege
+
+Through mongos, the service's database user needs the `inprog` action to list its own running
+operations. Without it, the probes above still stop Kubernetes from killing a migrating pod, and
+the other services still wait for it. But a migrating pod that dies for any other reason (a node
+drain, an out-of-memory kill, a deleted pod) leaves a migration claim that must be cleared by
+hand, where with the grant the next pod takes the migration over.
+
+The role to create is in the
+[runbook](runbooks/schema-migration.md#the-privilege-a-sharded-deployment-needs). To confirm it on
+a running service, either is enough:
+
+- the gauge `dp_schema_migration_takeover_enabled` is 1 (0 means the privilege is missing);
+- the startup log has no `warn` line beginning `this service cannot take over an abandoned schema
+  migration`.
+
+A standalone server or a replica set needs nothing.
+
 ## out-of-memory behavior
 
 A service that runs out of heap exits instead of continuing in an undefined state, so that its
@@ -72,7 +180,8 @@ Requests in flight on other threads are cut off; clients see the connection drop
   it runs out of heap (or metaspace, or another JVM-managed area), on whatever thread that happens:
   a request worker, a gRPC thread, the MongoDB driver.
 - **Built in, always on: the backstop.** An `OutOfMemoryError` or other JVM-level failure that
-  reaches a handler worker halts the process. This covers a launch without the flag. It also
+  reaches a handler worker, or the thread that initializes the service at startup, halts the
+  process. This covers a launch without the flag. It also
   covers, on a worker, the case the flag does not: an `OutOfMemoryError` that library code throws
   itself, which the JVM does not see as running out of memory. Examples are a buffer asked to grow
   past the largest array the JVM allows, and direct (off-heap) buffer memory running out.

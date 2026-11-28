@@ -148,6 +148,88 @@ The incident as reported is the first two rows. Without the grant the third row 
 today: the claim is cleared by hand. The grant is therefore a deliverable of this ticket's
 documentation and a question to SLAC, not an assumption. See D8, D9 and Dependencies.
 
+## Departures from the plan as merged, and what was measured
+
+Added in the implementation PR. The sections below are as merged in PR #332 except where a note
+marked **Implementation** says otherwise.
+
+### The stock health service cannot run on this classpath (changes D3, Task 1, finding 9)
+
+D3 named `io.grpc.protobuf.services.HealthStatusManager`, and the plan listed "the shaded jar
+serving the health service" as an open risk because it would be the first thing loaded from
+`grpc-services`. The risk was real, and it does not need the shaded jar to show it.
+
+`grpc-services` 1.65.1 carries protobuf 3.x generated code: `HealthCheckRequest.Builder` extends
+`GeneratedMessageV3.Builder`. dp-grpc pins protobuf-java 4.27.2, which has `GeneratedMessageV3`
+only as a stub with no `Builder`. Measured on the project's classpath:
+
+- `new HealthStatusManager()` succeeds;
+- `setStatus()` throws `NoClassDefFoundError: com/google/protobuf/GeneratedMessageV3$Builder`;
+- a `Check` sent as raw bytes to the stock service ends `UNKNOWN: Application error processing
+  RPC`, with the same cause;
+- test code that calls `HealthCheckRequest.newBuilder()` does not compile.
+
+**What was built instead:** `GrpcHealthService` (`common/grpc`), a hand-written
+`grpc.health.v1.Health` with `Check` and `Watch`. The two messages are one string field and one
+enum field, encoded directly, so it depends on no generated code. Everything D3 specifies is
+unchanged: the three names, their statuses, all three set before the server is built, and the
+terminal state on stop. Two consequences:
+
+- **Task 1 is dropped.** `grpc-services` is not declared in `pom.xml`, because nothing uses it.
+- **Finding 9's first half no longer applies**: a new `GrpcHealthService` has no status for `""`,
+  where the stock manager starts it at `SERVING`. `newHealthService()` still sets all three before
+  any server exists, and the test still checks its result.
+
+**Rejected:** adding `health.proto` to dp-grpc and generating it with the project's protoc. It
+would work, but it is a dp-grpc change and release for two messages, and its generated classes
+would share the package `io.grpc.health.v1` with the broken ones already on the classpath unless
+the Java package were changed. Also rejected: moving gRPC to a release whose `grpc-services` is
+generated for protobuf 4. `io.grpc.version` must equal dp-grpc's, so that is a dp-grpc upgrade
+too, and a larger one.
+
+### Measured: the shaded jar serves the health service (Task 8, second measurement)
+
+`QueryGrpcServer` started from `target/dp-service-1.16.0-shaded.jar` against a throwaway MongoDB
+8.0.6 whose marker held a migration claim, probed with two clients that share no code with the
+service: `grpcurl` (`fullstorydev/grpcurl`, with a `health.proto` written from the specification)
+and `grpc_health_probe` v0.4.37.
+
+| | Result |
+|---|---|
+| while waiting on the claim: `Check` of `""` and of `dp.service.query.DpQueryService` | `NOT_SERVING`, from both clients |
+| `Check` of `liveness` | `SERVING`, from both clients |
+| `Check` of a name never set | `NOT_FOUND` |
+| `queryData` while waiting | `UNAVAILABLE`, "service is initializing: waiting for a schema migration running in another process" |
+| gauges while waiting | `dp_service_ready` 0, `dp_service_init_elapsed_seconds` climbing, `dp_schema_migration_takeover_enabled` 1 |
+| after the claim was released | the service claimed and applied v5, logged "service ready after 136.9 s", `Check` of `""` is `SERVING`, `queryData` reaches the service, `dp_service_ready` 1 |
+| `SIGTERM` when ready | clean stop |
+| `SIGTERM` while waiting on the claim | clean stop, no exception in the log (finding 4) |
+| started against a claim marked `migrationFailed` | exit status 1, both ports released |
+
+Health checks are labelled `grpc_method="other"` in gRPC's own metrics; `doc/metrics.md` says so.
+
+### Not measured: a kubelet running the probes (Task 8, first measurement)
+
+**Still open, and the plan requires it before merge.** No local cluster was available to the
+implementation session. What the measurement above does show is that `grpc_health_probe`, which
+uses the same grpc-go health client as the kubelet's built-in probe, reads the three names as
+documented. What it does not show is what the kubelet then does: that the liveness forms keep the
+pod, that a `grpc` liveness probe with no service name kills it (finding 1), and what a `grpc`
+liveness probe on `liveness` does to a terminating pod after `enterTerminalState()` (D3). D3 and
+D9 stand as written until that is run.
+
+### Smaller points
+
+- The halt method of D5 is `haltProcess(int status)`, so that the test asserts the status.
+- `InitializationStatus` is set to `WAITING` when the loop first reads a held claim, and that
+  moment is logged at `info` with the holder, since it is when the service's long `NOT_SERVING`
+  begins.
+- The reworded timeout (Task 6) begins "gave up waiting for the schema migration held by ...: it
+  has shown no sign of life for 300s".
+- The "registers no shutdown hook" test (Task 8) runs a child JVM: a hook cannot be listed from
+  inside the JVM that holds it, so the test watches for what one would do at exit.
+- Each new test was run against its fix reverted, seventeen mutations in all; every one failed.
+
 ## Design decisions
 
 ### D1. `start()` binds first and initializes on a thread
@@ -214,6 +296,10 @@ description goes to every client. It is in the log.
 The state comes from `InitializationStatus` (D7).
 
 ### D3. Health: the standard names, and one that is always `SERVING`
+
+**Implementation:** the service is the hand-written `GrpcHealthService`, not the class named
+below, and `grpc-services` is not declared; see Departures from the plan as merged. The names,
+statuses and ordering are as written here.
 
 `io.grpc.protobuf.services.HealthStatusManager`, one per server. `grpc-services` is declared in
 `pom.xml` at `${io.grpc.version}`, as `grpc-opentelemetry` is, so the health service does not
@@ -507,6 +593,8 @@ fixes the first point and leaves the service without a drain.
 ## Implementation tasks
 
 ### Task 1. `pom.xml`
+
+**Implementation:** dropped; see Departures from the plan as merged.
 
 - Declare `io.grpc:grpc-services` at `${io.grpc.version}`, with the comment `grpc-opentelemetry`
   carries.

@@ -20,7 +20,7 @@ This is a Data Platform service implementation with three main services:
 
 ### Service Framework Pattern
 Each service follows a consistent architecture:
-1. **gRPC Server**: Entry point extending `GrpcServerBase`
+1. **gRPC Server**: Entry point extending `GrpcServerBase`; `main()` is `server.run()` (#293)
 2. **Service Implementation**: Implements gRPC service methods, extends protobuf-generated stubs
 3. **Handler**: Manages request queue and worker threads, extends `QueueHandlerBase`
 4. **Jobs**: Process individual requests asynchronously, extend `HandlerJob`
@@ -92,6 +92,9 @@ worker permanently. The invariants:
   `markFailedWithException()` before `complete()`. Once the worker survives a non-fatal `Error`,
   the same one can recur on every request, and a `RuntimeException`-only catch recorded each as a
   success.
+
+The handler registers no JVM shutdown hook of its own; `GrpcServerBase.stopServer()` stops it,
+after the server has drained (#293, see Startup: Bind First, Initialize in the Background).
 
 A non-fatal throwable out of a job still leaves the caller's stream unanswered; surviving it only
 keeps the worker. `QueueHandlerBaseWorkerSurvivalTest` pins the survival (including a throw while
@@ -1312,7 +1315,9 @@ breakdown, the slow-query log, and the PromQL. The invariants that outlive the t
 against whatever meter `DpTelemetry` holds at first use, and the Mongo client and the request
 handlers build their instruments during their own init — so an instrument created before `init()` is
 bound to the no-op meter and silently records nothing for the life of the process. `GrpcServerBase.start()`
-has the order right; a new server implementation must keep it.
+has the order right; a new server implementation must keep it. Since #293 `init()` is the first
+thing `start()` does, ahead of the gRPC bind as well, and `initService_()` runs later on the init
+thread: the rule is unchanged and holds by a wider margin.
 
 `DpTelemetry` never touches `GlobalOpenTelemetry`. That global is settable once per JVM and warns on
 every later attempt, while the integration tests build many servers in one JVM. Every lookup goes
@@ -1320,11 +1325,12 @@ through `DpTelemetry.meter()`, which is also what lets a test install its own SD
 reader (`initForTest`/`resetForTest`) and tear it down again.
 
 **An unbindable metrics port fails startup** (the #254 rule: a service that cannot complete
-initialization must not serve). `start()` therefore also shuts telemetry down if `initService_()`
-fails — the shutdown hook that would release the port is registered only after the failure throw,
-so without that an in-process retry would hit a port its own previous attempt still held and report
-a telemetry bind error in place of the real failure. The `serverBuilder.build().start()` call is
-wrapped for the identical reason: a gRPC port conflict throws with the metrics port already bound.
+initialization must not serve). `start()` therefore also shuts telemetry down when the gRPC bind
+fails: a gRPC port conflict throws with the metrics port already bound, and the shutdown hook that
+would release it is registered only after the bind, so without that an in-process retry would hit
+a port its own previous attempt still held and report a telemetry bind error in place of the real
+failure. A failed `initService_()` releases it by a different route since #293: `run()` shuts
+telemetry down before it exits.
 
 **`shutdown()` discards the cached instruments, and that is a production requirement, not tidiness.**
 Every `DpMetrics` instrument is bound to the meter of the provider being closed. Left cached, the
@@ -1583,14 +1589,39 @@ follow, and for a sharper reason here: `recordApplied` runs *after* the migratio
 the data, so an unchecked write leaves migrated data with no record of it, and the run continues to
 report success. Any new marker write must check the same way.
 
-### The claim wait is bounded by one deadline, not one per attempt
+### The claim wait is one deadline, measured from the last sign of life
 
-`SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one absolute deadline across every
-claim attempt, including claims after another process releases without completing, the wait for a
-claim to go stale, the orphaned-operation check and the takeover attempts (#292). It was
-originally a pair of mutually recursive methods, each allocating a fresh timeout — so the bound the
-class documents was not the bound in force, and repeated takeovers grew the stack. Keep the deadline
-computed once at entry; do not reintroduce a per-attempt timeout.
+`SchemaMigrationRunner.migrateOrWait()` is a single loop carrying one deadline across every claim
+attempt, including claims after another process releases without completing, the wait for a claim
+to go stale, the orphaned-operation check and the takeover attempts (#292). It was originally a
+pair of mutually recursive methods, each allocating a fresh timeout, so the bound the class
+documents was not the bound in force, and repeated takeovers grew the stack. **Do not reintroduce
+a per-attempt timeout**: a failed claim or takeover attempt never moves the deadline.
+
+Since #293 the deadline is "now plus the claim wait" as of the last **sign of life**, not as of
+entry, because a waiting process is now up and `NOT_SERVING` and exiting every five minutes of a
+long migration was a crash loop. Exactly three observations extend it:
+
+- the holder's `heartbeatSeq` changing under the same token, or the claim passing to a token this
+  waiter has not seen (once per token, which a takeover by another waiter needs);
+- the recorded schema version advancing;
+- the orphaned-operation check **succeeding** and finding an operation still running. That wait is
+  finite (the operation is a scan that ends), and it is the state a `SIGTERM`'d migrator leaves.
+
+**The sign of life is judged against the last pair this waiter read, in variables of its own
+(`lastToken`/`lastSeq`), never against `watchedToken`/`watchedSeq`.** The staleness watch is reset
+to null in three places, so "differs from the watched pair" is also true the first time a claim is
+seen and every time the same dead pair is seen again after a reset. A deadline extended on that
+test is extended for ever by a holder that has shown nothing;
+`testClaimWhoseHeartbeatNeverMovesDoesNotExtendTheWaitWhenItsWatchRestarts` pins it. The first
+claim read after entry, or after the marker was unclaimed, extends nothing.
+
+Three states keep the five-minute exit because no observation distinguishes "slow" from "never":
+a claim with no token (a 1.16.0 holder), an orphaned-operation check that fails (through mongos,
+every deployment without the `inprog` grant), and a marker that is unclaimed but never claimable.
+An unconditional indefinite wait was rejected: on a sharded deployment without the grant a dead
+holder would never be reported to anyone. A failed read of the marker still ends the wait; the
+process exits, is restarted, and rejoins.
 
 ### The migration claim is a lease (issue #292)
 
@@ -1662,7 +1693,8 @@ bounds on that takeover are as much the design as the takeover:
 "Exactly one waiter wins" assumes a majority-acknowledged marker write, which mongos deployments
 do not have until #291; the consequence is two migrators at once, which the rule above tolerates.
 A process that takes over is killed by the same probe as the one before it, so #292 does not by
-itself end a probe-kill loop: that is #293.
+itself end a probe-kill loop. #293 does, for a deployment whose probes are configured for it: see
+Startup: Bind First, Initialize in the Background.
 
 ### The async client skips the version check, and that is a deployment constraint
 
@@ -1703,17 +1735,99 @@ BSON has one date type, and the driver's default decoding target is `Date`. So
 rather than returning null. Convert explicitly (`SchemaVersionMarker.readInstant()`) when reading
 timestamps out of a raw `Document`.
 
-### Startup failure stops the server
+### Startup failure stops the process
 
-`GrpcServerBase.initService_()` returns `boolean` and `start()` throws `DpRuntimeException` before
-binding the port when it is false. Before #254 it returned `void` and all four servers logged and
-returned — which exited `initService_()`, not `start()`, so a service whose Mongo connection or
-handler init failed went on to serve requests against an uninitialized handler.
+`GrpcServerBase.initService_()` returns `boolean`, and a false return, like anything thrown, ends
+the process with a non-zero status. Before #254 it returned `void` and all four servers logged and
+returned, so a service whose Mongo connection or handler init failed went on to serve requests
+against an uninitialized handler. Any new server implementation must return its
+`serviceImpl.init(...)` result rather than swallowing it. Since #293 the failure travels by a
+different route, described next.
 
-`start()` must **throw**, not return: `main()` calls `start()` then `blockUntilShutdown()`, and a
-silent return leaves `server` null, so `blockUntilShutdown()` falls through to `finiService_()` and
-the process exits 0 — a supervisor reads that as a clean shutdown and never alerts. Any new server
-implementation must return its `serviceImpl.init(...)` result rather than swallowing it.
+## Startup: Bind First, Initialize in the Background (issue #293)
+
+`GrpcServerBase.start()` binds the gRPC port, then runs `initService_()` on the thread
+`dp-init-<service>` and returns. Initialization includes the schema migrations, which take hours on
+a large archive, and with nothing listening for that long a Kubernetes probe killed the pod that
+was migrating. Until initialization succeeds the health service reports `NOT_SERVING` and every
+other call ends `UNAVAILABLE`. Operator documentation is `doc/running.md` (probes) and
+`doc/runbooks/schema-migration.md` (the upgrade procedure). The invariants:
+
+- **Every `main()` is `server.run()`, and `run()` is the only place a failed initialization
+  becomes an exit status.** It calls `start()`, then `blockUntilShutdown()`, then, in state
+  `FAILED`, closes the gauges, shuts telemetry down and calls `exitProcess(1)`. `System.exit()`,
+  not a throw out of `main()`: a throw ends the process only if no non-daemon thread remains.
+  `start()` still throws for what fails before the init thread exists (the metrics bind, the gRPC
+  bind). A new `main()` that calls `start()` and `blockUntilShutdown()` itself exits 0 after a
+  failed initialization.
+- **The anti-pattern changed shape.** Before, it was a process serving from an uninitialized
+  handler. Now it is a process that is alive, bound and `NOT_SERVING` for ever, which a supervisor
+  that does not probe readiness (every deployment outside Kubernetes) never notices.
+- **The lifecycle is one field under one lock**: `INITIALIZING`, `READY`, `FAILED`, `STOPPING`.
+  **`FAILED` is terminal**: `System.exit()` runs the shutdown hook, and `run()` chose the exit
+  status from that field, so `stopServer()` must not overwrite it.
+- **The init thread's failure path depends on nothing that can fail.** The failure reaches
+  `main()` only through the server terminating. The move to `FAILED` and `server.shutdown()` are
+  in a `finally`, and the log call is under its own `catch (Throwable)` (formatting an arbitrary
+  exception can throw, the PR #318 case). The thread does nothing else there: no telemetry
+  shutdown, no `finiService_()`.
+- **A fatal error on the init thread halts with status 3**, through the overridable
+  `haltProcess()`, as on a handler worker (`QueueHandlerBase.isFatal()`). It does not take the
+  exit path: one process must not report the same condition with two statuses.
+- **`finiService_()` is called by the stopping thread only from `READY`.** In `INITIALIZING` the
+  handler is half built and belongs to the init thread. An init thread that finishes into
+  `STOPPING` does not open the gate; if it succeeded it calls `finiService_()` itself, and if it
+  failed it only logs. **It must never call `System.exit()` there**: called during shutdown,
+  `exit` blocks for ever.
+- **On `SIGTERM` during a migration the claim is left to the lease.** The hook stops the server
+  and telemetry and does not touch the migration. Do not release the claim there (an ordinary
+  claim of a released marker runs no orphaned-operation check, so the still-running operation
+  would be joined by a second scan), and do not interrupt the init thread (the driver turns an
+  interrupt into a `RuntimeException`, which is marked as a failed migration and waits for an
+  operator). The cost is one takeover per stop.
+- **`QueueHandlerBase.init()` registers no shutdown hook.** `stopServer()` calls `fini()` after
+  the server has drained and before telemetry shuts down. The handler's own hook ran beside the
+  server's, so the handler stopped while calls were still draining into it, and
+  `addShutdownHook()` throws once shutdown has begun, which is where an initialization finishing
+  after a `SIGTERM` is. `fini()` also tolerates a null `executorService` (it is created only
+  after `init_()` returns). `QueueHandlerBaseLifecycleTest` pins both; the hook test runs a child
+  JVM, since a hook cannot be listed.
+
+### The gate and the health service
+
+- **`ReadinessGate` (`common/grpc`) is a `ServerInterceptor` on the service only.** Closed, it
+  ends every call `UNAVAILABLE` with `InitializationStatus.describe()` and the call never reaches
+  a service implementation whose handler is null. The health service is added unwrapped.
+  `UNAVAILABLE`, not the usual OK response carrying an `ExceptionalResult`: it is what retry
+  policies read as "retry later" and it needs no per-method response builder. The description
+  never names the migration's holder (a pid and host name); that is in the log.
+- **The health service is `GrpcHealthService`, written by hand. Do not replace it with
+  `io.grpc.protobuf.services.HealthStatusManager`.** That class is on the classpath and fails at
+  first use: grpc-services 1.65.1 is protobuf 3.x generated code, and protobuf-java 4.27.2 has no
+  `GeneratedMessageV3.Builder`. Measured: `setStatus()` throws `NoClassDefFoundError` and a
+  `Check` ends `UNKNOWN`. It compiles on the server side, so nothing but a running call shows it.
+  The same goes for any other generated message in grpc-services (reflection, channelz).
+  `GrpcHealthServiceTest` pins the wire bytes against `health.proto`; the marshallers are used by
+  both ends of every other test, and two ends agreeing with each other prove nothing.
+- **Three health names**: `""` and the service's full name are `NOT_SERVING` until `READY`;
+  `liveness` is `SERVING` from the bind. `liveness` exists because a Kubernetes gRPC probe passes
+  only on `SERVING`, so a gRPC liveness probe with no service name kills the pod for the whole of
+  a migration, which is the incident.
+- **All three statuses are set before the server is built**, by `newHealthService()`, so that no
+  readiness probe can pass between the bind and the first status. `stopServer()` calls
+  `enterTerminalState()` first, which sets every name `NOT_SERVING`, `liveness` included.
+- **`InitializationStatus` (`common/server`) is static on purpose.** The runner sets the phase
+  (`STARTING`, `MIGRATING`, `WAITING`) and the result of the startup orphaned-operation check; the
+  gate's description and the gauges read it. It describes the database, not a server, so the
+  reason `DpTelemetry` avoids statics does not apply.
+- **Four gauges, `dp.service` only**: `dp.service.ready`, `dp.service.init.elapsed`,
+  `dp.schema.migration.active`, `dp.schema.migration.takeover.enabled`. The last records nothing
+  while the check's result is unknown. They are registered after `DpTelemetry.init()` and closed
+  before `DpTelemetry.shutdown()`.
+- **The integration tests still initialize synchronously** (`GrpcIntegrationServiceWrapperBase`).
+  `GrpcServerBaseStartupTest` is the only test of the real `start()`. Its cases that assert ports
+  are released run without `initForTest()`, because `DpTelemetry.init()` does nothing after it and
+  no metrics port would have been bound.
 
 ## Releases
 
