@@ -8,6 +8,7 @@ import com.ospreydcs.dp.service.common.exception.DpException;
 import com.ospreydcs.dp.service.common.mongo.MongoClientBase;
 import com.ospreydcs.dp.service.common.mongo.migration.SchemaVersionMarker.Claim;
 import com.ospreydcs.dp.service.common.mongo.migration.SchemaVersionMarker.MarkerState;
+import com.ospreydcs.dp.service.common.server.InitializationStatus;
 import org.bson.Document;
 import org.junit.After;
 import org.junit.Before;
@@ -16,6 +17,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -54,6 +56,9 @@ public class SchemaMigrationLeaseTest {
     private static final long LIVE_STALE_AFTER_MILLIS = 3_000L;
 
     private static final long LONG_WAIT_MILLIS = 60_000L;
+
+    // For tests about the deadline itself. Above STALE_AFTER_MILLIS, as the runner requires.
+    private static final long SHORT_WAIT_MILLIS = 1_500L;
 
     private LeaseTestSupport.TestClient testClient;
     private MongoDatabase database;
@@ -98,6 +103,7 @@ public class SchemaMigrationLeaseTest {
         final AtomicInteger applyCount = new AtomicInteger();
         volatile MarkerState stateWhenApplied;
         volatile String commentWhenApplied;
+        volatile InitializationStatus.Snapshot statusWhenApplied;
         private final Callable<Void> action;
 
         TestMigration(int version) {
@@ -124,6 +130,7 @@ public class SchemaMigrationLeaseTest {
             applyCount.incrementAndGet();
             stateWhenApplied = SchemaVersionMarker.read(SchemaMigrationLeaseTest.this.database);
             commentWhenApplied = context.operationComment();
+            statusWhenApplied = InitializationStatus.current();
             if (action != null) {
                 try {
                     action.call();
@@ -144,6 +151,7 @@ public class SchemaMigrationLeaseTest {
         adminDatabase = testClient.adminDatabase();
         markerCollection = SchemaVersionMarker.collection(database);
         executor = Executors.newCachedThreadPool();
+        InitializationStatus.resetForTest();
         clearAll();
         // existing data and no marker: a database to be migrated from version 0
         database.getCollection(MongoClientBase.COLLECTION_NAME_ANNOTATIONS)
@@ -157,6 +165,7 @@ public class SchemaMigrationLeaseTest {
         executor.awaitTermination(10, TimeUnit.SECONDS);
         clearAll();
         testClient.fini();
+        InitializationStatus.resetForTest();
     }
 
     private void clearAll() {
@@ -222,6 +231,15 @@ public class SchemaMigrationLeaseTest {
                 "an advanced version is progress and resets the count",
                 0, third.stateWhenApplied.takeoverCount());
 
+        // what the readiness gate tells a client, and the migration.active gauge, read this
+        assertEquals(InitializationStatus.Phase.MIGRATING, second.statusWhenApplied.phase());
+        assertEquals(2, second.statusWhenApplied.migrationVersion());
+        assertEquals(3, second.statusWhenApplied.targetVersion());
+        assertEquals(3, third.statusWhenApplied.migrationVersion());
+        assertEquals(
+                "the migration is over once run() returns",
+                InitializationStatus.Phase.STARTING, InitializationStatus.current().phase());
+
         final MarkerState state = SchemaVersionMarker.read(database);
         assertEquals(3, state.version());
         assertFalse(state.migrating());
@@ -244,6 +262,8 @@ public class SchemaMigrationLeaseTest {
             // well past stale-after: a holder that is beating must still hold its claim
             Thread.sleep(LIVE_STALE_AFTER_MILLIS + 1_500L);
             assertFalse("the waiter must still be waiting", waiter.isDone());
+            assertEquals(
+                    InitializationStatus.Phase.WAITING, InitializationStatus.current().phase());
             final MarkerState held = SchemaVersionMarker.read(database);
             assertEquals(live.token(), held.claimToken());
             assertEquals(0, held.takeoverCount());
@@ -520,17 +540,13 @@ public class SchemaMigrationLeaseTest {
         // $currentOp must be run on the admin database; handed any other, it fails, which stands
         // in for a server or a privilege that does not allow the check.
         final TestMigration migration = new TestMigration(1);
-        try {
-            new LeaseRunner(
-                    database, database, List.of(migration), 1,
-                    2_000L, STALE_AFTER_MILLIS, 200L).run();
-            fail("a takeover without the check must be refused");
-        } catch (DpException ex) {
-            assertTrue(
-                    "message should say the check failed: " + ex.getMessage(),
-                    ex.getMessage().contains("check for its operations")
-                            && ex.getMessage().contains("$currentOp"));
-        }
+        final DpException ex = assertGivesUpAtTheClaimWait(new LeaseRunner(
+                database, database, List.of(migration), 1,
+                SHORT_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L));
+        assertTrue(
+                "message should say the check failed: " + ex.getMessage(),
+                ex.getMessage().contains("check for its operations")
+                        && ex.getMessage().contains("$currentOp"));
         assertEquals(0, migration.applyCount.get());
         assertEquals(dead.token(), SchemaVersionMarker.read(database).claimToken());
     }
@@ -547,6 +563,12 @@ public class SchemaMigrationLeaseTest {
                 "the check runs against the admin database",
                 runner(List.of(new TestMigration(1)), 1).probeOrphanCheck());
 
+        // The result is kept for the takeover.enabled gauge: unknown until a runner has run, so
+        // that "not yet known" is never reported as "refused".
+        assertNull(InitializationStatus.current().takeoverEnabled());
+        runner(List.of(new TestMigration(1)), 1).run();
+        assertEquals(Boolean.TRUE, InitializationStatus.current().takeoverEnabled());
+
         final LeaseRunner unable = new LeaseRunner(
                 database, database, List.of(new TestMigration(1)), 1,
                 LONG_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L);
@@ -556,6 +578,158 @@ public class SchemaMigrationLeaseTest {
 
         // reported, not fatal: the service is no worse off than before the lease
         unable.run();
+        assertEquals(Boolean.FALSE, InitializationStatus.current().takeoverEnabled());
+    }
+
+    // ------------------------------------------------------------------
+    // how long a waiter waits (issue #293)
+    // ------------------------------------------------------------------
+
+    /**
+     * Asserts that a waiter gives up, and that it does so one claim wait after it started: not
+     * sooner, and not after a deadline that something kept pushing out. Run in the background
+     * with a bound, so that a waiter whose deadline is extended without end fails the test
+     * instead of hanging it.
+     */
+    private DpException assertGivesUpAtTheClaimWait(SchemaMigrationRunner waiter) throws Exception {
+        final long started = System.nanoTime();
+        try {
+            runInBackground(waiter).get(SHORT_WAIT_MILLIS * 6, TimeUnit.MILLISECONDS);
+            fail("expected the waiter to give up");
+            return null;
+        } catch (ExecutionException ex) {
+            final long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            assertTrue("unexpected failure: " + ex.getCause(), ex.getCause() instanceof DpException);
+            assertTrue(
+                    "gave up after " + elapsedMillis + " ms, before the claim wait",
+                    elapsedMillis >= SHORT_WAIT_MILLIS);
+            return (DpException) ex.getCause();
+        } catch (java.util.concurrent.TimeoutException ex) {
+            throw new AssertionError(
+                    "the waiter was still waiting after six claim waits: something that is not a "
+                            + "sign of life is extending its deadline", ex);
+        }
+    }
+
+    @Test
+    public void testWaiterOutlastsTheClaimWaitWhileTheHoldersHeartbeatAdvances() throws Exception {
+
+        // A long migration is the case #293 was filed for. Before it, a waiter exited one claim
+        // wait after it started, however alive the holder was, and was restarted to do it again.
+        final long staleAfterMillis = 2_000L;
+        final long claimWaitMillis = 2_500L;
+
+        final Claim live = abandonedClaim("live-host");
+        final ClaimHeartbeat holderHeartbeat =
+                new ClaimHeartbeat(database, live, LIVE_HEARTBEAT_MILLIS);
+        holderHeartbeat.start();
+        try {
+            final TestMigration migration = new TestMigration(1);
+            final Future<Void> waiter = runInBackground(new LeaseRunner(
+                    database, adminDatabase, List.of(migration), 1,
+                    claimWaitMillis, staleAfterMillis, 200L));
+
+            Thread.sleep(claimWaitMillis * 2);
+            assertFalse(
+                    "a waiter must not give up on a migration whose heartbeat is advancing",
+                    waiter.isDone());
+
+            SchemaVersionMarker.recordApplied(database, live, 1, "applied by the holder");
+            holderHeartbeat.stop();
+            SchemaVersionMarker.releaseClaim(database, live);
+
+            waiter.get(30, TimeUnit.SECONDS);
+            assertEquals("the waiter must not migrate", 0, migration.applyCount.get());
+        } finally {
+            holderHeartbeat.stop();
+        }
+    }
+
+    @Test
+    public void testWaiterOutlastsTheClaimWaitWhileAnOrphanedOperationRunsAndThenTakesOver()
+            throws Exception {
+
+        // What a migrator stopped by a SIGTERM leaves: a stale claim, and its operation still
+        // running on the server. The next process must sit through it, not crash-loop through it.
+        final Claim dead = abandonedClaim("dead-host");
+
+        final int documents = 40;
+        final MongoCollection<Document> scratch = database.getCollection(SCRATCH_COLLECTION);
+        for (int i = 0; i < documents; i++) {
+            scratch.insertOne(new Document("n", i));
+        }
+        final Future<Void> orphan = executor.submit(() -> {
+            scratch.updateMany(
+                    new Document("$where", "sleep(100); return true;"),
+                    new Document("$set", new Document("done", true)),
+                    new UpdateOptions().comment(
+                            MigrationContext.OPERATION_COMMENT_PREFIX + dead.token()));
+            return null;
+        });
+        final long visibleBy = System.currentTimeMillis() + 10_000L;
+        while (SchemaVersionMarker.findOrphanedOperations(adminDatabase, database.getName()).isEmpty()) {
+            assertTrue("the slow update never appeared in $currentOp",
+                    System.currentTimeMillis() < visibleBy);
+            Thread.sleep(20L);
+        }
+
+        // the update runs for about four seconds, well past the claim wait
+        final TestMigration migration = new TestMigration(1);
+        final long started = System.nanoTime();
+        new LeaseRunner(
+                database, adminDatabase, List.of(migration), 1,
+                SHORT_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L).run();
+        final long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+        assertTrue(
+                "the test proves nothing unless the wait outlasted the claim wait: " + elapsedMillis,
+                elapsedMillis > SHORT_WAIT_MILLIS);
+        assertEquals("the waiter takes over once the operation has ended", 1, migration.applyCount.get());
+        assertEquals(1, migration.stateWhenApplied.takeoverCount());
+        orphan.get(30, TimeUnit.SECONDS);
+        assertEquals(1, SchemaVersionMarker.read(database).version());
+    }
+
+    @Test
+    public void testWaiterOnAClaimWithNoTokenStillGivesUpAtTheClaimWait() throws Exception {
+
+        // A 1.16.0 holder: migrating, with no token and no heartbeat. Nothing distinguishes a slow
+        // one from a dead one, so the wait keeps its bound.
+        LeaseTestSupport.setOnMarker(database, new Document("migrating", true)
+                .append("migratingHost", "1.16.0-host"));
+
+        final TestMigration migration = new TestMigration(1);
+        final DpException ex = assertGivesUpAtTheClaimWait(new LeaseRunner(
+                database, adminDatabase, List.of(migration), 1,
+                SHORT_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L));
+        assertTrue(ex.getMessage(), ex.getMessage().contains("no sign of life"));
+        assertTrue(ex.getMessage(), ex.getMessage().contains("predates migration takeover"));
+        assertEquals(0, migration.applyCount.get());
+    }
+
+    @Test
+    public void testClaimWhoseHeartbeatNeverMovesDoesNotExtendTheWaitWhenItsWatchRestarts()
+            throws Exception {
+
+        // The staleness watch is restarted every time a takeover is refused, and then sees the
+        // same dead (token, heartbeat) pair as if for the first time. A deadline extended whenever
+        // the pair "differs from the watched pair" would be extended by each restart, for ever,
+        // by a holder that has shown nothing.
+        final Claim dead = abandonedClaim("dead-host");
+        final AtomicInteger refused = new AtomicInteger();
+        final MongoDatabase refusing = LeaseTestSupport.refusingTakeovers(database, refused);
+
+        final TestMigration migration = new TestMigration(1);
+        final DpException ex = assertGivesUpAtTheClaimWait(new LeaseRunner(
+                refusing, adminDatabase, List.of(migration), 1,
+                SHORT_WAIT_MILLIS, STALE_AFTER_MILLIS, 200L));
+
+        assertTrue(ex.getMessage(), ex.getMessage().contains("no sign of life"));
+        assertTrue(
+                "the test proves nothing unless the watch restarted: " + refused.get() + " refusals",
+                refused.get() >= 2);
+        assertEquals(0, migration.applyCount.get());
+        assertEquals(dead.token(), SchemaVersionMarker.read(database).claimToken());
     }
 
     // ------------------------------------------------------------------
