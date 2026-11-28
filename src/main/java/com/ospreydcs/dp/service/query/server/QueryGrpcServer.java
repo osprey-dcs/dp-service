@@ -74,8 +74,7 @@ public class QueryGrpcServer extends GrpcServerBase {
 
         QueryServiceImpl serviceImpl = new QueryServiceImpl();
         final QueryGrpcServer server = new QueryGrpcServer(serviceImpl);
-        server.start();
-        server.blockUntilShutdown();
+        server.run();
     }
 
 }

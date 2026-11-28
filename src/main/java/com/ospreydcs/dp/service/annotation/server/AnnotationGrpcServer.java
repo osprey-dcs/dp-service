@@ -78,7 +78,6 @@ public class AnnotationGrpcServer extends GrpcServerBase {
 
         AnnotationServiceImpl serviceImpl = new AnnotationServiceImpl();
         final AnnotationGrpcServer server = new AnnotationGrpcServer(serviceImpl);
-        server.start();
-        server.blockUntilShutdown();
+        server.run();
     }
 }

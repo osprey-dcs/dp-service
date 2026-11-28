@@ -21,22 +21,24 @@ MongoClient:
 # Deliberately left ENABLED, contrary to this ticket's plan, which called for disabling it here on
 # the reasoning that unit tests constructing handlers without a server should get the no-op SDK.
 # They already do, and not because of this key: DpTelemetry holds the no-op instance until
-# init() is called, and the only production caller is GrpcServerBase.start(), which no unit test
-# runs. The integration tests install their own SDK through initForTest(), which does not consult
-# this key at all.
+# init() is called, and the only production caller is GrpcServerBase.start(). The integration tests
+# install their own SDK through initForTest(), which does not consult this key at all.
 #
-# So the only test that reads it is DpTelemetryPrometheusTest, which calls the real init() and
-# asserts against a live /metrics scrape -- the one test covering the exporter, the renderer, and
-# the endpoint. Setting this false would make it the only test that cannot pass.
+# Two tests read it. DpTelemetryPrometheusTest calls the real init() and asserts against a live
+# /metrics scrape -- the one test covering the exporter, the renderer, and the endpoint. And
+# GrpcServerBaseStartupTest (#293) runs GrpcServerBase.start() itself, in the cases that assert a
+# failed initialization releases the metrics port. Setting this false would leave the first
+# unable to pass and the second asserting the release of a port that was never bound.
 Telemetry:
   enabled: ${DP_TELEMETRY_ENABLED:true}
   prometheusHost: ${DP_TELEMETRY_PROMETHEUS_HOST:0.0.0.0}
 
 # The per-service metrics ports, mirrored for parity. This file REPLACES the main application.yml
 # rather than merging with it, so a key absent here falls back to the DEFAULT_* constant in code
-# instead of the main file's value. No test reads these today (nothing under test calls
-# getMetricsPort_(), since no test starts a server through GrpcServerBase), but a key that silently
-# resolves somewhere other than where a reader expects is the trap this file's shadowing sets.
+# instead of the main file's value. No test reads these today: the one test that starts a server
+# through GrpcServerBase (GrpcServerBaseStartupTest, #293) uses a subclass that returns a free port
+# from getMetricsPort_(). But a key that silently resolves somewhere other than where a reader
+# expects is the trap this file's shadowing sets.
 IngestionServer:
   metricsPort: ${DP_INGESTION_SERVER_METRICS_PORT:9464}
 QueryServer:

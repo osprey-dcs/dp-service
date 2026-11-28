@@ -43,8 +43,7 @@ public class BenchmarkIngestionGrpcServer extends IngestionGrpcServer {
         BenchmarkMongoClient.prepareBenchmarkDatabase();
         IngestionServiceImpl serviceImpl = new IngestionServiceImpl();
         final BenchmarkIngestionGrpcServer server = new BenchmarkIngestionGrpcServer(serviceImpl);
-        server.start();
-        server.blockUntilShutdown();
+        server.run();
     }
 
 }

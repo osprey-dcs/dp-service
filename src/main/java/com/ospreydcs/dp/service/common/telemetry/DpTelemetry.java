@@ -191,8 +191,8 @@ public class DpTelemetry {
      * not merely tidiness: every instrument is bound to the meter of the provider being closed
      * here. Left cached, a subsequent {@link #init} would build a fresh SDK that no instrument
      * points at, and the process would record nothing for the rest of its life while reporting a
-     * healthy startup. The retry path in {@code GrpcServerBase.start()} -- init succeeds,
-     * {@code initService_()} fails, shutdown, caller retries -- is exactly that sequence.
+     * healthy startup. The retry path in {@code GrpcServerBase.start()} -- init succeeds, the
+     * gRPC bind fails, shutdown, caller retries -- is exactly that sequence.
      */
     public static synchronized void shutdown() {
 

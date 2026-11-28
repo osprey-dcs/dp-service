@@ -52,6 +52,12 @@ public class DpMetrics {
 
     public static final String METRIC_DB_OPERATION_DURATION = "db.client.operation.duration";
 
+    public static final String METRIC_SERVICE_READY = "dp.service.ready";
+    public static final String METRIC_SERVICE_INIT_ELAPSED = "dp.service.init.elapsed";
+    public static final String METRIC_SCHEMA_MIGRATION_ACTIVE = "dp.schema.migration.active";
+    public static final String METRIC_SCHEMA_MIGRATION_TAKEOVER_ENABLED =
+            "dp.schema.migration.takeover.enabled";
+
     // attribute keys — the complete vocabulary (D8), nothing else
 
     public static final AttributeKey<String> ATTR_SERVICE = AttributeKey.stringKey("dp.service");
@@ -228,6 +234,82 @@ public class DpMetrics {
                 .ofLongs()
                 .buildWithCallback(
                         measurement -> measurement.record(workerCount.getAsInt(), attributes));
+    }
+
+    // initialization gauges (#293 D8). All four carry dp.service only: the phase of
+    // initialization is not an attribute, because the vocabulary above is closed.
+
+    /**
+     * Registers the gauge that is 1 once the service has initialized and 0 until then.
+     *
+     * <p>With {@link #registerServiceInitElapsed}, this is how a hung initialization shows: 0 with
+     * the elapsed time climbing, on a process whose liveness probe passes.
+     */
+    public static AutoCloseable registerServiceReady(
+            String serviceName, java.util.function.BooleanSupplier ready) {
+
+        final Attributes attributes = Attributes.of(ATTR_SERVICE, serviceName);
+        return meter().gaugeBuilder(METRIC_SERVICE_READY)
+                .setDescription("1 once the service has initialized and is serving, else 0")
+                .ofLongs()
+                .buildWithCallback(
+                        measurement -> measurement.record(ready.getAsBoolean() ? 1 : 0, attributes));
+    }
+
+    /**
+     * Registers the gauge of initialization time: seconds since startup while initializing, and
+     * the final initialization time once ready.
+     */
+    public static AutoCloseable registerServiceInitElapsed(
+            String serviceName, java.util.function.DoubleSupplier elapsedSeconds) {
+
+        final Attributes attributes = Attributes.of(ATTR_SERVICE, serviceName);
+        return meter().gaugeBuilder(METRIC_SERVICE_INIT_ELAPSED)
+                .setDescription(
+                        "seconds spent initializing: still climbing while the service is not "
+                                + "ready, fixed once it is")
+                .setUnit(UNIT_SECONDS)
+                .buildWithCallback(
+                        measurement -> measurement.record(elapsedSeconds.getAsDouble(), attributes));
+    }
+
+    /**
+     * Registers the gauge that is 1 while this process holds the schema migration claim, which
+     * separates the migrating process from the ones waiting for it.
+     */
+    public static AutoCloseable registerSchemaMigrationActive(
+            String serviceName, java.util.function.BooleanSupplier migrating) {
+
+        final Attributes attributes = Attributes.of(ATTR_SERVICE, serviceName);
+        return meter().gaugeBuilder(METRIC_SCHEMA_MIGRATION_ACTIVE)
+                .setDescription("1 while this process is applying a schema migration, else 0")
+                .ofLongs()
+                .buildWithCallback(
+                        measurement -> measurement.record(migrating.getAsBoolean() ? 1 : 0, attributes));
+    }
+
+    /**
+     * Registers the gauge of whether this process could take over an abandoned schema migration:
+     * 1 if the startup orphaned-operation check ran, 0 if it was refused.
+     *
+     * <p><b>It records nothing while the supplier returns null</b>, so that "not yet known" is not
+     * read as "refused", and a service with no Mongo client never reports it.
+     */
+    public static AutoCloseable registerSchemaMigrationTakeoverEnabled(
+            String serviceName, java.util.function.Supplier<Boolean> enabled) {
+
+        final Attributes attributes = Attributes.of(ATTR_SERVICE, serviceName);
+        return meter().gaugeBuilder(METRIC_SCHEMA_MIGRATION_TAKEOVER_ENABLED)
+                .setDescription(
+                        "1 if this service can check for a dead migrator's running operations "
+                                + "and so take over its schema migration, 0 if that check is refused")
+                .ofLongs()
+                .buildWithCallback(measurement -> {
+                    final Boolean value = enabled.get();
+                    if (value != null) {
+                        measurement.record(value ? 1 : 0, attributes);
+                    }
+                });
     }
 
     // query instruments (D3)

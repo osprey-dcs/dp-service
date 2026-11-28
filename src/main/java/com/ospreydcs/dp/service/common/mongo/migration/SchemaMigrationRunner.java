@@ -10,11 +10,14 @@ import com.ospreydcs.dp.service.common.mongo.migration.migrations.V2NormalizeAnn
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V3CanonicalizeAnnotationReferenceIds;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V4StampColumnDiscriminators;
 import com.ospreydcs.dp.service.common.mongo.migration.migrations.V5SeedPvStatsMaxBucketSpan;
+import com.ospreydcs.dp.service.common.server.InitializationStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.management.ManagementFactory;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -62,6 +65,12 @@ import java.util.concurrent.TimeUnit;
  *       {@code OutOfMemoryError} under {@code -XX:+ExitOnOutOfMemoryError} writes no failure mark)
  *       from being retried without end.</li>
  * </ul>
+ *
+ * <p><b>A process that does not hold the claim waits for as long as the migration shows a sign of
+ * life (issue #293).</b> The gRPC port is bound before this runs, so a waiting process is up and
+ * {@code NOT_SERVING}, not absent; exiting after a fixed five minutes and being restarted, as it
+ * did before, was a crash loop for the length of a migration. See {@link #migrateOrWait()} for
+ * what counts as a sign of life and for the states that still end the wait.
  */
 public class SchemaMigrationRunner {
 
@@ -145,7 +154,8 @@ public class SchemaMigrationRunner {
      */
     public static final int MAX_TAKEOVERS_PER_VERSION = 3;
 
-    // How long a waiting (non-claiming) process will wait for the migrating process to finish.
+    // How long a waiting (non-claiming) process goes on waiting without a sign of life from the
+    // migration it is waiting for; see migrateOrWait(). Not the length of the wait.
     static final long CLAIM_WAIT_TIMEOUT_MILLIS = 5 * 60 * 1000L;
     static final long CLAIM_WAIT_POLL_MILLIS = 500L;
 
@@ -155,6 +165,12 @@ public class SchemaMigrationRunner {
      * every waiting process runs its own, and an orphaned scan can run for hours.
      */
     static final long ORPHAN_CHECK_INTERVAL_MILLIS = 5_000L;
+
+    /**
+     * How often a waiter logs that it is still waiting for an orphaned operation to end. The check
+     * itself repeats every few seconds, and over a wait of hours a line for each is noise.
+     */
+    static final long ORPHAN_WAIT_LOG_INTERVAL_MILLIS = 60_000L;
 
     /** The lease timings, in milliseconds. */
     protected record LeaseTimings(
@@ -225,6 +241,16 @@ public class SchemaMigrationRunner {
      *     abort startup.
      */
     public void run() throws DpException {
+        try {
+            establishSchema();
+        } finally {
+            // Whatever was being done about the schema is over: the rest of initialization, or the
+            // failure exit, is not a migration.
+            InitializationStatus.setStarting();
+        }
+    }
+
+    private void establishSchema() throws DpException {
 
         // Validated on every startup, not only when a migration is pending: a bad value then fails
         // the deployment that introduced it, not the next schema upgrade months later.
@@ -232,6 +258,9 @@ public class SchemaMigrationRunner {
         validateLeaseTimings(leaseTimings, claimWaitTimeoutMillis);
 
         final String orphanCheckFailure = probeOrphanCheck();
+        // Kept for the takeover.enabled gauge: a missing grant decides whether a dead migrator
+        // recovers by itself, and one warn line at startup is a poor place to leave that.
+        InitializationStatus.setTakeoverEnabled(orphanCheckFailure == null);
         if (orphanCheckFailure != null) {
             logger.warn(
                     "this service cannot take over an abandoned schema migration: {} Startup "
@@ -366,8 +395,8 @@ public class SchemaMigrationRunner {
      * Rejects lease timings under which the lease would misbehave without saying so.
      *
      * <p>A stale-after below three heartbeat intervals lets one slow beat read as a dead holder. A
-     * stale-after that is not below the claim wait means no waiter ever lives long enough to see a
-     * claim go stale, which disables takeover silently.
+     * stale-after that is not below the claim wait means a claim is never seen to go stale before
+     * the deadline that follows its last heartbeat, which disables takeover silently.
      */
     static void validateLeaseTimings(LeaseTimings timings, long claimWaitTimeoutMillis)
             throws DpException {
@@ -388,8 +417,9 @@ public class SchemaMigrationRunner {
             throw new DpException(
                     CFG_KEY_STALE_AFTER_SECONDS + " (" + timings.staleAfterMillis() + " ms) must be "
                             + "below the schema migration claim wait (" + claimWaitTimeoutMillis
-                            + " ms); otherwise no waiting process lasts long enough to take over "
-                            + "an abandoned migration");
+                            + " ms); otherwise a waiting process gives up on an abandoned "
+                            + "migration before it can see that the claim is stale and take it "
+                            + "over");
         }
     }
 
@@ -400,11 +430,30 @@ public class SchemaMigrationRunner {
      * <p><b>One deadline governs the whole call, across every claim attempt.</b> This is a single
      * loop rather than a pair of claim-and-wait methods calling each other. In the recursive form
      * each retry allocated a fresh timeout and added a stack frame, so the bound this class
-     * documents — wait a bounded time, then refuse to start — was not actually the bound in force.
-     * An absolute deadline computed once, here, is what makes the documented bound true however
-     * many attempts occur. Watching for a stale claim, the orphaned-operation check and the
-     * takeover attempts all happen inside this loop and against that deadline; a process that wins
-     * a claim or a takeover stops being bound by it, like any claimant.
+     * documents was not the bound in force. Watching for a stale claim, the orphaned-operation
+     * check and the takeover attempts all happen inside this loop and against that one deadline; a
+     * process that wins a claim or a takeover stops being bound by it, like any claimant.
+     *
+     * <p><b>The deadline is time without a sign of life, not time since entry (issue #293).</b> It
+     * is pushed out to "now plus the claim wait" when this waiter observes one of three things,
+     * and by nothing else:
+     * <ul>
+     *   <li>the holder's heartbeat advancing, or the claim passing to a new holder;</li>
+     *   <li>the recorded schema version advancing;</li>
+     *   <li>the orphaned-operation check succeeding and finding an operation still running. That
+     *       wait is finite, because the operation is a scan that ends, and a migrator stopped by
+     *       a SIGTERM leaves exactly this state.</li>
+     * </ul>
+     * A failed claim or takeover attempt does not move it, so a per-attempt timeout cannot come
+     * back. The states in which no observation distinguishes "slow" from "never" keep the bound
+     * and exit one claim wait after the last sign of life: a claim with no token, an
+     * orphaned-operation check that fails, and a marker that is unclaimed but never claimable.
+     *
+     * <p><b>The sign of life is judged against the last heartbeat this waiter read, held apart
+     * from the staleness watch.</b> {@code watchedToken} is reset to null in three places to
+     * restart that watch, so "differs from the watched pair" is also true the first time a claim
+     * is seen and every time the same dead pair is seen again after a reset. A deadline extended
+     * on that test would be extended by a holder that has shown nothing.
      *
      * <p><b>Staleness is what this process observes, never a comparison of timestamps.</b> It
      * remembers the {@code (claimToken, heartbeatSeq)} pair it last read and when, on its own
@@ -416,7 +465,7 @@ public class SchemaMigrationRunner {
     private void migrateOrWait() throws DpException {
 
         final String host = processIdentity();
-        final long deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
+        long deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
         final long staleAfterNanos = TimeUnit.MILLISECONDS.toNanos(leaseTimings.staleAfterMillis());
         final long orphanCheckIntervalNanos =
                 TimeUnit.MILLISECONDS.toNanos(leaseTimings.orphanCheckIntervalMillis());
@@ -431,8 +480,20 @@ public class SchemaMigrationRunner {
         long lastOrphanCheckNanos = 0;
         List<SchemaVersionMarker.OrphanedOperation> orphans = List.of();
         String orphanCheckFailure = null;
+        long lastOrphanWaitLogNanos = 0;
+        boolean orphanWaitLogged = false;
 
         SchemaVersionMarker.MarkerState state = SchemaVersionMarker.read(database);
+
+        // What this waiter last read, for the signs of life that extend the deadline. Never reset
+        // with the staleness watch above. lastToken is null when no claim has been read since
+        // entry or since the marker was last seen unclaimed.
+        String lastToken = null;
+        long lastSeq = 0;
+        final Set<String> tokensSeen = new HashSet<>();
+        int lastVersion = state.version();
+
+        boolean waiting = false;
 
         while (true) {
 
@@ -452,6 +513,44 @@ public class SchemaMigrationRunner {
                                 + "build migrated it while this one was waiting. Deploy a service "
                                 + "build of at least that schema version. Downgrade migrations are "
                                 + "not supported.");
+            }
+
+            if (state.version() > lastVersion) {
+                // Sign of life: the recorded version advanced.
+                deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
+            }
+            lastVersion = state.version();
+
+            if (state.migrating() && state.claimToken() != null) {
+                if (lastToken == null) {
+                    // The first claim read after entry, or after the marker was unclaimed. It
+                    // extends nothing: nothing has been seen to change, and the deadline already
+                    // allows a full claim wait from that moment.
+                    tokensSeen.add(state.claimToken());
+                } else if (!state.claimToken().equals(lastToken)) {
+                    // Sign of life, once per token: the claim passed to another holder, which is
+                    // what a takeover by another waiter looks like from here. Claims that follow
+                    // one another without the version advancing are bounded by the takeover cap.
+                    if (tokensSeen.add(state.claimToken())) {
+                        deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
+                    }
+                } else if (state.heartbeatSeq() != lastSeq) {
+                    // Sign of life: the holder's heartbeat advanced.
+                    deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
+                }
+                lastToken = state.claimToken();
+                lastSeq = state.heartbeatSeq();
+            } else if (!state.migrating()) {
+                lastToken = null;
+            }
+
+            if (state.migrating() && !waiting) {
+                waiting = true;
+                InitializationStatus.setWaiting();
+                logger.info(
+                        "waiting for the schema migration from version {} held by {}; this service "
+                                + "reports NOT_SERVING until it completes",
+                        state.version(), describeHolder(state));
             }
 
             boolean stale = false;
@@ -493,6 +592,7 @@ public class SchemaMigrationRunner {
                     orphanCheckDue = true;
                     orphans = List.of();
                     orphanCheckFailure = null;
+                    orphanWaitLogged = false;
                 }
                 stale = now - watchedSinceNanos >= staleAfterNanos;
 
@@ -553,11 +653,22 @@ public class SchemaMigrationRunner {
                         watchedToken = null;
                         stale = false;
                     } else if (!orphans.isEmpty()) {
-                        logger.info(
-                                "the schema migration held by {} appears abandoned, but {} of its "
-                                        + "operations are still running on the server ({}); not "
-                                        + "taking over until they end",
-                                describeHolder(state), orphans.size(), describeOrphan(orphans.get(0)));
+                        // Sign of life: an operation of the abandoned claim is still running, as
+                        // reported by a check that succeeded. A check that fails extends nothing.
+                        deadline = System.currentTimeMillis() + claimWaitTimeoutMillis;
+
+                        // on the first check for this claim, then once a minute
+                        if (!orphanWaitLogged || now - lastOrphanWaitLogNanos
+                                >= TimeUnit.MILLISECONDS.toNanos(ORPHAN_WAIT_LOG_INTERVAL_MILLIS)) {
+                            orphanWaitLogged = true;
+                            lastOrphanWaitLogNanos = now;
+                            logger.info(
+                                    "the schema migration held by {} appears abandoned, but {} of "
+                                            + "its operations are still running on the server "
+                                            + "({}); waiting for them to end before taking over",
+                                    describeHolder(state), orphans.size(),
+                                    describeOrphan(orphans.get(0)));
+                        }
                     }
                 }
 
@@ -673,6 +784,7 @@ public class SchemaMigrationRunner {
             logger.info(
                     "applying schema migration version {}: {}",
                     migration.version(), migration.description());
+            InitializationStatus.setMigrating(migration.version(), targetVersion);
 
             try {
                 migration.apply(database, context);
@@ -729,14 +841,17 @@ public class SchemaMigrationRunner {
             List<SchemaVersionMarker.OrphanedOperation> orphans,
             String orphanCheckFailure) {
 
-        final String prefix = "timed out after " + (claimWaitTimeoutMillis / 1000) + "s waiting for "
-                + "a schema migration held by " + describeHolder(state) + ". ";
+        final String waited = (claimWaitTimeoutMillis / 1000) + "s";
 
         if (!state.migrating()) {
-            return "timed out after " + (claimWaitTimeoutMillis / 1000) + "s trying to claim the "
-                    + "schema migration from version " + state.version() + ": other processes kept "
-                    + "claiming it without completing it. See doc/runbooks/schema-migration.md.";
+            return "gave up after " + waited + " trying to claim the schema migration from version "
+                    + state.version() + ": other processes kept claiming it without completing "
+                    + "it. See doc/runbooks/schema-migration.md.";
         }
+
+        final String prefix = "gave up waiting for the schema migration held by "
+                + describeHolder(state) + ": it has shown no sign of life for " + waited + ". ";
+
         if (state.claimToken() == null) {
             return prefix + "The claim has no heartbeat: it was written by a service build that "
                     + "predates migration takeover (1.16.0 or earlier), so this process cannot tell "
@@ -752,15 +867,15 @@ public class SchemaMigrationRunner {
         if (stale && !orphans.isEmpty()) {
             final SchemaVersionMarker.OrphanedOperation orphan = orphans.get(0);
             return prefix + "Its heartbeat has stopped, so the process that held it is gone, but "
-                    + orphans.size() + " operation(s) it or an earlier holder started are still "
-                    + "running on the server: " + describeOrphan(orphan) + ". The claim will be "
-                    + "taken over by a starting process once they end; restarting this service "
-                    + "is enough. To end one early: db.killOp(" + killOpArgument(orphan) + "). See "
-                    + "doc/runbooks/schema-migration.md.";
+                    + orphans.size() + " operation(s) it or an earlier holder started were still "
+                    + "running on the server when last checked: " + describeOrphan(orphan)
+                    + ". The claim will be taken over by a starting process once they end; "
+                    + "restarting this service is enough. To end one early: db.killOp("
+                    + killOpArgument(orphan) + "). See doc/runbooks/schema-migration.md.";
         }
-        return prefix + "Its heartbeat is current, so the migration is still running; a long "
-                + "migration outlasts this wait, and restarting this service once it completes is "
-                + "enough. See doc/runbooks/schema-migration.md.";
+        return prefix + "The claim was neither released nor taken over in that time: its heartbeat "
+                + "did not advance, and each attempt to take it over was refused. See "
+                + "doc/runbooks/schema-migration.md.";
     }
 
     private static String describeOrphan(SchemaVersionMarker.OrphanedOperation orphan) {

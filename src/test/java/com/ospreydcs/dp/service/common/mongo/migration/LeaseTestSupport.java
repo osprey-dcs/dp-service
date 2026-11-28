@@ -17,6 +17,7 @@ import org.bson.conversions.Bson;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
@@ -109,6 +110,35 @@ final class LeaseTestSupport {
 
         doAnswer(invocation -> {
             hook.beforeWrite(render(invocation.getArgument(0)), render(invocation.getArgument(1)));
+            return realMarker.findOneAndUpdate(
+                    invocation.<Bson>getArgument(0), invocation.<Bson>getArgument(1),
+                    invocation.<FindOneAndUpdateOptions>getArgument(2));
+        }).when(marker).findOneAndUpdate(
+                any(Bson.class), any(Bson.class), any(FindOneAndUpdateOptions.class));
+
+        final MongoDatabase database = mock(MongoDatabase.class, delegatesTo(real));
+        doReturn(marker).when(database)
+                .getCollection(SchemaVersionMarker.COLLECTION_NAME_SERVICE_METADATA);
+        return database;
+    }
+
+    /**
+     * A database that behaves as {@code real}, except that every takeover of the marker's claim is
+     * refused, as it is when another waiter wins it, and the marker is left as it was. This is how
+     * a test makes a waiter restart its staleness watch on a claim that never changes.
+     */
+    @SuppressWarnings("unchecked")
+    static MongoDatabase refusingTakeovers(MongoDatabase real, AtomicInteger refused) {
+
+        final MongoCollection<Document> realMarker = SchemaVersionMarker.collection(real);
+        final MongoCollection<Document> marker = mock(MongoCollection.class, delegatesTo(realMarker));
+
+        doAnswer(invocation -> {
+            // only a takeover filters on the heartbeat sequence it observed
+            if (render(invocation.getArgument(0)).toJson().contains("heartbeatSeq")) {
+                refused.incrementAndGet();
+                return null;
+            }
             return realMarker.findOneAndUpdate(
                     invocation.<Bson>getArgument(0), invocation.<Bson>getArgument(1),
                     invocation.<FindOneAndUpdateOptions>getArgument(2));
